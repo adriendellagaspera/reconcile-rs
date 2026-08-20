@@ -586,9 +586,11 @@ status, so this section never needs an edit when that status changes.
    fp/btree *ratio*, saw it flat to `N=16`, and called the tax bounded. That reading does not
    survive: a ratio of two terms that both grow is flat *because* they grow together, so it is
    evidence about neither. Dividing out the shared lock term (`1/X_fp − 1/X_btree`) leaves a gap
-   growing 3.2× from `N=1` to `N=16` (#455) — an upper bound on the contract's own cost, so the
-   growth is established and its attribution is not. Mechanism and its falsifiable many-core
-   prediction: #457, to be tested by #456.
+   growing 1.7× from `N=1` to `N=4` with every writer on its own core (#455) — an upper bound on the
+   contract's own cost, so the growth is established and its attribution is not; past the core count
+   preemption-while-holding-lock confounds it, which is why the regime worth buying hardware for is
+   many writers each holding a core. Mechanism and falsifiable prediction: #457, to be tested by
+   #456.
    Numbering starts at 10 so P0–P3's existing ids stay stable.
 
 **P3 — What makes it *believed* to be SOTA:**

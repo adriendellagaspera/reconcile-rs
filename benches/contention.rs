@@ -134,6 +134,12 @@ fn env_or<T: FromStr>(name: &str, default: T) -> T {
     }
 }
 
+/// Cores this machine will actually run threads on, for flagging the writer counts that exceed it.
+/// Falls back to 1 — the conservative reading, flagging every contended row rather than none.
+fn available_parallelism() -> usize {
+    std::thread::available_parallelism().map_or(1, |cores| cores.get())
+}
+
 /// The `N` sweep: `CONTENTION_WRITERS` as a comma-separated list, else [`WRITER_COUNTS`].
 ///
 /// # Panics
@@ -355,9 +361,17 @@ fn run_sweep(counts: &[usize], trials: usize, ops: usize, prefill: usize) -> Vec
 
 /// The per-`N` table: both arms and the paired ratio, each with its bootstrap interval.
 fn print_throughput_table(points: &[Point], trials: usize, ops: usize, prefill: usize) {
+    let cores = available_parallelism();
     println!(
         "[contention] {trials} trials per (N, arm), {ops} inserts/writer, map pre-filled to \
-         {prefill} entries."
+         {prefill} entries; {cores} cores available."
+    );
+    println!(
+        "[contention] Rows marked `!` run more writers than there are cores. Past that point a \
+         thread can be preempted while *holding* the lock, stalling every other writer -- and the \
+         longer critical section is preempted mid-section more often, so delta inflates for a \
+         reason that is the scheduler's, not the contract's. Read those rows as an upper bound \
+         only (#456)."
     );
     println!(
         "[contention] Mean with a 95% percentile-bootstrap interval. `delta` is \
@@ -379,10 +393,11 @@ fn print_throughput_table(points: &[Point], trials: usize, ops: usize, prefill: 
         let ratio = summarize(&point.ratio);
         let delta = summarize(&point.delta_ns);
         println!(
-            "[contention] {n:>7} | {fp_mean:>9.0} [{fp_lo:.0}, {fp_hi:.0}] | \
+            "[contention] {n:>6}{oversubscribed} | {fp_mean:>9.0} [{fp_lo:.0}, {fp_hi:.0}] | \
              {bt_mean:>9.0} [{bt_lo:.0}, {bt_hi:.0}] | {r_mean:>6.3} [{r_lo:.3}, {r_hi:.3}] | \
              {r_median:>6.3} | {d_mean:>6.0} [{d_lo:.0}, {d_hi:.0}]",
             n = point.n,
+            oversubscribed = if point.n > cores { "!" } else { " " },
             fp_mean = fingerprint.mean,
             fp_lo = fingerprint.lo,
             fp_hi = fingerprint.hi,

@@ -443,6 +443,27 @@ real move at 95%:
 | 8 | +475 ns [+365, +619] | grows | +0.003 [−0.042, +0.043] | indistinguishable |
 | 16 | +579 ns [+387, +825] | grows | +0.012 [−0.063, +0.077] | indistinguishable |
 
+**The sweep confined to the core count.** Past `N = 4` this machine is oversubscribed, and
+oversubscription has its own mechanism that mimics the one under study: a thread can be preempted
+*while holding the lock*, stalling every other writer for a scheduler quantum, and the probability of
+being preempted mid-section scales with how long that section is — which is longer for the RSOS arm
+by construction. That would inflate `delta` at `N = 8` and `N = 16` without the contract being
+responsible. So the sweep is also run confined to `N ≤ 4`, where every writer has a core:
+
+| writers (`N`) | delta ns/insert | `delta(N) − delta(1)` | | ratio to `delta(1)` |
+|---:|---:|---:|---|---:|
+| 1 | 238 [230, 249] | — | | 1.00× |
+| 2 | 364 [327, 427] | +126 [+89, +191] | grows | 1.53× |
+| 3 | 415 [414, 416] | +177 [+166, +186] | grows | 1.74× |
+| 4 | 402 [391, 411] | +164 [+154, +176] | grows | 1.69× |
+
+`delta` grows **1.7× with no oversubscription anywhere in the sweep**, every difference interval
+clear of zero, and the `N = 3` estimate lands within ±1 ns across three independent invocations. The
+growth is therefore not an artefact of running more threads than cores. It does appear to flatten
+between `N = 3` and `N = 4`; the further rise to 3.2× at `N = 16` in the table above sits entirely in
+the oversubscribed regime and **cannot be separated from preemption-while-holding-lock on this
+machine**.
+
 ### What this answers for #359 — and what it revises
 
 At `N = 1` there is no lock contention at all, so `FingerprintTreeMap` running at 0.298× a bare
@@ -462,11 +483,13 @@ every step's interval excluding zero**. The conclusion to carry forward is there
 > sweep. #359's flat ratio is not evidence that the contract's write cost stays bounded under
 > contention — a flat ratio is exactly what two terms growing together produce.
 
-`delta` bounds that gap from above rather than pinning it (the model section below says why), so
-whether all of the growth is the contract's own cost or part of it is a differential lock effect is
-**bounded here, not decided**. Deciding it needs each arm's parking behaviour measured directly. A
-mechanism consistent with the growth, and the prediction it makes for many-core hardware, is
-[#457](https://github.com/Akvize/reconcile-rs/issues/457)'s.
+Read at the right scope, that is: **the 1.7× under full subscription is the defensible figure**, and
+the 3.2× across the whole sweep is an upper bound on an upper bound, since its second half is
+confounded by oversubscription. `delta` also bounds the gap from above rather than pinning it (the
+model section below says why), so whether all of even the 1.7× is the contract's own cost or part is
+a differential lock effect is **bounded here, not decided**. Deciding it needs each arm's parking
+behaviour measured directly. A mechanism consistent with the growth, and the prediction it makes for
+many-core hardware, is [#457](https://github.com/Akvize/reconcile-rs/issues/457)'s.
 
 ### A model for the curve, and where it breaks ([#457](https://github.com/Akvize/reconcile-rs/issues/457))
 
@@ -542,11 +565,16 @@ work and not one #457 claims to have done.
 
 **What it predicts, and how to falsify it.** If coherence on the written root path is the term that
 grows, then hardware with more cores — and more so across sockets or NUMA nodes, where a handoff
-crosses an interconnect — should make it grow *faster*. Concretely, on a machine with at least 16
-real cores, `delta(16) / delta(1)` should exceed the 3.24× measured here on 4 cores, and the residual
-at `N = 16` should be worse than −48%. A flat or shrinking `delta` ratio on such hardware refutes
-the mechanism, and `delta` remaining constant in `N` would restore the null. That measurement is
-[#456](https://github.com/Akvize/reconcile-rs/issues/456).
+crosses an interconnect — should make it grow *faster*. Concretely, on a machine with `C ≥ 16` real
+cores, `delta(C) / delta(1)` measured **with `N ≤ C`** should exceed the 1.69× this machine reaches at
+`N = 4`. A flat or shrinking `delta` ratio there refutes the mechanism, and `delta` constant in `N`
+would restore the null.
+
+That is a sharper requirement than "sweep further", and it is the one
+[#456](https://github.com/Akvize/reconcile-rs/issues/456) has to meet: sweeping to `N = 128` on a
+16-core machine would spend most of its points 8× oversubscribed and reproduce exactly the confound
+that makes this machine's `N = 8` and `N = 16` unusable. The regime worth buying hardware for is
+**many writers each holding a core**, not many threads sharing a few.
 
 **What it means for [#271](https://github.com/Akvize/reconcile-rs/issues/271).** The lock is not
 merely hiding a fixed tax that removing it would expose unchanged. Part of the contract's cost is
