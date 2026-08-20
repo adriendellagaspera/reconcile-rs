@@ -80,7 +80,7 @@ mod protocol;
 mod rsos_view;
 
 #[cfg(feature = "internal-testing")]
-pub use policy::FingerprintDerivedSplit;
+pub mod oracle_probe;
 pub use policy::{
     Comparison, Decision, EnumerateBelowThreshold, FanOut, FixedFanOut, RefinementPolicy,
     SplitStride, SqrtFanOut,
