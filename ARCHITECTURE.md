@@ -421,14 +421,23 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
   publication as a response to arXiv:2603.19820 §8:
   [`notes/multidimensional-rbsr.md`](./notes/multidimensional-rbsr.md).
 
-  The soundness analysis is **dimension-free**: one-sided error reads no order at all, and
-  nested-or-disjoint comparison ranges, the laminar-family bound and the signature collapse are
-  consequences of *partition refinement*. The one row that is not is `depth ≤ log_b(n/t)`, which
-  holds only while the cut is **count-balanced** — and balancing counts inside a box along one axis
-  needs the `r`-th element of that axis *restricted to the box*, where Def. 3.9's `Rank`/`Select`
-  are global. The extension is a data-structure question, not an analysis one.
+  **Checked against `arXiv:2603.19820v1` itself**, not a paraphrase of it. §8 asks for "a clearer
+  theory of **balancing and summarization** beyond the one-dimensional setting", naming both halves;
+  they behave in opposite ways.
 
-  That range-restricted `Select` is a named, solved problem rather than an open one: *"given `n`
+  The *protocol* side is dimension-free. Prop. 4.1 transports **verbatim** — its proof invokes only
+  that a SPLIT's children are pairwise disjoint with union the parent — as do termination and
+  Def. B.1/Eq. (1). The paper states **no** depth bound: its cost model is execution-sensitive,
+  `T_loc = O(Qh)`, and §B.4 factors it explicitly into a protocol side (`Q`, the queried-range count)
+  and a storage side (`h`). What fails is the storage side, and Lemma B.2 localizes it: of the four
+  line items it charges a SPLIT (`1 Aggregate`, `1 Rank(l)`, `b−1 Select`, `b Aggregate`, each
+  `O(h)`), two stop being `O(h)` in a product order, for two different reasons.
+
+  **Balancing breaks at a nameable line and recovers.** Algorithm 2 cuts at
+  `Select(Rank(l) + ⌊jm/b⌋)` — correct in 1D because a range is a contiguous run of the total order,
+  so range rank and global rank differ by the constant offset `Rank(l)`. A box is a contiguous run of
+  no order, so that offset does not exist and the composition is not even well-defined. Its
+  replacement is a named, solved problem rather than an open one: *"given `n`
   points in the plane, an `x`-range `Q` and an integer `k`, report the `k`-th smallest `y`-coordinate
   among the points whose `x`-coordinate lies in `Q`"* is verbatim He–Munro–Nicholson
   ([`SOTA.md`](./SOTA.md) §4.4). Priced per operation against what Def. 3.9 already demands, cell
@@ -439,10 +448,12 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
   | `Aggregate` — group-valued summary over the range | `Θ(lg n)`, **tight** (Pătraşcu–Demaine; a 256-bit summary is `≫ w`, so the bound applies a fortiori) | `Ω((lg n / lg lg n)²)` **lower bound** — cell-probe, weighted, any polylog update (Larsen) |
   | `Rank`/`Select` | `O(lg n)`, counted B-tree | `O((lg n / lg lg n)²)` amortized, **linear space** (He–Munro–Nicholson) |
 
-  **The extra primitive is not the barrier.** At `δ = 2` a range-restricted `Select` is *cheaper*
-  than the box `Aggregate` the contract already carries: its best known upper bound sits exactly at
-  the aggregate's unconditional lower bound, and in linear space. `δ > 1` is priced by the
-  **dimension**, which taxes every Def. 3.9 operation at once — not by one missing operation.
+  **Summarization does not recover, and that is the no-go.** At `δ = 2` the primitive Def. 3.9
+  *lacks* is cheaper than the one it *has*: range selection's best known upper bound sits exactly on
+  the box aggregate's unconditional lower bound, and in linear space. The bound is for **weighted**
+  counting, and matching it for unweighted counting is open (Pătraşcu) — so the obstruction is
+  attributable to the summary, not to dimension as such, and RBSR cannot drop the summary (Def. 3.6's
+  `f_p` consumes it). Of §8's two halves, balancing has an answer and summarization has a floor.
 
   So the go/no-go — does `O(lg n)` survive — resolves **no**, with the cost in the build rather than
   in the theory:

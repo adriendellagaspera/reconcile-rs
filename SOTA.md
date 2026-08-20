@@ -619,12 +619,15 @@ where the exact-count guarantee has already run out (folded into
 [#318](https://github.com/Akvize/reconcile-rs/issues/318)); re-ordering the store does not rescue
 that signal — `rbsr/tests/balance_under_position_map.rs` shows only an order whose leading
 component is the one that changed makes a divergence visible, so "make `π` injective" is the wrong
-rule, relocation is; the multidimensional extension is settled on paper as a **no-go**, by a route
-that refutes its own framing — the range-restricted `Select` a box-balanced cut needs is, in two
-dimensions, *cheaper* than the box `Aggregate` Def. 3.9 already carries (`O((lg n/lg lg n)²)`
-amortized in linear space, against an unconditional `Ω((lg n/lg lg n)²)` for the summary-carrying
-aggregate), so `δ > 1` is priced by the dimension taxing every operation rather than by a missing primitive, and
-what fails is the buildable `O(lg² n)`-time / `O(n lg n)`-space lift
+rule, relocation is; the multidimensional extension is settled on paper as a **no-go**, read against
+`arXiv:2603.19820v1` itself — §8 asks for a theory of *balancing **and** summarization* beyond one
+dimension, and the two part company. Balancing breaks at one line of its Algorithm 2
+(`Select(Rank(l) + ⌊jm/b⌋)`, which presumes a range is a contiguous run of the global order and is
+undefined over a box) and recovers at `O((lg n/lg lg n)²)` in **linear** space; the box `Aggregate`
+Def. 3.9 already carries meets an unconditional `Ω((lg n/lg lg n)²)`, for *weighted* counting, so the
+obstruction is the summary rather than the dimension. The paper states **no** depth bound — its cost
+model is execution-sensitive, `T_loc = O(Qh)` — so Prop. 4.1 and the reconciliation-tree accounting
+transport verbatim and only the storage half fails
 ([#360](https://github.com/Akvize/reconcile-rs/issues/360); cost table in
 [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, full argument in
 [`notes/multidimensional-rbsr.md`](./notes/multidimensional-rbsr.md)); `Comparison` no longer hands a policy the fingerprint
@@ -865,6 +868,7 @@ pass had already ruled out. Record negative results too.
 | 2026-08-17 | post-2026-08-14 sweep: new arXiv/venue results on range-based/partitioned set reconciliation, rateless IBLT/CertainSync follow-ups, multi-party reconciliation, prolly/Merkle tree updates, Willow/Earthstar changes, GenSync follow-ups, PODC 2026 accepted-papers list | `cs.DC`/`cs.CR`/`cs.IT` + venue programs, via WebSearch (WebFetch could not reach `arxiv.org`, `dl.acm.org`, `ceur-ws.org`, `semanticscholar.org` or `podc.org` from this session — network egress proxy blocked all five; findings below are WebSearch-summary-sourced, not read from the primer PDF) | One finding, §2.1: Rawat et al. 2026 (§4.4) bounds prolly trees' cascading-rechunking cost. Nothing new found on the other axes — RIBLT/CertainSync/ConflictSync/Rateless-Bloom-Filters lineage, multi-party reconciliation (still 2013–2021), and Willow/Earthstar are unchanged since the last pass over each |
 | 2026-08-19 | citation-tracking pass on the two pivot papers: `"<title>" cited by`/`follow-up` per Meyer arXiv:2212.13567 and Yang et al. arXiv:2402.02668 | targeted, via WebSearch only (`arxiv.org`, `api.semanticscholar.org`, `api.openalex.org` all confirmed egress-blocked this session — no programmatic citation graph available, summaries only) | Confirmed arXiv:2603.19820 (already §4.4) is Meyer's direct RBSR heir. CertainSync and ConflictSync (already §4.4) confirmed as RIBLT's real follow-ups; ConflictSync's venue resolved to PaPoC 2026. No new reference found beyond what §4.4 already held |
 | 2026-08-20 | range selection, range median, orthogonal range searching — static and dynamic, with their cell-probe lower bounds | `cs.DS` / `cs.CG`, a **third dialect** entered for the first time, for [#360](https://github.com/Akvize/reconcile-rs/issues/360)'s go/no-go; via WebSearch only (WebFetch egress-blocked for `users-cs.au.dk`, `people.csail.mit.edu` and every other academic host tried — nothing read as a PDF) | **§4.4's `cs.DS` group**, and the go/no-go itself: the range-restricted `Select` is a named, tight, solved problem, and at `δ` = 2 it is *cheaper* than the aggregate beside it. **Two boundaries recorded rather than crossed:** whether the `(lg lg n)²` gap between a buildable `O(lg² n)` and the `Ω((lg n/lg lg n)²)` floor closes for a *group-valued* box aggregate — the weighted lower bound is confirmed, no matching upper bound was found — and a linear-space Chan–Wilkinson range-selection result, cited secondhand in several summaries, which could **not** be confirmed to exist and is deliberately absent below |
+| 2026-08-20 | `arXiv:2603.19820v1` read as a PDF, first time end to end (supplied directly — egress still blocks `arxiv.org`) | primary source, targeted at every claim this page and [#360](https://github.com/Akvize/reconcile-rs/issues/360) make about it | **Four corrections.** (a) The §8 line about balancing counts is Amparore *reporting Willow*, not his own requirement, and the wording circulated here was a paraphrase presented as a quote. (b) His actual future-work sentence names **composite-key** reconciliation and asks for a theory of *balancing **and** summarization* — both halves, which is what the note now answers. (c) Def. 3.9 has **five** queries plus `Insert`/`Delete`; `Enumerate` was missing from this repo's count, fixed in `rbsr`'s docs. (d) The paper states **no** `log_b(n/t)` depth bound and no laminar/signature-collapse argument — those belong to Meyer, not here; its own bounds are execution-sensitive (`T_loc = O(Qh)`, Lemma B.2 / Thm B.3). **Confirmed unchanged:** §6.1's SHA-256-truncated-to-128 `f_p` and its "probabilistically sound rather than information-theoretically exact" wording (verbatim), the out-of-scope collision analysis, Def. 3.4's monoid lift, and Negentropy's `(timestamp, identifier)` order — §2.1 needed no change |
 
 ### 4.4 Bibliography
 
