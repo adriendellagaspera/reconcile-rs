@@ -579,11 +579,17 @@ status, so this section never needs an edit when that status changes.
    in a paginated tree under concurrent updates — but even its own code leaves the root chain
    uncollapsed, an admission the hot spot is bounded, not eliminated (`benches/README.md`'s
    `contention` benchmark, [#359](https://github.com/Akvize/reconcile-rs/issues/359)/#445/#446).
-   **Measured, not just open**: at `N=1` (no lock contention) the root-write contract alone costs
-   ~0.30–0.34× a no-aggregate `BTreeMap`'s throughput under the same lock; from `N=2` to `N=16` the
-   shared `RwLock` dominates both arms and the ratio does not widen — the root write is a real but
-   *bounded* tax here, not the runaway term the thesis predicted. Numbering starts at 10 so P0–P3's
-   existing ids stay stable.
+   **Measured, then re-measured** ([#454](https://github.com/Akvize/reconcile-rs/issues/454)): at
+   `N=1` (no lock contention) the contract alone costs 0.298× a no-aggregate `BTreeMap`'s
+   throughput under the same lock — 258 ns per insert, buying the 6.8 cached-aggregate writes a
+   `BTreeMap` does not do at all, a count that is the same on any machine. #359 then read the
+   fp/btree *ratio*, saw it flat to `N=16`, and called the tax bounded. That reading does not
+   survive: a ratio of two terms that both grow is flat *because* they grow together, so it is
+   evidence about neither. Dividing out the shared lock term (`1/X_fp − 1/X_btree`) leaves a gap
+   growing 3.2× from `N=1` to `N=16` (#455) — an upper bound on the contract's own cost, so the
+   growth is established and its attribution is not. Mechanism and its falsifiable many-core
+   prediction: #457, to be tested by #456.
+   Numbering starts at 10 so P0–P3's existing ids stay stable.
 
 **P3 — What makes it *believed* to be SOTA:**
 8. **Property-testing + fuzzing as a foundation**: `proptest` vs `BTreeMap` oracle +
