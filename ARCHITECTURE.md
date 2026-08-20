@@ -415,6 +415,53 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
   constraint — `rbsr` stays 0.x (#308) and `M = Fingerprint` moves no wire bytes. The rejected
   alternative (sealing `Rsos`, which keeps every option open at the cost of third-party backends) is
   argued on #298.
+- **A multidimensional (product-order) RSOS** — reconciling *boxes* in `δ > 1` dimensions instead of
+  intervals in one ([#360](https://github.com/Akvize/reconcile-rs/issues/360)). **Decided: no-go**,
+  and not for the reason the extension was expected to fail.
+
+  The soundness analysis is **dimension-free**: one-sided error reads no order at all, and
+  nested-or-disjoint comparison ranges, the laminar-family bound and the signature collapse are
+  consequences of *partition refinement*. The one row that is not is `depth ≤ log_b(n/t)`, which
+  holds only while the cut is **count-balanced** — and balancing counts inside a box along one axis
+  needs the `r`-th element of that axis *restricted to the box*, where Def. 3.9's `Rank`/`Select`
+  are global. The extension is a data-structure question, not an analysis one.
+
+  That range-restricted `Select` is a named, solved problem rather than an open one: *"given `n`
+  points in the plane, an `x`-range `Q` and an integer `k`, report the `k`-th smallest `y`-coordinate
+  among the points whose `x`-coordinate lies in `Q`"* is verbatim He–Munro–Nicholson
+  ([`SOTA.md`](./SOTA.md) §4.4). Priced per operation against what Def. 3.9 already demands, cell
+  size `w = Θ(lg n)`:
+
+  | operation | `δ = 1` (shipped) | `δ = 2` |
+  |---|---|---|
+  | `Aggregate` — group-valued summary over the range | `Θ(lg n)`, **tight** (Pătraşcu–Demaine; a 256-bit summary is `≫ w`, so the bound applies a fortiori) | `Ω((lg n / lg lg n)²)` **lower bound** — cell-probe, weighted, any polylog update (Larsen) |
+  | `Rank`/`Select` | `O(lg n)`, counted B-tree | `O((lg n / lg lg n)²)` amortized, **linear space** (He–Munro–Nicholson) |
+
+  **The extra primitive is not the barrier.** At `δ = 2` a range-restricted `Select` is *cheaper*
+  than the box `Aggregate` the contract already carries: its best known upper bound sits exactly at
+  the aggregate's unconditional lower bound, and in linear space. `δ > 1` is priced by the
+  **dimension**, which taxes every Def. 3.9 operation at once — not by one missing operation.
+
+  So the go/no-go — does `O(lg n)` survive — resolves **no**, with the cost in the build rather than
+  in the theory:
+
+  | | factor on `T_loc` vs `δ = 1`, at `n` = 10⁶ / 10⁹ | space |
+  |---|---|---|
+  | the cell-probe floor, `(lg n/lg lg n)²` | 1.1× / 1.2× — negligible | — |
+  | a dynamic 2D range tree carrying `Aggregate` in its internal nodes — the direct `δ = 2` lift of `FingerprintTreeMap`, and what this workspace would actually write | `lg n`, i.e. **20× / 30×** | `O(n lg n)`, so **~20× / ~30×** |
+
+  Whether that `(lg lg n)²` gap closes for a *group-valued* box aggregate this pass did **not**
+  settle ([`SOTA.md`](./SOTA.md) §4.3), and the decision does not turn on it: the floor is already
+  superlogarithmic, so no `δ > 1` RSOS is an `O(lg n)` RSOS, and an `O(n lg n)`-space in-memory
+  store forfeits ([`SOTA.md`](./SOTA.md) §1.6) the one unambiguous advantage exactly as a
+  disk-backed one does (#186).
+
+  **And the cheap alternative is not one.** A lexicographic composite key keeps the store
+  1-dimensional and every operation at `Θ(lg n)` — but a lex interval is not a box, so it answers no
+  `δ > 1` query at all. `rbsr/tests/balance_under_position_map.rs` arm 2 is that same fact seen from
+  the protocol side: `π = (key, version)` *is* that order, and the exact count sees nothing under it
+  that it did not already see under `π = (key)`. Its corollary — "make `π` injective" is the wrong
+  rule, **relocation** is — is recorded in [`SOTA.md`](./SOTA.md) §2.4.1.
 - **Pluggable per-value conflict resolution** — CRDT values beyond LWW-Register
   ([#184](https://github.com/Akvize/reconcile-rs/issues/184)). **Decided: deferred**, no trigger has
   fired.

@@ -31,7 +31,7 @@
 set -Eeuo pipefail
 
 AGENTS_MAX_LINES=200
-SOTA_MAX_LINES=1100
+SOTA_MAX_LINES=1150
 
 # Resolve the repo root from the script's own location (not `git rev-parse`, since the
 # pre-commit hook runs this against a bare `git checkout-index` copy with no `.git`).

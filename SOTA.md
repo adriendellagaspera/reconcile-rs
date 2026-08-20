@@ -274,7 +274,9 @@ copy-on-write B+-tree addressed by page number.
     cardinalities** can never be SKIPped — probability 1, no assumption on the hash — so a dropped
     write or an unreplicated tombstone is structurally covered. A **same-key/different-value
     conflict is not**: both records share a key, so no rank split ever separates them and every
-    range containing that key is count-balanced at every depth. The failure mode `f_p = id` covers
+    range containing that key is count-balanced at every depth. Re-ordering the store does not
+    rescue it, and *injectivity* is not the lever that would —
+    [§2.4.1](#241-open-research-questions). The failure mode `f_p = id` covers
     outright is the rarer one; the one an LWW register produces continuously falls back on Σ's
     injectivity alone. Truncating a count-folding hash (Negentropy) trades the probability-1 half
     away entirely; comparing `(count, Σ mod 2^τ)` would keep it for the price of a varint. This
@@ -609,18 +611,25 @@ per issue, none of them a 1.0 gate; the claim and the evidence live in the issue
 | Post-#257 the comparison-map width is a security question, not a bandwidth one — price it in both models | [#357](https://github.com/Akvize/reconcile-rs/issues/357) |
 | Every model here is two-party. Does a fleet resample a collision, or correlate it? | [#354](https://github.com/Akvize/reconcile-rs/issues/354) |
 | Can any path fold one multiset element twice, and what does that cost the summary? | [#358](https://github.com/Akvize/reconcile-rs/issues/358) |
-| The analysis is dimension-free; the RSOS contract is not — what does `δ > 1` actually need? | [#360](https://github.com/Akvize/reconcile-rs/issues/360) |
 | The contract writes the root on every insert (P2 item 10 above). Where does that bind? | [#359](https://github.com/Akvize/reconcile-rs/issues/359) |
 
-Four results landed with this index rather than as open issues, because they close rather than open
+Five results landed with this index rather than as open issues, because they close rather than open
 a question: a divergence-adaptive policy is confined to the count, and the count is blind exactly
 where the exact-count guarantee has already run out (folded into
 [#318](https://github.com/Akvize/reconcile-rs/issues/318)); re-ordering the store does not rescue
 that signal — `rbsr/tests/balance_under_position_map.rs` shows only an order whose leading
 component is the one that changed makes a divergence visible, so "make `π` injective" is the wrong
-rule, relocation is; `Comparison` no longer hands a policy the fingerprint at all — narrowed to
-`span()`/`remote_size()`/`agrees()`, making the violation structurally unspellable rather than
-merely bounded ([#352](https://github.com/Akvize/reconcile-rs/issues/352)); and a hash-derived
+rule, relocation is; the multidimensional extension is settled on paper as a **no-go**, by a route
+that refutes its own framing — the range-restricted `Select` a box-balanced cut needs is, in two
+dimensions, *cheaper* than the box `Aggregate` Def. 3.9 already carries (`O((lg n/lg lg n)²)`
+amortized in linear space, against an unconditional `Ω((lg n/lg lg n)²)` for the summary-carrying
+aggregate), so `δ > 1` is priced by the dimension taxing every operation rather than by a missing primitive, and
+what fails is the buildable `O(lg² n)`-time / `O(n lg n)`-space lift
+([#360](https://github.com/Akvize/reconcile-rs/issues/360), cost table in
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) §7); `Comparison` no longer hands a policy the fingerprint
+at all — narrowed to `span()`/`remote_size()`/`agrees()`, making the violation structurally
+unspellable rather than merely bounded
+([#352](https://github.com/Akvize/reconcile-rs/issues/352)); and a hash-derived
 split rule does not cleanly exceed the bound — the sharper, statistically unambiguous result is
 that it breaks the protocol's termination guarantee instead, in ~99.5% of drives
 ([#356](https://github.com/Akvize/reconcile-rs/issues/356), full numbers in §2.3's "Empirical
@@ -854,6 +863,7 @@ pass had already ruled out. Record negative results too.
 | 2026-08-14 | `q`-ary trie / digital-tree space law, `q`/ln `q` | analysis of algorithms | **Not found, and not needed.** The search assumed the law had to be borrowed; it derives in four lines from the protocol itself (§2.2), so this row is closed by derivation rather than by citation |
 | 2026-08-17 | post-2026-08-14 sweep: new arXiv/venue results on range-based/partitioned set reconciliation, rateless IBLT/CertainSync follow-ups, multi-party reconciliation, prolly/Merkle tree updates, Willow/Earthstar changes, GenSync follow-ups, PODC 2026 accepted-papers list | `cs.DC`/`cs.CR`/`cs.IT` + venue programs, via WebSearch (WebFetch could not reach `arxiv.org`, `dl.acm.org`, `ceur-ws.org`, `semanticscholar.org` or `podc.org` from this session — network egress proxy blocked all five; findings below are WebSearch-summary-sourced, not read from the primer PDF) | One finding, §2.1: Rawat et al. 2026 (§4.4) bounds prolly trees' cascading-rechunking cost. Nothing new found on the other axes — RIBLT/CertainSync/ConflictSync/Rateless-Bloom-Filters lineage, multi-party reconciliation (still 2013–2021), and Willow/Earthstar are unchanged since the last pass over each |
 | 2026-08-19 | citation-tracking pass on the two pivot papers: `"<title>" cited by`/`follow-up` per Meyer arXiv:2212.13567 and Yang et al. arXiv:2402.02668 | targeted, via WebSearch only (`arxiv.org`, `api.semanticscholar.org`, `api.openalex.org` all confirmed egress-blocked this session — no programmatic citation graph available, summaries only) | Confirmed arXiv:2603.19820 (already §4.4) is Meyer's direct RBSR heir. CertainSync and ConflictSync (already §4.4) confirmed as RIBLT's real follow-ups; ConflictSync's venue resolved to PaPoC 2026. No new reference found beyond what §4.4 already held |
+| 2026-08-20 | range selection, range median, orthogonal range searching — static and dynamic, with their cell-probe lower bounds | `cs.DS` / `cs.CG`, a **third dialect** entered for the first time, for [#360](https://github.com/Akvize/reconcile-rs/issues/360)'s go/no-go; via WebSearch only (WebFetch egress-blocked for `users-cs.au.dk`, `people.csail.mit.edu` and every other academic host tried — nothing read as a PDF) | **§4.4's `cs.DS` group**, and the go/no-go itself: the range-restricted `Select` is a named, tight, solved problem, and at `δ` = 2 it is *cheaper* than the aggregate beside it. **Two boundaries recorded rather than crossed:** whether the `(lg lg n)²` gap between a buildable `O(lg² n)` and the `Ω((lg n/lg lg n)²)` floor closes for a *group-valued* box aggregate — the weighted lower bound is confirmed, no matching upper bound was found — and a linear-space Chan–Wilkinson range-selection result, cited secondhand in several summaries, which could **not** be confirmed to exist and is deliberately absent below |
 
 ### 4.4 Bibliography
 
@@ -996,6 +1006,45 @@ surfaced by arXiv:2603.19820's related work — §2.4 P1/P2 and issues #257/#271
   lock-free MVCC readers and a single writer. Named here because that *is* the property epic
   [#271](https://github.com/Akvize/reconcile-rs/issues/271) sets out to build in safe Rust: the
   build-vs-adopt comparison should be made against it explicitly rather than by default.
+
+**Range selection and orthogonal range searching (`cs.DS` / `cs.CG`)** *(a third dialect, opened
+2026-08-20 for [#360](https://github.com/Akvize/reconcile-rs/issues/360): the operation a `δ > 1` RSOS
+needs beyond Def. 3.9 is this literature's central object, and its bounds are settled. **`δ` is the
+dimension throughout this group and [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, not [§4.1](#41-cross-community-vocabulary)'s
+PSR difference size** — the one symbol the three dialects genuinely collide on. Umbrella survey:
+P. K. Agarwal, *Range searching*, Handbook of Discrete and Computational Geometry 3rd ed. ch. 41 —
+https://users.cs.duke.edu/~pankaj/publications/surveys/rs3ed.pdf . Sourced from search summaries, §4.3.)*
+
+- **M. He, J. I. Munro, P. K. Nicholson**, *Dynamic range selection in linear space*, `arXiv:1106.5076`
+  · `doi:10.1007/978-3-642-25591-5_18` (ISAAC 2011, LNCS 7074, pp. 160–169) —
+  https://arxiv.org/abs/1106.5076
+  **Bears on:** its problem statement *is* the missing operation — the `k`-th smallest `y` among the
+  points whose `x` lies in a query range — at `O((lg n/lg lg n)²)` query and amortized update in
+  **linear** space. The primitive #360 expected to be the blocker is the affordable half.
+  → [#360](https://github.com/Akvize/reconcile-rs/issues/360), [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7
+- **A. G. Jørgensen, K. G. Larsen**, *Range selection and median: tight cell probe lower bounds and
+  adaptive data structures*, `doi:10.1137/1.9781611973082.63` (SODA 2011, pp. 805–813) —
+  https://cs.au.dk/~larsen/papers/range_median.pdf
+  **Bears on:** `Ω(lg n/lg lg n)` for *static* range selection in `n·lg^O(1) n` bits, matched by
+  Brodal & Jørgensen (ISAAC 2009, https://users-cs.au.dk/gerth/papers/isaac09median.pdf) — so the
+  primitive's price is **tight**, not merely unimproved.
+  → [#360](https://github.com/Akvize/reconcile-rs/issues/360)
+- **K. G. Larsen**, *The cell probe complexity of dynamic range counting*, `arXiv:1105.5933` ·
+  `doi:10.1145/2213977.2213987` (STOC 2012, pp. 85–94) — https://arxiv.org/abs/1105.5933 ;
+  strengthening **M. Pătraşcu**, *Lower bounds for 2-dimensional range counting*,
+  `doi:10.1145/1250790.1250797` (STOC 2007, pp. 40–46)
+  **Bears on:** the load-bearing citation of the no-go. `t_q = Ω((lg n/lg(w·t_u))²)`, i.e.
+  `Ω((lg n/lg lg n)²)` at cell size `w = Θ(lg n)` under any polylog update, for **weighted** 2D range
+  counting — and `Aggregate` carries a 256-bit `Fingerprint`. It therefore binds the operation Def. 3.9
+  **already has**, which is why `δ > 1` is priced by the dimension and not by the new primitive.
+  → [#360](https://github.com/Akvize/reconcile-rs/issues/360), §2.1
+- **M. Pătraşcu, E. D. Demaine**, *Tight bounds for the partial-sums problem*,
+  `doi:10.5555/982792.982796` (SODA 2004; journal version *Logarithmic lower bounds in the cell-probe
+  model*, SIAM J. Comput. 35(4), 2006, pp. 932–963)
+  **Bears on:** the one-dimensional baseline the row above is measured against — dynamic partial sums cost
+  `Θ(1 + lg n/lg(w/s))` for cell size `w` and summary width `s`, hence `Θ(lg n)` once the summary is a
+  word wide. `FingerprintTreeMap`'s `O(lg n)` aggregate is **optimal**, not merely adequate, so the
+  `δ > 1` comparison is tight on both sides. → [#360](https://github.com/Akvize/reconcile-rs/issues/360), §2.3
 
 **Consistency & conflict resolution**
 - Kingsbury (Jepsen), *The trouble with timestamps* — https://aphyr.com/posts/299-the-trouble-with-timestamps ; *Jepsen: Cassandra* — https://aphyr.com/posts/294-jepsen-cassandra
