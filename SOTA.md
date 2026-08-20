@@ -629,8 +629,8 @@ obstruction is the summary rather than the dimension. The paper states **no** de
 model is execution-sensitive, `T_loc = O(Qh)` — so Prop. 4.1 and the reconciliation-tree accounting
 transport verbatim and only the storage half fails
 ([#360](https://github.com/Akvize/reconcile-rs/issues/360); cost table in
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, full argument in
-[`notes/multidimensional-rbsr.md`](./notes/multidimensional-rbsr.md)); `Comparison` no longer hands a policy the fingerprint
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, and a separate preprint that this repository
+deliberately does not version); `Comparison` no longer hands a policy the fingerprint
 at all — narrowed to `span()`/`remote_size()`/`agrees()`, making the violation structurally
 unspellable rather than merely bounded
 ([#352](https://github.com/Akvize/reconcile-rs/issues/352)); and a hash-derived
