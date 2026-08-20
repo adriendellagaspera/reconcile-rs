@@ -142,13 +142,25 @@ So the whole protocol side of §B.4's factorization — correctness, termination
 that turns split counts into queried-range counts — carries over with no modification. A
 multidimensional RBSR is not at risk of being *wrong*.
 
-**One thing this does not establish.** `T_loc = O(Qh)` is execution-sensitive by design: [Amp26]
-parameterizes on `Q` rather than bounding it, and states no depth bound. Any bound on `Q` — the
-`log_b(n/t)`-style depth argument of the RBSR line [Mey23] — depends on cuts being count-balanced
-in the sense of Def. 3.8, which is precisely what §4 shows a box cannot do with Def. 3.9's
-operations. We take no position here on the form of that bound in [Mey23], which we have not
-verified; the point is only that whatever it is, it is stated over balanced partitions, and balance
-is what breaks.
+[Mey23]'s footnote 2 makes the first row stronger still: "for correctness it already suffices that
+the subranges **cover** the original range" — partitions are preferred only because they "minimally
+cover the original range without containing any duplicate items". An axis-aligned box decomposition
+covers by construction. (Disjointness is what §6's exact-count argument needs, not what correctness
+needs.)
+
+**Where the bound on `Q` lives.** `T_loc = O(Qh)` is execution-sensitive by design: [Amp26]
+parameterizes on `Q` rather than bounding it, and states no depth bound. That bound belongs to the
+RBSR line. [Mey23] §3.2.2 gives a reconciliation tree of height `≤ 2·⌈log_b(n_min)⌉`, lowered by
+`⌊log_b(t)⌋`, hence `2 + 2·⌈log_b(n_min)⌉ − ⌊log_b(t)⌋ ∈ O(lg n)` communication rounds. It rests on
+each split dividing a range's item count by `b` — and [Mey23] realizes that cut exactly as [Amp26]
+later does:
+
+> it computes […] the number of items it has in the range, and uses this information for determining
+> the sizes of the subranges to create. **Finding the boundaries of those subranges amounts to
+> looking up items by index in an order-statistic tree**, and thus takes logarithmic time. — §4.3
+
+Both papers reduce the cut to a lookup **by index**, four years apart, and neither remarks that "by
+index" is meaningful only because a range is a contiguous run of the order. §4 is that remark.
 
 ---
 
@@ -206,6 +218,9 @@ instantiation the paper measures, not merely a hypothetical one.
 `w` and summand width `s` [PD04], hence `Θ(lg n)` once the summary is at least a word wide. Lemma
 B.2's `O(h)` for `Aggregate` is therefore **optimal** in one dimension, not merely adequate — which
 is what makes the comparison below a genuine separation rather than an artifact of a loose bound.
+[Mey23] §4.3 reaches the same figure independently, from the other end: processing one range
+fingerprint over a monoid tree with order-statistic labels costs `O(lg n_i)`. Both papers in the
+RBSR line land on the same logarithmic per-operation cost, and the Proposition removes it from both.
 
 > **Proposition.** Let an RSOS over a product order of dimension `δ ≥ 2` support Def. 3.9's
 > operations over axis-aligned boxes, with an element-summary monoid containing an additive group of
@@ -323,8 +338,6 @@ available one.
 3. There is no `δ ≥ 2` implementation and no measurement at `δ ≥ 2`. §6 is one-dimensional and bears
    on the position map, not on the cost model.
 4. §7 poses a question about deployed systems; it is not an audit of one.
-5. The `log_b(n/t)`-style depth bound referred to in §3 belongs to [Mey23], which we have not read.
-   [Amp26] states no depth bound, and nothing here depends on the form of one.
 
 **Open questions.**
 
@@ -340,12 +353,18 @@ available one.
   range selection is `Θ(lg n / lg lg n)` [JL11, BJ09] — cheaper than one dimension. Can a structure
   be maintained dynamically but *queried* as a static one within a session, without paying `Θ(n)` to
   build it?
-- **Is Def. 3.8 stronger than the protocol needs?** It demands parts of exactly `⌊m/b⌋` or `⌈m/b⌉`.
-  Any bound on `Q` tolerates far less: a cut splitting `[αm, (1−α)m]` for constant `α` changes a
-  depth argument by a constant factor. Whether *approximate* range selection is asymptotically
-  cheaper than exact is, to our knowledge, not settled by the results cited here — and it is the one
-  route that could still make a multidimensional RSOS affordable on the balancing side. It would not
-  touch §5.
+- **Is Def. 3.8 stronger than the protocol needs? — half-answered, and the open half is the best
+  route left.** Def. 3.8 demands parts of exactly `⌊m/b⌋` or `⌈m/b⌉`. The round bound does not.
+  [Mey23] §5.1 already establishes that peers may "split ranges into equally-sized subranges first,
+  but then randomly shift the range boundaries by a small number of items", which "preserves a
+  logarithmic number of communication rounds in the worst case" — and that boundaries "chosen fully
+  at random" still give `O(lg n)` rounds with high probability, being the height of a random
+  `b`-complete tree. Exactness is therefore **not** load-bearing on the protocol side, and §4's
+  primitive is stronger than RBSR needs. What is *not* settled is the data-structures side: **is
+  approximate or randomized selection within a box asymptotically cheaper than exact range
+  selection?** Approximate selection is usually cheaper than exact, so this is a well-posed question
+  with a plausible answer, and it is the one route left to an affordable balancing half at
+  `δ ≥ 2`. It would not touch §5, which is where the no-go actually lives.
 
 ---
 
@@ -373,11 +392,11 @@ One verification debt remains open on this draft:
   space assumptions and update-time regimes were not read from the primary papers. §5's Proposition
   and §4's "linear space" claim rest on them.
 
-[Amp26] has been read in full (v1) and every claim this note makes about it — Def. 3.4–3.9,
-Algorithm 1–2, Prop. 4.1, Lemma B.2, Theorem B.3, Def. B.1, Eq. (1), and both §8 quotations — is
-checked against the source.
-
-One dependency on [Mey23] is named in §3 and Limitation 5 rather than relied on.
+[Amp26] (v1) and [Mey23] have both been read in full, and every claim this note makes about either —
+[Amp26]'s Def. 3.4–3.9, Algorithm 1–2, Prop. 4.1, Lemma B.2, Theorem B.3, Def. B.1, Eq. (1), §6.1
+and both §8 quotations; [Mey23]'s §3.2.1 footnote 2, §3.2.2 height and round bounds, §4.3 cut
+realization and per-fingerprint cost, and §5.1 randomized boundaries — is checked against the
+source.
 
 ---
 
