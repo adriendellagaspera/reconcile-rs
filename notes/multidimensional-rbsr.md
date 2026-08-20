@@ -41,6 +41,12 @@ incumbent operation's unconditional lower bound.
 > Of the two things §8 asks for, balancing is a data-structure problem with a solved answer.
 > Summarization is a lower bound.
 
+One consequence is immediate. Willow [Wil], the deployed three-dimensional RBSR, specifies that
+peers must "not split based on volume […] but split into subranges in which the peer holds **roughly
+the same number** of AuthorisedEntries". It therefore commits to the primitive of §4 and the price
+of §5 — and its "roughly" is the approximate form whose cost nobody has established. A shipped
+protocol already depends on it.
+
 We also report a measurement bearing on the other domain §8 names. For **composite-key**
 reconciliation the natural design is to make the position map `π` injective by appending a version
 component. Driving an unmodified RBSR implementation under three position maps shows that this buys
@@ -327,19 +333,37 @@ have the same cause. Dimensionality is not purchasable with a tuple key.
 
 ---
 
-## 7. A checkable question about Willow
+## 7. Willow already depends on the unpriced primitive
 
-[Amp26] cites Willow's three-dimensional adaptation [Wil] for the balance requirement. This note
-implies a fork for any such implementation, decidable from its split rule:
+The one deployed three-dimensional RBSR, Willow [Wil], settles from its own specification which side
+of §4 it is on, and it does so in a single sentence:
 
-- If it cuts boxes **geometrically**, Def. 3.8 is not satisfied, and `Q` is governed by the domain's
-  resolution and the data's skew rather than by any depth argument.
-- If it cuts boxes at **balanced counts**, it is answering §4's range-restricted select, and it pays
-  §5's price on every `Aggregate`.
+> When a peer splits its 3dRanges, it is crucial for overall efficiency to **not split based on
+> volume** (for example, by splitting the times in half numerically), **but to split into subranges
+> in which the peer holds roughly the same number of AuthorisedEntries**.
 
-We have not audited any implementation and claim nothing about which holds. We note that the
-question is well-posed, cheap to answer from source, and as far as we know has not been asked. It
-applies to any future multidimensional RSOS.
+Three things follow.
+
+**It takes the count-balanced horn, explicitly.** Willow rejects the geometric cut by name. So it is
+committed to §4's range-restricted select over a three-dimensional box and to §5's price on every
+`Aggregate` — neither of which appears in the specification, which is silent on how a peer finds
+those boundaries. (Its one remark about data structures — that peers "can maintain perfect
+information about the progress of reconciliation without the need for any sophisticated data
+structures" — concerns tracking which subranges are covered, not computing the split.)
+
+**It specifies "roughly", which is the primitive nobody has priced.** Willow does not ask for
+Def. 3.8's exact `⌊m/b⌋`/`⌈m/b⌉`; it asks for approximately equal counts. That is precisely the
+relaxed form [Mey23] §5.1 shows suffices for the round bound, and precisely the one §8 identifies as
+the single open route to an affordable balancing half. A shipped protocol already depends on an
+approximate box-restricted selection whose cost is established nowhere in the literature surveyed
+here.
+
+**Its security posture is sound, and §3 is what makes it so.** Willow requires that `fingerprint`
+"map distinct sets of LengthyAuthorisedEntries to distinct Fingerprints with high probability, even
+when facing maliciously crafted input sets", and defers the choice of hash to [Mey23] §5B — a
+**one-dimensional** survey. Borrowing a 1-D collision argument for a 3-D protocol is exactly the
+transport §3 establishes. Willow does not argue it; this note supplies it. The deferral turns out to
+be justified, but it was not justified at the time it was made.
 
 For one-dimensional deployments the note is reassuring: §5.2 says Lemma B.2's `O(h)` is optimal, so
 [Amp26]'s realization is not merely a good engineering choice at that dimension but the best
@@ -358,7 +382,8 @@ available one.
    outside that scope (`min`/`max`, say) is not covered, and we make no claim about it.
 3. There is no `δ ≥ 2` implementation and no measurement at `δ ≥ 2`. §6 is one-dimensional and bears
    on the position map, not on the cost model.
-4. §7 poses a question about deployed systems; it is not an audit of one.
+4. §7 reads Willow's *specification*. Whether a given Willow implementation follows its split
+   rule, and how it computes the boundaries, is not checked here.
 5. §4's cost is cited for the **semi-bounded** case, where [HMN11]/[BJ09] leave the cut axis free.
    RBSR refines fully-bounded boxes, which contain that case and are therefore at least as hard. No
    source read here pins the fully-bounded cost. This can only raise the balancing price, so §5's
@@ -398,7 +423,9 @@ available one.
   approximate or randomized selection within a box asymptotically cheaper than exact range
   selection?** Approximate selection is usually cheaper than exact, so this is a well-posed question
   with a plausible answer, and it is the one route left to an affordable balancing half at
-  `δ ≥ 2`. It would not touch §5, which is where the no-go actually lives.
+  `δ ≥ 2`. §7 raises the stakes: Willow's specification already asks for "roughly the same number"
+  of entries per subrange, so a deployed protocol depends on this primitive today, at a cost no one
+  has established. It would not touch §5, which is where the no-go actually lives.
 
 ---
 
@@ -428,7 +455,7 @@ be machine-read; the claims attributed to it here — the `lg^{2+ε} n`-bit weig
 open problem for unweighted counting — are taken from [Lar12]'s own account of it, which is a
 primary source for the attribution though not for the proof.
 
-[Amp26] (v1) and [Mey23] have both been read in full, and every claim this note makes about either —
+Willow's specification [Wil] was read for §7. [Amp26] (v1) and [Mey23] have both been read in full, and every claim this note makes about either —
 [Amp26]'s Def. 3.4–3.9, Algorithm 1–2, Prop. 4.1, Lemma B.2, Theorem B.3, Def. B.1, Eq. (1), §6.1
 and both §8 quotations; [Mey23]'s §3.2.1 footnote 2, §3.2.2 height and round bounds, §4.3 cut
 realization and per-fingerprint cost, and §5.1 randomized boundaries — is checked against the
@@ -463,7 +490,8 @@ source.
 - **[WL85]** D. E. Willard, G. S. Lueker. *Adding Range Restriction Capability to Dynamic Data
   Structures.* J. ACM 32(3), 1985.
 - **[Wil]** Willow Contributors. *3d Range-Based Set Reconciliation.*
-  https://willowprotocol.org/specs/rbsr/ (the URL [Amp26] cites as its ref. [25])
+  https://willowprotocol.org/specs/rbsr/ (the URL [Amp26] cites as its ref. [25]). Quoted in §7 for
+  its split rule and its fingerprint requirement.
 - **[Neg]** Negentropy. https://github.com/hoytech/negentropy
 
 ---

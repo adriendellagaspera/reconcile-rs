@@ -469,6 +469,13 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
   store forfeits ([`SOTA.md`](./SOTA.md) §1.6) the one unambiguous advantage exactly as a
   disk-backed one does (#186).
 
+  **Willow settles the deployed-systems question, and it commits them.** Its spec says peers must
+  "not split based on volume […] but split into subranges in which the peer holds **roughly the same
+  number** of AuthorisedEntries" — so the one shipped 3D RBSR rejects the geometric cut by name and
+  is committed to both the box-restricted order statistic and the aggregate lower bound, without
+  stating either. Its *"roughly"* is the approximate variant whose cost is the note's one open
+  question, so that question is not speculative.
+
   **And the cheap alternative is not one.** A lexicographic composite key keeps the store
   1-dimensional and every operation at `Θ(lg n)` — but a lex interval is not a box, so it answers no
   `δ > 1` query at all. `rbsr/tests/balance_under_position_map.rs` arm 2 is that same fact seen from
