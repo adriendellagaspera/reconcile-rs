@@ -445,12 +445,12 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
 
   | operation | `δ = 1` (shipped) | `δ = 2` |
   |---|---|---|
-  | `Aggregate` — group-valued summary over the range | `Θ(lg n)`, **tight** (Pătraşcu–Demaine; a 256-bit summary is `≫ w`, so the bound applies a fortiori) | `Ω((lg n / lg lg n)²)` **lower bound** — cell-probe, weighted, any polylog update (Larsen) |
-  | `Rank`/`Select` | `O(lg n)`, counted B-tree | `O((lg n / lg lg n)²)` amortized, **linear space** (He–Munro–Nicholson) |
+  | `Aggregate` — group-valued summary over the range | `Θ(lg n)`, **tight** (Pătraşcu–Demaine, amortization allowed; a 256-bit summary is `≫ w`, so the bound applies a fortiori) | `Ω((lg n / lg lg n)²)` **lower bound** — cell-probe, weighted dominance, any polylog **worst-case** update (Larsen) |
+  | `Rank`/`Select` → range-restricted `Select` | `O(lg n)`, counted B-tree | `O((lg n / lg lg n)²)` queries *and* updates, `O(n lg n/lg lg n)` space for both halves (Brodal–Jørgensen); **linear** for the selection half alone (He–Munro–Nicholson) |
 
   **Summarization does not recover, and that is the no-go.** At `δ = 2` the primitive Def. 3.9
   *lacks* is cheaper than the one it *has*: range selection's best known upper bound sits exactly on
-  the box aggregate's unconditional lower bound, and in linear space. The bound is for **weighted**
+  the box aggregate's unconditional lower bound, in less space than a range tree. The bound is for **weighted**
   counting, and matching it for unweighted counting is open (Pătraşcu) — so the obstruction is
   attributable to the summary, not to dimension as such, and RBSR cannot drop the summary (Def. 3.6's
   `f_p` consumes it). Of §8's two halves, balancing has an answer and summarization has a floor.

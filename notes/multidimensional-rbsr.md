@@ -26,7 +26,7 @@ localizes the failure to two of the four line items it charges a SPLIT for.
 composition that presumes the queried range occupies a contiguous run of one global order; in a
 product order it is not even well-defined. The operation that replaces it is **dynamic range
 selection**, a named and tight problem in the data-structures literature, available at
-`O((lg n / lg lg n)²)` amortized in **linear** space [HMN11].
+`O((lg n / lg lg n)²)` for queries and updates alike [BJ09, HMN11].
 
 **Summarization** does not recover. `Aggregate` over a box, carrying a summary at least `Θ(lg n)`
 bits wide, is dynamic weighted orthogonal range counting, for which there is an unconditional
@@ -191,10 +191,23 @@ is the `(c + r)`-th smallest `y` in `T`, for any `r ≤ |X ∩ B|` — which Alg
 > *"given `n` points in the plane, an `x`-range `Q` and an integer `k`, return the `k`-th smallest
 > `y`-coordinate from the set of points that have `x`-coordinates in `Q`"*
 
-which is verbatim the problem [HMN11] solves, in `O((lg n / lg lg n)²)` query and amortized update
-time and **linear** space. Statically the problem is tight at `Θ(lg n / lg lg n)`: upper bound
-[BJ09], matching cell-probe lower bound [JL11] for any structure in `n · lg^O(1) n` bits. So the
-price of balancing in a box is known, not merely unimproved.
+which is verbatim the problem [HMN11] solves. Both ingredients are available at the same cost and in
+one structure: [BJ09]'s dynamic structure supports "range selection queries […] and **dominance
+queries (range rank)**" in `O((lg n / lg lg n)²)` for queries *and* updates, using
+`O(n lg n / lg lg n)` space. [HMN11] improves the space to **linear** at the same time bounds, but
+its Theorem 1 states the selection half only, so the citable figure for the *whole* primitive is
+[BJ09]'s.
+
+Statically the problem is tight at `Θ(lg n / lg lg n)`: [JL11] proves `Ω(lg n / lg(Sw/n))` for any
+structure in `S` words, hence `Ω(lg n / lg lg n)` at `n·lg^O(1) n` space, and [BJ09] matches it in
+**linear** space. [CW11] closes the adaptive form exactly — `O(1 + lg_w k)` for rank `k`, "exactly
+matching the lower bound proved by Jørgensen and Larsen" — and states the connection this reduction
+relies on in one line: range selection "is closely related to 2-D 3-sided orthogonal range counting".
+
+So the price of balancing in a box is known, not merely unimproved. Where it is *not* pinned is the
+fully-bounded box: [HMN11]'s query bounds one axis and leaves the cut axis free — the semi-bounded
+case. The fully-bounded case contains it, so it is at least as hard, which can only make balancing
+more expensive and never less. It therefore cannot rescue §5's no-go.
 
 ---
 
@@ -204,15 +217,23 @@ Lemma B.2 charges a SPLIT for `1 + b` calls to `Aggregate` against `1 + (b−1)`
 `Rank`/`Select`. §4 fixes the second group. The first group is where the extension actually fails,
 and it fails on an operation Def. 3.9 has had since the start.
 
-**5.1 The bound.** [Lar12] proves `t_q = Ω((lg n / lg(w·t_u))²)` for **weighted** two-dimensional
-range counting — i.e. `Ω((lg n / lg lg n)²)` at cell size `w = Θ(lg n)` under any polylogarithmic
-update time — strengthening [Păt07]. `Aggregate(B)` returns `(|X ∩ B|, Σ(X ∩ B))`. Whenever the
-element-summary monoid of Def. 3.4 is an additive group of width at least `Θ(lg n)` — which every
-fingerprint-style summary in use is. [Amp26]'s own evaluated protocol is one: §6.1 records that
-Negentropy sums 256-bit identifiers, `Σ(id₁,…,idₖ) = id₁ + … + idₖ (mod 2²⁵⁶)`, an additive group of
-width `256 ≫ lg n`. A structure answering box aggregates over such a summary answers
-`Θ(lg n)`-bit weighted range counting by padding, so the bound applies a fortiori — and it binds the
-instantiation the paper measures, not merely a hypothetical one.
+**5.1 The bound.** [Lar12] proves `t_q = Ω((lg n / lg(w·t_u))²)` for **dynamic weighted orthogonal
+range counting in two dimensions**: insertions of points each carrying a `Θ(lg n)`-bit integer
+weight, and a query `q = (x, y)` returning the sum of the weights of the points **dominated** by `q`.
+There `n` counts update operations, `t_u` is the **worst-case** update time, `t_q` the expected
+average query time, and the bound holds for any cell size `w = Ω(lg n)`; at `w = Θ(lg n)` and
+polylogarithmic `t_u` it reads `Ω((lg n / lg lg n)²)`. It strengthens [Păt07], which proved
+`max{t_q, t_u} = Ω((lg n / lg lg n)²)` for the same problem but only for `lg^{2+ε} n`-bit weights;
+[Lar12] brings that requirement down to logarithmic and calls the result "a partial answer" to
+[Păt07]'s open problem.
+
+Two steps carry it to Def. 3.9. A box aggregate answers a dominance query, because the quadrant
+`(−∞, x] × (−∞, y]` is a box. And a summary that is an additive group of width `≥ Θ(lg n)` answers
+`Θ(lg n)`-bit weighted counting by zero-padding the weight. Every fingerprint-style summary in use
+meets the width condition, [Amp26]'s own evaluated protocol included: §6.1 records that Negentropy
+sums 256-bit identifiers, `Σ(id₁,…,idₖ) = id₁ + … + idₖ (mod 2²⁵⁶)`, an additive group of width
+`256 ≫ lg n`. So the bound binds the instantiation the paper measures, not merely a hypothetical
+one.
 
 **5.2 The baseline is tight too.** Dynamic partial sums cost `Θ(1 + lg n / lg(w/s))` for cell size
 `w` and summand width `s` [PD04], hence `Θ(lg n)` once the summary is at least a word wide. Lemma
@@ -224,7 +245,7 @@ RBSR line land on the same logarithmic per-operation cost, and the Proposition r
 
 > **Proposition.** Let an RSOS over a product order of dimension `δ ≥ 2` support Def. 3.9's
 > operations over axis-aligned boxes, with an element-summary monoid containing an additive group of
-> width `Ω(lg n)`, under polylogarithmic update time. Then in the cell-probe model with cell size
+> width `Ω(lg n)`, under polylogarithmic **worst-case** update time. Then in the cell-probe model with cell size
 > `Θ(lg n)`, `Aggregate` requires `Ω((lg n / lg lg n)²)` time, and Lemma B.2's `O(h)` per operation
 > — hence Theorem B.3's `T_loc = O(Qh)` — does not survive.
 >
@@ -233,10 +254,10 @@ RBSR line land on the same logarithmic per-operation cost, and the Proposition r
 This is a reduction to a known bound, not a new bound. The contribution is the connection: neither
 the reconciliation literature nor §8 had reached for it.
 
-**5.3 The inversion.** At `δ = 2` the primitive Def. 3.9 **lacks** costs
-`O((lg n / lg lg n)²)` in linear space; the operation Def. 3.9 **has** costs
-`Ω((lg n / lg lg n)²)` unconditionally, and a range tree carrying aggregates [WL85] needs
-`O(n lg n)` space to get near it. Range selection's best known ceiling is the box aggregate's floor.
+**5.3 The inversion.** At `δ = 2` the primitive Def. 3.9 **lacks** costs `O((lg n / lg lg n)²)` in
+`O(n lg n / lg lg n)` space [BJ09], or linear space for its selection half alone [HMN11]; the
+operation Def. 3.9 **has** costs `Ω((lg n / lg lg n)²)` unconditionally, and a dynamic range tree
+carrying group-valued aggregates [WL85] needs `O(n lg n)` space to get near it. Range selection's best known ceiling is the box aggregate's floor.
 Adding what is missing changes nothing asymptotically; what changes everything is the dimension,
 and it acts on the operation that was already there.
 
@@ -338,21 +359,34 @@ available one.
 3. There is no `δ ≥ 2` implementation and no measurement at `δ ≥ 2`. §6 is one-dimensional and bears
    on the position map, not on the cost model.
 4. §7 poses a question about deployed systems; it is not an audit of one.
+5. §4's cost is cited for the **semi-bounded** case, where [HMN11]/[BJ09] leave the cut axis free.
+   RBSR refines fully-bounded boxes, which contain that case and are therefore at least as hard. No
+   source read here pins the fully-bounded cost. This can only raise the balancing price, so §5's
+   conclusion is unaffected — but §4's "solved" should be read as "solved for the case that lower-
+   bounds it".
+6. [Lar12]'s `t_u` is **worst-case**; the Proposition inherits that hypothesis. Whether the bound
+   extends to amortized update time is not settled by the sources read. ([PD04]'s `δ = 1` bound
+   does explicitly allow amortization and Las Vegas randomization, so the baseline half is safe.)
 
 **Open questions.**
 
-- **Does the `(lg lg n)²` gap close for a group-valued box aggregate?** The lower bound is
-  confirmed; we found no matching upper bound. A structure achieving `O((lg n / lg lg n)²)` box
-  aggregation for group weights — ideally in linear space, as [HMN11] achieves for selection — would
-  cut the practical cost of `δ = 2` by more than an order of magnitude. It would not affect the
-  Proposition.
+- **Does the `(lg lg n)²` gap close for a group-valued box aggregate at a useful update time?**
+  [Lar12] states its bound "is also tight for any update time that is at least `lg^{2+ε} n`" — so
+  the gap does close, but by *raising* the update cost, which for an RSOS is the wrong direction:
+  the aggregate is maintained on every write. What is open is the corner an RSOS actually wants —
+  `O((lg n / lg lg n)²)` box aggregation for group weights at *polylogarithmic* update time, ideally
+  in linear space as [HMN11] achieves for selection. It would not affect the Proposition.
 - **Is the unweighted case genuinely easier?** [Păt07]'s open problem is the hinge of §5.5. A
   matching bound for unweighted counting would move the obstruction from summarization to dimension
   itself; a separation would confirm the asymmetry.
-- **Does a per-session static snapshot help?** RBSR observes one snapshot per round, and static
-  range selection is `Θ(lg n / lg lg n)` [JL11, BJ09] — cheaper than one dimension. Can a structure
-  be maintained dynamically but *queried* as a static one within a session, without paying `Θ(n)` to
-  build it?
+- **Does a per-session static snapshot help?** This is the sharpest of the four, because the static
+  figures are strikingly good: static range selection is `Θ(lg n / lg lg n)` in **linear** space
+  [JL11, BJ09], adaptively `O(1 + lg_w k)` [CW11], and static 2-D box *counting* is `O(lg_w n)` in
+  linear space, worst-case optimal [CW11]. All of these are **cheaper than one dynamic dimension**.
+  RBSR observes one snapshot per round (Def. 3.9's operations are read-only within a round), so the
+  question is whether a structure can be maintained dynamically but *queried* as a static one within
+  a session without paying `Θ(n)` to build the static view. If it can, §5's dynamic bound is the
+  wrong one to quote and the no-go weakens.
 - **Is Def. 3.8 stronger than the protocol needs? — half-answered, and the open half is the best
   route left.** Def. 3.8 demands parts of exactly `⌊m/b⌋` or `⌈m/b⌉`. The round bound does not.
   [Mey23] §5.1 already establishes that peers may "split ranges into equally-sized subranges first,
@@ -383,14 +417,16 @@ extension was expected to run into trouble.
 
 ---
 
-### Draft status — before submission
+### Draft status
 
-One verification debt remains open on this draft:
-
-- The cell-probe theorem statements in §5 — [Lar12], [Păt07], [PD04], [JL11] and [HMN11] — are as
-  reported by secondary sources. Their DOIs were confirmed individually; the exact quantifiers,
-  space assumptions and update-time regimes were not read from the primary papers. §5's Proposition
-  and §4's "linear space" claim rest on them.
+Every source this note cites for a bound has now been read as a primary document, and each did
+change something: [Lar12]'s dominance query and worst-case `t_u` (Limitation 6), [HMN11]'s
+selection-only Theorem 1 (Limitation 5), [BJ09]'s range-rank support and `O(n lg n / lg lg n)` space
+(§4), [JL11]'s space-parameterized form (§4), [CW11]'s exact adaptive bound and the
+selection/3-sided-counting link (§4, §8). [Păt07] was supplied as a scanned document and could not
+be machine-read; the claims attributed to it here — the `lg^{2+ε} n`-bit weighted bound and the
+open problem for unweighted counting — are taken from [Lar12]'s own account of it, which is a
+primary source for the attribution though not for the proof.
 
 [Amp26] (v1) and [Mey23] have both been read in full, and every claim this note makes about either —
 [Amp26]'s Def. 3.4–3.9, Algorithm 1–2, Prop. 4.1, Lemma B.2, Theorem B.3, Def. B.1, Eq. (1), §6.1
@@ -417,13 +453,17 @@ source.
   journal version *Logarithmic Lower Bounds in the Cell-Probe Model*, SIAM J. Comput.
   35(4):932–963, 2006.
 - **[BJ09]** G. S. Brodal, A. G. Jørgensen. *Data Structures for Range Median Queries.* ISAAC 2009,
-  LNCS 5878.
+  LNCS 5878. Static: linear space, `O(lg n / lg lg n)`. Dynamic: `O(n lg n / lg lg n)` space,
+  `O((lg n / lg lg n)²)` queries and updates, covering range selection **and** dominance (range
+  rank).
+- **[CW11]** T. M. Chan, B. T. Wilkinson. *Adaptive and Approximate Orthogonal Range Counting.*
+  SODA 2011.
 - **[Aga17]** P. K. Agarwal. *Range Searching.* In *Handbook of Discrete and Computational
   Geometry*, 3rd ed., ch. 41. CRC Press, 2017.
 - **[WL85]** D. E. Willard, G. S. Lueker. *Adding Range Restriction Capability to Dynamic Data
   Structures.* J. ACM 32(3), 1985.
 - **[Wil]** Willow Contributors. *3d Range-Based Set Reconciliation.*
-  https://willowprotocol.org/specs/rbsr/
+  https://willowprotocol.org/specs/rbsr/ (the URL [Amp26] cites as its ref. [25])
 - **[Neg]** Negentropy. https://github.com/hoytech/negentropy
 
 ---
