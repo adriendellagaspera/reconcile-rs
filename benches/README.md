@@ -511,6 +511,27 @@ acquisition pattern, so take `H` to be common to them. That idealization is the 
 works — subtracting reciprocal throughputs cancels `H` and leaves `S_fp − S_btree` — and it is the
 one the next paragraph puts under strain.
 
+No distribution is assumed for the service time. The model is an identity at saturation, not a
+stochastic queue: with zero think time the server is busy whenever a writer exists, so mean
+throughput is the reciprocal of mean per-operation time regardless of how that time is distributed.
+What is held fixed is the store size, the key and value types and the operation mix; only `N` varies.
+
+**The textbook prediction, first, because it fails informatively.** Take the closed-loop model at
+face value with no per-acquisition cost — `H(N) = 0` — and it predicts throughput *flat* in `N` for
+both arms: one server, always busy, so `X(N) = X(1)`. Measured against that:
+
+| writers (`N`) | augmented, predicted | measured | | control, predicted | measured | |
+|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 2 888 103 | 1 649 710 | −43% | 9 762 176 | 4 069 999 | −58% |
+| 4 | 2 888 103 | 1 403 681 | −51% | 9 762 176 | 3 408 950 | −65% |
+| 8 | 2 888 103 | 964 143 | −67% | 9 762 176 | 3 231 527 | −67% |
+| 16 | 2 888 103 | 845 546 | −71% | 9 762 176 | 2 800 533 | −71% |
+
+Both arms fall far below it, and by `N = 16` they fall by the *same proportion*. A term that costs
+both arms the same fraction of their throughput is a term they share — which is `H(N)`, and which is
+large. That is the licence for the rest of this section: `H` is too big to ignore and too
+lock-specific to model honestly, so the design cancels it instead of predicting it.
+
 **Where that assumption is weakest, and which way it cuts.** `H` is not *exactly* common to the two
 arms. A longer critical section makes a waiter more likely to exhaust its spin and park, and parking
 costs more than spinning, so the arm with the longer section — the RSOS one — plausibly pays a
