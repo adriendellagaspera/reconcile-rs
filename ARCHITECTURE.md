@@ -417,7 +417,9 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
   argued on #298.
 - **A multidimensional (product-order) RSOS** — reconciling *boxes* in `δ > 1` dimensions instead of
   intervals in one ([#360](https://github.com/Akvize/reconcile-rs/issues/360)). **Decided: no-go**,
-  and not for the reason the extension was expected to fail.
+  and not for the reason the extension was expected to fail. The argument in full, written for
+  publication as a response to arXiv:2603.19820 §8:
+  [`notes/multidimensional-rbsr.md`](./notes/multidimensional-rbsr.md).
 
   The soundness analysis is **dimension-free**: one-sided error reads no order at all, and
   nested-or-disjoint comparison ranges, the laminar-family bound and the signature collapse are

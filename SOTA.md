@@ -625,8 +625,9 @@ dimensions, *cheaper* than the box `Aggregate` Def. 3.9 already carries (`O((lg 
 amortized in linear space, against an unconditional `Ω((lg n/lg lg n)²)` for the summary-carrying
 aggregate), so `δ > 1` is priced by the dimension taxing every operation rather than by a missing primitive, and
 what fails is the buildable `O(lg² n)`-time / `O(n lg n)`-space lift
-([#360](https://github.com/Akvize/reconcile-rs/issues/360), cost table in
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) §7); `Comparison` no longer hands a policy the fingerprint
+([#360](https://github.com/Akvize/reconcile-rs/issues/360); cost table in
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, full argument in
+[`notes/multidimensional-rbsr.md`](./notes/multidimensional-rbsr.md)); `Comparison` no longer hands a policy the fingerprint
 at all — narrowed to `span()`/`remote_size()`/`agrees()`, making the violation structurally
 unspellable rather than merely bounded
 ([#352](https://github.com/Akvize/reconcile-rs/issues/352)); and a hash-derived
