@@ -46,7 +46,6 @@ TEST_FAIL=700
 EXCEPTIONS=(
     "rsos/src/fingerprint_tree_map_iter.rs" # 907L prod  -- its iterator family
     "rbsr/src/protocol.rs"                  # 909L prod  -- the RBSR wire protocol state machine
-    "gossip/src/auth.rs"                    # 977L prod  -- MAC backends + wire auth, security-sensitive
     "src/read_replica_map.rs"               # 826L prod  -- read-replica facade, mirrors ReplicatedMap's read half
     "gossip/src/replay.rs"                  # 749L prod  -- replay-window bookkeeping, security-sensitive
     "rsos/src/encoding.rs"                  # 643L prod  -- the canonical encoding every fingerprint is defined over
