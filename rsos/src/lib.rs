@@ -47,6 +47,12 @@
 #![deny(missing_docs)]
 
 pub mod aggregate;
+// Public only under `internal-testing`: `scripts/check-public-api.sh` renders default features, so
+// a private module here is a public API that does not move. See the module's own docs.
+#[cfg(feature = "internal-testing")]
+pub mod counters;
+#[cfg(not(feature = "internal-testing"))]
+mod counters;
 pub mod encoding;
 pub mod fingerprint;
 pub mod fingerprint_tree_map;

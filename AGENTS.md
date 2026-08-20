@@ -110,7 +110,7 @@ test-only seams (`reconcile::testing`, `rbsr::RangeAggregate::for_testing`) — 
 `mac-blake3`/`mac-hmac`/`zeroize`/`encryption`/`dns-hickory` are declared on `gossip` (owns
 `auth.rs`/`discovery.rs`) and re-exposed from `reconcile` as unification entries
 (`mac-blake3 = ["gossip/mac-blake3"]`); `metrics`/`metrics-prometheus` stay on `reconcile`
-(`observability.rs`/`prometheus.rs`); `internal-testing` is declared on both `reconcile` and `rbsr`,
+(`observability.rs`/`prometheus.rs`); `internal-testing` is declared on `reconcile`, `rbsr`, `rsos`,
 forwarded the same way. `reconcile` depends on `gossip` with `default-features = false`, so its own
 `default = ["mac-blake3"]` is the single place the MAC backend gets chosen.
 

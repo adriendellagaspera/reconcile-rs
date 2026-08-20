@@ -124,7 +124,7 @@ dns-hickory = ["gossip/dns-hickory"]
 # Also forwards to `rbsr`'s feature of the same name, which opens `RangeAggregate::for_testing` for
 # `tests/wire_format.rs` — the golden vector lives here because this is where the codec (`bincode`)
 # is a legitimate dependency, and `rbsr` deliberately owns no encoding. Not public API.
-internal-testing = ["rbsr/internal-testing"]
+internal-testing = ["rbsr/internal-testing", "rsos/internal-testing"]
 
 # The turnkey Kubernetes example. It is a multi-file example (`examples/k8s/main.rs`), so its
 # target is named after the directory: `cargo run --example k8s`. The metrics/readiness endpoint

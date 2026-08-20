@@ -51,7 +51,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
             };
             // Both bounds inside the range: the cached subtree aggregate is the answer.
             if lower_bound_included && upper_bound_included {
-                return node.subtree;
+                return node.subtree();
             }
             let mut cum = Aggregate::ZERO;
             let mut i = 0;
@@ -99,7 +99,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                     if cmp == Ordering::Less {
                         return index + aux(&children[i], key);
                     }
-                    index += children[i].subtree.size();
+                    index += children[i].subtree_size();
                     if cmp == Ordering::Equal {
                         return index;
                     }
@@ -139,10 +139,10 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
         fn aux<K: Ord, V>(node: &Node<K, V>, mut index: usize) -> &K {
             if let Some(children) = node.children.as_ref() {
                 for i in 0..node.keys.len() {
-                    if index < children[i].subtree.size() {
+                    if index < children[i].subtree_size() {
                         return aux(&children[i], index);
                     }
-                    index -= children[i].subtree.size();
+                    index -= children[i].subtree_size();
                     if index == 0 {
                         return &node.keys[i];
                     }
@@ -159,7 +159,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
     /// Number of elements in the tree.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.root.subtree.size()
+        self.root.subtree_size()
     }
 
     /// Whether the tree holds no elements.

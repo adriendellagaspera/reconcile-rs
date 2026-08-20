@@ -14,6 +14,13 @@ readme = "README.md"
 keywords = ["rsos", "fingerprint", "btree", "range", "blake3"]
 categories = ["data-structures"]
 
+[features]
+# Test-only seams, never public API (AGENTS.md §6). Exposes `rsos::counters`: deterministic,
+# machine-independent counts of the aggregate maintenance the RSOS contract mandates, which
+# `benches/contention.rs` pairs with its wall-clock throughput (#455, #457). `reconcile` forwards
+# it via its own `internal-testing = [..., "rsos/internal-testing"]` unification entry.
+internal-testing = []
+
 [dependencies]
 arrayvec = "0.7.4"
 blake3 = "1.5"

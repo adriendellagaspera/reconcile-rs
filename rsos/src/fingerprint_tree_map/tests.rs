@@ -553,3 +553,82 @@ fn aggregate_count_matches_range_count() {
     let empty: FingerprintTreeMap<u32, u32> = FingerprintTreeMap::new();
     assert_eq!(empty.aggregate(..), Aggregate::ZERO);
 }
+
+/// The counted half of the write-cost question (#455, #457): `crate::counters` claims to report
+/// how many cached aggregates an operation maintains. These pin that claim to an independently
+/// computed property of the tree, so a counter that drifts — double-counting, missing a
+/// maintenance path, or straying onto the read path — fails rather than quietly reporting a
+/// plausible number.
+#[cfg(feature = "internal-testing")]
+mod counted {
+    use super::FingerprintTreeMap;
+    use crate::counters;
+
+    /// The 1-based depth of the node holding `key`, walked directly rather than derived from the
+    /// counter under test.
+    fn depth_of<K: Ord, V>(map: &FingerprintTreeMap<K, V>, key: &K) -> usize {
+        let mut node = map.root.as_ref();
+        let mut depth = 1;
+        loop {
+            match node.keys.binary_search(key) {
+                Ok(_) => return depth,
+                Err(index) => {
+                    let children = node.children.as_ref().expect("key is present in the tree");
+                    node = &children[index];
+                    depth += 1;
+                }
+            }
+        }
+    }
+
+    /// The contract's price, stated exactly: overwriting an existing key changes no tree shape, so
+    /// the aggregates it must refresh are precisely those on the key's root path — one per level,
+    /// no more. This is the `O(log n)`-writes-per-write claim `SOTA.md` §2.4 item 10 rests on.
+    #[test]
+    fn overwriting_a_key_updates_one_aggregate_per_level_of_its_root_path() {
+        let mut map = FingerprintTreeMap::new();
+        for key in 0..10_000u32 {
+            map.insert(key, key);
+        }
+
+        let mut depths = Vec::new();
+        for probe in [0u32, 1, 1_234, 5_000, 9_999] {
+            let expected = depth_of(&map, &probe);
+            let before = counters::snapshot();
+            map.insert(probe, probe + 1);
+            let updates = (counters::snapshot() - before).aggregate_updates;
+            assert_eq!(
+                updates as usize, expected,
+                "overwriting {probe} maintained {updates} aggregates, its root path has {expected} levels"
+            );
+            depths.push(expected);
+        }
+
+        // Guards the assertion above against passing vacuously on a one-node tree: 10 000 entries
+        // in a B = 6 tree cannot all sit at the root, so at least one probe must be below it.
+        assert!(
+            depths.iter().any(|&d| d > 1),
+            "every probe resolved at the root -- the per-level claim was never exercised"
+        );
+    }
+
+    /// Reads are not writes. Were the counter reachable from the query path, the write-cost figure
+    /// it feeds would silently absorb the cost of `Aggregate(l, u)` — the operation the contract
+    /// buys, not the one it charges for.
+    #[test]
+    fn the_read_path_maintains_no_aggregates() {
+        let mut map = FingerprintTreeMap::new();
+        for key in 0..1_000u32 {
+            map.insert(key, key);
+        }
+
+        let before = counters::snapshot();
+        assert_eq!(map.aggregate(..).size(), 1_000);
+        assert_eq!(map.aggregate(100..200).size(), 100);
+        assert_eq!(map.get(&500), Some(&500));
+        assert_eq!(map.rank(&500), 500);
+        assert_eq!(map.select(500), &500);
+        assert_eq!(map.iter().count(), 1_000);
+        assert_eq!(counters::snapshot() - before, counters::Counts::default());
+    }
+}

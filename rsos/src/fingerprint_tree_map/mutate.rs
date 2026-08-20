@@ -14,7 +14,7 @@ use crate::aggregate::Aggregate;
 use crate::fingerprint::{lift, Fingerprint};
 
 use super::node::Node;
-use super::{element, without, FingerprintTreeMap, InsertionTuple, MIN_CAPACITY};
+use super::{element, FingerprintTreeMap, InsertionTuple, MIN_CAPACITY};
 
 impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
     /// Inserts `key`/`value`, returning the previous value if `key` was already present.
@@ -32,8 +32,9 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                     let new_fp = lift(&key, &value);
                     let diff_fp = new_fp - old_fp;
                     node.fingerprints[index] = new_fp;
-                    node.subtree =
-                        Aggregate::new(node.subtree.size(), node.subtree.fingerprint() + diff_fp);
+                    // A value overwritten in place: the element count is unchanged, so the
+                    // delta composed in is a zero-size aggregate carrying the fingerprint shift.
+                    node.compose_into_subtree(Aggregate::new(0, diff_fp));
                     let ret = std::mem::replace(&mut node.values[index], value);
                     (None, diff_fp, Some(ret))
                 }
@@ -51,7 +52,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                             )
                         } else {
                             let added = usize::from(ret.is_none());
-                            node.subtree += Aggregate::new(added, diff_fp);
+                            node.compose_into_subtree(Aggregate::new(added, diff_fp));
                         }
                         (to_insert, diff_fp, ret)
                     } else {
@@ -79,7 +80,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
         }
         trace!(
             "Updated state after insertion; global fingerprint is now {}",
-            self.root.subtree.fingerprint()
+            self.root.subtree().fingerprint()
         );
         ret
     }
@@ -89,14 +90,14 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
         fn rightmost_child<K, V>(node: &mut Node<K, V>) -> (K, V, Fingerprint) {
             if let Some(children) = node.children.as_mut() {
                 let (k, v, fp) = rightmost_child(children.last_mut().unwrap());
-                node.subtree = without(node.subtree, element(fp));
+                node.decompose_from_subtree(element(fp));
                 node.rebalance_after_deletion(node.keys.len());
                 (k, v, fp)
             } else {
                 let k = node.keys.pop().unwrap();
                 let v = node.values.pop().unwrap();
                 let fp = node.fingerprints.pop().unwrap();
-                node.subtree = without(node.subtree, element(fp));
+                node.decompose_from_subtree(element(fp));
                 (k, v, fp)
             }
         }
@@ -109,14 +110,14 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                         node.keys[index] = prev_k;
                         let v = std::mem::replace(&mut node.values[index], prev_v);
                         let fp = std::mem::replace(&mut node.fingerprints[index], prev_fp);
-                        node.subtree = without(node.subtree, element(fp));
+                        node.decompose_from_subtree(element(fp));
                         node.rebalance_after_deletion(index);
                         (fp, Some(v))
                     } else {
                         node.keys.remove(index);
                         let v = node.values.remove(index);
                         let fp = node.fingerprints.remove(index);
-                        node.subtree = without(node.subtree, element(fp));
+                        node.decompose_from_subtree(element(fp));
                         (fp, Some(v))
                     }
                 }
@@ -124,7 +125,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                     if let Some(children) = node.children.as_mut() {
                         let (diff_fp, ret) = aux(&mut children[index], key);
                         let removed = Aggregate::new(usize::from(ret.is_some()), diff_fp);
-                        node.subtree = without(node.subtree, removed);
+                        node.decompose_from_subtree(removed);
                         node.rebalance_after_deletion(index);
                         (diff_fp, ret)
                     } else {
@@ -136,7 +137,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
         let ret = aux(&mut self.root, key).1;
         trace!(
             "Updated state after removal; global fingerprint is now {}",
-            self.root.subtree.fingerprint()
+            self.root.subtree().fingerprint()
         );
         ret
     }
@@ -233,7 +234,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                 }
                 max_height = child_height;
             }
-            assert_eq!(cum, node.subtree, "subtree aggregate invariant violated");
+            assert_eq!(cum, node.subtree(), "subtree aggregate invariant violated");
             (cum, max_height + 1)
         }
         let (_, height) = aux(&self.root, None, None);

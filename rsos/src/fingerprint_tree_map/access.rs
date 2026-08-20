@@ -65,7 +65,9 @@ impl<K: Serialize, V: Serialize> Drop for Relift<'_, K, V> {
                     key,
                 ),
             };
-            node.subtree = Aggregate::new(node.subtree.size(), node.subtree.fingerprint() + delta);
+            // Same shape as `mutate.rs`'s overwrite: the count is untouched, only the
+            // summary moves.
+            node.compose_into_subtree(Aggregate::new(0, delta));
             delta
         }
         repair(self.root, &self.path.descent, self.path.key_index, self.key);
@@ -179,7 +181,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                     if cmp == Ordering::Less {
                         return aux(&children[i], key).map(|offset| index + offset);
                     }
-                    index += children[i].subtree.size();
+                    index += children[i].subtree_size();
                     if cmp == Ordering::Equal {
                         return Some(index);
                     }
