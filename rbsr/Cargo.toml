@@ -21,12 +21,14 @@ categories = ["algorithms", "network-programming"]
 rsos = { version = "0.4.0", path = "../rsos" }
 serde = { version = "1.0.192", features = ["derive"] }
 tracing = "0.1.40"
+# `src/probe_harness.rs` (`reconcile_internal_testing`-gated, AGENTS.md §6) draws random universes
+# and swaps for its store-and-driver core. A regular dependency, not a dev-dependency, because that
+# module lives under `src/` and is part of the library target when the cfg is set — dev-dependencies
+# only apply to test/bench/example targets, mirroring how the root `reconcile` crate's own
+# `#[cfg(any(test, reconcile_internal_testing))] pub mod testing` needs `rand` the same way.
+rand = "0.8.5"
 
 [dev-dependencies]
-# `tests/pure_deletion_is_never_falsely_skipped.rs` seeds `TRIALS` independent pure-deletion
-# instances from a recorded counter (`StdRng::seed_from_u64(trial)`), not the process RNG — see
-# that module's docs.
-rand = "0.8.5"
 # `tests/shipped_policies_always_progress.rs` pins `RefinementPolicy`'s progress law (#420) over
 # arbitrary `Comparison`s, the same crate the workspace root already uses for
 # `tests/proptest_fingerprint_tree_map/`.

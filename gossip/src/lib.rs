@@ -20,7 +20,7 @@
 //! - [`replay`] — per-sender sequence and freshness state.
 //! - [`discovery`] — the [`discovery::Discovery`] port and its adapters.
 //! - [`gen_ip`] — random address generation within a set of networks.
-//! - [`netem`] (`netem` feature) — a seeded delay/jitter/loss/reordering [`transport::Transport`]
+//! - `netem` (`netem` feature) — a seeded delay/jitter/loss/reordering [`transport::Transport`]
 //!   decorator for reconciliation-cost measurement; not part of the default build.
 //!
 //! No dependency on `lww-register`: a datagram is a byte slice, a peer is an address

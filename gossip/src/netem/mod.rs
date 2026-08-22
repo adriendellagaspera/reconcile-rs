@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! A seeded network-emulation decorator over the [`Transport`] port: injected one-way delay,
+//! A seeded network-emulation decorator over the [`Transport`](crate::Transport) port: injected one-way delay,
 //! jitter, loss and reordering, configurable per directed link.
 //!
 //! `netem`-feature-gated dev/bench tooling, not part of the crate's default build: this
@@ -19,8 +19,9 @@
 //! is the missing instrument, not a fix: it makes the round-trip column cost something.
 //!
 //! Split across two files by concern: this one owns the impairment *parameters* a caller
-//! configures (`Probability`, `Rtt`, `Seed`, `Link`, `Netem`); [`transport`] owns the `Transport`
-//! decorator itself and its delivery pump. Both halves re-export flat under `gossip::netem::*`.
+//! configures (`Probability`, `Rtt`, `Seed`, `Link`, `Netem`); `transport` owns the
+//! [`Transport`](crate::Transport) decorator itself and its delivery pump. Both halves re-export
+//! flat under `gossip::netem::*`.
 //!
 //! # Why not `turmoil`
 //!
@@ -32,7 +33,7 @@
 //! | time is simulated and advanced a `Builder::tick_duration` at a time (`simulation_duration` is "in simulated time") | Criterion reports wall-clock; a benchmark run inside the simulator would report the simulator's own tick arithmetic — the injected constant, read back |
 //! | hosts are futures registered on a `Sim` and driven by `sim.run()` to a fixed simulated duration | Criterion owns the iteration loop, so `iter_custom` has no way to hand its samples to `sim.run()` |
 //! | "runs multiple concurrent hosts within a single thread" | `gossip_propagation` deliberately measures N real per-node loops contending on one runtime (`benches/README.md`) |
-//! | networking is `turmoil::net`, a drop-in replacement for `tokio::net` | `gossip::UdpTransport` wraps `tokio::net::UdpSocket`, so a `turmoil` lane needs its own [`Transport`] impl **as well as** the simulator — this decorator plus more, not instead of it |
+//! | networking is `turmoil::net`, a drop-in replacement for `tokio::net` | `gossip::UdpTransport` wraps `tokio::net::UdpSocket`, so a `turmoil` lane needs its own [`Transport`](crate::Transport) impl **as well as** the simulator — this decorator plus more, not instead of it |
 //!
 //! So: bespoke, and no new dependency at all ([`rand`] is already a dependency). The knobs
 //! below deliberately mirror `turmoil`'s (`min_message_latency`/`max_message_latency`/`fail_rate`),
@@ -66,9 +67,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
-
-use crate::Transport;
+use rand::Rng;
 
 mod transport;
 
@@ -162,10 +161,12 @@ impl Seed {
     /// The seed the benchmarks run at, absent a reason to vary it.
     pub const DEFAULT: Seed = Seed(0x5eed_0280);
 
+    /// A seed from a raw value.
     pub fn new(seed: u64) -> Seed {
         Seed(seed)
     }
 
+    /// The raw value.
     pub fn get(self) -> u64 {
         self.0
     }

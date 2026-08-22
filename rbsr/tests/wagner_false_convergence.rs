@@ -122,7 +122,7 @@ struct Partial {
     keys: Vec<(u64, bool)>,
 }
 
-/// The parameters of one k-tree run, and the work it costs.
+/// The parameters of one k-tree run.
 struct KTree {
     width: u32,
     /// `log2` of the list count, so `k = 2^t` lists and `t` merge levels.
@@ -131,8 +131,6 @@ struct KTree {
     j: u32,
     /// Level-0 candidates per list. One bit of oversampling over the `2^j` the analysis asks for.
     list_size: usize,
-    /// Level-0 lift evaluations — the attacker's offline cost.
-    work: usize,
 }
 
 impl KTree {
@@ -144,7 +142,6 @@ impl KTree {
             t,
             j,
             list_size,
-            work: (1usize << t) * list_size,
         }
     }
 
