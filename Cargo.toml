@@ -186,7 +186,7 @@ criterion = "0.5.1"
 # `benches/`/`tests/` only, without adding it to the default build any dependent gets.
 # `default-features = false` mirrors the `[dependencies]` entry above so `netem` is the only net
 # new thing this adds.
-gossip = { package = "reconcile-gossip", path = "gossip", default-features = false, features = ["netem"] }
+gossip = { package = "reconcile-gossip", version = "0.4.0", path = "gossip", default-features = false, features = ["netem"] }
 metrics-util = { version = "0.19", default-features = false, features = ["debugging"] }
 proptest = "1.11.0"
 rand = "0.8.5"
