@@ -8,8 +8,9 @@
 
 //! [`shared_cutoffs`]: the enumeration cutoffs [`SqrtFanOut`](super::SqrtFanOut),
 //! [`FixedFanOut`](super::FixedFanOut) and, under `cfg(reconcile_internal_testing)`,
-//! [`FingerprintDerivedSplit`](super::FingerprintDerivedSplit) all share — private, since it is a
-//! shared implementation detail of those policies' `decide`, never a seam of its own.
+//! [`ConstantStrideSplit`](super::ConstantStrideSplit)/[`SpanHashedStrideSplit`](super::SpanHashedStrideSplit)
+//! all share — private, since it is a shared implementation detail of those policies' `decide`,
+//! never a seam of its own.
 
 use super::{Comparison, Decision, SplitStride};
 
