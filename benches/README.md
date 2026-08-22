@@ -191,7 +191,7 @@ and, for `gossip_fanout_rtt`, the RTT-sweep half of
 `cold_sync_rtt`/`gossip_propagation_rtt`; `gossip_fanout` itself had no RTT-swept counterpart until
 now).
 
-`benches/netem/mod.rs` is a seeded `Transport` decorator — one-way delay, jitter, loss, reordering,
+`gossip::netem` (the `netem` feature) is a seeded `Transport` decorator — one-way delay, jitter, loss, reordering,
 configurable per **directed** link — over the same `InMemoryNetwork` `gossip_propagation` uses. Its
 module docs carry the model, the determinism guarantee and why it is bespoke rather than
 [`turmoil`](https://github.com/tokio-rs/turmoil) (short version: turmoil's clock is simulated and

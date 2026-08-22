@@ -6,13 +6,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Tests for `benches/netem/mod.rs`, the seeded delay/loss/reordering `Transport` decorator the
-//! `*_rtt` benchmark lanes are built on.
+//! Tests for `gossip::netem`, the seeded delay/loss/reordering `Transport` decorator the `*_rtt`
+//! benchmark lanes are built on.
 //!
 //! A benchmark's own instrument earns the same tests as the code it measures: a decorator that
 //! quietly injected the wrong delay, or lost a datagram it claimed to deliver, would publish a
-//! wrong number rather than fail. The module lives under `benches/` because that is what it serves,
-//! and is included here because that is where `cargo test` reaches it.
+//! wrong number rather than fail.
 //!
 //! The last test is the one `ReplicatedMap::new_with_transport`'s rustdoc has been promising: "a
 //! lossy [transport], to test convergence under adversity".
@@ -24,14 +23,10 @@ use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
 
+use gossip::netem::{Impairments, Link, Netem, NetemTransport, Probability, Rtt, Seed};
 use reconcile::{
     replicated_map::Config, InMemoryNetwork, InMemoryTransport, ReplicatedMap, Transport,
 };
-
-#[path = "../benches/netem/mod.rs"]
-mod netem;
-
-use netem::{Impairments, Link, Netem, NetemTransport, Probability, Rtt, Seed};
 
 /// How long a test waits for a datagram the model was not asked to drop. Generous: this is a
 /// "rather fail than hang" bound, never a schedule.
