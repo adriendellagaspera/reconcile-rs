@@ -29,7 +29,7 @@ edition = "2021"
 # -> cpufeatures 0.3.0` needs edition 2024, stabilized in 1.85. A library aims for the floor, not
 # whatever the latest stdlib convenience happens to need — `u32::is_multiple_of` (1.87) briefly
 # pushed this to 1.87 before being rewritten as `% == 0` in `src/replica/run.rs` and
-# `gossip/src/netem.rs`. `clippy::incompatible_msrv` (implied by -Dwarnings, AGENTS.md §3) is what
+# `gossip/src/netem/`. `clippy::incompatible_msrv` (implied by -Dwarnings, AGENTS.md §3) is what
 # actually catches a raise, silent or not; a pinned-toolchain CI lane (#189) is still unlanded.
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
