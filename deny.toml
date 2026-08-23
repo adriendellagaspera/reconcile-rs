@@ -36,6 +36,10 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# `devkit` (root Cargo.toml's dev-dependencies) is a deliberately version-less path dependency —
+# see its comment there. Without this, that lone version-less entry trips `wildcards` even though
+# every other intra-workspace dependency still carries a real, checked version.
+allow-wildcard-paths = true
 deny = []
 
 [sources]
