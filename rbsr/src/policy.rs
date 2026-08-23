@@ -148,13 +148,13 @@ pub enum Decision {
 ///
 /// Costs: `benches/protocol.rs`. Default and the evidence for it: `SOTA.md` §2.2.
 ///
-/// # A fourth policy considered, and not shipped (#318)
+/// # A fourth policy considered, and not shipped (#25)
 ///
 /// A fan-out keyed off the `span`/`remote_size` delta was considered and rejected: that delta is
 /// zero on the regime that matters most (same key set, differing values, e.g. an LWW register in
 /// steady state), so such a policy would reproduce the default there and differ from it only where
 /// the win is already small. Full reasoning and benchmarks:
-/// [#318](https://github.com/Akvize/reconcile-rs/issues/318), `SOTA.md` §2.2.
+/// [#25](https://github.com/adriendellagaspera/reconcile-rs/issues/25), `SOTA.md` §2.2.
 ///
 /// # Implementing your own
 ///

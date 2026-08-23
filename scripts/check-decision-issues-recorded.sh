@@ -36,7 +36,7 @@ set -Eeuo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR/.."
 
-REPO="${GITHUB_REPOSITORY:-Akvize/reconcile-rs}"
+REPO="${GITHUB_REPOSITORY:-adriendellagaspera/reconcile-rs}"
 
 command -v gh >/dev/null || { echo "check-decision-issues-recorded: gh is required" >&2; exit 1; }
 

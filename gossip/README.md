@@ -16,7 +16,7 @@
 > [`v1.0.0` milestone](https://github.com/Akvize/reconcile-rs/milestone/2) and
 > [issue #206](https://github.com/Akvize/reconcile-rs/issues/206).
 
-The gossip adapter layer of [`reconcile-rs`](https://github.com/Akvize/reconcile-rs) — everything a
+The gossip adapter layer of [`reconcile-rs`](https://github.com/adriendellagaspera/reconcile-rs) — everything a
 replica needs to *talk* to its peers, and nothing about what it says:
 
 - the `Transport` port over datagrams, with `UdpTransport` for real sockets and

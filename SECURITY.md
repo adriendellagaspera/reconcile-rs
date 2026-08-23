@@ -11,7 +11,7 @@ branch before `1.0.0` — see the
 ## Reporting a vulnerability
 
 Please report suspected vulnerabilities privately via GitHub's
-[private vulnerability reporting](https://github.com/Akvize/reconcile-rs/security/advisories/new)
+[private vulnerability reporting](https://github.com/adriendellagaspera/reconcile-rs/security/advisories/new)
 (repository Security tab → "Report a vulnerability") rather than a public issue.
 
 We aim to acknowledge a report within 5 business days, and will keep you updated as we investigate

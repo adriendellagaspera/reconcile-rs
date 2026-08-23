@@ -4,7 +4,7 @@ Two workflows for a reproducible Rust dev environment — pick the one that fits
 build the same image (`.devcontainer/Dockerfile.dev`) and land you in a shell as user `dev`.
 
 ```bash
-git clone https://github.com/akvize/reconcile-rs.git && cd reconcile-rs
+git clone https://github.com/adriendellagaspera/reconcile-rs.git && cd reconcile-rs
 ```
 
 ## 🔧 IDE Workflow (Dev Containers)

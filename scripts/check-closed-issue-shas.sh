@@ -14,7 +14,7 @@
 # to.
 set -Eeuo pipefail
 
-REPO="${GITHUB_REPOSITORY:-Akvize/reconcile-rs}"
+REPO="${GITHUB_REPOSITORY:-adriendellagaspera/reconcile-rs}"
 # `origin/main`, not `main`: a local branch pointer can be stale relative to the remote (e.g. this
 # script run from a feature branch's checkout), and staleness here would misreport a merged SHA as
 # missing. `actions/checkout` leaves `origin/main` accurate regardless of which ref is checked out.

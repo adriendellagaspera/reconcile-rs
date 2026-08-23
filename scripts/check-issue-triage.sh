@@ -75,7 +75,7 @@ set -Eeuo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR/.."
 
-REPO=${REPO:-Akvize/reconcile-rs}
+REPO=${REPO:-adriendellagaspera/reconcile-rs}
 LABELS_FILE=.github/labels.tsv
 
 # The annotation vocabulary rules 4 and 6 read, written once and passed into every jq program that
