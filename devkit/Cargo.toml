@@ -12,8 +12,13 @@ publish = false
 # downstream consumer would use without the `reconcile` facade — no dependency on `lww-register`/
 # `gossip`/`reconcile` itself, so this crate stays usable by a caller pricing a different wire
 # format entirely.
-rbsr = { path = "../rbsr" }
-rsos = { path = "../rsos" }
+#
+# `version` alongside `path` even though this crate itself is never published: `cargo package
+# --workspace` verifies every workspace member's manifest, this one included, and a path
+# dependency on a real, published crate needs a resolvable version for that (AGENTS.md §11) —
+# `devkit`'s own `publish = false` has no bearing on what *its* dependencies must declare.
+rbsr = { version = "0.1.1", path = "../rbsr" }
+rsos = { version = "0.4.0", path = "../rsos" }
 # `protocol_cost.rs` only ever needs a `RangeAggregate`'s *serialized length*, via
 # `bincode::Options::serialized_size` (`DefaultOptions`, matching `gossip::bincode`'s own encoder
 # config) — depending on `bincode` directly instead of `gossip` avoids pulling in an adapter crate

@@ -185,10 +185,10 @@ async-trait = "0.1"
 clap = { version = "4.4.6", features = ["derive"] }
 criterion = "0.5.1"
 # `benches/protocol.rs`'s cost driver and `benches/contention.rs`'s N-writer harness, shared
-# verbatim with the private research companion repository — see `devkit/Cargo.toml`. No `version`
-# alongside `path` (unlike the four published siblings, AGENTS.md §11): `publish = false` means
-# `cargo package`/`publish` never need to resolve it from a registry.
-devkit = { path = "devkit" }
+# verbatim with the private research companion repository — see `devkit/Cargo.toml`. `version`
+# alongside `path` even though `devkit` is `publish = false`: `cargo package --workspace` verifies
+# every dependency's manifest, dev-dependencies included (AGENTS.md §11).
+devkit = { version = "0.0.0", path = "devkit" }
 # Cargo unions features across `[dependencies]`/`[dev-dependencies]` entries for the same package
 # when building dev targets: this turns on `gossip`'s `netem` feature (`gossip/src/netem/`) for
 # `benches/`/`tests/` only, without adding it to the default build any dependent gets.
