@@ -6,6 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::cell::RefCell;
 use std::sync::Mutex;
 
 use super::*;
@@ -39,39 +40,44 @@ fn throughput_ops_per_sec_divides_total_ops_by_elapsed_seconds() {
     assert_eq!(throughput_ops_per_sec(elapsed, 4, 100), 200.0);
 }
 
+// `order` is a `RefCell`, not a plain `Vec`, because both closures below need to mutate it and
+// `paired_trial` takes them as two simultaneous `&mut dyn FnMut`s: a plain `Vec` capture would
+// need two live mutable borrows of the same variable at once, which the borrow checker rejects
+// regardless of the fact that only one closure ever actually runs before the other returns.
+
 #[test]
 fn paired_trial_runs_a_before_b_when_a_first() {
-    let mut order = Vec::new();
+    let order = RefCell::new(Vec::new());
     let (a, b) = paired_trial(
         true,
         &mut || {
-            order.push('a');
+            order.borrow_mut().push('a');
             1.0
         },
         &mut || {
-            order.push('b');
+            order.borrow_mut().push('b');
             2.0
         },
     );
-    assert_eq!(order, vec!['a', 'b']);
+    assert_eq!(*order.borrow(), vec!['a', 'b']);
     assert_eq!((a, b), (1.0, 2.0));
 }
 
 #[test]
 fn paired_trial_runs_b_before_a_when_not_a_first() {
-    let mut order = Vec::new();
+    let order = RefCell::new(Vec::new());
     let (a, b) = paired_trial(
         false,
         &mut || {
-            order.push('a');
+            order.borrow_mut().push('a');
             1.0
         },
         &mut || {
-            order.push('b');
+            order.borrow_mut().push('b');
             2.0
         },
     );
-    assert_eq!(order, vec!['b', 'a']);
+    assert_eq!(*order.borrow(), vec!['b', 'a']);
     assert_eq!((a, b), (1.0, 2.0));
 }
 
