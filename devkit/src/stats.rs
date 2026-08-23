@@ -144,3 +144,6 @@ pub fn diff_ci(a: &[f64], b: &[f64]) -> Summary {
 pub fn excludes_zero(summary: &Summary) -> bool {
     summary.lo > 0.0 || summary.hi < 0.0
 }
+
+#[cfg(test)]
+mod tests;

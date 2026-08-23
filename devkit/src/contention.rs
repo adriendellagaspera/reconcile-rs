@@ -178,3 +178,6 @@ pub fn run_sweep(
     }
     points
 }
+
+#[cfg(test)]
+mod tests;

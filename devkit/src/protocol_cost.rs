@@ -265,3 +265,6 @@ pub fn reconcile<S: Rsos<u64>>(
     }
     cost
 }
+
+#[cfg(test)]
+mod tests;
