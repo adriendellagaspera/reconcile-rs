@@ -175,15 +175,22 @@ fn reconcile_tallies_ranges_bytes_and_datagrams_for_a_single_round() {
 
     let cost = reconcile(&a, &b, &AlwaysEnumerate, None);
 
-    assert_eq!(cost.messages, 1);
-    assert_eq!(cost.ranges, 1, "one range advertised in the single round");
+    // Two rounds: the empty peer answers first and enumerates its (empty) view of the range, then
+    // the non-empty peer answers the resulting child and enumerates its one real key — matching
+    // `enumerated_elements == 1` below despite two rounds each advertising one range.
+    assert_eq!(cost.messages, 2);
+    assert_eq!(cost.ranges, 2, "one range advertised per round, two rounds");
     assert!(
         cost.refinement_bytes > 0,
-        "the advertised range must encode to some nonzero size"
+        "the advertised ranges must encode to some nonzero size"
     );
-    assert_eq!(cost.datagrams, 1);
-    assert_eq!(cost.fragments, 1);
-    assert_eq!(cost.enumerations, 1);
+    assert_eq!(cost.datagrams, 2);
+    assert_eq!(cost.fragments, 2);
+    assert_eq!(cost.enumerations, 2, "each round's range gets enumerated");
+    assert_eq!(
+        cost.enumerated_elements, 1,
+        "only the non-empty peer's round yields a real key"
+    );
 }
 
 #[test]
