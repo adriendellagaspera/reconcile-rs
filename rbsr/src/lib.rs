@@ -80,6 +80,8 @@
 #![deny(missing_docs)]
 
 mod policy;
+#[cfg(reconcile_internal_testing)]
+mod probe_harness;
 mod protocol;
 mod rsos_view;
 
@@ -88,9 +90,14 @@ pub use policy::{
     SplitStride, SqrtFanOut,
 };
 #[cfg(reconcile_internal_testing)]
-pub use policy::{
-    ConstantStrideSplit, FingerprintDerivedSplit, SpanHashedStrideSplit,
-    SpanRelativeFingerprintSplit, STRIDE_SPREAD,
+pub use policy::{ConstantStrideSplit, SpanHashedStrideSplit, STRIDE_SPREAD};
+// Driving scaffolding for the `reconcile_internal_testing`-only oracle-dependent-policy probes:
+// a reduced-width store and a driver that proves a stall rather than inferring one from a round
+// cap. Consumed by this crate's own invariant-13 coverage and, as a foundation, by a fuller
+// measurement harness outside this workspace.
+#[cfg(reconcile_internal_testing)]
+pub use probe_harness::{
+    balanced_swap, drive, drive_pair, Drive, NarrowStore, Termination, DRIVE_STORE_SIZE,
 };
 pub use protocol::{
     initial_ranges, protocol_round, protocol_round_with_policy, EnumerationRange, RangeAggregate,

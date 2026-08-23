@@ -6,11 +6,7 @@ use imp::main;
 // `service_reconcile_rtt` below composes `just_insert`/`just_remove` (`reconcile_internal_testing`
 // seams, AGENTS.md §6) with the injected-RTT decorator, so it lives here rather than in
 // `system.rs`, which is deliberately feature-gate-free (`benches/README.md` "Pricing that
-// end-to-end..."). Included the same way `system.rs` includes it — a `#[path]` `mod` rather than
-// `benches/*/main.rs` auto-discovery, so cargo does not mistake it for a fifth target;
-// `tests/netem.rs` is where it is tested.
-#[path = "netem/mod.rs"]
-mod netem;
+// end-to-end...").
 
 mod imp {
     use std::collections::BTreeMap;
@@ -34,7 +30,7 @@ mod imp {
         NodeId, PhysicalTime, ReplicatedMap, State, Timestamp, Transport,
     };
 
-    use super::netem::{Link, Netem, NetemTransport, Rtt, Seed};
+    use gossip::netem::{Link, Netem, NetemTransport, Rtt, Seed};
 
     fn fingerprint_tree_map_new(c: &mut Criterion) {
         let mut group = c.benchmark_group("FingerprintTreeMap::new");
@@ -456,8 +452,9 @@ mod imp {
     }
 
     /// RTT sweep for `service_reconcile_rtt`: the same grid `system.rs`'s injected-RTT lane
-    /// sweeps (`rtt_sweep` there — duplicated here rather than shared, like `netem/mod.rs` itself:
-    /// each bench binary is a separate compilation unit, and no target here imports another's).
+    /// sweeps (`rtt_sweep` there — duplicated here rather than shared: each bench binary is a
+    /// separate compilation unit, and no target here imports another's. `gossip::netem` itself is
+    /// genuinely shared, being a library module rather than a per-binary `mod`.)
     fn rtt_sweep() -> Vec<Rtt> {
         [0.0, 0.1, 1.0, 10.0, 50.0]
             .into_iter()
@@ -565,7 +562,7 @@ mod imp {
     }
 
     /// The refinement chain, timed, over an injected-RTT link: composes
-    /// `ReplicatedMap::new_with_transport`, `netem::NetemTransport` and the existing `rtt_sweep`
+    /// `ReplicatedMap::new_with_transport`, `gossip::netem::NetemTransport` and the existing `rtt_sweep`
     /// (`system.rs`'s, duplicated above) with `service_reconcile`'s own divergence mechanism — the
     /// only one that exercises refinement rather than the outer-range mismatch `cold_sync_rtt`
     /// builds (`benches/README.md` "Pricing that end-to-end...").

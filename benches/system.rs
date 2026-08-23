@@ -15,8 +15,8 @@
 //!
 //! The `*_rtt` lanes answer the round-trip question: every other benchmark here runs at RTT ≈ 0,
 //! which prices bytes and zeroes round-trips — the axis RBSR is worst on. They run over the seeded
-//! delay/loss decorator in `benches/netem/mod.rs`, whose module docs carry the model and the
-//! `turmoil` evaluation.
+//! delay/loss decorator in `gossip::netem`, whose module docs carry the model and the `turmoil`
+//! evaluation.
 //!
 //! Reproduction and interpretation are documented in `benches/README.md`. Not run in CI (only
 //! compile-checked); run locally with `cargo bench --bench system`.
@@ -42,13 +42,7 @@ use reconcile::{
     Timestamp, Transport,
 };
 
-// The netem decorator lives in a subdirectory so cargo's bench auto-discovery (which picks up
-// `benches/*.rs` and `benches/*/main.rs`) does not mistake it for a fourth `harness = false`
-// target. `tests/netem.rs` includes the same file, and is where it is tested.
-#[path = "netem/mod.rs"]
-mod netem;
-
-use netem::{Link, Netem, NetemTransport, Probability, Rtt, Seed};
+use gossip::netem::{Link, Netem, NetemTransport, Probability, Rtt, Seed};
 
 /// Dataset sizes swept by the size-parameterised benchmarks (log scale).
 const SIZES: &[usize] = &[10, 100, 1_000, 10_000, 100_000];
@@ -703,7 +697,7 @@ async fn probe_link(link: Link, datagrams: usize, port: u16) -> (Duration, Durat
 /// Calibrate the instrument before reading anything it produces: configured one-way delay against
 /// observed, configured loss against realized. Printed rather than timed, like `memory_footprint`
 /// — and the reason the sweeps below can be quoted as measurements of the protocol rather than of
-/// tokio's timer, which rounds a sleep up to the next millisecond (`benches/netem/mod.rs`).
+/// tokio's timer, which rounds a sleep up to the next millisecond (`gossip::netem`).
 fn netem_calibration(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     println!(
@@ -893,7 +887,7 @@ const FANOUT_RTT_NODES: usize = PROPAGATION_RTT_NODES;
 /// `gossip_fanout` across the RTT sweep and a loss lane: whether the origin's send-side fan-out
 /// cost — datagrams/bytes handed to the transport, and the send-loop wall time — depends on RTT.
 /// Unlike [`gossip_propagation_rtt`], expected and confirmed **flat**:
-/// [`NetemTransport::send_to`](netem::NetemTransport::send_to) queues (or drops) a datagram and
+/// [`NetemTransport::send_to`](gossip::netem::NetemTransport::send_to) queues (or drops) a datagram and
 /// returns immediately, before the injected delay elapses — the origin never waits on delivery, so
 /// there is no round trip for RTT to lengthen. [`CountingTransport`] wraps *outside* the decorator
 /// for exactly this reason: it counts what `Replica::broadcast` handed to `send_to`, matching

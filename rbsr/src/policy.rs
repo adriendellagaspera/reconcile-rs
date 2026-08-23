@@ -12,14 +12,14 @@
 //! Split across siblings by concern: `params` owns [`SplitStride`]/[`FanOut`]; `cutoffs` owns the
 //! enumeration-cutoff logic [`SqrtFanOut`] and [`FixedFanOut`] share; `sqrt_fan_out`,
 //! `fixed_fan_out` and `enumerate_below_threshold` each own one shipped policy's definition and
-//! [`RefinementPolicy`] impl; `forwarding` owns the blanket `&P` impl; `fingerprint_derived_split`
-//! (`cfg(reconcile_internal_testing)`) owns the test-only oracle-dependent probe's definition and
-//! impl. Each is `pub use`-d back into this file, so `cargo public-api`'s reported path (AGENTS.md
-//! §11) stays `rbsr::TypeName` regardless of which sibling defines it. `comparison` owns
-//! [`Comparison`]'s construction and accessors only: the definition stays in this file so its
-//! private fields stay reachable from sibling oracle-dependent probes, not just descendants of
-//! `comparison`. This file otherwise keeps [`Decision`] and [`RefinementPolicy`] themselves, plus
-//! the module doc every sibling shares.
+//! [`RefinementPolicy`] impl; `forwarding` owns the blanket `&P` impl; `constant_stride_split` and
+//! `span_hashed_stride_split` (both `cfg(reconcile_internal_testing)`) each own one test-only
+//! oracle-independent probe's definition and impl. Each is `pub use`-d back into this file, so
+//! `cargo public-api`'s reported path (AGENTS.md §11) stays `rbsr::TypeName` regardless of which
+//! sibling defines it. `comparison` owns [`Comparison`]'s construction and accessors only: the
+//! definition stays in this file so its private fields stay reachable from sibling probes, not
+//! just descendants of `comparison`. This file otherwise keeps [`Decision`] and
+//! [`RefinementPolicy`] themselves, plus the module doc every sibling shares.
 
 use rsos::Aggregate;
 
@@ -28,28 +28,20 @@ mod comparison;
 mod constant_stride_split;
 mod cutoffs;
 mod enumerate_below_threshold;
-#[cfg(reconcile_internal_testing)]
-mod fingerprint_derived_split;
 mod fixed_fan_out;
 mod forwarding;
 mod params;
 #[cfg(reconcile_internal_testing)]
 mod span_hashed_stride_split;
-#[cfg(reconcile_internal_testing)]
-mod span_relative_fingerprint_split;
 mod sqrt_fan_out;
 
 #[cfg(reconcile_internal_testing)]
 pub use constant_stride_split::ConstantStrideSplit;
 pub use enumerate_below_threshold::EnumerateBelowThreshold;
-#[cfg(reconcile_internal_testing)]
-pub use fingerprint_derived_split::FingerprintDerivedSplit;
 pub use fixed_fan_out::FixedFanOut;
 pub use params::{FanOut, SplitStride};
 #[cfg(reconcile_internal_testing)]
 pub use span_hashed_stride_split::{SpanHashedStrideSplit, STRIDE_SPREAD};
-#[cfg(reconcile_internal_testing)]
-pub use span_relative_fingerprint_split::SpanRelativeFingerprintSplit;
 pub use sqrt_fan_out::SqrtFanOut;
 
 /// Everything a [`RefinementPolicy`] is shown about one active range: two [`Aggregate`]s reduced

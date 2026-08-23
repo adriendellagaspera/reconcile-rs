@@ -6,22 +6,23 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Wagner's k-tree driven against the real [`protocol_round`], at reduced summary width.
+//! Count exactness, mechanically: an unbalanced difference is never SKIPped, whatever the summary
+//! does — checked against a comparison map that Wagner's k-tree was used to make genuinely collide
+//! on the fingerprint half, so the guarantee is exercised at its hardest case rather than an easy
+//! one.
 //!
-//! The claim under test: the additive combiner is a k-sum instance, and the k-tree applies to
-//! `ℤ/2^w` *with no error term*, because reduction mod `2^j` is a group homomorphism and merging on
-//! low-order bits is therefore exact. A planted solution then makes the driver SKIP a range on two
-//! stores that genuinely differ — a **false convergence**, silent and permanent.
-//!
-//! This is the regression guard on the fingerprint's advertised strength: it fails the day the
-//! combiner is claimed to resist a chosen-input adversary. See [`rsos::fingerprint`]'s module docs
-//! for what the shipped combiner does and does not promise.
+//! The plant here is a *solved* k-sum instance (the additive combiner is a k-sum instance, and the
+//! k-tree applies to `ℤ/2^w` *with no error term*, because reduction mod `2^j` is a group
+//! homomorphism and merging on low-order bits is therefore exact) with a single key then removed
+//! from one peer, so the fingerprints no longer agree and neither do the counts. Pinned because the
+//! guarantee is claimed with probability 1 and with no hypothesis on the lift — `SOTA.md` §2.1
+//! records what it covers and what it does not — so it must hold at every width, not merely be
+//! probable at the shipped one.
 //!
 //! Only the **width** is scaled down. The lift is the shipped [`rsos::digest`] (BLAKE3 over the
 //! canonical encoding) reduced mod `2^w`, the algebra is addition mod `2^w`, and the driver is
 //! `rbsr`'s own, unmodified — [`NarrowStore`] enters through [`RsosView`], the third-party-backend
-//! seam the trait documents. Extrapolation to `w = 256` is by the cost formula, not by assertion;
-//! `wagner_cost_matches_the_k_tree_formula` pins the formula against measured work.
+//! seam the trait documents.
 
 #![forbid(unsafe_code)]
 
@@ -121,7 +122,7 @@ struct Partial {
     keys: Vec<(u64, bool)>,
 }
 
-/// The parameters of one k-tree run, and the work it costs.
+/// The parameters of one k-tree run.
 struct KTree {
     width: u32,
     /// `log2` of the list count, so `k = 2^t` lists and `t` merge levels.
@@ -130,8 +131,6 @@ struct KTree {
     j: u32,
     /// Level-0 candidates per list. One bit of oversampling over the `2^j` the analysis asks for.
     list_size: usize,
-    /// Level-0 lift evaluations — the attacker's offline cost.
-    work: usize,
 }
 
 impl KTree {
@@ -143,7 +142,6 @@ impl KTree {
             t,
             j,
             list_size,
-            work: (1usize << t) * list_size,
         }
     }
 
@@ -216,8 +214,9 @@ impl KTree {
     ///
     /// The lookup is exact: `(a + b) mod 2^w ≡ 0 (mod 2^j)` iff `a ≡ −b (mod 2^j)`, because
     /// reduction mod `2^j` is a homomorphism — carries leave the window upward and never re-enter
-    /// it. This is the step that must carry no error term for the attack to work at all, and the
-    /// assertion at the end of the test is what checks it end to end.
+    /// it. This is the step that must carry no error term for [`KTree::solve`] to actually find a
+    /// colliding plant, which the kept test below relies on to exercise the count check against a
+    /// genuinely fingerprint-colliding pair rather than an easy one.
     fn join(&self, left: &[Partial], right: &[Partial], window: u64) -> Vec<Partial> {
         let mut index: HashMap<u64, Vec<&Partial>> = HashMap::new();
         for partial in left {
@@ -279,82 +278,11 @@ fn planted(width: u32, on_a: &[u64], on_b: &[u64]) -> (NarrowStore, NarrowStore)
     (build(on_a), build(on_b))
 }
 
-/// The widths E3 runs at, with the k-tree shape used for each. `j = 8` throughout, so the cost per
-/// list is constant and the list *count* carries the width — the slice of the trade-off curve that
-/// keeps the test fast while still exercising every merge level.
+/// The width E3 runs at, with the k-tree shape used. `j = 8`, so the cost per list is constant
+/// and the list count carries the width — kept small so constructing the plant below stays fast.
 const CONFIGURATIONS: [(u32, u32); 3] = [(32, 3), (48, 5), (64, 7)];
 
-/// **The experiment.** A planted k-sum solution makes the driver SKIP the outer range while the
-/// two stores genuinely differ.
-#[test]
-fn planted_k_sum_makes_the_protocol_declare_convergence_on_differing_stores() {
-    for (width, t) in CONFIGURATIONS {
-        let k_tree = KTree::new(width, t);
-        let (on_a, on_b) = k_tree
-            .solve(8)
-            .unwrap_or_else(|| panic!("w={width}: k-tree found no solution in 8 attempts"));
-
-        assert_eq!(
-            on_a.len(),
-            on_b.len(),
-            "w={width}: the plant must be count-balanced, or Theorem 2 rejects it for free"
-        );
-        assert_eq!(on_a.len() + on_b.len(), 1usize << t);
-
-        let (a, b) = planted(width, &on_a, &on_b);
-        assert_ne!(
-            a.keys, b.keys,
-            "w={width}: the stores must genuinely differ"
-        );
-        assert_eq!(
-            a.aggregate(..),
-            b.aggregate(..),
-            "w={width}: the k-tree solution must make the outer aggregates collide — \
-             this is the step that fails if merging on low bits is not exact"
-        );
-
-        assert!(
-            declares_convergence(&a, &b),
-            "w={width}: the driver refused to SKIP a colliding outer range"
-        );
-
-        println!(
-            "w={width}: k={} planted keys, j={}, {} lift evaluations offline",
-            1usize << t,
-            k_tree.j,
-            k_tree.work
-        );
-    }
-}
-
-/// The control. Same shape, same sizes, keys that were never solved for — the driver must refine.
-///
-/// Without this the test above would pass against a driver that SKIPs everything.
-#[test]
-fn an_unsolved_plant_of_the_same_shape_is_refined_not_skipped() {
-    for (width, t) in CONFIGURATIONS {
-        let k_tree = KTree::new(width, t);
-        let k = 1usize << t;
-        let keys: Vec<u64> = (0..k)
-            .map(|list| k_tree.key_of(u64::from(u32::MAX), list, 0))
-            .collect();
-        let (on_a, on_b) = keys.split_at(k / 2);
-
-        let (a, b) = planted(width, on_a, on_b);
-        assert!(
-            !declares_convergence(&a, &b),
-            "w={width}: an unsolved plant must not collide"
-        );
-    }
-}
-
-/// Count exactness, mechanically: an unbalanced difference is never SKIPped, whatever the summary
-/// does.
-///
-/// The plant here is a *solved* one with a single key removed from peer B, so the fingerprints no
-/// longer agree and neither do the counts. Pinned because the guarantee is claimed with probability
-/// 1 and with no hypothesis on the lift — `SOTA.md` §2.1 records what it covers and what it does
-/// not — so it must hold at every width, not merely be probable at the shipped one.
+/// An unbalanced difference is never SKIPped, whatever the summary does.
 #[test]
 fn an_unbalanced_difference_is_never_skipped() {
     for (width, t) in CONFIGURATIONS {
@@ -367,39 +295,6 @@ fn an_unbalanced_difference_is_never_skipped() {
         assert!(
             !declares_convergence(&a, &b),
             "w={width}: a count mismatch must be detected with certainty"
-        );
-    }
-}
-
-/// The cost formula the attack extrapolates by, checked against what the runs above spend.
-///
-/// Work is `2^(t + width/(t+1))`; minimizing over `t` gives `t + 1 = √width` and `2^(2√width − 1)`.
-/// This test pins the *arithmetic*, so that the cost quoted for a production width is derived from a
-/// verified formula rather than asserted — the figure itself belongs with the finding, not here. The
-/// attack is pinned separately, at the widths above.
-#[test]
-fn wagner_cost_matches_the_k_tree_formula() {
-    for (width, t) in CONFIGURATIONS {
-        let k_tree = KTree::new(width, t);
-        // The one bit of oversampling is deliberate; the analysis asks for 2^j per list.
-        assert_eq!(k_tree.work, (1usize << t) * (1usize << (k_tree.j + 1)));
-        assert_eq!(k_tree.j, width / (t + 1));
-    }
-
-    // The optimum is at t + 1 = √width, where the exponent is 2√width − 1. Integer division makes
-    // the neighbouring `t` tie with it, so what is pinned is the achieved minimum, not the argmin.
-    let exponent = |width: u32, t: u32| t + width / (t + 1);
-    for width in [64u32, 144, 256] {
-        let root = (f64::from(width)).sqrt() as u32;
-        assert_eq!(
-            exponent(width, root - 1),
-            2 * root - 1,
-            "w={width}: t + 1 = √w does not cost 2^(2√w − 1)"
-        );
-        assert_eq!(
-            (1..width).map(|t| exponent(width, t)).min().unwrap(),
-            2 * root - 1,
-            "w={width}: some other list count beats 2^(2√w − 1)"
         );
     }
 }

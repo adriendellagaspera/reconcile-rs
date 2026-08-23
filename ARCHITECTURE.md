@@ -127,7 +127,7 @@ Four outbound ports, each removing one concrete infrastructure dependency from t
 | Port | Crate | Replaces | Adapter(s) |
 |---|---|---|---|
 | `Clock` | `lww-register/src/clock.rs` | direct `chrono::Utc` read | `HlcClock` (`src/clock.rs`) |
-| `Transport` | `gossip/src/transport.rs` | `tokio::net::UdpSocket` | `UdpTransport`, `InMemoryTransport`; dev-only decorators over either — `CountingTransport` (`benches/system.rs`), `NetemTransport` (`benches/netem/mod.rs`: seeded delay/jitter/loss/reordering, #280) |
+| `Transport` | `gossip/src/transport.rs` | `tokio::net::UdpSocket` | `UdpTransport`, `InMemoryTransport`; dev-only decorators over either — `CountingTransport` (`benches/system.rs`), `NetemTransport` (`gossip/src/netem/`, `netem` feature: seeded delay/jitter/loss/reordering, #280) |
 | `Persistence` | `lww-register/src/persistence.rs` | ad hoc file I/O | `FileSnapshot`, `InMemoryPersistence` |
 | `Discovery` | `gossip/src/discovery.rs` | inline IP-scan | `RandomProbe` (speculative), `DnsDiscovery` (authoritative) |
 
@@ -524,8 +524,8 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
 
   **And the cheap alternative is not one.** A lexicographic composite key keeps the store
   1-dimensional and every operation at `Θ(lg n)` — but a lex interval is not a box, so it answers no
-  `δ > 1` query at all. `rbsr/tests/balance_under_position_map.rs` arm 2 is that same fact seen from
-  the protocol side: `π = (key, version)` *is* that order, and the exact count sees nothing under it
+  `δ > 1` query at all. The private research companion repository's position-map experiment (arm 2)
+  is that same fact seen from the protocol side: `π = (key, version)` *is* that order, and the exact count sees nothing under it
   that it did not already see under `π = (key)`. Its corollary — "make `π` injective" is the wrong
   rule, **relocation** is — is recorded in [`SOTA.md`](./SOTA.md) §2.4.1.
 - **Pluggable per-value conflict resolution** — CRDT values beyond LWW-Register
