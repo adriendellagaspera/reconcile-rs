@@ -245,7 +245,7 @@ async fn wait_until(due: Instant, wake: &Notify) {
             }
         }
     }
-    while Instant::now() < due {
+    while still_waiting(Instant::now(), due) {
         tokio::task::yield_now().await;
     }
 }
@@ -255,6 +255,12 @@ async fn wait_until(due: Instant, wake: &Notify) {
 /// `select!`/timer round-trip.
 fn coarse_wait_worthwhile(coarse: Instant, now: Instant) -> bool {
     coarse > now
+}
+
+/// Whether the spin loop above should keep yielding: `now` strictly before `due`, so it stops as
+/// soon as `due` is reached rather than looping one extra time at the exact tie.
+fn still_waiting(now: Instant, due: Instant) -> bool {
+    now < due
 }
 
 #[cfg(test)]

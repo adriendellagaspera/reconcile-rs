@@ -78,3 +78,11 @@ fn coarse_wait_worthwhile_is_false_at_and_before_the_tie() {
     assert!(!coarse_wait_worthwhile(now - Duration::from_nanos(1), now));
     assert!(coarse_wait_worthwhile(now + Duration::from_nanos(1), now));
 }
+
+#[test]
+fn still_waiting_is_false_at_and_after_due() {
+    let due = Instant::now();
+    assert!(still_waiting(due - Duration::from_nanos(1), due));
+    assert!(!still_waiting(due, due));
+    assert!(!still_waiting(due + Duration::from_nanos(1), due));
+}
