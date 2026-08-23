@@ -236,7 +236,7 @@ async fn pump<T: Transport>(inner: Arc<T>, in_flight: Arc<InFlight>) {
 /// next millisecond, which is five times the entire one-way delay of the 0.1 ms lane.
 async fn wait_until(due: Instant, wake: &Notify) {
     if let Some(coarse) = due.checked_sub(TIMER_RESOLUTION) {
-        if coarse > Instant::now() {
+        if coarse_wait_worthwhile(coarse, Instant::now()) {
             tokio::select! {
                 _ = tokio::time::sleep_until(coarse) => {}
                 // Something nearer-due may have been queued behind us; re-decide.
@@ -248,3 +248,13 @@ async fn wait_until(due: Instant, wake: &Notify) {
         tokio::task::yield_now().await;
     }
 }
+
+/// Whether a coarse sleep to `coarse` is still worth taking from `now`. At `coarse == now` it is
+/// not: the immediate fall-through to the spin loop above reaches the same wait with one less
+/// `select!`/timer round-trip.
+fn coarse_wait_worthwhile(coarse: Instant, now: Instant) -> bool {
+    coarse > now
+}
+
+#[cfg(test)]
+mod tests;

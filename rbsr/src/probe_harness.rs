@@ -120,13 +120,22 @@ pub fn balanced_swap(rng: &mut StdRng, n: usize, swap_size: usize) -> (Vec<u64>,
     for _ in 0..swap_size {
         let idx = rng.gen_range(0..b.len());
         b.swap_remove(idx);
-        let mut candidate: u64 = rng.gen();
-        while a.contains(&candidate) || b.contains(&candidate) {
-            candidate = rng.gen();
-        }
+        let candidate = unique_candidate(rng, &a, &b);
         b.push(candidate);
     }
     (a, b)
+}
+
+/// Draw from `rng` until landing on a value in neither `a` nor `b`.
+///
+/// Generic over `Rng` (not tied to `StdRng`) so a test can drive it with a scripted sequence of
+/// "random" draws instead of a real generator, to exercise the rejection loop deterministically.
+fn unique_candidate<R: Rng + ?Sized>(rng: &mut R, a: &[u64], b: &[u64]) -> u64 {
+    let mut candidate: u64 = rng.gen();
+    while a.contains(&candidate) || b.contains(&candidate) {
+        candidate = rng.gen();
+    }
+    candidate
 }
 
 /// How a drive ended.
@@ -213,7 +222,7 @@ pub fn drive_pair<A: RefinementPolicy, B: RefinementPolicy>(
         let bucket = seen.entry(key).or_default();
         if let Some((first_round, _)) = bucket.iter().find(|(_, state)| *state == active) {
             break Termination::Stalled {
-                cycle_length: rounds - first_round,
+                cycle_length: cycle_length(rounds, *first_round),
             };
         }
         bucket.push((rounds, active.clone()));
@@ -238,10 +247,12 @@ pub fn drive_pair<A: RefinementPolicy, B: RefinementPolicy>(
                 &mut enumerations,
             )
         };
-        comparisons += (outcome.skipped()
-            + outcome.enumerated()
-            + outcome.split()
-            + outcome.dropped_malformed()) as u64;
+        comparisons += round_comparisons(
+            outcome.skipped(),
+            outcome.enumerated(),
+            outcome.split(),
+            outcome.dropped_malformed(),
+        );
         enumerated.append(&mut enumerations);
         active = children;
         rounds += 1;
@@ -256,3 +267,22 @@ pub fn drive_pair<A: RefinementPolicy, B: RefinementPolicy>(
         rounds,
     }
 }
+
+/// One round's contribution to the drive's total comparison count: every range that round
+/// classified, regardless of what became of it.
+fn round_comparisons(
+    skipped: usize,
+    enumerated: usize,
+    split: usize,
+    dropped_malformed: usize,
+) -> u64 {
+    (skipped + enumerated + split + dropped_malformed) as u64
+}
+
+/// How many rounds separate a recurring state's first occurrence from its recurrence.
+fn cycle_length(current_round: usize, first_round: usize) -> usize {
+    current_round - first_round
+}
+
+#[cfg(test)]
+mod tests;
