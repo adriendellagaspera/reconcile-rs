@@ -36,6 +36,18 @@ fn agreeing_aggregates_are_skipped_by_every_policy() {
     );
 }
 
+/// The `for_testing` seam (#529) round-trips exactly what `new` was given — the whole point being
+/// that a dependent crate's oracle-coupled probe policy sees the same `Aggregate` a driver built.
+#[cfg(reconcile_internal_testing)]
+#[test]
+fn for_testing_accessors_round_trip_the_constructed_aggregates() {
+    let local = Aggregate::new(7, Fingerprint([1, 2, 3, 4]));
+    let remote = Aggregate::new(9, Fingerprint([5, 6, 7, 8]));
+    let comparison = Comparison::new(local, remote, 0);
+    assert_eq!(comparison.local_for_testing(), local);
+    assert_eq!(comparison.remote_for_testing(), remote);
+}
+
 /// Matching fingerprints with mismatched sizes must not be read as agreement.
 #[test]
 fn matching_fingerprint_with_wrong_size_does_not_agree() {

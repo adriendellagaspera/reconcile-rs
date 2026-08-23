@@ -52,4 +52,28 @@ impl Comparison {
     pub const fn children_emitted(&self) -> usize {
         self.children_emitted
     }
+
+    /// **Test-only, `cfg(reconcile_internal_testing)`-gated.** The whole **local** [`Aggregate`],
+    /// fingerprint included.
+    ///
+    /// This is exactly what the no-fingerprint-derived-decisions law (this type's own docs) says a
+    /// [`RefinementPolicy`](super::RefinementPolicy) must never read — the cfg gate makes it
+    /// reachable only from a `--cfg reconcile_internal_testing` build (never a default one, never
+    /// released), it does not make reading it here sound. It exists so an oracle-*coupled* probe
+    /// policy can be written at all, as a dependent crate's own measurement harness (#529):
+    /// `Comparison`'s public, non-gated surface still carries no such accessor, and every *shipped*
+    /// policy in this crate still goes through [`span`](Self::span)/[`remote_size`](Self::remote_size)
+    /// only.
+    #[cfg(reconcile_internal_testing)]
+    pub const fn local_for_testing(&self) -> Aggregate {
+        self.local
+    }
+
+    /// **Test-only, `cfg(reconcile_internal_testing)`-gated.** The whole **remote** [`Aggregate`],
+    /// fingerprint included — the peer-advertised counterpart to
+    /// [`local_for_testing`](Self::local_for_testing), same caveats.
+    #[cfg(reconcile_internal_testing)]
+    pub const fn remote_for_testing(&self) -> Aggregate {
+        self.remote
+    }
 }
