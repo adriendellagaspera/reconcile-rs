@@ -1,0 +1,23 @@
+[package]
+name = "devkit"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "Internal bench/measurement infrastructure shared by this workspace's own benches and the private research companion repository. Never published."
+publish = false
+
+[dependencies]
+# The reconciliation-cost driver (`protocol_cost.rs`) drives both crates directly, the same two a
+# downstream consumer would use without the `reconcile` facade — no dependency on `lww-register`/
+# `gossip`/`reconcile` itself, so this crate stays usable by a caller pricing a different wire
+# format entirely.
+rbsr = { path = "../rbsr" }
+rsos = { path = "../rsos" }
+# `protocol_cost.rs` only ever needs a `RangeAggregate`'s *serialized length*, via
+# `bincode::Options::serialized_size` (`DefaultOptions`, matching `gossip::bincode`'s own encoder
+# config) — depending on `bincode` directly instead of `gossip` avoids pulling in an adapter crate
+# for one length computation, and keeps this crate usable by a caller with no transport at all.
+bincode = "1.3.3"
+# `contention.rs`'s trial schedule shuffle and `stats.rs`'s bootstrap resampling.
+rand = "0.8.5"

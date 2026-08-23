@@ -17,8 +17,11 @@
 # The split briefly carried a sixth member, `snapshot`. It was folded back into this package
 # (`src/snapshot.rs`) as a deliberate follow-up: one type, no standalone reuse value, no separate
 # published identity to earn — see ARCHITECTURE.md §2.
+#   devkit        — dev/bench-only infra (bootstrap statistics, the reconciliation-cost driver, the
+#                   N-writer contention harness) this repo's own benches and the private research
+#                   companion repository both need without duplicating it. Never published (#524).
 # See ARCHITECTURE.md §2 for the crate/module map.
-members = ["rsos", "rbsr", "lww-register", "gossip", "."]
+members = ["rsos", "rbsr", "lww-register", "gossip", "devkit", "."]
 resolver = "2"
 
 [package]
@@ -181,6 +184,11 @@ tracing = "0.1.40"
 async-trait = "0.1"
 clap = { version = "4.4.6", features = ["derive"] }
 criterion = "0.5.1"
+# `benches/protocol.rs`'s cost driver and `benches/contention.rs`'s N-writer harness, shared
+# verbatim with the private research companion repository — see `devkit/Cargo.toml`. No `version`
+# alongside `path` (unlike the four published siblings, AGENTS.md §11): `publish = false` means
+# `cargo package`/`publish` never need to resolve it from a registry.
+devkit = { path = "devkit" }
 # Cargo unions features across `[dependencies]`/`[dev-dependencies]` entries for the same package
 # when building dev targets: this turns on `gossip`'s `netem` feature (`gossip/src/netem/`) for
 # `benches/`/`tests/` only, without adding it to the default build any dependent gets.

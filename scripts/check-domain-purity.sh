@@ -15,6 +15,10 @@
 #
 # Add a module to DOMAIN_FILES / a manifest to STANDALONE_MANIFESTS only once ARCHITECTURE.md
 # documents it as infra-free.
+#
+# `devkit` (dev/bench-only, #524) is deliberately absent from both lists below, the same exemption
+# `gossip`/`reconcile` already have (ARCHITECTURE.md §2.1): it is neither domain nor adapter, and
+# nothing here claims purity for it. Part 3's graph check still covers it, same as every crate.
 set -Eeuo pipefail
 
 # Resolve the repo root from the script's own location (not `git rev-parse`, since the
