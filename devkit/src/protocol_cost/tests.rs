@@ -166,3 +166,97 @@ fn reconcile_counts_without_pricing_when_no_closure_is_given() {
         "no pricing closure means nothing gets priced"
     );
 }
+
+#[test]
+fn reconcile_tallies_ranges_bytes_and_datagrams_for_a_single_round() {
+    let mut a = FingerprintTreeMap::<u64, u64>::new();
+    a.insert(1, 1);
+    let b = FingerprintTreeMap::<u64, u64>::new();
+
+    let cost = reconcile(&a, &b, &AlwaysEnumerate, None);
+
+    assert_eq!(cost.messages, 1);
+    assert_eq!(cost.ranges, 1, "one range advertised in the single round");
+    assert!(
+        cost.refinement_bytes > 0,
+        "the advertised range must encode to some nonzero size"
+    );
+    assert_eq!(cost.datagrams, 1);
+    assert_eq!(cost.fragments, 1);
+    assert_eq!(cost.enumerations, 1);
+}
+
+#[test]
+fn counting_size_forwards_to_inner_store() {
+    let mut map = FingerprintTreeMap::<u64, u64>::new();
+    map.insert(1, 1);
+    map.insert(2, 2);
+    let counting = Counting::new(&map);
+    assert_eq!(counting.size(), 2);
+}
+
+#[test]
+fn counting_enumerate_forwards_to_inner_store() {
+    let mut map = FingerprintTreeMap::<u64, u64>::new();
+    map.insert(1, 10);
+    map.insert(2, 20);
+    let counting = Counting::new(&map);
+    let items: Vec<(&u64, &u64)> = counting.enumerate(..).collect();
+    assert_eq!(items, vec![(&1, &10), (&2, &20)]);
+}
+
+#[test]
+#[should_panic(expected = "the reconciliation driver never mutates the store")]
+fn counting_insert_is_unreachable() {
+    let map = FingerprintTreeMap::<u64, u64>::new();
+    let mut counting = Counting::new(&map);
+    let _ = counting.insert(1, 1);
+}
+
+#[test]
+#[should_panic(expected = "the reconciliation driver never mutates the store")]
+fn counting_delete_is_unreachable() {
+    let map = FingerprintTreeMap::<u64, u64>::new();
+    let mut counting = Counting::new(&map);
+    let _ = counting.delete(&1);
+}
+
+#[test]
+fn update_largest_message_replaces_on_strictly_greater_len() {
+    let (mut largest, mut largest_bytes) = (2, 20);
+    update_largest_message(&mut largest, &mut largest_bytes, 3, 30);
+    assert_eq!((largest, largest_bytes), (3, 30));
+}
+
+#[test]
+fn update_largest_message_leaves_a_tie_untouched() {
+    let (mut largest, mut largest_bytes) = (2, 20);
+    update_largest_message(&mut largest, &mut largest_bytes, 2, 999);
+    assert_eq!(
+        (largest, largest_bytes),
+        (2, 20),
+        "a tie must not overwrite the first-seen bytes"
+    );
+}
+
+#[test]
+fn update_largest_message_leaves_a_smaller_len_untouched() {
+    let (mut largest, mut largest_bytes) = (2, 20);
+    update_largest_message(&mut largest, &mut largest_bytes, 1, 999);
+    assert_eq!((largest, largest_bytes), (2, 20));
+}
+
+#[test]
+fn needs_enumerated_bytes_init_true_only_on_first_nonempty_payload() {
+    assert!(needs_enumerated_bytes_init(&[], &[10, 20]));
+}
+
+#[test]
+fn needs_enumerated_bytes_init_false_once_already_sized() {
+    assert!(!needs_enumerated_bytes_init(&[10, 20], &[5, 5]));
+}
+
+#[test]
+fn needs_enumerated_bytes_init_false_for_an_empty_payload() {
+    assert!(!needs_enumerated_bytes_init(&[], &[]));
+}

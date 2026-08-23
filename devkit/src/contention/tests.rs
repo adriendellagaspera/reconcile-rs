@@ -121,3 +121,50 @@ fn run_sweep_calls_on_trial_once_per_retained_trial() {
     );
     assert_eq!(seen.len(), counts.len() * trials);
 }
+
+#[test]
+fn run_sweep_alternates_a_first_across_warmup_trials() {
+    let order = RefCell::new(Vec::new());
+    run_sweep(
+        &[1],
+        0,
+        2,
+        0,
+        |_n| {
+            order.borrow_mut().push('a');
+            1.0
+        },
+        |_n| {
+            order.borrow_mut().push('b');
+            1.0
+        },
+        None,
+    );
+    assert_eq!(
+        *order.borrow(),
+        vec!['a', 'b', 'b', 'a'],
+        "warmup trial 0 (even) runs a first, trial 1 (odd) runs b first"
+    );
+}
+
+#[test]
+fn run_sweep_marks_alternating_trials_as_a_first_by_parity() {
+    let mut a_first_count = 0;
+    let mut on_trial = |_n, _a, _b, a_first: bool| {
+        if a_first {
+            a_first_count += 1;
+        }
+    };
+    run_sweep(&[1], 5, 0, 0, |_n| 1.0, |_n| 1.0, Some(&mut on_trial));
+    assert_eq!(
+        a_first_count, 3,
+        "trials 0, 2, 4 (even) are a_first, out of 5 trials"
+    );
+}
+
+#[test]
+fn run_sweep_computes_delta_ns_per_op_as_the_reciprocal_difference() {
+    let points = run_sweep(&[1], 1, 0, 0, |_n| 2.0, |_n| 4.0, None);
+    let expected = 1e9 * (1.0 / 2.0 - 1.0 / 4.0);
+    assert_eq!(points[0].delta_ns_per_op, vec![expected]);
+}

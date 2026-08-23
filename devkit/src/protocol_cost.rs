@@ -229,10 +229,12 @@ pub fn reconcile<S: Rsos<u64>>(
         cost.refinement_bytes += round_bytes;
         cost.datagrams += round_bytes.div_ceil(MAX_DATAGRAM_PAYLOAD).max(1);
         cost.fragments += round_bytes.div_ceil(MTU_FRAGMENT_PAYLOAD).max(1);
-        if active.len() > cost.largest_message {
-            cost.largest_message = active.len();
-            cost.largest_message_bytes = round_bytes;
-        }
+        update_largest_message(
+            &mut cost.largest_message,
+            &mut cost.largest_message_bytes,
+            active.len(),
+            round_bytes,
+        );
 
         let mut children = Vec::new();
         let mut enumerations: Vec<EnumerationRange<u64>> = Vec::new();
@@ -246,7 +248,7 @@ pub fn reconcile<S: Rsos<u64>>(
                 cost.enumerated_elements += 1;
                 if let Some(price) = price_element.as_deref_mut() {
                     let bytes = price(key);
-                    if cost.enumerated_bytes.is_empty() && !bytes.is_empty() {
+                    if needs_enumerated_bytes_init(&cost.enumerated_bytes, &bytes) {
                         cost.enumerated_bytes = vec![0; bytes.len()];
                     }
                     for (total, element) in cost.enumerated_bytes.iter_mut().zip(bytes) {
@@ -264,6 +266,27 @@ pub fn reconcile<S: Rsos<u64>>(
         );
     }
     cost
+}
+
+/// Track the largest single round seen so far, in ranges and the bytes those ranges encoded to. A
+/// strictly larger round replaces the previous largest; a tie leaves it (and its bytes) alone.
+fn update_largest_message(
+    largest_message: &mut usize,
+    largest_message_bytes: &mut usize,
+    len: usize,
+    bytes: usize,
+) {
+    if len > *largest_message {
+        *largest_message = len;
+        *largest_message_bytes = bytes;
+    }
+}
+
+/// Whether `enumerated_bytes` needs sizing for its first payload: true only when it is still empty
+/// *and* this call actually priced something. An empty `bytes` from a later, differently-shaped
+/// call must never re-trigger this and wipe out totals already accumulated.
+fn needs_enumerated_bytes_init(enumerated_bytes: &[usize], bytes: &[usize]) -> bool {
+    enumerated_bytes.is_empty() && !bytes.is_empty()
 }
 
 #[cfg(test)]
