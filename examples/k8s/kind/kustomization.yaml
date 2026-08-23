@@ -19,9 +19,9 @@ resources:
 
 # Point every reference to the production image at the locally-built, kind-loaded image instead.
 # kustomize matches on the name part (before the tag), so this rewrites
-# `ghcr.io/akvize/reconcile:latest` -> `reconcile:kind`.
+# `ghcr.io/adriendellagaspera/reconcile:latest` -> `reconcile:kind`.
 images:
-  - name: ghcr.io/akvize/reconcile
+  - name: ghcr.io/adriendellagaspera/reconcile
     newName: reconcile
     newTag: kind
 

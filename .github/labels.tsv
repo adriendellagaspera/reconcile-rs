@@ -54,8 +54,8 @@
 #            equivalent is `S-parked` with a wake-up trigger written in the body: an issue is
 #            parked *by decision*, never by neglect.
 #
-# GitHub's native Issue Type/Priority/Effort/Start date/Target date fields — the akvize org has
-# all five enabled — are the same kind of second order and are deliberately not used here. Type
+# GitHub's native Issue Type/Priority/Effort/Start date/Target date fields — available here —
+# are the same kind of second order and are deliberately not used here. Type
 # is a strict subset of C- (Bug/Feature/Task/Epic vs. nine values) and Priority/Effort duplicate
 # what a milestone plus S- already answer, with the same "arbitrates by hand" failure this
 # section states for P-/E-/T-. Unlike a label, none of the five is covered by

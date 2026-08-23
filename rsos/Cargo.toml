@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 # `reconcile`'s regardless (#308, AGENTS.md §11): it is re-exported wholesale
 # (`pub use rsos::{Aggregate, Fingerprint, FingerprintTreeMap, Rsos, …}`).
 description = "A Range-Summarizable Order-Statistics Store (RSOS): the Rsos<K> trait and its FingerprintTreeMap<K, V> realization. Re-exported by `reconcile`, whose 1.0 stability line it shares."
-repository = "https://github.com/Akvize/reconcile-rs"
+repository = "https://github.com/adriendellagaspera/reconcile-rs"
 readme = "README.md"
 keywords = ["rsos", "fingerprint", "btree", "range", "blake3"]
 categories = ["data-structures"]

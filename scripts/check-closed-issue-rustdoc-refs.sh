@@ -29,7 +29,7 @@ cd "$SCRIPT_DIR/.."
 # shellcheck source=scripts/lib-rustdoc-issue-refs.sh
 source "$SCRIPT_DIR/lib-rustdoc-issue-refs.sh"
 
-REPO="${GITHUB_REPOSITORY:-Akvize/reconcile-rs}"
+REPO="${GITHUB_REPOSITORY:-adriendellagaspera/reconcile-rs}"
 
 command -v gh >/dev/null || { echo "check-closed-issue-rustdoc-refs: gh is required" >&2; exit 1; }
 

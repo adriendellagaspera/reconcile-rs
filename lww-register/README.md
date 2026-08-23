@@ -17,7 +17,7 @@
 > [issue #206](https://github.com/Akvize/reconcile-rs/issues/206).
 
 The state-based last-write-wins register domain of
-[`reconcile-rs`](https://github.com/Akvize/reconcile-rs): `Entry`/`State` (the register cell, its
+[`reconcile-rs`](https://github.com/adriendellagaspera/reconcile-rs): `Entry`/`State` (the register cell, its
 tombstone-aware state and the LWW merge rule), `Timestamp` plus the `Clock` port and the hybrid
 logical clock ordering arithmetic, the `Persistence` port with `PersistedState` and
 `InMemoryPersistence`, and the `Key`/`Value` bound bundles.

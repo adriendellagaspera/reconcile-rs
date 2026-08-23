@@ -23,7 +23,7 @@ spec:
       containers:
         - name: reconcile
           # Replace with your built image (see ../Dockerfile).
-          image: ghcr.io/akvize/reconcile:latest
+          image: ghcr.io/adriendellagaspera/reconcile:latest
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:

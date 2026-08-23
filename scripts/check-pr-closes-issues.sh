@@ -31,7 +31,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib-closing-refs.sh
 source "$SCRIPT_DIR/lib-closing-refs.sh"
 
-REPO="${GITHUB_REPOSITORY:-Akvize/reconcile-rs}"
+REPO="${GITHUB_REPOSITORY:-adriendellagaspera/reconcile-rs}"
 BODY="${PR_BODY:-}"
 
 mapfile -t all_refs < <(grep -oE '#[0-9]+' <<<"$BODY" | tr -d '#' | sort -u)

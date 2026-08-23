@@ -16,7 +16,7 @@ license = "MIT OR Apache-2.0"
 # carries `reconcile`'s 1.0 stability guarantee, which "no stability guarantee" used to deny. See
 # AGENTS.md §11 and `src/lib.rs`.
 description = "Implementation detail of the `reconcile` crate — depend on `reconcile` instead; re-exported types carry its 1.0 stability line. The gossip adapter layer: UDP transport, wire encoding, datagram authentication, replay protection and peer discovery."
-repository = "https://github.com/Akvize/reconcile-rs"
+repository = "https://github.com/adriendellagaspera/reconcile-rs"
 readme = "README.md"
 keywords = ["gossip", "udp", "reconcile", "internal"]
 categories = ["network-programming"]

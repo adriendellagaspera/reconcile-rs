@@ -10,13 +10,13 @@
 [crates-badge]: https://img.shields.io/crates/v/reconcile.svg
 [crates-url]: https://crates.io/crates/reconcile
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
-[mit-url]: https://github.com/Akvize/reconcile-rs/blob/main/LICENSE-MIT
+[mit-url]: https://github.com/adriendellagaspera/reconcile-rs/blob/main/LICENSE-MIT
 [apache-badge]: https://img.shields.io/badge/license-APACHE-blue.svg
-[apache-url]: https://github.com/Akvize/reconcile-rs/blob/main/LICENSE-APACHE
-[actions-badge]: https://github.com/Akvize/reconcile-rs/actions/workflows/main.yml/badge.svg
-[actions-url]: https://github.com/Akvize/reconcile-rs/actions/workflows/main.yml
-[codecov-badge]: https://codecov.io/gh/Akvize/reconcile-rs/branch/main/graph/badge.svg
-[codecov-url]: https://codecov.io/gh/Akvize/reconcile-rs
+[apache-url]: https://github.com/adriendellagaspera/reconcile-rs/blob/main/LICENSE-APACHE
+[actions-badge]: https://github.com/adriendellagaspera/reconcile-rs/actions/workflows/main.yml/badge.svg
+[actions-url]: https://github.com/adriendellagaspera/reconcile-rs/actions/workflows/main.yml
+[codecov-badge]: https://codecov.io/gh/adriendellagaspera/reconcile-rs/branch/main/graph/badge.svg
+[codecov-url]: https://codecov.io/gh/adriendellagaspera/reconcile-rs
 [docs-badge]: https://docs.rs/reconcile/badge.svg
 [docs-url]: https://docs.rs/reconcile/latest/reconcile/
 
@@ -677,7 +677,7 @@ faults into the lines a change touches and requires the suite to catch them (CI:
 
 Code coverage is measured on every CI run with
 [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) and reported to
-[Codecov](https://codecov.io/gh/Akvize/reconcile-rs) (see the coverage badge at
+[Codecov](https://codecov.io/gh/adriendellagaspera/reconcile-rs) (see the coverage badge at
 the top). Two tiers, both on overall project coverage (`codecov.yml`, AGENTS.md §7): a
 non-blocking `warning` status below 100%, and a blocking `minimum` status below 90%. Per-PR patch
 coverage stays informational — a coverage number, delta or absolute, isn't trusted to gate an
