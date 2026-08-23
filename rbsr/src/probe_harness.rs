@@ -186,6 +186,12 @@ fn state_hash(active: &[RangeAggregate<u64>]) -> u64 {
     hasher.finish()
 }
 
+/// Whether a previously-seen `state` is exactly the current `active` family — the confirmation
+/// [`state_hash`]'s comment promises, so a hash collision cannot manufacture a false stall.
+fn state_recurred(state: &[RangeAggregate<u64>], active: &[RangeAggregate<u64>]) -> bool {
+    state == active
+}
+
 /// Reconcile `a` against `b` under `policy`, alternating which peer answers, until the active
 /// family empties, a state recurs, or [`MAX_ROUNDS`] rounds pass.
 pub fn drive<P: RefinementPolicy>(a: &NarrowStore, b: &NarrowStore, policy: &P) -> Drive<u64> {
@@ -220,7 +226,10 @@ pub fn drive_pair<A: RefinementPolicy, B: RefinementPolicy>(
         }
         let key = (responder_is_b, state_hash(&active));
         let bucket = seen.entry(key).or_default();
-        if let Some((first_round, _)) = bucket.iter().find(|(_, state)| *state == active) {
+        if let Some((first_round, _)) = bucket
+            .iter()
+            .find(|(_, state)| state_recurred(state, &active))
+        {
             break Termination::Stalled {
                 cycle_length: cycle_length(rounds, *first_round),
             };

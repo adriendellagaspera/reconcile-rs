@@ -10,6 +10,7 @@ use std::collections::{HashSet, VecDeque};
 use std::ops::Bound;
 
 use rand::SeedableRng;
+use rsos::{Aggregate, Fingerprint};
 
 use super::*;
 use crate::FixedFanOut;
@@ -120,4 +121,46 @@ fn round_comparisons_sums_every_outcome() {
 fn cycle_length_is_the_gap_between_the_two_occurrences() {
     assert_eq!(cycle_length(5, 2), 3);
     assert_eq!(cycle_length(1, 0), 1);
+}
+
+fn segment(end: u64, size: usize, limb: u64) -> RangeAggregate<u64> {
+    RangeAggregate::new(
+        None,
+        Some(end),
+        Aggregate::new(size, Fingerprint([limb, 0, 0, 0])),
+    )
+}
+
+#[test]
+fn state_hash_distinguishes_states_that_differ() {
+    let a = [segment(10, 3, 1)];
+    let b = [segment(10, 3, 2)]; // same bounds/size, different fingerprint limb
+    let c = [segment(10, 3, 1), segment(20, 1, 5)]; // an extra segment
+    assert_ne!(state_hash(&a), state_hash(&b));
+    assert_ne!(state_hash(&a), state_hash(&c));
+    assert_eq!(
+        state_hash(&a),
+        state_hash(&[segment(10, 3, 1)]),
+        "must be deterministic"
+    );
+}
+
+#[test]
+fn state_recurred_is_exact_equality() {
+    let a = vec![segment(10, 3, 1)];
+    let same = vec![segment(10, 3, 1)];
+    let different = vec![segment(10, 3, 2)];
+    assert!(state_recurred(&a, &same));
+    assert!(!state_recurred(&a, &different));
+}
+
+#[test]
+fn drive_reports_the_rounds_it_ran() {
+    let a = NarrowStore::new(16, vec![1, 2, 3, 4, 5]);
+    let b = NarrowStore::new(16, vec![1, 2, 3]);
+    let result = drive(&a, &b, &FixedFanOut::default());
+    assert!(
+        result.rounds >= 1,
+        "a genuine difference must take at least one round to settle"
+    );
 }
