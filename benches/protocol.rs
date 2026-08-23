@@ -61,22 +61,18 @@
 //! Reproduction and interpretation: `benches/README.md`. Not run in CI (only compile-checked); run
 //! locally with `cargo bench --bench protocol`.
 
-use std::cell::Cell;
 use std::hint::black_box;
-use std::ops::{Add, RangeBounds};
 
 use criterion::{
     criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion, PlotConfiguration,
 };
 use serde::Serialize;
 
+use devkit::protocol_cost::{reconcile, Cost, Counting};
 use lww_register::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
 use lww_register::Entry;
-use rbsr::{
-    initial_ranges, protocol_round_with_policy, EnumerateBelowThreshold, EnumerationRange, FanOut,
-    FixedFanOut, RangeAggregate, RefinementPolicy, SqrtFanOut,
-};
-use rsos::{Aggregate, FingerprintTreeMap, Rsos};
+use rbsr::{EnumerateBelowThreshold, FanOut, FixedFanOut, RefinementPolicy, SqrtFanOut};
+use rsos::{FingerprintTreeMap, Rsos};
 
 /// Store sizes swept by the cost report (log scale). Capped at 10⁶: the point is the growth rate of
 /// the exchanged volume, and two 10⁷-entry trees would dominate the benchmark's own runtime with
@@ -88,14 +84,6 @@ const SIZES: &[usize] = &[1_000, 10_000, 100_000, 1_000_000];
 /// "Value-size ceiling"). The axis exists because a policy's two halves are priced against each
 /// other *through* it: refinement bytes do not move with `V`, an enumerated element does.
 const VALUE_SIZES: [usize; 4] = [8, 64, 512, 4096];
-
-/// The payload one datagram can carry: the IPv4 ceiling, the most optimistic split point — a
-/// keyed deployment subtracts the authenticator's overhead.
-const MAX_DATAGRAM_PAYLOAD: usize = 65_507;
-
-/// The payload one IP fragment carries on a 1500-byte-MTU path. Approximate on purpose: losing
-/// any fragment loses the datagram, so only the order of magnitude matters.
-const MTU_FRAGMENT_PAYLOAD: usize = 1_472;
 
 /// When the priced writes happened, in milliseconds since the Unix epoch (2026-08-14). A stamp's
 /// two `u64`s are varints, so a zeroed clock would encode in two bytes where a real one takes
@@ -268,242 +256,11 @@ fn element_bytes(key: u64, scratch: &mut Vec<u8>) -> [usize; VALUE_SIZES.len()] 
     })
 }
 
-/// The RSOS queries a reconciliation performed — the paper's local-cost model `T_loc` in counts
-/// rather than seconds, and the half of a policy's cost that never appears on the wire.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-struct Queries {
-    aggregate: usize,
-    rank: usize,
-    select: usize,
-}
-
-impl Add for Queries {
-    type Output = Queries;
-
-    fn add(self, other: Queries) -> Queries {
-        Queries {
-            aggregate: self.aggregate + other.aggregate,
-            rank: self.rank + other.rank,
-            select: self.select + other.select,
-        }
-    }
-}
-
-/// A read-only RSOS tallying the three query kinds the driver performs.
-///
-/// Implements `rsos::Rsos`, not `rbsr::RsosView`: the blanket impl makes a second `RsosView` impl
-/// a coherence conflict.
-struct Counting<'a, S> {
-    inner: &'a S,
-    aggregate: Cell<usize>,
-    rank: Cell<usize>,
-    select: Cell<usize>,
-}
-
-impl<'a, S> Counting<'a, S> {
-    fn new(inner: &'a S) -> Counting<'a, S> {
-        Counting {
-            inner,
-            aggregate: Cell::new(0),
-            rank: Cell::new(0),
-            select: Cell::new(0),
-        }
-    }
-
-    fn queries(&self) -> Queries {
-        Queries {
-            aggregate: self.aggregate.get(),
-            rank: self.rank.get(),
-            select: self.select.get(),
-        }
-    }
-}
-
-impl<K, S: Rsos<K>> Rsos<K> for Counting<'_, S> {
-    type Value = S::Value;
-
-    fn size(&self) -> usize {
-        self.inner.size()
-    }
-
-    fn aggregate<R: RangeBounds<K>>(&self, range: R) -> Aggregate {
-        self.aggregate.set(self.aggregate.get() + 1);
-        self.inner.aggregate(range)
-    }
-
-    fn rank(&self, z: &K) -> usize {
-        self.rank.set(self.rank.get() + 1);
-        self.inner.rank(z)
-    }
-
-    fn select(&self, r: usize) -> &K {
-        self.select.set(self.select.get() + 1);
-        self.inner.select(r)
-    }
-
-    fn enumerate<'b, R: RangeBounds<K> + 'b>(
-        &'b self,
-        range: R,
-    ) -> impl Iterator<Item = (&'b K, &'b Self::Value)> + 'b
-    where
-        K: Ord + 'b,
-        Self::Value: 'b,
-    {
-        self.inner.enumerate(range)
-    }
-
-    fn insert(&mut self, _key: K, _value: Self::Value) -> Option<Self::Value> {
-        // The protocol driver reads and never writes (`RsosView` does not even name these two).
-        // They exist only because `Rsos` is the seven-operation contract; wrapping a `&S` could not
-        // honour them anyway.
-        unreachable!("the reconciliation driver never mutates the store")
-    }
-
-    fn delete(&mut self, _key: &K) -> Option<Self::Value> {
-        unreachable!("the reconciliation driver never mutates the store")
-    }
-}
-
-/// What one full reconciliation cost, counted rather than timed.
-#[derive(Debug, Default)]
-struct Cost {
-    /// One-way protocol messages, i.e. how many times a batch of active ranges crossed the wire.
-    /// Halve it for a round-trip count. This is the column an RTT multiplies, and the one no byte
-    /// total absorbs.
-    messages: usize,
-    /// Total `RangeAggregate`s advertised across every message.
-    ranges: usize,
-    /// Total bincode-encoded bytes of those aggregates — the same encoder the real transport uses.
-    /// The refinement half of [`total_bytes`](Cost::total_bytes); it does not move with the payload
-    /// size.
-    refinement_bytes: usize,
-    /// Datagrams the refinement batches become: `send_messages_paced` splits a batch at
-    /// `BUFFER_SIZE - authenticator overhead`, so an oversized round costs extra datagrams rather
-    /// than failing. Values travel on their own paced path, so they are not counted here.
-    datagrams: usize,
-    /// IP fragments those datagrams become on a 1500-byte-MTU path. Losing any one of them loses
-    /// the whole datagram, so this is the number that decides how a round survives a lossy link.
-    fragments: usize,
-    /// The largest single refinement message, in ranges, and the bytes those ranges encode to.
-    largest_message: usize,
-    largest_message_bytes: usize,
-    /// Ranges handed back for explicit enumeration (the paper's IDLIST outcome), and the elements
-    /// those ranges actually contain — of which all but `d` are elements the peer already holds.
-    enumerations: usize,
-    enumerated_elements: usize,
-    /// What those elements cost on the wire, one entry per [`VALUE_SIZES`] payload size: the value
-    /// half of [`total_bytes`](Cost::total_bytes), and the only half `V` moves.
-    enumerated_bytes: [usize; VALUE_SIZES.len()],
-    /// Local RSOS queries, summed over both peers.
-    queries: Queries,
-}
-
-impl Cost {
-    /// Everything this reconciliation put on the wire, at each [`VALUE_SIZES`] payload size: the
-    /// refinement traffic plus the values the IDLIST outcomes ship. One unit, so policies compare.
-    ///
-    /// Meaningful only for a [`Pricing::Elements`] drive; a [`Pricing::None`] one leaves the value
-    /// half at zero.
-    fn total_bytes(&self) -> [usize; VALUE_SIZES.len()] {
-        self.enumerated_bytes
-            .map(|bytes| bytes + self.refinement_bytes)
-    }
-
-    /// What this reconciliation *decided*, as opposed to what those decisions encoded to — what
-    /// [`payload_size_does_not_move_the_trace`] compares across payload types.
-    fn decisions(&self) -> Decisions {
-        Decisions {
-            messages: self.messages,
-            ranges: self.ranges,
-            enumerations: self.enumerations,
-            enumerated_elements: self.enumerated_elements,
-            queries: self.queries,
-        }
-    }
-}
-
-/// The payload-independent half of a [`Cost`]: every outcome the driver reached, none of the bytes
-/// they encoded to — `datagrams`/`fragments` sit on the byte side, being ceilings over
-/// [`Cost::refinement_bytes`].
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Decisions {
-    messages: usize,
-    ranges: usize,
-    enumerations: usize,
-    enumerated_elements: usize,
-    queries: Queries,
-}
-
-/// Whether a drive prices the elements it enumerates.
-///
-/// The printed tables do; the timed drives do not — encoding a 4 KB value per enumerated element
-/// would put this harness's own encoder inside the paper's `T_loc`, which is a measure of local
-/// *store* work.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Pricing {
-    /// Fill [`Cost::enumerated_bytes`] by encoding every element the transport would ship.
-    Elements,
-    /// Count elements, price none.
-    None,
-}
-
-/// Drive both peers to convergence under `policy`, counting what crosses the wire. Every
-/// mismatching range is resolved or strictly refined, so the loop terminates; the guard is a bug
-/// net.
-///
-/// Both peers run the same policy — they need not, but a mixed pair would measure neither.
-fn reconcile<S: Rsos<u64>>(a: &S, b: &S, policy: &dyn RefinementPolicy, pricing: Pricing) -> Cost {
-    let mut cost = Cost::default();
-    let mut active: Vec<RangeAggregate<u64>> = initial_ranges(a);
-    // `initial_ranges` came from `a`, so `b` answers first, and the responder alternates from there.
-    let mut responder_is_b = true;
-    let mut encoded = Vec::new();
-    let mut scratch = Vec::new();
-
-    while !active.is_empty() {
-        encoded.clear();
-        for segment in &active {
-            gossip::bincode::encode(segment, &mut encoded)
-                .expect("encoding a RangeAggregate into an in-memory buffer cannot fail");
-        }
-        cost.messages += 1;
-        cost.ranges += active.len();
-        cost.refinement_bytes += encoded.len();
-        cost.datagrams += encoded.len().div_ceil(MAX_DATAGRAM_PAYLOAD).max(1);
-        cost.fragments += encoded.len().div_ceil(MTU_FRAGMENT_PAYLOAD).max(1);
-        if active.len() > cost.largest_message {
-            cost.largest_message = active.len();
-            cost.largest_message_bytes = encoded.len();
-        }
-
-        let mut children = Vec::new();
-        let mut enumerations: Vec<EnumerationRange<u64>> = Vec::new();
-        let responder = if responder_is_b { b } else { a };
-        protocol_round_with_policy(responder, policy, active, &mut children, &mut enumerations);
-        cost.enumerations += enumerations.len();
-        // What an IDLIST actually ships. `Enumerate(l, u)` is the paper's own operation, so this is
-        // a real cost of the policy, not an artifact of how the caller drives it.
-        for range in enumerations {
-            for (&key, _) in responder.enumerate(range) {
-                cost.enumerated_elements += 1;
-                if pricing == Pricing::Elements {
-                    let bytes = element_bytes(key, &mut scratch);
-                    for (total, element) in cost.enumerated_bytes.iter_mut().zip(bytes) {
-                        *total += element;
-                    }
-                }
-            }
-        }
-
-        active = children;
-        responder_is_b = !responder_is_b;
-        assert!(
-            cost.messages < 100_000,
-            "reconciliation failed to converge — the refinement is not shrinking"
-        );
-    }
-    cost
-}
+// The `Queries`/`Counting`/`Cost`/`Decisions` types and the `reconcile` driver itself moved to
+// `devkit::protocol_cost` (#524): generic over any `rsos::Rsos` backend and any
+// `rbsr::RefinementPolicy`, with no dependency on this crate's own wire format. `element_bytes`
+// is what wires this repository's dated-cell payload into it, via `reconcile`'s `price_element`
+// closure — see `counted_reconcile`.
 
 /// The premise of the whole value-size axis, checked instead of asserted: one drive can price every
 /// payload size because no decision reads the payload.
@@ -882,7 +639,9 @@ fn breakdown(cost: &Cost) -> String {
 /// One priced reconciliation, with both peers' local query counts folded in: the table path.
 fn counted_reconcile<S: Rsos<u64>>(a: &S, b: &S, policy: &dyn RefinementPolicy) -> Cost {
     let (counted_a, counted_b) = (Counting::new(a), Counting::new(b));
-    let mut cost = reconcile(&counted_a, &counted_b, policy, Pricing::Elements);
+    let mut scratch = Vec::new();
+    let mut price = |key: u64| element_bytes(key, &mut scratch).to_vec();
+    let mut cost = reconcile(&counted_a, &counted_b, policy, Some(&mut price));
     cost.queries = counted_a.queries() + counted_b.queries();
     cost
 }
@@ -922,14 +681,8 @@ fn reconciliation_cost(c: &mut Criterion) {
         group.sample_size(10.max(1_000_000 / n).min(100));
         for (name, policy) in policies() {
             group.bench_with_input(BenchmarkId::new(name, n), &n, |bencher, _| {
-                bencher.iter(|| {
-                    reconcile(
-                        black_box(&full),
-                        black_box(&holed),
-                        policy.as_ref(),
-                        Pricing::None,
-                    )
-                });
+                bencher
+                    .iter(|| reconcile(black_box(&full), black_box(&holed), policy.as_ref(), None));
             });
         }
     }
@@ -976,7 +729,7 @@ fn fan_out_sweep(c: &mut Criterion) {
     for &b in FAN_OUTS {
         let policy = FixedFanOut::new(FanOut::new(b));
         group.bench_with_input(BenchmarkId::from_parameter(b), &b, |bencher, _| {
-            bencher.iter(|| reconcile(black_box(&full), black_box(&holed), &policy, Pricing::None));
+            bencher.iter(|| reconcile(black_box(&full), black_box(&holed), &policy, None));
         });
     }
     group.finish();
@@ -1060,7 +813,7 @@ fn threshold_sweep(c: &mut Criterion) {
     for &t in THRESHOLDS {
         let policy = EnumerateBelowThreshold::new(t, FanOut::NEGENTROPY);
         group.bench_with_input(BenchmarkId::from_parameter(t), &t, |bencher, _| {
-            bencher.iter(|| reconcile(black_box(&full), black_box(&holed), &policy, Pricing::None));
+            bencher.iter(|| reconcile(black_box(&full), black_box(&holed), &policy, None));
         });
     }
     group.finish();

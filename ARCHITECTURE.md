@@ -46,6 +46,7 @@ flowchart LR
     rbsr["rbsr\nprotocol_round, initial_ranges,\nRsosView, RefinementPolicy"]
     lww["lww-register\nEntry/State, Timestamp,\nClock + Persistence ports"]
     gossip["gossip\nTransport port, wire encoding,\nauth, replay, Discovery port"]
+    devkit["devkit\nstats, protocol_cost driver,\ncontention harness (dev-only)"]
     reconcile["reconcile (facade)\nReplica, ReplicatedMap,\nReadReplicaMap, HlcClock, FileSnapshot"]
 
     rsos --> rbsr
@@ -53,14 +54,21 @@ flowchart LR
     rbsr --> reconcile
     lww --> reconcile
     gossip --> reconcile
+    rsos --> devkit
+    rbsr --> devkit
+    devkit --> reconcile
 
     style gossip fill:#00000000
     style lww fill:#00000000
+    style devkit fill:#00000000
 ```
 
 `gossip` deliberately does **not** depend on `lww-register`: nothing in transport/auth/replay/
 discovery knows what an `Entry`, `Timestamp` or `Key` is — a datagram is a byte slice, a peer is an
 address. `reconcile` is the one place the two meet.
+
+`devkit --> reconcile` is a **dev-dependency** edge only: `benches/protocol.rs`/`contention.rs`
+consume it, the `reconcile` library itself never does — see §2.1.
 
 | Crate | Holds | Kind |
 |---|---|---|
@@ -68,6 +76,7 @@ address. `reconcile` is the one place the two meet.
 | `rbsr` | `protocol.rs` (the driver), `policy.rs` (the refinement-policy seam), `rsos_view.rs` | depends on `rsos` only |
 | `lww-register` | `entry.rs`, `bounds.rs`, `clock.rs` (`Hlc`/`Timestamp`/`Clock`), `persistence.rs` (`Persistence`/`PersistedState`) | **domain**, infrastructure-free |
 | `gossip` | `transport.rs`, `bincode.rs`, `auth.rs`, `replay.rs`, `discovery.rs`, `gen_ip.rs` | infrastructure; no `lww-register` dep |
+| `devkit` | `stats.rs` (bootstrap statistics), `protocol_cost.rs` (`Cost`/`Counting`/`reconcile` driver), `contention.rs` (N-writer harness) | dev/bench-only, never published (#524); depends on `rsos`/`rbsr` only |
 | `reconcile` | `replica.rs`, `replicated_map.rs`, `read_replica_map.rs`, `clock.rs` (`HlcClock` adapter), `snapshot.rs` (`FileSnapshot`), `observability.rs`, `prometheus.rs`, `timeout_wheel.rs` | facade; depends on all four, re-exports their public types under `reconcile::*` |
 
 `reconcile` keeps re-export shims (`src/persistence.rs`, `src/clock.rs`, `pub use` in `src/lib.rs`)
@@ -84,7 +93,9 @@ socket, wire codec or wall clock can be imported there; the build fails rather t
 rotting. `rsos` and `rbsr` carry the same guarantee via their own minimal manifests. This is the
 interior of the hexagon, and it exists today, gated by `./scripts/check-domain-purity.sh`
 (mechanics: AGENTS.md §9). `gossip` and `reconcile` are adapters and carry infrastructure
-dependencies by design.
+dependencies by design. `devkit` is neither domain nor adapter — a dev/bench-only sibling the check
+does not cover at all (not in its manifest list, not shipped, #524) — the same exemption `gossip`
+and `reconcile` already have, for the same reason: nothing here is claiming purity for it.
 
 ---
 

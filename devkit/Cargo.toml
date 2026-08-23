@@ -1,0 +1,28 @@
+[package]
+name = "devkit"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "Internal bench/measurement infrastructure shared across this workspace's own benches. Never published."
+publish = false
+
+[dependencies]
+# The reconciliation-cost driver (`protocol_cost.rs`) drives both crates directly, the same two a
+# downstream consumer would use without the `reconcile` facade — no dependency on `lww-register`/
+# `gossip`/`reconcile` itself, so this crate stays usable by a caller pricing a different wire
+# format entirely.
+#
+# `version` alongside `path` even though this crate itself is never published: `cargo package
+# --workspace` verifies every workspace member's manifest, this one included, and a path
+# dependency on a real, published crate needs a resolvable version for that (AGENTS.md §11) —
+# `devkit`'s own `publish = false` has no bearing on what *its* dependencies must declare.
+rbsr = { version = "0.1.1", path = "../rbsr" }
+rsos = { version = "0.4.0", path = "../rsos" }
+# `protocol_cost.rs` only ever needs a `RangeAggregate`'s *serialized length*, via
+# `bincode::Options::serialized_size` (`DefaultOptions`, matching `gossip::bincode`'s own encoder
+# config) — depending on `bincode` directly instead of `gossip` avoids pulling in an adapter crate
+# for one length computation, and keeps this crate usable by a caller with no transport at all.
+bincode = "1.3.3"
+# `contention.rs`'s trial schedule shuffle and `stats.rs`'s bootstrap resampling.
+rand = "0.8.5"

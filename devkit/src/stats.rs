@@ -21,7 +21,7 @@
 //!
 //! # Determinism
 //!
-//! Resampling is seeded from [`SEED`], never from entropy: the same trial data must yield the same
+//! Resampling is seeded from `SEED`, never from entropy: the same trial data must yield the same
 //! interval, or a published figure cannot be checked against a re-run of the analysis. The
 //! *measurement* is non-deterministic (that is what the intervals are for); the *statistics over
 //! it* are not.
@@ -47,7 +47,7 @@ pub struct Summary {
     /// descheduled trial drags the mean and leaves the median where it was — so a gap between the
     /// two is itself a reader's signal about the sample.
     pub median: f64,
-    /// Lower bound of the [`CONFIDENCE`] percentile-bootstrap interval on the mean.
+    /// Lower bound of the `CONFIDENCE` percentile-bootstrap interval on the mean.
     pub lo: f64,
     /// Upper bound of the same interval.
     pub hi: f64,
@@ -140,7 +140,10 @@ pub fn diff_ci(a: &[f64], b: &[f64]) -> Summary {
     }
 }
 
-/// Whether an interval excludes zero — the difference is significant at [`CONFIDENCE`].
+/// Whether an interval excludes zero — the difference is significant at `CONFIDENCE`.
 pub fn excludes_zero(summary: &Summary) -> bool {
     summary.lo > 0.0 || summary.hi < 0.0
 }
+
+#[cfg(test)]
+mod tests;

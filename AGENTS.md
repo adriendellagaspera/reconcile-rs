@@ -12,9 +12,10 @@ unbounded either.
 
 ## 1. Map
 
-Five-crate Cargo workspace, dependency order `rsos → rbsr → lww-register`, `gossip` (independent
-sibling) `→ reconcile` (facade). See [`ARCHITECTURE.md`](./ARCHITECTURE.md) §2 for the module table
-and diagram. Edition 2021, MSRV 1.85 (`rust-version`, all five manifests, README "MSRV").
+Six-crate Cargo workspace, dependency order `rsos → rbsr → lww-register`, `gossip` (independent
+sibling) `→ reconcile` (facade), plus unpublished dev-only `devkit`. See
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) §2 for the module table and diagram. Edition 2021, MSRV 1.85
+(`rust-version`, all six manifests, README "MSRV").
 
 Read first, don't duplicate: [`README.md`](./README.md) (usage/API/security/deployment),
 [`ARCHITECTURE.md`](./ARCHITECTURE.md) (module map, ports & adapters, invariants, audit history),
@@ -165,8 +166,7 @@ reply.
 
 ## 10. Commit, PR, and gating conventions
 
-No enforced commit-message/PR-title format — match recent history (`git log --oneline`). Reference
-the tracking issue (`#NNN`) where relevant.
+No enforced commit-message/PR-title format — match recent history (`git log --oneline`). Reference the tracking issue (`#NNN`) where relevant.
 
 The one enforced convention: a rule a human must remember and enforce by eye belongs in
 `.github/workflows/main.yml` instead, plus whichever hook tier it fits in (§3; §9 is the model).

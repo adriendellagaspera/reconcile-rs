@@ -481,6 +481,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "devkit"
+version = "0.0.0"
+dependencies = [
+ "bincode",
+ "rand 0.8.7",
+ "rbsr",
+ "rsos",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1308,6 +1318,7 @@ dependencies = [
  "chrono",
  "clap",
  "criterion",
+ "devkit",
  "ipnet",
  "lww-register",
  "metrics",

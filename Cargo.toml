@@ -17,8 +17,11 @@
 # The split briefly carried a sixth member, `snapshot`. It was folded back into this package
 # (`src/snapshot.rs`) as a deliberate follow-up: one type, no standalone reuse value, no separate
 # published identity to earn — see ARCHITECTURE.md §2.
+#   devkit        — dev/bench-only infra (bootstrap statistics, the reconciliation-cost driver, the
+#                   N-writer contention harness) shared between `benches/protocol.rs` and
+#                   `benches/contention.rs` rather than duplicated. Never published (#524).
 # See ARCHITECTURE.md §2 for the crate/module map.
-members = ["rsos", "rbsr", "lww-register", "gossip", "."]
+members = ["rsos", "rbsr", "lww-register", "gossip", "devkit", "."]
 resolver = "2"
 
 [package]
@@ -181,6 +184,12 @@ tracing = "0.1.40"
 async-trait = "0.1"
 clap = { version = "4.4.6", features = ["derive"] }
 criterion = "0.5.1"
+# `benches/protocol.rs`'s cost driver and `benches/contention.rs`'s N-writer harness, factored out
+# to a shared crate instead of duplicated between the two — see `devkit/Cargo.toml`. No `version`:
+# unlike the `[dependencies]` path entries above, a dev-dependency's `path` is simply stripped at
+# publish time rather than resolved from crates.io, so it needs none — and "devkit" is already an
+# unrelated package on the real registry, so adding one here would resolve to that crate instead.
+devkit = { path = "devkit" }
 # Cargo unions features across `[dependencies]`/`[dev-dependencies]` entries for the same package
 # when building dev targets: this turns on `gossip`'s `netem` feature (`gossip/src/netem/`) for
 # `benches/`/`tests/` only, without adding it to the default build any dependent gets.
