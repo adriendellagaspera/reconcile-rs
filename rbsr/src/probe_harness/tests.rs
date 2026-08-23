@@ -33,6 +33,15 @@ fn span_start_bound_included_vs_excluded_at_an_exact_key() {
 }
 
 #[test]
+fn span_end_bound_included_vs_excluded_at_an_exact_key() {
+    let store = NarrowStore::new(16, vec![10, 20, 30]);
+    // Included(20): 20 itself is in range, so the span ends just past it.
+    assert_eq!(store.span(&(Bound::Unbounded, Bound::Included(20))), (0, 2));
+    // Excluded(20): 20 itself is not in range, so the span ends at its own index.
+    assert_eq!(store.span(&(Bound::Unbounded, Bound::Excluded(20))), (0, 1));
+}
+
+#[test]
 fn keys_in_returns_exactly_the_enumerated_keys() {
     let a = NarrowStore::new(16, vec![1, 2, 3, 4, 5]);
     let b = NarrowStore::new(16, vec![1, 2, 3]); // 4 and 5 are the difference
@@ -163,4 +172,21 @@ fn drive_reports_the_rounds_it_ran() {
         result.rounds >= 1,
         "a genuine difference must take at least one round to settle"
     );
+    assert!(
+        result.comparisons >= 1,
+        "at least one range must have been classified"
+    );
+}
+
+#[test]
+fn masked_keeps_only_the_low_width_bits() {
+    assert_eq!(masked(0xFF, 4), 0xF);
+    assert_eq!(masked(0x1_0000, 16), 0);
+    assert_eq!(masked(0xABCD, 64), 0xABCD);
+}
+
+#[test]
+fn other_responder_alternates() {
+    assert!(!other_responder(true));
+    assert!(other_responder(false));
 }

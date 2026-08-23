@@ -48,6 +48,11 @@ fn mask(width: u32) -> u64 {
     }
 }
 
+/// `value`, truncated to its low `width` bits.
+fn masked(value: u64, width: u32) -> u64 {
+    value & mask(width)
+}
+
 /// A store summarizing with `Σ mod 2^width` instead of `Σ mod 2^256` — narrow enough that a
 /// collision-rate probe can observe events in a feasible trial count.
 pub struct NarrowStore {
@@ -95,8 +100,8 @@ impl RsosView<u64> for NarrowStore {
         let (start, end) = self.span(&range);
         let slice = &self.keys[start..end];
         let sum = slice.iter().fold(0u64, |acc, &key| {
-            let limb = digest(&key).0[0] & mask(self.width);
-            acc.wrapping_add(limb) & mask(self.width)
+            let limb = masked(digest(&key).0[0], self.width);
+            masked(acc.wrapping_add(limb), self.width)
         });
         Aggregate::new(slice.len(), Fingerprint([sum, 0, 0, 0]))
     }
@@ -266,7 +271,7 @@ pub fn drive_pair<A: RefinementPolicy, B: RefinementPolicy>(
         active = children;
         rounds += 1;
         std::mem::swap(&mut responder, &mut advertiser);
-        responder_is_b = !responder_is_b;
+        responder_is_b = other_responder(responder_is_b);
     };
 
     Drive {
@@ -291,6 +296,11 @@ fn round_comparisons(
 /// How many rounds separate a recurring state's first occurrence from its recurrence.
 fn cycle_length(current_round: usize, first_round: usize) -> usize {
     current_round - first_round
+}
+
+/// The peer that answers next, given who just answered: alternation, not a fixed schedule.
+fn other_responder(responder_is_b: bool) -> bool {
+    !responder_is_b
 }
 
 #[cfg(test)]

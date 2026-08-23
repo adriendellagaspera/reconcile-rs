@@ -6,7 +6,33 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::netem::{Link, Rtt, Seed};
+use crate::InMemoryNetwork;
+
 use super::*;
+
+#[tokio::test]
+async fn dropping_netem_transport_stops_the_pump() {
+    let network = InMemoryNetwork::new();
+    let sender_addr: SocketAddr = "127.0.0.1:9101".parse().unwrap();
+    let receiver_addr: SocketAddr = "127.0.0.1:9102".parse().unwrap();
+    let sender_inner = Arc::new(network.bind(sender_addr));
+    let receiver = network.bind(receiver_addr);
+
+    let netem = Netem::uniform(Link::at(Rtt::from_millis(20.0)), Seed::new(1));
+    let sender = NetemTransport::new(sender_inner, netem);
+    sender.send_to(b"hello", &receiver_addr).await.unwrap();
+    // Drop before the queued datagram is due: with the pump actually aborted, it never arrives.
+    drop(sender);
+
+    let mut buf = [0u8; 16];
+    let delivered =
+        tokio::time::timeout(Duration::from_millis(200), receiver.recv_from(&mut buf)).await;
+    assert!(
+        delivered.is_err(),
+        "dropping NetemTransport must cancel its pump, not just the handle"
+    );
+}
 
 #[test]
 fn pending_equality_is_by_due_and_seq_only() {
