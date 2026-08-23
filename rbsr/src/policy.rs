@@ -58,9 +58,13 @@ pub use sqrt_fan_out::SqrtFanOut;
 /// decision) from a fingerprint byte compiles and converges, but reintroduces the oracle
 /// dependence the rank split exists to avoid, voiding that bound silently: no error, no test
 /// failure, just an unprovable protocol. [`span`](Self::span) and
-/// [`remote_size`](Self::remote_size) are `size()`-only and therefore always safe; `Comparison`
-/// carries no accessor that returns a fingerprint or a full [`Aggregate`], so the violation is
-/// structurally unspellable rather than merely discouraged.
+/// [`remote_size`](Self::remote_size) are `size()`-only and therefore always safe; `Comparison`'s
+/// default, public surface carries no accessor that returns a fingerprint or a full [`Aggregate`],
+/// so the violation is structurally unspellable from a default build rather than merely
+/// discouraged. [`local_for_testing`](Self::local_for_testing)/
+/// [`remote_for_testing`](Self::remote_for_testing) reopen exactly that seam, but only under
+/// `--cfg reconcile_internal_testing` (#529) — for a dependent crate's own oracle-*coupled* probe
+/// policies, never for a shipped one in this crate.
 ///
 /// ```
 /// use rbsr::Comparison;
