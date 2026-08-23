@@ -34,6 +34,7 @@ use crate::Transport;
 const TIMER_RESOLUTION: Duration = Duration::from_millis(1);
 
 /// A datagram in flight, ordered by when it is due and, for a tie, by send order.
+#[derive(Debug)]
 struct Pending {
     due: Instant,
     seq: u64,
