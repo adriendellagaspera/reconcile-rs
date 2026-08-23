@@ -150,19 +150,11 @@ pub enum Decision {
 ///
 /// # A fourth policy considered, and not shipped (#318)
 ///
-/// [`span`](Comparison::span)/[`remote_size`](Comparison::remote_size) bound the differing
-/// elements in a range from below, so a fan-out keyed off their delta could widen exactly where
-/// that bound is nonzero. It never is on the regime that matters: whenever the two peers hold the
-/// same key set, `span() == remote_size()` at every depth. A value change doesn't move where a key
-/// sits, so this holds for any number of disagreeing keys, not only the single conflict
-/// `rbsr/tests/balance_under_position_map.rs`'s
-/// `a_key_ordered_conflict_is_balanced_because_the_positions_tie` drives to a fixed point and
-/// pins. That is the divergence an LWW register produces continuously (`SOTA.md` §2.1); the regime
-/// the delta *does* see — a dropped write, a cold sync, a partition heal — is the rarer one, and
-/// there the shipped default already sits within single digits of [`SqrtFanOut`]
-/// (`benches/protocol.rs`, `SOTA.md` §2.2). A delta-derived policy would therefore reproduce the
-/// default on every steady-state round and differ from it only in a regime where the win is
-/// already small. Not built.
+/// A fan-out keyed off the `span`/`remote_size` delta was considered and rejected: that delta is
+/// zero on the regime that matters most (same key set, differing values, e.g. an LWW register in
+/// steady state), so such a policy would reproduce the default there and differ from it only where
+/// the win is already small. Full reasoning and benchmarks:
+/// [#318](https://github.com/Akvize/reconcile-rs/issues/318), `SOTA.md` §2.2.
 ///
 /// # Implementing your own
 ///
