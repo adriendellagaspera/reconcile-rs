@@ -38,6 +38,7 @@ jobs:
         run: ./scripts/sync-labels.sh --apply
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
 
   triage:
     if: github.event_name == 'issues'
