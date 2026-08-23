@@ -6,38 +6,21 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Protocol-level cost of one full RBSR reconciliation, **per refinement policy**: how many total
-//! wire bytes, messages, advertised ranges, datagrams and local RSOS queries two peers spend to
-//! resolve a difference of size `d` in a store of size `n`, how that changes when the differences
-//! cluster instead of scattering, and how it moves with the size of a stored value.
+//! Protocol-level cost of one full RBSR reconciliation, under the shipped default refinement
+//! policy (`rbsr::FixedFanOut` at `b = 16`): how many total wire bytes, messages, advertised
+//! ranges, datagrams and local RSOS queries two peers spend to resolve a difference of size `d` in
+//! a store of size `n`, how that changes when the differences cluster instead of scattering, and
+//! how it moves with the size of a stored value.
 //!
-//! This target exists because the two published cost bounds for range-based set reconciliation —
-//! `O(d log n)` communication and `O(log n)` sequential rounds — are stated for the **fixed**
-//! branching factor `b` of Algorithm 2 in E. G. Amparore, *RBSR via Range-Summarizable
-//! Order-Statistics Stores* (arXiv:2603.19820), and `rbsr` makes the fan-out a swappable
-//! `RefinementPolicy` — so which bounds apply depends on which policy runs, and what each costs is
-//! a measurement rather than a quotation. The default `rbsr::FixedFanOut` at `b = 16` is the
-//! paper's constant; `rbsr::SqrtFanOut` cuts every `⌊√m⌋` elements, for which neither published
-//! bound holds; `rbsr::EnumerateBelowThreshold` is Algorithm 1 as written, with both parameters.
-//! This target prices all three, and sweeps each parameter on its own: `b` in `fan_out_sweep`, `t`
-//! in `threshold_sweep`.
-//!
-//! **One unit: total wire bytes.** A policy that splits less advertises fewer ranges but reaches
-//! its IDLIST cutoff on wider ranges, and every enumerated element is a *value* on the wire —
-//! almost all of them elements the peer already holds. Refinement bytes and enumerated elements are
-//! therefore two halves of one quantity, and comparing policies across the two units cannot settle
-//! anything: a large enumeration threshold looks free in the first column and ruinous in the
-//! second. Both halves are summed here, in bytes, at four payload sizes `V` (`VALUE_SIZES`) — the
-//! axis `system`'s `memory_footprint` already varies. The breakdown is still printed under each
-//! total, because it says *why* a policy lands where it does.
+//! **One unit: total wire bytes.** Refinement bytes and the values an IDLIST enumeration ships are
+//! two halves of one quantity, so both are summed here at four payload sizes `V` (`VALUE_SIZES`) —
+//! the axis `system`'s `memory_footprint` already varies. The breakdown is still printed under each
+//! total, because it says *why* the run landed where it did.
 //!
 //! One-way messages stay a separate column on purpose: no byte total prices a round trip. This
 //! target runs at RTT ≈ 0, so weigh that column by your own — at the rate `benches/system.rs`'s
 //! injected-RTT lane measures, one RTT per round trip with no hidden multiplier
-//! (`benches/README.md`). `threshold_sweep` does that weighing for the reader (#468): beside every
-//! total it prints the refinement half alone, the message delta, the payload size at which the two
-//! totals cross, and the RTT at which the saved round trips outweigh the added bytes — the columns
-//! that separate "loses on bytes" from "loses".
+//! (`benches/README.md`).
 //!
 //! **Why one drive prices every `V`.** Both peers assign the same value to the same key, so equal
 //! key sets have equal aggregates whatever the payload is, and every SKIP/IDLIST/SPLIT decision
@@ -47,8 +30,8 @@
 //! cell the transport really ships for it, `(K, Entry<Timestamp, Vec<u8>>)`
 //! (`src/replica.rs`'s `Message::Update`), through the transport's own encoder. That is measured
 //! rather than argued: `payload_size_does_not_move_the_trace` drives the same case over a `u64`, an
-//! 8-byte and a 4 KB payload and compares, on every shipped policy, before any table is printed.
-//! It also buys the 4 KB column at `n = 10⁶`, which materializing 4 GB of payload twice could not.
+//! 8-byte and a 4 KB payload and compares before any table is printed. It also buys the 4 KB
+//! column at `n = 10⁶`, which materializing 4 GB of payload twice could not.
 //!
 //! Both byte columns are payload before framing: neither carries the one-byte `Message` variant tag
 //! the transport prepends per item, nor the authenticator's per-datagram overhead.
@@ -71,7 +54,7 @@ use serde::Serialize;
 use devkit::protocol_cost::{reconcile, Cost, Counting};
 use lww_register::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
 use lww_register::Entry;
-use rbsr::{EnumerateBelowThreshold, FanOut, FixedFanOut, RefinementPolicy, SqrtFanOut};
+use rbsr::{FanOut, FixedFanOut, RefinementPolicy};
 use rsos::{FingerprintTreeMap, Rsos};
 
 /// Store sizes swept by the cost report (log scale). Capped at 10⁶: the point is the growth rate of
@@ -124,61 +107,6 @@ const DIFFERENCES: &[(usize, Clustering)] = &[
     (100, Clustering::Scattered),
     (100, Clustering::Clustered),
 ];
-
-/// Branching factors swept by `fan_out_sweep`. `b = 2` is the floor (a 1-partition is the
-/// identity); the ceiling is the widest single round, which grows linearly in `b` and must fit a
-/// datagram — hence sweeping to 256, so it is visible rather than argued.
-///
-/// `b = 3` is the one value here that is not a power of two, and it is the point of the sweep
-/// rather than an afterthought: it is where the cost model puts the optimum, and every earlier
-/// sweep stepped straight over it. Refinement advertises `b` aggregates per level over
-/// `log_b n = ln n / ln b` levels, so
-///
-/// ```text
-/// refinement bytes ≈ aggregate_size · ln n · (b / ln b)
-/// ```
-///
-/// and `d/db (b / ln b) = (ln b − 1)/(ln b)²` vanishes at `ln b = 1`, i.e. **`b = e ≈ 2.718`**.
-/// Over the integers that is `b = 3` (2.731), with `b = 2` and `b = 4` **tied** above it (2.885
-/// each) — which is the model's sharpest claim, because it predicts an equality rather than an
-/// ordering, and the sweep can refute it in one row.
-const FAN_OUTS: &[usize] = &[2, 3, 4, 8, 16, 32, 64, 128, 256];
-
-/// Enumeration thresholds swept by `threshold_sweep`, `b` held at the default 16. `t = 1` is the
-/// floor (`t = 0` is unrepresentable, and would split a range into itself forever); 256 is eight
-/// doublings past it and four past the paper's 32, far enough for the amplification to be a curve
-/// rather than a point.
-///
-/// `t` = 31 is the one non-doubling value, and it is here for the same reason `b` = 3 is in
-/// [`FAN_OUTS`]: it is where an external implementation actually sits. Negentropy's cutoff is
-/// `t = 2b - 1` ([`negentropy_cutoff`]), one rung below the paper's `t = 2b = 32`, and the two can
-/// only differ on a span of exactly `2b` — swept rather than argued (#468).
-const THRESHOLDS: &[usize] = &[1, 2, 4, 8, 16, 31, 32, 64, 128, 256];
-
-/// `(store size, difference sizes)` for the parameter sweeps, grouped so each store is built
-/// once. Small `n` carries only `d = 1`: too few levels for the rounds-vs-ranges trade to show.
-const SWEEP_CASES: &[(usize, &[usize])] = &[
-    (1_000, &[1]),
-    (10_000, &[1]),
-    (100_000, &[1, 10, 100]),
-    (1_000_000, &[1, 10, 100]),
-];
-
-/// The three shipped policies, compared head to head: the default constant `b`, the size-derived
-/// `√m` fan-out, and Algorithm 1 as written.
-fn policies() -> Vec<(&'static str, Box<dyn RefinementPolicy>)> {
-    vec![
-        ("sqrt", Box::new(SqrtFanOut)),
-        (
-            "fixed b=16 (default)",
-            Box::new(FixedFanOut::new(FanOut::NEGENTROPY)),
-        ),
-        (
-            "paper t=32 b=16",
-            Box::new(EnumerateBelowThreshold::new(32, FanOut::NEGENTROPY)),
-        ),
-    ]
-}
 
 /// Build a store of `n` sequential entries, omitting `missing`, each key carrying `value(key)`.
 /// Sequential keys: the measured quantity depends on rank positions, not key distribution, and
@@ -291,32 +219,31 @@ fn payload_size_does_not_move_the_trace() {
         )
     });
 
+    let policy = FixedFanOut::new(FanOut::NEGENTROPY);
+    let reference = counted_reconcile(&plain.0, &plain.1, &policy);
     let mut worst_drift = 0.0f64;
-    for (name, policy) in policies() {
-        let reference = counted_reconcile(&plain.0, &plain.1, policy.as_ref());
-        for (value_bytes, full, holed) in &dated {
-            let cost = counted_reconcile(full, holed, policy.as_ref());
-            assert_eq!(
-                cost.decisions(),
-                reference.decisions(),
-                "{name}: a {value_bytes} B payload changed the refinement trace — one drive \
-                 cannot price every value size"
-            );
-            let drift = (cost.refinement_bytes as f64 - reference.refinement_bytes as f64).abs()
-                / reference.refinement_bytes as f64;
-            assert!(
-                drift <= TOLERANCE,
-                "{name}: a {value_bytes} B payload moved the refinement traffic by {:.3} % \
-                 ({} B against {} B) — more than a fingerprint's varint width can explain",
-                drift * 100.0,
-                cost.refinement_bytes,
-                reference.refinement_bytes
-            );
-            worst_drift = worst_drift.max(drift);
-        }
+    for (value_bytes, full, holed) in &dated {
+        let cost = counted_reconcile(full, holed, &policy);
+        assert_eq!(
+            cost.decisions(),
+            reference.decisions(),
+            "default policy: a {value_bytes} B payload changed the refinement trace — one drive \
+             cannot price every value size"
+        );
+        let drift = (cost.refinement_bytes as f64 - reference.refinement_bytes as f64).abs()
+            / reference.refinement_bytes as f64;
+        assert!(
+            drift <= TOLERANCE,
+            "default policy: a {value_bytes} B payload moved the refinement traffic by {:.3} % \
+             ({} B against {} B) — more than a fingerprint's varint width can explain",
+            drift * 100.0,
+            cost.refinement_bytes,
+            reference.refinement_bytes
+        );
+        worst_drift = worst_drift.max(drift);
     }
     println!(
-        "[protocol] payload independence verified at n={N} d={D} scattered, every shipped policy: \
+        "[protocol] payload independence verified at n={N} d={D} scattered, default policy: \
          identical decisions over u64 and {:?} B values, refinement bytes within {:.3} % \
          (tolerated: {:.3} %)",
         dated.map(|(value_bytes, _, _)| value_bytes),
@@ -335,286 +262,7 @@ fn totals(cost: &Cost) -> String {
         .join(" | ")
 }
 
-/// The same, each total also read against `baseline`'s — the column a sweep is decided on.
-fn totals_against(cost: &Cost, baseline: &Cost) -> String {
-    VALUE_SIZES
-        .iter()
-        .zip(cost.total_bytes())
-        .zip(baseline.total_bytes())
-        .map(|((v, total), base)| {
-            format!(
-                "V={v:<4} {total:>10} {ratio:>5.2}x",
-                ratio = total as f64 / base as f64
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(" | ")
-}
-
-/// What an element would have to cost for `cost`'s extra enumeration to pay for the refinement it
-/// saves: `(refinement saved) / (extra elements shipped)`, in bytes per element.
-///
-/// The threshold question in one number, and in the same unit as the element price printed by
-/// [`print_element_price`] — an enumeration threshold is worth having exactly where this sits
-/// *above* that price. `None` when the policy ships no extra elements, so nothing is traded.
-fn break_even_bytes(cost: &Cost, baseline: &Cost) -> Option<f64> {
-    let extra = cost
-        .enumerated_elements
-        .saturating_sub(baseline.enumerated_elements);
-    (extra > 0)
-        .then(|| (baseline.refinement_bytes as f64 - cost.refinement_bytes as f64) / extra as f64)
-}
-
-/// Negentropy's enumeration cutoff, in this crate's `t` (#468).
-///
-/// Its `splitRange` ships an IdList as soon as `numElems < 2 * buckets`, where
-/// [`EnumerateBelowThreshold`] enumerates at `span <= t`: the same rule is `t = 2b - 1`, one below
-/// the paper's `t = 2b`. They can differ on exactly one span — a range holding `2b` elements — so
-/// [`THRESHOLDS`] carries both and the anchor drives this one.
-const fn negentropy_cutoff(fan_out: FanOut) -> usize {
-    2 * fan_out.get() - 1
-}
-
-/// The refinement half alone, read against `baseline`'s: what the Negentropy anchor compares, and
-/// what an RTT-bound deployment feels (#468).
-///
-/// A total-bytes ratio hides both, being dominated by the values an enumeration ships — which is
-/// why a policy can be a byte loss and a refinement/round-trip win at the same time.
-fn refinement_against(cost: &Cost, baseline: &Cost) -> String {
-    let ratio = |value: usize, base: usize| {
-        if base == 0 {
-            f64::NAN
-        } else {
-            value as f64 / base as f64
-        }
-    };
-    format!(
-        "refine {bytes:>9} B {byte_ratio:>5.2}x / {ranges:>6} r {range_ratio:>5.2}x \
-         / {messages:>3} msgs {delta:>+3}",
-        bytes = cost.refinement_bytes,
-        byte_ratio = ratio(cost.refinement_bytes, baseline.refinement_bytes),
-        ranges = cost.ranges,
-        range_ratio = ratio(cost.ranges, baseline.ranges),
-        messages = cost.messages,
-        delta = cost.messages as isize - baseline.messages as isize,
-    )
-}
-
-/// The link rate the round-trip break-even is quoted at, in bytes per millisecond: 1 Gb/s, the rate
-/// `benches/README.md` already prices `b` = 4's two extra round trips at. Stated rather than
-/// measured — this harness runs at RTT = 0 and over no link at all.
-const LINK_RATE_BYTES_PER_MS: f64 = 125_000.0;
-
-/// The RTT above which `cost`'s saved round trips outweigh the extra bytes they cost, one figure
-/// per [`VALUE_SIZES`] payload size (#468).
-///
-/// The threshold question in the unit an RTT-bound deployment budgets in: a policy that ships more
-/// bytes in fewer messages wins the wall clock exactly where the round trips it saves are dearer
-/// than the transmission time it adds, `extra_bytes / rate / saved_round_trips`. Two one-way
-/// messages make one round trip, at the measured 1.00 × RTT with no hidden multiplier
-/// (`benches/system.rs`'s injected-RTT lane, #280).
-///
-/// Four outcomes, so the sign is never left to the reader: `any` — dearer in neither column, so it
-/// wins at every RTT; `never` — dearer in both, so it wins at none; `>=x` — the ordinary trade,
-/// extra bytes for saved round trips, won above `x`; `<=x` — the reverse (cheaper bytes, *more*
-/// round trips), won below `x`.
-fn rtt_break_even(cost: &Cost, baseline: &Cost) -> String {
-    let saved_round_trips = (baseline.messages as f64 - cost.messages as f64) / 2.0;
-    let figures = cost
-        .total_bytes()
-        .iter()
-        .zip(baseline.total_bytes())
-        .map(|(&total, base)| {
-            let extra = total as f64 - base as f64;
-            let break_even = extra / LINK_RATE_BYTES_PER_MS / saved_round_trips;
-            if extra <= 0.0 && saved_round_trips >= 0.0 {
-                "any".to_string()
-            } else if extra > 0.0 && saved_round_trips <= 0.0 {
-                "never".to_string()
-            } else if saved_round_trips > 0.0 {
-                format!(">={break_even:.1}")
-            } else {
-                // Cheaper in bytes but dearer in round trips: the same quotient, read downwards.
-                format!("<={break_even:.1}")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("rtt break-even [{figures}] ms @1 Gb/s")
-}
-
-/// Where `cost`'s total crosses `baseline`'s as the payload grows: [`break_even_bytes`] restated in
-/// the unit a deployment knows about itself, its own value size (#468).
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Crossover {
-    /// Both ship the same *number* of elements, so the gap between the totals does not move with
-    /// `V` at all: whichever is ahead at one payload size is ahead at every payload size.
-    Flat,
-    /// `cost` is cheaper below this payload size and dearer above it.
-    WinsBelow(f64),
-    /// `cost` ships *fewer* elements, so the sign is reversed: it is cheaper above this payload
-    /// size and dearer below it.
-    WinsAbove(f64),
-}
-
-impl Crossover {
-    /// One printed cell, in bytes of payload — the same unit as [`VALUE_SIZES`].
-    ///
-    /// A crossover outside `0..=250` is reported as such rather than as a payload size: a negative
-    /// one is a trade no representable value can pay for (absence, stated as a figure), and one
-    /// past 250 leaves the regime [`value_crossover`] fits.
-    fn describe(self) -> String {
-        match self {
-            Crossover::Flat => "V crossover        — same element count".to_string(),
-            Crossover::WinsBelow(v) => {
-                format!("V crossover {v:>8.1} B, wins below{}", Crossover::note(v))
-            }
-            Crossover::WinsAbove(v) => {
-                format!("V crossover {v:>8.1} B, wins above{}", Crossover::note(v))
-            }
-        }
-    }
-
-    /// Whether the figure is a payload size a caller could actually choose.
-    fn note(crossover: f64) -> &'static str {
-        if crossover < 0.0 {
-            " (no such payload: it loses at every value size)"
-        } else if crossover > 250.0 {
-            " (extrapolated past the 1 B length varint)"
-        } else {
-            ""
-        }
-    }
-}
-
-/// The crossover, from two priced points rather than from a model of the encoder.
-///
-/// A total is affine in `V` as long as the payload's length varint stays one byte (`V <= 250`,
-/// [`dated_cell`]), so the totals at `VALUE_SIZES[0]` and `VALUE_SIZES[1]` — 8 B and 64 B, both
-/// inside that regime — determine the line exactly and the root of their difference is the
-/// crossover. Nothing here is fitted: two measurements and one linear solve.
-fn value_crossover(cost: &Cost, baseline: &Cost) -> Crossover {
-    let gap =
-        |index: usize| cost.total_bytes()[index] as f64 - baseline.total_bytes()[index] as f64;
-    let (low, high) = (VALUE_SIZES[0] as f64, VALUE_SIZES[1] as f64);
-    let slope = (gap(1) - gap(0)) / (high - low);
-    if slope == 0.0 {
-        return Crossover::Flat;
-    }
-    let crossover = low - gap(0) / slope;
-    if slope > 0.0 {
-        Crossover::WinsBelow(crossover)
-    } else {
-        Crossover::WinsAbove(crossover)
-    }
-}
-
-/// The measured price of one enumerated element, at both ends of the swept key space — the floor
-/// every [`break_even_bytes`] is read against, and the reason it is a floor: the key, the stamp and
-/// the framing are spent before the payload contributes a byte.
-fn print_element_price() {
-    let mut scratch = Vec::new();
-    for key in [0, *SIZES.last().expect("SIZES is never empty") as u64 - 1] {
-        let priced = element_bytes(key, &mut scratch);
-        println!(
-            "[protocol] one enumerated element, key {key}: {priced:?} B at V={VALUE_SIZES:?} B \
-             — {overhead} B of key, stamp and framing before the payload",
-            overhead = priced[0] - VALUE_SIZES[0],
-        );
-    }
-}
-
-/// The one column here not produced by this crate (#362): Negentropy's counted refinement columns,
-/// from `benches/fixtures/negentropy-counted.tsv`, printed beside this harness's own for the same
-/// `(n, d)` at `b` = 16 both sides.
-///
-/// Provenance and the generating command are in the fixture header; the commensurability limits and
-/// what the anchor superseded are in `benches/README.md`, "The Negentropy anchor". Read one of the
-/// two before quoting this block.
-///
-/// A missing or unparsable fixture skips, never panics: it is a manual artifact by design, so a
-/// `cargo bench` that cannot find it is not a failing benchmark.
-fn print_negentropy_anchor() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/benches/fixtures/negentropy-counted.tsv"
-    );
-    let Ok(fixture) = std::fs::read_to_string(path) else {
-        println!("[protocol] negentropy anchor: fixture not found at {path} — skipping (#362)");
-        return;
-    };
-
-    println!(
-        "[protocol] negentropy anchor (#362): refinement columns only, b=16 both sides, bytes \
-         inclusive of each range's bound and framing. Limits: benches/README.md."
-    );
-    for line in fixture.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        // n  d  messages  fp_ranges  fp_bytes  skip_ranges  idlist_ranges  idlist_ids  total_wire
-        let cols: Vec<&str> = line.split('\t').collect();
-        let parsed = (|| {
-            Some((
-                cols.first()?.parse::<usize>().ok()?,
-                cols.get(1)?.parse::<usize>().ok()?,
-                cols.get(2)?.parse::<usize>().ok()?,
-                cols.get(3)?.parse::<usize>().ok()?,
-                cols.get(4)?.parse::<usize>().ok()?,
-            ))
-        })();
-        let Some((n, d, their_messages, their_ranges, their_bytes)) = parsed else {
-            println!("[protocol]   unparsable fixture row, skipping: {line}");
-            continue;
-        };
-
-        let full = store(n, &[]);
-        let holed = store(n, &missing_keys(n, d, Clustering::Scattered));
-        let ours = counted_reconcile(&full, &holed, &FixedFanOut::default());
-        // The same descent under *their* enumeration cutoff, the fan-out held at `b` = 16 both
-        // ways: what the ranges/messages gap above is actually made of (#468).
-        let their_cutoff =
-            EnumerateBelowThreshold::new(negentropy_cutoff(FanOut::NEGENTROPY), FanOut::NEGENTROPY);
-        let ours_their_cutoff = counted_reconcile(&full, &holed, &their_cutoff);
-
-        let per_range = |bytes: usize, ranges: usize| {
-            if ranges == 0 {
-                f64::NAN
-            } else {
-                bytes as f64 / ranges as f64
-            }
-        };
-        let (mine, theirs) = (
-            per_range(ours.refinement_bytes, ours.ranges),
-            per_range(their_bytes, their_ranges),
-        );
-        println!(
-            "[protocol]   n={n:>8} d={d:>3} | reconcile-rs {ours_b:>7} B / {ours_r:>5} r \
-             / {ours_m:>2} msgs = {mine:>6.2} B/r | negentropy {their_bytes:>7} B \
-             / {their_ranges:>5} r / {their_messages:>2} msgs = {theirs:>6.2} B/r | ratio {ratio:.2}x",
-            ours_b = ours.refinement_bytes,
-            ours_r = ours.ranges,
-            ours_m = ours.messages,
-            ratio = mine / theirs,
-        );
-        println!(
-            "[protocol]            under their cutoff (t={t}=2b-1, b=16, #468): \
-             {cut_b:>7} B / {cut_r:>5} r / {cut_m:>2} msgs = {cut:>6.2} B/r \
-             | against negentropy's {their_ranges:>5} r / {their_messages:>2} msgs \
-             | costing {elements:>7} enumerated elements against the default's {base_elements}",
-            t = negentropy_cutoff(FanOut::NEGENTROPY),
-            cut_b = ours_their_cutoff.refinement_bytes,
-            cut_r = ours_their_cutoff.ranges,
-            cut_m = ours_their_cutoff.messages,
-            cut = per_range(ours_their_cutoff.refinement_bytes, ours_their_cutoff.ranges),
-            elements = ours_their_cutoff.enumerated_elements,
-            base_elements = ours.enumerated_elements,
-        );
-    }
-}
-
-/// The refinement/IDLIST breakdown under a total: why the policy landed there.
+/// The refinement/IDLIST breakdown under a total: why the run landed there.
 fn breakdown(cost: &Cost) -> String {
     format!(
         "refine {bytes:>9} B / {ranges:>6} r / {messages:>3} msgs / {datagrams:>3} dgrams \
@@ -646,15 +294,14 @@ fn counted_reconcile<S: Rsos<u64>>(a: &S, b: &S, policy: &dyn RefinementPolicy) 
     cost
 }
 
-/// Exchanged volume per policy, printed rather than timed — exact and reproducible for a given
-/// `(policy, n, d, clustering)` — alongside the timed drive loop, the paper's `T_loc`.
+/// Exchanged volume under the shipped default policy, printed rather than timed — exact and
+/// reproducible for a given `(n, d, clustering)` — alongside the timed drive loop, the paper's
+/// `T_loc`.
 fn reconciliation_cost(c: &mut Criterion) {
     payload_size_does_not_move_the_trace();
-    print_element_price();
-    print_negentropy_anchor();
+    let policy = FixedFanOut::new(FanOut::NEGENTROPY);
     println!(
-        "[protocol] full reconciliation, u64 keys. Refinement policy is a local decision: \
-         the wire type carries none, so these are comparable runs of the same protocol.\n\
+        "[protocol] full reconciliation, u64 keys, default policy (FixedFanOut, b=16).\n\
          [protocol] first line: total wire bytes (refinement + enumerated values) per value size; \
          second: what makes it up, and the round-trip count no total prices."
     );
@@ -664,11 +311,9 @@ fn reconciliation_cost(c: &mut Criterion) {
         for &(d, clustering) in DIFFERENCES {
             let holed = store(n, &missing_keys(n, d, clustering));
             println!("[protocol] n={n} d={d} {}", clustering.label());
-            for (name, policy) in policies() {
-                let cost = counted_reconcile(&full, &holed, policy.as_ref());
-                println!("[protocol]   {name:<20} {}", totals(&cost));
-                println!("[protocol]   {:<20} {}", "", breakdown(&cost));
-            }
+            let cost = counted_reconcile(&full, &holed, &policy);
+            println!("[protocol]   {}", totals(&cost));
+            println!("[protocol]   {}", breakdown(&cost));
         }
     }
 
@@ -679,145 +324,12 @@ fn reconciliation_cost(c: &mut Criterion) {
         let full = store(n, &[]);
         let holed = store(n, &missing_keys(n, 1, Clustering::Scattered));
         group.sample_size(10.max(1_000_000 / n).min(100));
-        for (name, policy) in policies() {
-            group.bench_with_input(BenchmarkId::new(name, n), &n, |bencher, _| {
-                bencher
-                    .iter(|| reconcile(black_box(&full), black_box(&holed), policy.as_ref(), None));
-            });
-        }
-    }
-    group.finish();
-}
-
-/// Sweep the branching factor `b` alone, [`FixedFanOut`] only, so a default can be chosen on
-/// evidence.
-///
-/// **What to read.** Ranges grow as `b / ln b` (minimized near `b = 3`) while one-way messages
-/// fall as `log_b n`; this target runs at RTT ≈ 0, so the message column has to be weighed by your
-/// own round-trip time — one RTT per round trip, per `system`'s injected-RTT lane. The hard limit is
-/// the widest single round, linear in `b`, which must fit a datagram and survive fragmentation.
-fn fan_out_sweep(c: &mut Criterion) {
-    println!(
-        "[sweep] FixedFanOut, branching factor only, u64 keys, differences scattered.\n\
-         [sweep] bytes and rounds trade against each other; the widest round is the hard ceiling."
-    );
-    for &(n, diffs) in SWEEP_CASES {
-        let full = store(n, &[]);
-        for &d in diffs {
-            let holed = store(n, &missing_keys(n, d, Clustering::Scattered));
-            println!("[sweep] n={n} d={d} scattered");
-            for &b in FAN_OUTS {
-                let policy = FixedFanOut::new(FanOut::new(b));
-                let cost = counted_reconcile(&full, &holed, &policy);
-                println!("[sweep]   b={b:<4} {}", totals(&cost));
-                println!("[sweep]   {:<6} {}", "", breakdown(&cost));
-            }
-        }
-    }
-
-    // The local half of the same question, timed rather than counted, at the scale the choice is
-    // actually made for.
-    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
-    let mut group = c.benchmark_group("fan_out_sweep_drive");
-    group.plot_config(plot_config);
-    group.sample_size(20);
-    let full = store(1_000_000, &[]);
-    let holed = store(
-        1_000_000,
-        &missing_keys(1_000_000, 1, Clustering::Scattered),
-    );
-    for &b in FAN_OUTS {
-        let policy = FixedFanOut::new(FanOut::new(b));
-        group.bench_with_input(BenchmarkId::from_parameter(b), &b, |bencher, _| {
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |bencher, _| {
             bencher.iter(|| reconcile(black_box(&full), black_box(&holed), &policy, None));
         });
     }
     group.finish();
 }
 
-/// Sweep the enumeration threshold `t` alone, [`EnumerateBelowThreshold`] at the default `b = 16`,
-/// against [`FixedFanOut`] at that same `b` — today's default, and the only baseline the question
-/// "should `t` exist at all?" can be answered against.
-///
-/// **What to read.** `t` buys refinement bytes with values: raising it stops the descent earlier,
-/// and everything it stops on ships whole, peer-held elements included. The two move in opposite
-/// directions in the same unit, so each row is its total against the baseline's, at every payload
-/// size — a `t` earns its place only where that ratio is below 1. The row's `break-even` is the
-/// same trade as a single number: the element price at which it would come out even, to be read
-/// against the element price printed by `reconciliation_cost`.
-///
-/// **And what to read next to it (#468).** A total-bytes ratio answers one question and hides two:
-/// a `t` that loses on bytes can still advertise fewer ranges in fewer messages, which is what an
-/// RTT-bound deployment pays in. Each row therefore also carries [`refinement_against`] — the
-/// refinement half alone, plus the one-way-message delta — and the two crossovers that make the
-/// verdict conditional rather than flat: [`value_crossover`], the payload size at which the totals
-/// cross, and [`rtt_break_even`], the round-trip time at which the messages saved outweigh the
-/// bytes added.
-///
-/// `t` is not a continuous knob. A range's span walks the ladder `n / b^k`, so every `t` between
-/// two rungs picks the same rung and costs exactly the same — the plateaus in the table are the
-/// ladder, not noise. [`negentropy_cutoff`]'s `t = 2b - 1` and the paper's `t = 2b` are one such
-/// pair, which is why both are swept.
-fn threshold_sweep(c: &mut Criterion) {
-    println!(
-        "[threshold] EnumerateBelowThreshold, enumeration threshold only, b=16 throughout, \
-         u64 keys, differences scattered.\n\
-         [threshold] first row is total wire bytes and its ratio to FixedFanOut(16), today's \
-         default; below 1.00x, `t` pays for itself.\n\
-         [threshold] second row is the refinement half alone, the message delta, and the two \
-         crossovers a total hides: the value size, and the RTT (#468)."
-    );
-    for &(n, diffs) in SWEEP_CASES {
-        let full = store(n, &[]);
-        for &d in diffs {
-            let holed = store(n, &missing_keys(n, d, Clustering::Scattered));
-            println!("[threshold] n={n} d={d} scattered");
-            let baseline = counted_reconcile(&full, &holed, &FixedFanOut::new(FanOut::NEGENTROPY));
-            println!("[threshold]   b=16, no t   {}", totals(&baseline));
-            println!("[threshold]   {:<11} {}", "", breakdown(&baseline));
-            for &t in THRESHOLDS {
-                let policy = EnumerateBelowThreshold::new(t, FanOut::NEGENTROPY);
-                let cost = counted_reconcile(&full, &holed, &policy);
-                println!(
-                    "[threshold]   t={t:<9} {} | break-even {}",
-                    totals_against(&cost, &baseline),
-                    match break_even_bytes(&cost, &baseline) {
-                        Some(bytes) => format!("{bytes:>8.1} B/elem"),
-                        // No extra element shipped: this `t` reaches the default's own cutoffs.
-                        None => "       — same elements".to_string(),
-                    }
-                );
-                println!(
-                    "[threshold]   {:<11} {} | {} | {}",
-                    "",
-                    refinement_against(&cost, &baseline),
-                    value_crossover(&cost, &baseline).describe(),
-                    rtt_break_even(&cost, &baseline),
-                );
-                println!("[threshold]   {:<11} {}", "", breakdown(&cost));
-            }
-        }
-    }
-
-    // The local half, timed: enumerating a range is `T_loc` too, and it grows with `t`. At the
-    // difference size where `t` bites — a lone missing element never reaches the threshold.
-    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
-    let mut group = c.benchmark_group("threshold_sweep_drive");
-    group.plot_config(plot_config);
-    group.sample_size(10);
-    let full = store(1_000_000, &[]);
-    let holed = store(
-        1_000_000,
-        &missing_keys(1_000_000, 100, Clustering::Scattered),
-    );
-    for &t in THRESHOLDS {
-        let policy = EnumerateBelowThreshold::new(t, FanOut::NEGENTROPY);
-        group.bench_with_input(BenchmarkId::from_parameter(t), &t, |bencher, _| {
-            bencher.iter(|| reconcile(black_box(&full), black_box(&holed), &policy, None));
-        });
-    }
-    group.finish();
-}
-
-criterion_group!(benches, reconciliation_cost, fan_out_sweep, threshold_sweep);
+criterion_group!(benches, reconciliation_cost);
 criterion_main!(benches);
