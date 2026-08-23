@@ -6,9 +6,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Bench/measurement infrastructure with no natural home among the five domain crates: this
-//! workspace's own `benches/` and the private research companion repository both need it, without
-//! duplicating it. Never published (`AGENTS.md` §1, #524) — a dev/bench-only sibling, exempt from
+//! Bench/measurement infrastructure with no natural home among the five domain crates:
+//! `benches/protocol.rs` and `benches/contention.rs` both need it, without duplicating it. Never
+//! published (`AGENTS.md` §1, #524) — a dev/bench-only sibling, exempt from
 //! `check-domain-purity.sh` the way `gossip`/`reconcile` already are.
 //!
 //! Three independent pieces, one per module:

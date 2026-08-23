@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-description = "Internal bench/measurement infrastructure shared by this workspace's own benches and the private research companion repository. Never published."
+description = "Internal bench/measurement infrastructure shared across this workspace's own benches. Never published."
 publish = false
 
 [dependencies]
