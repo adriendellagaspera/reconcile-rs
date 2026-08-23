@@ -256,11 +256,11 @@ fn element_bytes(key: u64, scratch: &mut Vec<u8>) -> [usize; VALUE_SIZES.len()] 
     })
 }
 
-/// The `Queries`/`Counting`/`Cost`/`Decisions` types and the `reconcile` driver itself moved to
-/// [`devkit::protocol_cost`] (#524): generic over any `rsos::Rsos` backend and any
-/// `rbsr::RefinementPolicy`, with no dependency on this crate's own wire format. [`element_bytes`]
-/// is what wires this repository's dated-cell payload into it, via `reconcile`'s `price_element`
-/// closure — see [`counted_reconcile`].
+// The `Queries`/`Counting`/`Cost`/`Decisions` types and the `reconcile` driver itself moved to
+// `devkit::protocol_cost` (#524): generic over any `rsos::Rsos` backend and any
+// `rbsr::RefinementPolicy`, with no dependency on this crate's own wire format. `element_bytes`
+// is what wires this repository's dated-cell payload into it, via `reconcile`'s `price_element`
+// closure — see `counted_reconcile`.
 
 /// The premise of the whole value-size axis, checked instead of asserted: one drive can price every
 /// payload size because no decision reads the payload.
