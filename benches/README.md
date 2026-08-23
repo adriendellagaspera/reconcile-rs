@@ -526,147 +526,29 @@ cargo bench --bench protocol -- --quick
 cargo bench --bench protocol -- 'no_such_benchmark'
 ```
 
-`reconciliation_cost` prints, for each `(policy, n, d, clustering)`, **total wire bytes** — the
-refinement traffic plus the values the IDLIST outcomes ship — at four value payload sizes
-(8 / 64 / 512 / 4096 B), then the breakdown under it: refinement bytes (bincode, the same encoder
-the real transport uses), advertised `RangeAggregate`s, one-way messages, datagrams, IP fragments,
-the largest single message, the IDLIST ranges and the elements they ship, and the local
-`Aggregate`/`Rank`/`Select` counts summed over both peers. Deterministic, so it is printed rather
-than timed — like `system`'s `memory_footprint`, whose payload-size axis it borrows. The timed
-`reconciliation_drive` group alongside it measures the local CPU cost of driving a whole run per
-policy, the quantity arXiv:2603.19820 models as `T_loc`.
-
-**One unit, because the two halves are traded against each other.** A policy that splits less
-advertises fewer ranges but reaches its IDLIST cutoff on wider ranges, and every enumerated element
-is a *value* on the wire — nearly all of them elements the peer already holds. Reported in two
-units, that trade is unreadable: at n = 10⁵, d = 100 scattered the paper's `t`=32 policy saves 46 %
-of the refinement bytes against the default and ships **5 036 elements instead of 100**, which looks
-like a win in the first column and a loss in the second. Summed, it is 1.52× the default's bytes at
-8-byte values and 36× at 4 KB. The message column stays separate on purpose: no byte total prices a
-round trip, and *this* target runs at RTT ≈ 0 — weigh it at the measured rate of **1.00 × RTT per
-round trip** ([#280](https://github.com/Akvize/reconcile-rs/issues/280) — the injected-RTT lane
-above).
+`reconciliation_cost` prints, for each `(n, d, clustering)` under the shipped default policy
+(`FixedFanOut`, `b` = 16), **total wire bytes** — the refinement traffic plus the values the IDLIST
+outcomes ship — at four value payload sizes (8 / 64 / 512 / 4096 B), then the breakdown under it:
+refinement bytes (bincode, the same encoder the real transport uses), advertised `RangeAggregate`s,
+one-way messages, datagrams, IP fragments, the largest single message, the IDLIST ranges and the
+elements they ship, and the local `Aggregate`/`Rank`/`Select` counts summed over both peers.
+Deterministic, so it is printed rather than timed — like `system`'s `memory_footprint`, whose
+payload-size axis it borrows. The timed `reconciliation_drive` group alongside it measures the
+local CPU cost of driving a whole run, the quantity arXiv:2603.19820 models as `T_loc`.
 
 One drive prices every value size: the payload is not read by any SKIP/IDLIST/SPLIT decision, so
 only the per-element price moves with it. The harness checks that rather than assuming it —
 `payload_size_does_not_move_the_trace` reconciles the same case over `u64`, 8-byte and 4 KB values
 and compares every decision before a table is printed.
 
-**Why it exists.** RBSR's published bounds — `O(d log n)` communication, `O(log n)` sequential
-rounds — assume the fixed branching factor `b` of the paper's Algorithm 2. `rbsr` makes the fan-out
-a swappable `RefinementPolicy`, so what a given configuration costs is a measurement rather than a
-quotation: this target supplies it. Interpretation of the numbers below lives in `SOTA.md` §2.2; the
-decisions they drove are on issues [#257](https://github.com/Akvize/reconcile-rs/issues/257) and
-[#315](https://github.com/Akvize/reconcile-rs/issues/315), and in `rbsr/src/policy.rs`'s own rustdoc.
-
-Refinement bytes and one-way messages for `SqrtFanOut` (`√m`) against the default `FixedFanOut(16)`
-and the paper's `t`=32 enumeration threshold, same harness, `d` = 1, one element missing (refinement
-traffic only — the first two ship one ≈33 B element on top of it; `t`=32 ships 7–51 and is why the
-totals below differ):
-
-| n | `√m` refine B | `√m` msgs | `b`=16 refine B | `b`=16 msgs | `t`=32/`b`=16 refine B | msgs |
-|---:|---:|---:|---:|---:|---:|---:|
-| 10³ | 2 041 | 6 | 1 701 | 6 | 1 476 | 4 |
-| 10⁴ | 5 395 | 8 | 2 195 | 6 | 1 520 | 4 |
-| 10⁵ | 16 553 | 6 | 2 789 | 6 | 2 294 | 5 |
-| 10⁶ | **53 046** | 8 | **3 834** | 8 | **3 246** | 6 |
-
-For a **single** missing element in a 10⁶-entry store, `b = 16` spends 3.8 kB over 78 ranges against
-`SqrtFanOut`'s ~53 kB over ~1 048 ranges (~×3.2 per decade of n on the `√m` bytes), at the *same* 8
-one-way messages — log₁₆ 10⁶ ≈ 5 is already the iterated-square-root depth at that size, so the
-`Θ(log log n)` round advantage `√m` offers asymptotically does not appear below n ≈ 10¹² (the message
-counts above are identical at n = 10⁶: 8 and 8). Local query cost scales with it: ~13× the
-`Aggregate`/`Rank`/`Select` queries at n = 10⁶ (2 094/2 092/1 040 against 155/152/70). The gap closes
-as `d` grows and scatters — at `d` = 100 over 10⁶ elements the two are within 7 % (270 940 B against
-253 153 B), because ~√n ranges stop being overhead once the difference genuinely needs that many;
-`√m` is worst exactly in the small-`d` regime RBSR exists for.
-
-The timed `reconciliation_drive` group widens the gap further, in a column no RTT caveat touches:
-2.10 ms under `√m` against 45.0 µs at `b` = 16 (≈47×) at n = 10⁶, 460 µs against 25.2 µs at 10⁵, and
-only 1.6× apart at 10³ — steeper than the query-count ratio because a `√n` fan-out's queries are
-individually dearer (wide `Aggregate`s, spread-out `Select`s touch far more of the tree than a narrow
-descent).
-
 The widest single round at d = 1 is 50 781 B (inside the 65 507-byte datagram ceiling, ~35 IP
 fragments at a 1500-byte MTU, any one of which loses the whole round); at d = 100 over 10⁶ elements
 it reaches 160 908 B over 3 300 ranges, i.e. three datagrams and ~189 fragments —
 `send_messages_paced` chunks past the ceiling rather than failing.
 
-`fan_out_sweep` then varies the branching factor alone (`FixedFanOut`, `b` = 2…256). Bytes and local
-work follow `b / ln b`, which is derived rather than fitted: refinement advertises `b` aggregates per
-level over `log_b n = ln n / ln b` levels, so `refinement ≈ aggregate_size · ln n · (b / ln b)`, whose
-derivative `(ln b − 1)/(ln b)²` vanishes at `b = e ≈ 2.718` — `b` = 3 over the integers, with `b` = 2
-and `b` = 4 tied above it (2.885 each). Earlier sweeps ran powers of two and stepped over it;
-`FAN_OUTS` now carries `b` = 3. At `n = 10⁶`, `d = 1` scattered:
-
-| `b` | 2 | **3** | 4 | 8 | 16 | 32 | 64 | 128 | 256 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| refinement B | 2 061 | **1 868** | 1 960 | 2 613 | 3 834 | 5 021 | 9 668 | 15 856 | 25 880 |
-| ranges, measured | 42 | **38** | 40 | 53 | 78 | 101 | 196 | 320 | 520 |
-| `b · ln n / ln b`, predicted | 39.9 | **37.7** | 39.9 | 53.2 | 79.7 | 127.6 | 212.6 | 364.5 | 637.8 |
-| one-way messages | 22 | 14 | 12 | 10 | 8 | 6 | 6 | 6 | 6 |
-
-`b` = 3 is the minimum, 4.7 % under `b` = 4 and 9.4 % under `b` = 2. The range row is the sharper
-test — the model predicts an absolute count with **no fitted constant** — and it holds to ~2 ranges
-through `b` = 16. Past that it over-predicts, because the descent bottoms out before the last level
-can use its full fan-out; that truncation is also why the implied byte constant drifts (≈ 680 at
-`b` = 3…8, ≈ 560 at 256) while the small-`b` end does not.
-
-One-way messages fall as `log_b n` until they hit a floor — 6 at `n = 10⁶`, reached at
-`b = 32` — past which extra `b` is paid for and buys nothing. The widest single round grows linearly
-in `b` and is the hard ceiling: at `n = 10⁵`, `d = 100` it already exceeds one datagram at `b = 16`.
-Across every measured `(n, d, clustering)`, `b = 16` is the only swept value never worse than `√m` on
-rounds, while spending 13.8× fewer bytes, ~45× less `T_loc` and a 63× narrower widest round than
-`√m`; `b = 4` wins on bytes and CPU but costs two round-trips — break-even at an RTT of ≈8 µs at
-1 Gb/s, i.e. only worth it when the "network" is in-process. It is the bandwidth-over-latency value
-to reach for.
-
-`threshold_sweep` does the same for the other Algorithm 1 parameter, the enumeration threshold
-(`EnumerateBelowThreshold`, `t` = 1…256, `b` held at 16), against `FixedFanOut(16)` — today's
-default, and the only baseline the question "should `t` exist at all?" can be answered against. Each
-row carries its total as a ratio to that baseline at every value size, plus its **break-even**: the
-element price at which the refinement it saves would exactly pay for the elements it ships. Read
-that against the element price printed above the tables — the same unit, measured the same way. `t`
-is a step function, not a dial: a range's span walks the ladder `n / b^k`, so every `t` between two
-rungs picks the same rung and costs exactly the same. At n = 10⁵, d = 100 scattered, `t` = 32 saves
-46 % of the refinement bytes (88 817 B against 162 993 B) and ships 5 036 elements instead of 100 —
-a trade that needs an element to cost ≤ 15 B, where the cheapest this wire format can carry is 30 B
-(a varint key, a 19-byte `Timestamp`, two framing bytes, then the payload). Totalled: 1.52× the
-default's bytes at 8-byte values, 36× at 4 KB. No swept `t` saves more than 4 % anywhere, all of it
-at 8-byte values, and none beats the default at 64 B or above. The outcome, and why the default did
-not move: [#315](https://github.com/Akvize/reconcile-rs/issues/315).
-
-**That is the byte column; the other two say the opposite**
-([#468](https://github.com/Akvize/reconcile-rs/issues/468)). Each `t` row also carries the
-refinement half alone against the same baseline, the one-way-message delta, the value size at which
-the two totals cross, and the RTT at which the round trips it saves outweigh the bytes it adds
-(`refinement_against`, `value_crossover`, `rtt_break_even`). At `t` = 2b = 32 — Negentropy's own
-cutoff, `t` = 31 measuring identical to it — over the eight swept `(n, d)`:
-
-| `n` | `d` | refine | ranges | msgs | wins on total bytes below `V` = | RTT break-even @1 Gb/s, `V` = 8 B … 4 KB (`any` = wins at every RTT, costing no extra bytes) |
-|---:|---:|---:|---:|---:|---:|---|
-| 10³ | 1 | 0.87× | 0.87× | 6 → 4 | 13.5 B | any, ≥0.0, ≥0.0, ≥0.2 ms |
-| 10⁴ | 1 | 0.69× | 0.69× | 6 → 4 | — (−10.5 B) | ≥0.0, ≥0.0, ≥0.2, ≥1.6 ms |
-| 10⁵ | 1 | 0.82× | 0.82× | 6 → 5 | 0.8 B | ≥0.0, ≥0.0, ≥0.2, ≥1.3 ms |
-| 10⁵ | 10 | 0.69× | 0.68× | 8 → 5 | — (−9.8 B) | ≥0.0, ≥0.2, ≥1.4, ≥11.0 ms |
-| 10⁵ | 100 | 0.54× | 0.55× | 8 → 5 | — (−9.7 B) | ≥0.5, ≥1.9, ≥13.8, ≥108.1 ms |
-| 10⁶ | 1 | 0.85× | 0.85× | 8 → 6 | 3.4 B | ≥0.0, ≥0.0, ≥0.1, ≥0.7 ms |
-| 10⁶ | 10 | 0.75× | 0.75× | 8 → 6 | 1.8 B | ≥0.0, ≥0.1, ≥1.2, ≥9.8 ms |
-| 10⁶ | 100 | 0.68× | 0.68× | 8 → 6 | 1.8 B | ≥0.1, ≥1.5, ≥12.1, ≥96.6 ms |
-
-Read it as three findings:
-
-| | |
-|---|---|
-| refinement and rounds | `t` = 2b wins **everywhere**: 0.54–0.87× the refinement bytes, 0.55–0.87× the ranges, and 1–3 fewer one-way messages at every `(n, d)` — one descent level, the gap the Negentropy anchor below shows |
-| the `V` crossover | a figure, not a verdict: 13.5 B at `n` = 10³, ≤ 3.4 B at `n` ≥ 10⁵, negative at three of eight cases. Only a set-shaped or single-byte-valued store wins on total bytes, which is the band #315 was already reading when it found the smallest value size closest |
-| the RTT crossover | 0.0–0.5 ms at 8-byte values, so any WAN link flips it; at 4 KB it is `d` that decides — 0.2–1.6 ms at `d` = 1 against 96–108 ms at `d` = 100 |
-
-Both crossovers assume a lossless link at line rate and count two one-way messages as one round trip
-(the measured 1.00 × RTT, above). `LINK_RATE_BYTES_PER_MS` states the rate; nothing here measures a
-link. #315's recommendation therefore stands **for total bytes and becomes conditional otherwise** —
-`EnumerateBelowThreshold` for small-value, small-`d`, RTT-bound deployments, the default elsewhere;
-the caller-facing form is on `EnumerateBelowThreshold`'s rustdoc.
+The default's own evidence (why `b` = 16, why not `SqrtFanOut` or an enumeration threshold) lives in
+`SOTA.md` §2.2 and `rbsr/src/policy.rs`'s rustdoc, not here — this target measures the shipped
+default against itself as the code changes, not against alternatives.
 
 The split rule itself is pinned by unit tests in `rbsr/src/protocol.rs`
 (`default_split_fan_out_is_constant_at_sixteen`, `sqrt_fan_out_is_still_the_square_root_of_the_range_size`,
@@ -674,73 +556,6 @@ The split rule itself is pinned by unit tests in `rbsr/src/protocol.rs`
 silently changing every cluster's bandwidth profile — this benchmark quantifies such a change, it
 does not guard it. `split_children_partition_the_parent_range` is policy-independent and must hold
 under any fan-out rule.
-
-### The Negentropy anchor
-
-The one column here not produced by `reconcile-rs`
-([#362](https://github.com/Akvize/reconcile-rs/issues/362)). `print_negentropy_anchor` prints it on
-every run of this target, reading `benches/fixtures/negentropy-counted.tsv`, whose header carries the
-provenance and the generating command. Refinement columns only; `b` = 16 and `Clustering::Scattered`
-both sides.
-
-| `n` | `d` | B | ranges | msgs | B/range | Negentropy B | ranges | msgs | B/range | ratio |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 10³ | 1 | 1 577 | 39 | 6 | 40.44 | 608 | 32 | 4 | 19.00 | 2.13× |
-| 10⁴ | 1 | 2 031 | 49 | 6 | 41.45 | 927 | 48 | 4 | 19.31 | 2.15× |
-| 10⁵ | 1 | 2 577 | 61 | 6 | 42.25 | 943 | 48 | 4 | 19.65 | 2.15× |
-| 10⁶ | 1 | 3 554 | 78 | 8 | 45.56 | 1 278 | 64 | 6 | 19.97 | 2.28× |
-| 10⁶ | 100 | 235 365 | 5 247 | 8 | 44.86 | 67 853 | 3 472 | 6 | 19.54 | 2.30× |
-
-(Re-measured 2026-08-22 after [#382](https://github.com/Akvize/reconcile-rs/issues/382) — `Fingerprint` moved
-from a 36 B varint-coded encoding to a raw 32 B one, 4 B/range less on this side only.)
-
-What it supersedes, and what it leaves open:
-
-| | |
-|---|---|
-| superseded | `SOTA.md`'s "44 B/range against 16 B" — both figures were payload-only, and a range does not travel without its bound and framing |
-| our per-range cost | not a constant: 40.4 B → 45.6 B as `n` grows, since `KeyRange` bounds cost more varint bytes as keys grow |
-| where the gap is | bound encoding is ~5 B here against ~4 B there, so the gap is summary width — §2.1's trade, confirmed |
-| explained | at equal `b` = 16 the two descents differ (64 ranges / 6 msgs against 78 / 8), so the total gap is 2.78× against 2.28× per range. It is the **enumeration cutoff**, not the fan-out: [#468](https://github.com/Akvize/reconcile-rs/issues/468), below |
-
-Commensurability, before summing anything against the totals above:
-
-| | |
-|---|---|
-| compares | the fixture's `fp_ranges`/`fp_bytes` (mode=1 ranges) against `Cost::ranges`/`Cost::refinement_bytes` |
-| does not compare | the IDLIST halves — a Negentropy element is a timestamp + a 256-bit id, ours is a key + an HLC + a value |
-| instance | modelled, not shared: item `k` gets timestamp `k` and a deterministic 32-byte id, so both refine over the same logical ordering of the same `n` items |
-
-#### The descent gap is their enumeration cutoff ([#468](https://github.com/Akvize/reconcile-rs/issues/468))
-
-Negentropy's `splitRange` carries one size-based cutoff — `numElems < 2 · buckets` ships an IdList,
-anything wider splits into `buckets` children — where `shared_cutoffs` has none, so `FixedFanOut`
-keeps descending where Negentropy has already stopped. In this crate's vocabulary that rule is
-`EnumerateBelowThreshold` at `t = 2b − 1` = 31, one rung below the paper's `t = 2b` = 32 and
-measured identical to it at every swept `(n, d)` (the span walks the `m / b^k` ladder, so neither
-`t` picks a different rung). `print_negentropy_anchor` drives that policy beside the default on
-every anchor row; the third column is what the first two are being compared through:
-
-| `n` | `d` | default `b`=16 | under their cutoff (`t`=31, `b`=16) | Negentropy |
-|---:|---:|---:|---:|---:|
-| 10³ | 1 | 39 r / 6 msgs | 34 r / 4 msgs | 32 r / 4 msgs |
-| 10⁴ | 1 | 49 r / 6 msgs | 34 r / 4 msgs | 48 r / 4 msgs |
-| 10⁵ | 1 | 61 r / 6 msgs | 50 r / 5 msgs | 48 r / 4 msgs |
-| 10⁶ | 1 | 78 r / 8 msgs | 66 r / 6 msgs | 64 r / 6 msgs |
-| 10⁶ | 100 | 5 247 r / 8 msgs | 3 573 r / 6 msgs | 3 472 r / 6 msgs |
-
-Adopting their cutoff closes the message gap outright on four of the five rows (the 10⁵ row lands
-one message above) and 71–94 % of the range gap; at 10⁴ it goes past them. What it costs is the
-other half of the same trade — 7, 51, 21, 21 and 3 048 enumerated elements against the default's 1,
-1, 1, 1 and 100 — which is exactly what [#315](https://github.com/Akvize/reconcile-rs/issues/315)
-priced and rejected, and what the `threshold_sweep` section above now reports in the two columns
-that trade decides. The remaining per-range 2.28× is summary width, unchanged.
-
-`benches/fixtures/negentropy-drive.js` parses Negentropy's emitted messages against its
-[protocol v1 spec](https://github.com/hoytech/negentropy/blob/master/docs/negentropy-protocol-v1.md)
-rather than its internals, and asserts it consumes each message to the byte — a conformance check on
-our reading of that spec. Regeneration is manual and out of band, the cost #362 accepts on the
-record; nothing in CI reads the fixture, and a missing one prints a skip, never a failure.
 
 ## The `contention` benchmark
 
