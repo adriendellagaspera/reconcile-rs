@@ -73,7 +73,23 @@ pub struct PhysicalTime(u64);
 )]
 pub struct LogicalCounter(u32);
 
-/// A replica's identity: the deterministic tie-break that makes the conflict order total.
+/// A replica's identity: the deterministic tie-break that makes the conflict order total ---
+/// **as long as no two nodes share one**.
+///
+/// Uniqueness is probabilistic, not guaranteed. Left unset, `reconcile`'s `Config` draws 64 random
+/// bits per node, so over `n` draws the birthday bound puts a collision at about `n^2 / 2^65`:
+///
+/// | draws | P(some pair collides) |
+/// |---:|---:|
+/// | 10^3 | ~3 * 10^-14 |
+/// | 10^4 | ~3 * 10^-12 |
+/// | 10^6 | ~3 * 10^-8 |
+///
+/// `n` counts **draws, not live nodes**: a random id is redrawn on every restart, so a long-lived
+/// cluster accumulates draws even at constant size. What a collision costs is not a lost write but
+/// a permanent one --- two nodes stamping different content identically leave [`Ord`] nothing to
+/// order by, so `max` keeps each side's own value forever. `reconcile` reports that state when it
+/// first observes it, and `Config::with_node_id` is what removes the risk rather than shrinking it.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]

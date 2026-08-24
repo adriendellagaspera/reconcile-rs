@@ -167,6 +167,9 @@ pub(crate) struct Inner<K, V> {
     /// Exposed via [`node_id_is_random`](Replica::node_id_is_random) so that the store
     /// layer can warn operators when persistence is configured but the identity is ephemeral.
     pub(crate) node_id_is_random: bool,
+    /// Reports a node-id collision once, however many keys and rounds keep tripping the detector
+    /// (`collision::is_node_id_collision`).
+    pub(crate) collision_reporter: collision::CollisionReporter,
     /// Hard cap on the number of tracked remote peers. Datagrams from unknown senders are dropped
     /// before any per-sender state is allocated when the membership set reaches this size.
     max_peers: PeerCap,
@@ -221,6 +224,7 @@ pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
 }
 
 mod coalesce;
+mod collision;
 mod construct;
 mod dispatch;
 mod gc;

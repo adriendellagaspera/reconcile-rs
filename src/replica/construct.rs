@@ -254,6 +254,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 live_tombstones: Arc::new(RwLock::new(HashSet::new())),
                 clock,
                 node_id_is_random,
+                collision_reporter: super::collision::CollisionReporter::new(),
                 max_peers: PeerCap::new(config.max_peers),
                 coalesce_window: Arc::new(RwLock::new(config.coalesce_window)),
                 coalesce_pending: Arc::new(RwLock::new(HashMap::new())),
