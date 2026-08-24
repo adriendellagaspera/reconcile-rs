@@ -11,7 +11,7 @@
 #   3. exactly one S-*   whether it can be acted on now
 #   4. S-blocked names its blocker as "blocked by #NNN", not as a bare #NNN
 #   6. a named gate that has already been satisfied is reported (see below)
-#   7. an issue closed on or after TRIAGE_BOXES_SINCE carries no unticked acceptance box
+#   7. an issue closed `completed` on or after TRIAGE_BOXES_SINCE carries no unticked acceptance box
 #   8. an open parent whose every sub-issue is closed is reported
 #
 # "Does 1.0.0 wait on this" is a milestone, not a label (`.github/labels.tsv`), so there is
@@ -304,6 +304,15 @@ fi
 # half-close loud, which is the damage. The fix at the source is sub-issues: one number each,
 # closing one does not close the others, and a dependency becomes expressible.
 #
+# Scoped to issues closed `completed`. `not_planned` is the other close, and it is not a half-close:
+# it says the work is not happening here, so an unticked box is the accurate record of exactly that
+# -- ticking it would claim work nobody did, which is the failure the `BOXES_SINCE` note above
+# refuses for the historical tail on the same grounds. Measured on 2026-08-24: the eight-issue
+# sketch/IBLT cluster (#10-#13, #17, #22, #25, #45) closed `not_planned` when it moved to the
+# research companion, and rule 7 failed every run afterwards with no honest fix available to it.
+# Only an explicit `NOT_PLANNED` is excluded -- a missing or null `stateReason` still gets checked,
+# since "cannot tell" is not "exempt" (the same reading rule 6's UNKNOWN branch applies).
+#
 # Bounded by `BOXES_SINCE` (declared above with the reason). ISO-8601 sorts lexicographically, so a
 # date-only cutoff compares directly against `closedAt`'s full timestamp — no date arithmetic, and
 # nothing to get wrong across the `date` implementations §3's SLA block already has to straddle.
@@ -311,7 +320,7 @@ if [ -n "${CLOSED_ISSUES_JSON:-}" ]; then
     closed=$(cat "$CLOSED_ISSUES_JSON")
 elif [ -z "${ISSUES_JSON:-}" ] && command -v gh >/dev/null 2>&1; then
     closed=$(gh issue list --repo "$REPO" --state closed --limit 500 \
-        --json number,title,body,closedAt)
+        --json number,title,body,closedAt,stateReason)
 else
     closed=""
 fi
@@ -324,6 +333,7 @@ if [ -n "$closed" ]; then
         jq -r --arg since "$BOXES_SINCE" '
             .[]
             | . as $i
+            | select(((.stateReason // "") | ascii_upcase) != "NOT_PLANNED")
             | select((.closedAt // "") >= $since)
             | ([ (.body // "") | scan("(?m)^[ \t]*[-*][ \t]+\\[[ ]\\]") ] | length) as $open
             | select($open > 0)
@@ -334,7 +344,8 @@ if [ -n "$closed" ]; then
     # The tail is a count, not a list: naming each of them every run would bury the window's
     # findings under history that is, by construction, never going to change.
     historical=$(jq --arg since "$BOXES_SINCE" '
-        [ .[] | select((.closedAt // "") < $since)
+        [ .[] | select(((.stateReason // "") | ascii_upcase) != "NOT_PLANNED")
+              | select((.closedAt // "") < $since)
               | select(([ (.body // "") | scan("(?m)^[ \t]*[-*][ \t]+\\[[ ]\\]") ] | length) > 0) ]
         | length' <<<"$closed")
     [ "$historical" -eq 0 ] ||
