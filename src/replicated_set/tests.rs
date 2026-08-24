@@ -14,7 +14,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::replicated_map::{Config, MAX_NETS};
 use crate::transport::InMemoryNetwork;
-use crate::{ReplicatedMap, ReplicatedSet};
+use crate::ReplicatedMap;
+
+// The tuple-struct constructor is private to this module's parent (the wrapped map is a private
+// field), so it is reachable through `super`, not through the crate-root re-export.
+use super::ReplicatedSet;
 
 fn ephemeral_config() -> Config {
     Config {
