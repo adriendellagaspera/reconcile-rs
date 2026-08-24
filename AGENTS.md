@@ -192,3 +192,4 @@ it) — the four siblings are on crates.io only because cargo has no vendoring; 
 public API → majors coupled → `1.0.0` with it, its semver covering the re-exported items only.
 `rbsr` is not → stays `0.x` until #289 settles it; promoting later is additive, demoting is not.
 `./scripts/check-public-api.sh` (§3) gates a `rbsr` symbol re-entering the public API, mechanically (#311 rules 2/3; rule 1 is a §3 trend until a release re-baselines it).
+`M-breaking` is mechanically checked (#15): `breaking-label.yml` fails a PR whose `public-api/*.txt` diff removes a line without it; never the converse — `scripts/check-breaking-label.sh` says why.
