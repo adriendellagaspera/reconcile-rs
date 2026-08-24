@@ -1,7 +1,7 @@
 # State of the Art — `reconcile-rs` positioning
 
 > **Reference document.** Where `reconcile-rs` sits in the landscape of set reconciliation, diffable
-> data structures, and replica consistency — plus a glossary and bibliography. This is **durable
+> data structures, and replica consistency. This is **durable
 > background**: the field positioning and the design taxonomy move slowly, unlike the code. It
 > deliberately carries **no status or findings** — for live correctness/security/maturity status see
 > the `v1.0.0` milestone and [issue #206](https://github.com/Akvize/reconcile-rs/issues/206); for the
@@ -9,16 +9,11 @@
 > design see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 >
 > - **Literature survey dated:** 2026-05-30, with a targeted addendum on 2026-08-10 (arXiv:2603.19820
->   read in full against its four published repositories; §1.3/§2.1/§2.2/§2.3 revised and eight
->   references added — sources cited inline and in the [bibliography (§4)](#4-bibliography)) and a
->   cross-community pass on 2026-08-14 ([§4.1](#41-cross-community-vocabulary) — the `cs.IT`/`cs.NI`
->   dialect this document had never searched; §2.2 revised, [§4.3](#43-search-log) opened), and a
->   weekly sweep on 2026-08-17 (§2.1's prolly-tree entry revised, one reference added — everything
->   else re-checked and unchanged, [§4.3](#43-search-log)).
+>   read in full against its four published repositories; §1.3/§2.1/§2.2/§2.3 revised), a
+>   cross-community pass on 2026-08-14 (the `cs.IT`/`cs.NI` dialect this document had never searched;
+>   §2.2 revised), and a weekly sweep on 2026-08-17 (§2.1's prolly-tree entry revised).
 > - **Scope:** the FingerprintTreeMap as a *data structure* and RBSR as an *algorithm*, compared to the published
 >   state of the art — not an audit of any particular commit.
-> - **Navigation:** a [glossary (§3)](#3-glossary) defines ~120 terms and an
->   [alphabetical index (§5)](#5-alphabetical-index) lists them; first uses in the text link to it.
 > - **`Fxx`** denotes a finding from the original code audit; its resolution record lives in
 >   [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8.
 > - **Measured figures live in `benches/README.md`, not here** ([#346](https://github.com/Akvize/reconcile-rs/issues/346),
@@ -102,35 +97,6 @@ dominates before RTT does ([#336](https://github.com/Akvize/reconcile-rs/issues/
 in the table addresses that term — which family wins is a property of the path as much as of the
 algorithm.
 
-### 1.4 The SOTA of Merkle/anti-entropy structures
-
-Important panel nuance: **FingerprintTreeMap does NOT belong to the Merkle Search Tree (MST) / prolly-tree
-family**, and that is a point in its favor. MST (Auvolat & Taïani, SRDS 2019) and prolly-trees
-(Dolt/Noms) *need* **insertion-order independence** because they diff by comparing the hashes of the
-tree's **internal nodes**. FingerprintTreeMap, by contrast, diffs **value-defined ranges**: the cumulative
-256-bit additive fingerprint (per-element BLAKE3, combined mod 2²⁵⁶) over `[a,b)` is identical on two
-peers iff the *content* of the range is identical, **regardless of each one's B-tree shape**.
-FingerprintTreeMap therefore obtains the convergence guarantee that MST/prolly pay for with
-history-independence, **without paying for it** — and, since addition-with-carry is not GF(2)-linear
-the way XOR is, also escapes the MST "leading-zeros" attack on firmer ground than a linear combiner
-would. The B-tree's order-dependence is therefore **not** a defect here, and its history-dependence
-(§2.1) is not a defect either — see the annotation there.
-
-### 1.5 The SOTA of consistency and conflict resolution
-
-- **Physical-clock LWW**: a documented anti-pattern (Jepsen/Kingsbury "The trouble with
-  timestamps"; real NTP incidents). The "winner" is the node with the most-advanced clock, not the
-  causally latest write → silent lost update.
-- **Minimal SOTA fix**: **Hybrid Logical Clocks (HLC, Kulkarni 2014)** — 64-bit drop-in, monotonic,
-  respects causality, divergence bounded by ε; adopted by CockroachDB and MongoDB.
-- **Tie-break**: must be a **deterministic total order** (e.g. `(HLC, node_id)`). The current `keep
-  local on equal` is non-convergent.
-- **Tombstone GC**: the safe criterion is **causal stability** (acknowledgment by all replicas), not
-  a wall-clock timer. Even Cassandra's `gc_grace_seconds` (default **10 days**) is safe *only on the
-  condition* that a complete repair covers the window — i.e. no fixed duration, short or long, is
-  sufficient on its own (ScyllaDB makes this explicit with repair-based GC). The pre-fix **60 s**
-  wall-clock purge could not honor that precondition; GC is now gated on causal stability (F4/#109).
-
 ### 1.6 The embedded in-memory data grid (IMDG) use case
 
 Framed as a product rather than an algorithm, reconcile-rs is an **embedded in-memory data grid**:
@@ -158,8 +124,8 @@ reconcile-rs from the "real but narrow" niche of §1.2 to a credible Rust IMDG i
 
 > This section refocuses the analysis on the **FingerprintTreeMap as a data structure** (and its protocol),
 > not on the full system. *(All structure/algo names below are defined in the
-> [glossary §3.2](#g92).)* Methodological anchor: the FingerprintTreeMap **is not a [Merkle tree](#g92) in the
-> [MST](#g92)/[prolly](#g92) sense**. It is a *[Range-Summarizable Order-Statistics Store](#g92)*
+> the surveyed literature.)* Methodological anchor: the FingerprintTreeMap **is not a Merkle tree in the
+> MST/prolly sense**. It is a *Range-Summarizable Order-Statistics Store*
 > (RSOS) — a B-tree augmented, per node, with a **composable subtree summary** (a 256-bit additive
 > fingerprint)
 > **+ an order statistic** (the subtree size). This abstraction was formalized in 2026
@@ -324,8 +290,11 @@ full derivations, sweeps and citations live in the linked issues and `benches/RE
   `q` groups, recurse on the conflicted ones" problem lands near the same optimum from a different
   objective (channel throughput, not wire bytes) and reopens whether an **uneven**, signal-driven
   split beats the balanced rank-cut `FixedFanOut`/`SqrtFanOut` both use — tracked by
-  [#318](https://github.com/Akvize/reconcile-rs/issues/318); citations and the correspondence's
-  limits: [§4.1](#41-cross-community-vocabulary)/[§4.4](#44-bibliography).
+  [#318](https://github.com/Akvize/reconcile-rs/issues/318). The treatment is Capetanakis, *Tree
+  algorithms for packet broadcast channels*, `doi:10.1109/TCOM.1979.1094661`, with the `Q`-ary
+  analysis in Mathys–Flajolet, `doi:10.1109/TIT.1985.1057013`; both assume fair coins throughout, so
+  the split *distribution* is never optimised, and the objective is channel throughput rather than
+  wire bytes — which is the limit of the correspondence.
 - **N-party fleets don't get retries for free.** Every cost model on this page is two-party; a fleet
   that is converged but for one divergence has only 2 content classes over any retry count, so
   redundancy buys nothing exactly when it's healthy (refutes arXiv:2212.13567 §5.1 by derivation).
@@ -447,7 +416,8 @@ status, so this section never needs an edit when that status changes.
    `Aggregate(l, u)` in O(log n) requires an up-to-date summary on every node from leaf to root, so
    **every insert writes the root** — a contention point the contract creates, not an implementation
    defect. arXiv:2603.19820 §7.1 scopes its evaluation to single-machine with no concurrency, and no
-   RBSR work prices it. The prior art is outside the line: **AB-tree** ([§4.4](#44-bibliography))
+   RBSR work prices it. The prior art is outside the line: **AB-tree** (Zhao–Xie–Li,
+   `doi:10.14778/3538598.3538606`, VLDB 15(9) 2022)
    sheds the contention by storing inexact weights, which a sound SKIP cannot (`benches/README.md`'s
    `contention` benchmark, [#359](https://github.com/Akvize/reconcile-rs/issues/359)/#445/#446).
    **Measured, then re-measured** ([#454](https://github.com/Akvize/reconcile-rs/issues/454)): at
@@ -498,7 +468,7 @@ one dimension, and the two part company: balancing breaks at one line of its Alg
 recovers, the box `Aggregate` Def. 3.9 already carries meets an unconditional cell-probe floor, so
 the obstruction is the summary rather than the dimension, and the protocol side transports verbatim
 ([#360](https://github.com/Akvize/reconcile-rs/issues/360); mechanism and bounds in
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, the primary-source corrections in §4.3 below, and the
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, and the
 write-up itself a preprint this repository deliberately does not version); `Comparison` no longer hands a policy the fingerprint
 at all — narrowed to `span()`/`remote_size()`/`agrees()`, making the violation structurally
 unspellable rather than merely bounded
@@ -530,549 +500,3 @@ history-independence). The remaining distance to a *true* SOTA structure is alon
 structural ones (secure/generic fingerprint, persistence/content-addressing, property-testing
 foundation) belong to the structure itself, while conflicts, GC and robustness belong to the
 surrounding system.
-
----
-
-## 3. Glossary
-
-> Lists **(a)** the competing structures and algorithms cited, **(b)** the acronyms and concepts of
-> distributed systems, cryptography, networking and complexity, and **(c)** the Rust tooling — all
-> **implementation-agnostic**. The repository's own identifiers, types and constants are intentionally
-> not catalogued here (see [§3.1](#g91)). `Fxx` references denote the original audit findings, whose
-> resolution record lives in [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8.
-
-<a id="g91"></a>
-### 3.1 — Repository identifiers
-
-> **Implementation-agnostic by design.** This positioning document does not catalogue the
-> repository's own types, methods and constants. For the code surface, see the crate's API
-> documentation (`cargo doc`); for the module map and the target design, see
-> [`ARCHITECTURE.md`](./ARCHITECTURE.md) (§2.1); for the audit findings and their resolution
-> record, see [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8. The subsections below define the
-> **field-agnostic** concepts.
-
-<a id="g92"></a>
-### 3.2 — Competing data structures and algorithms
-
-| Term | Definition |
-|---|---|
-| **RBSR** (*Range-Based Set Reconciliation*) | Algorithm family (Meyer 2023): the peers maintain a family of pairwise disjoint **active ranges**, initially one **outer range**; each **protocol round**, a peer answers every active range it was asked about with **SKIP** (aggregates match → *resolved*), **IDLIST** (send the range's ordered contents outright) or **SPLIT** (replace it by a balanced family of **child ranges**). The result is the **symmetric difference** Δ(X, Y). Vocabulary and Algorithm 1 as formalized in arXiv:2603.19820 §4. What reconcile-rs implements — with a `√m` rather than fixed-`b` fan-out, which changes both cost columns (§1.3, §2.2). O(log n) RTT at fixed `b`. |
-| **RSOS** (*Range-Summarizable Order-Statistics Store*) | Abstraction (arXiv:2603.19820, 2026): an ordered set offering **composable** range summaries + rank/select navigation. An augmented B+-tree realizes it → **the FingerprintTreeMap is an RSOS**. |
-| **AELMDB** | **Persistent** RSOS implementation (LMDB extension, memory-mapped) from the 2026 paper, evaluated with Negentropy. The most direct competitor to the FingerprintTreeMap. Aggregates live in **branch pages** (`[child pgno \| aggregates \| separator key]`); the element summary is a byte slice *extracted* from the record, never hashed by the engine. Not content-addressed. |
-| **LMDB** | Lightning Memory-Mapped Database: a copy-on-write, memory-mapped B+-tree with lock-free MVCC readers and a single writer. AELMDB's host engine, and the closest existing thing to what #271 proposes to build. |
-| **Counted B-tree** | (Tatham, 2004) A B-tree carrying per-subtree element counts, giving O(log n) rank/select. The order-statistic half of RSOS, as a standalone classic. |
-| **AB-tree** | (Zhao et al., VLDB 2022) A page-oriented tree maintaining aggregate metadata **under concurrent updates**; evidence that aggregate augmentation and concurrency compose, and the reference point for root-aggregate write contention. |
-| **Embedded Merkle B-tree (EMB-tree)** | (Li et al., SIGMOD 2006) A B-tree caching digests in its nodes for **authenticated query answering** over outsourced databases. Prior art for "digests inside a B-tree", with a different goal (proofs, not range aggregation). |
-| **PBS** (*Parity Bitmap Sketch*) | (Gong et al., VLDB 2020) A sketch-based reconciliation scheme targeting low computation together with near-optimal communication — another point on the RIBLT/minisketch Pareto front. |
-| **MST** (*Merkle Search Tree*) | Auvolat & Taïani, SRDS 2019. A B-tree whose key level derives from the **hash of the key** ⇒ history-independent. Diffs **nodes**. Vulnerable to the leading-zeros attack. Usage: Bluesky/atproto. |
-| **Prolly tree** (*probabilistic B-tree*) | Noms/Dolt. Content-addressed B-tree, boundaries by **rolling hash**. History-independent + **structural sharing** → versioning (Git-like). SOTA of versioned ordered stores. |
-| **Merkle radix / Patricia trie** | A Merkle tree where position depends on the key's **prefix bits**. History-independent. The basis of Ethereum. |
-| **SMT** (*Sparse Merkle Tree*) | Merkle tree over a huge, mostly-empty key space; compact inclusion/exclusion proofs. |
-| **Merkle tree / Merkle root** | Hash tree where each node hashes its children; the root summarizes everything. Basis of classic anti-entropy. |
-| **Merkle-DAG / Merkle-CRDT** | Content-addressed, hash-linked DAG (IPFS); the links encode causal history (Merkle-CRDT, arXiv:2004.00107). |
-| **IBLT** (*Invertible Bloom Lookup Table*) | A structure encoding a set into cells (XOR of key/hash + counter); subtracting two IBLTs reveals the symmetric difference via "peeling". Comm. ∝ d, **needs d known**. |
-| **Rateless IBLT (RIBLT)** | *Practical Rateless Set Reconciliation*, SIGCOMM 2024. An infinite stream of coded symbols (fountain code); decodes as soon as ~d symbols are received. **No need for d**, linear compute, adversarially robust. **Single-shot SOTA choice.** |
-| **minisketch / PinSketch** | Bitcoin Core library implementing PinSketch (BCH formulation of reconciliation). Comm. **optimal ≈ b·d**, O(d²) decoding, capacity to predefine. |
-| **CPI / CPISync** (*Characteristic Polynomial Interpolation*) | Encodes the set as the roots of a polynomial; the ratio of the polynomials yields the difference. Minsky-Trachtenberg-Zippel. O(d³) decoding. |
-| **BCH codes / Berlekamp-Massey** | Error-correcting codes / decoding algorithm used by PinSketch to reconstruct the characteristic polynomial. |
-| **Strata Estimator** | A stack of sampled IBLTs estimating the difference size *d* without a prior round (Eppstein et al. 2011). |
-| **CertainSync** | arXiv:2504.08314 (SIGMETRICS 2025): rateless reconciliation with **deterministic success** (no estimator or parametrization). |
-| **Bloom filter** | Probabilistic membership filter (false positives, no false negatives); a Graphene component. |
-| **Erlay / Graphene / BIP 330** | Bitcoin deployments: Erlay (minisketch + flooding, specified in BIP 330), Graphene (Bloom + IBLT). |
-| **Negentropy** | Production RBSR implementation (Nostr/NIP-77, strfry relay). **Abandoned the naive XOR combiner** for an incremental cryptographic hash — directly relevant to F6. |
-| **Willow / Earthstar / iroh / iroh-docs** | Decentralized-sync ecosystem: Willow (3D RBSR, whose spec documents XOR-fingerprint insecurity), iroh (encrypted QUIC + `iroh-docs` = persistent CRDT KV — a direct Rust competitor). |
-| **Dynamo / Cassandra / ScyllaDB / Riak / Voldemort** | Distributed databases with Merkle-tree anti-entropy. Cassandra: `gc_grace_seconds`, over-streaming. ScyllaDB: repair-based tombstone GC. Reference for F4. |
-| **Noms / Dolt / DoltHub** | Prolly-tree ecosystem; Dolt = "the first version-controlled relational database". |
-| **content-defined chunking (CDC) / rolling hash** | Placing node boundaries where a rolling hash over the content matches a target pattern (core of prolly-trees). |
-| **structural sharing / CAS / CID** | Sharing unchanged substructures across versions; *Content-Addressed Storage*; *Content IDentifier* (hash used as an address). |
-
-<a id="g93"></a>
-### 3.3 — Consistency, replication and distributed systems
-
-| Term | Definition |
-|---|---|
-| **LWW** (*Last-Write-Wins*) | Conflict resolution: the value with the largest timestamp wins. Wired here on a physical clock (F5). |
-| **Thomas write rule** | The rule formalizing LWW: ignore a write older than an already-applied state. |
-| **eventual consistency** | Weak guarantee: with no new writes, replicas converge *eventually*. |
-| **SEC** (*Strong Eventual Consistency*) | *Strong* convergence: replicas that received the same updates have identical state, **regardless of order**. Requires a commutative/associative/idempotent merge. Not reached here (F5). |
-| **CRDT** (*Conflict-free Replicated Data Type*) | A type whose merge guarantees SEC. **CvRDT** (state, merge = least upper bound of a lattice) vs **CmRDT** (commutative operations). Shapiro et al. 2011. |
-| **LWW-Register / MV-Register / OR-Set** | Classic CRDTs: LWW register (lossy), multi-value register (keeps concurrent values), Observed-Remove Set (add-wins). |
-| **join-semilattice** | A lattice where any pair has a least upper bound; the mathematical structure underlying CvRDTs. |
-| **commutative / associative / idempotent / monotone** | Properties required of a CRDT merge. reconcile-rs's merge is **not commutative** on equal timestamps (F5). |
-| **Lamport clock** | A scalar logical clock respecting *happens-before*; does not detect concurrency. |
-| **vector clock / version vector** | A vector of one counter per node; **detects** concurrency (incomparable vectors). O(N) cost, delicate pruning. |
-| **DVV** (*Dotted Version Vector*) | A refined version vector (Preguiça et al.): O(1) causality, metadata bounded by the replication degree. Adopted by Riak. |
-| **HLC** (*Hybrid Logical Clock*) | Kulkarni 2014. 64-bit timestamp = physical + logical counter: monotonic, respects causality, bounded divergence. **Recommended minimal fix** for F5 (CockroachDB, MongoDB). |
-| **TrueTime / commit-wait** | Spanner approach: bounded clock-uncertainty interval (GPS+atomic) + commit wait → external consistency/linearizability. |
-| **happens-before / causality** | Partial order of events (Lamport 1978). A causally later write must not be overwritten by the one it derives from. |
-| **causal consistency / causal+** | Consistency respecting *happens-before*; *causal+* (COPS) = causal + convergent conflict resolution. |
-| **causal stability** | A safe-GC condition: an event is purgeable only when **no concurrent operation can still arrive** (all replicas have seen it). The basis of the F4 fix. |
-| **session guarantees** | (Bayou) Read-Your-Writes, Monotonic Reads, Monotonic Writes, Writes-Follow-Reads. None provided by multi-master physical LWW. |
-| **resurrection / zombie** | Reappearance of deleted data when a tombstone is purged before all have seen it (F4). |
-| **`gc_grace_seconds`** | Cassandra window before purging a tombstone (default **10 days**), safe *only if* a complete repair covers it — a heuristic, not a guarantee. The pre-#109 design here used a **60 s** wall-clock purge (F4); GC is now gated on causal stability instead. |
-| **CAP / PACELC** | CAP: under a Partition, choose Consistency or Availability. PACELC: *Else* (normal operation), choose Latency or Consistency. reconcile-rs is **PA/EL**. |
-| **clock skew / NTP / PTP** | Drift between physical clocks; synchronization protocols (NTP ~sub-second, PTP more precise). Cause of LWW losses (F5). |
-| **quorum / read repair / hinted handoff** | Dynamo-like mechanisms (absent here): majority of replicas, repair at read time, buffer for an unreachable peer. |
-| **split-brain / partition** | A cluster split into sub-groups that no longer communicate; each diverges. |
-| **anti-entropy (push / pull)** | Periodic pairwise reconciliation. Push = push hot updates; pull = query a peer. Demers et al. 1987. |
-| **gossip / epidemic / rumor mongering** | Epidemic dissemination of updates to random peers. |
-| **SWIM / HyParView / memberlist / Vivaldi** | **Membership** and failure-detection protocols (≠ data sync). SWIM/`memberlist` (HashiCorp): bounded fan-out, log N convergence — recommended for F10. |
-
-<a id="g94"></a>
-### 3.4 — Cryptography, hashing and networking
-
-| Term | Definition |
-|---|---|
-| **XOR** | Exclusive-OR. Commutative, associative, **self-inverse**, GF(2)-linear. Convenient for range subtraction but weak as a fingerprint (F6). |
-| **GF(2)-linear** | Linear over the two-element field → an attacker *solves* (Gaussian elimination) for collision elements instead of brute-forcing them (F6). |
-| **collision / second-preimage / birthday bound** | Two inputs → same hash; finding a 2nd input colliding given data; probabilistic collision threshold (~2^(b/2), i.e. ~2³² for 64-bit). All relevant to F6. |
-| **SipHash** | A fast keyed PRF, 64-bit output; the `DefaultHasher` algorithm. **Not** collision-resistant in the cryptographic sense. |
-| **`DefaultHasher`** | The std hasher (`std::collections::hash_map`), **not stable** across Rust versions/platforms → cross-version non-convergence (F8). |
-| **BLAKE3 / xxHash** | Fast and **stable** hashes recommended as replacements (F8). |
-| **incremental / homomorphic hash** | A set hash updated incrementally and composable. **MSet-XOR-Hash** (weak, self-inverse and GF(2)-linear), **MSet-Mu-Hash** (finite field), **LtHash** (lattice/vector addition, closest in spirit to reconcile-rs's hash-then-add-mod-2²⁵⁶ combiner) — the F6 fix moved off MSet-XOR-Hash onto this family. |
-| **transitive group** | The minimal algebraic structure required of an RBSR fingerprint (associativity, identity, inverses, transitivity) — XOR satisfies it, hence its convenience *and* its fragility. |
-| **MAC / HMAC / AEAD** | Message Authentication Code; HMAC (hash-based); Authenticated Encryption with Associated Data. The F3 fix. |
-| **TLS / DTLS / Noise / QUIC** | Secure transport layers (DTLS = TLS over datagrams; Noise = a handshake framework; QUIC = encrypted transport over UDP). Options for F3; cf. issue #96. |
-| **spoofing / amplification / reflection / DRDoS** | Forging the source IP (trivial in UDP); a response larger than the request toward a victim; distributed reflection denial of service. The F9 surface. |
-| **bincode allocation bomb** | Deserialization where an attacker-controlled length prefix forces a massive pre-allocation (F18). |
-| **UDP / datagram / MTU** | Connectionless, unreliable protocol with a spoofable source; bounded datagram; *Maximum Transmission Unit*. |
-
-<a id="g95"></a>
-### 3.5 — Complexity, theory and notation
-
-| Term | Definition |
-|---|---|
-| **B-tree / B+-tree** | A balanced multi-way search tree. B+-tree: values only in the leaves. |
-| **order statistics (rank / select)** | "Rank of a key" / "key at rank i" operations in O(log n) thanks to subtree counters (`tree_size`). |
-| **monoid** | A set with an associative operation and an identity element; the ideal structure of a generic composable summary (P1 of §2.4). |
-| **fan-out** | Number of sub-ranges per recursion round; trades RTT vs message size. |
-| **n / d / U / b** | SOTA notation: set size *n*, symmetric-difference size *d*, key universe *U*, element bit-width *b*. |
-| **O(log n) / O(d log n)** | Target costs: hash-range query and per-mutation operations in O(log n); diff message volume in O(d log n). |
-
-<a id="g96"></a>
-### 3.6 — Rust tooling and ecosystem
-
-| Term | Definition |
-|---|---|
-| **MSRV** (*Minimum Supported Rust Version*) | The minimum supported Rust version; absent from `Cargo.toml` (F17). |
-| **clippy / `-Dwarnings`** | The Rust linter; CI treating warnings as errors. The `mismatched_lifetime_syntaxes` warning (`fingerprint_tree_map_iter.rs:177`) would break CI (F17). |
-| **miri** | An interpreter detecting UB (*Undefined Behavior*); not applicable here — the crate is `#![forbid(unsafe_code)]` and all iterators are safe Rust (since `d030c15`). The CI gap for F17 is now the undeclared MSRV ([#189](https://github.com/Akvize/reconcile-rs/issues/189)). |
-| **proptest / quickcheck / fuzzing** | Property-based / generative / random-input testing. **Entirely absent** (F11). |
-| **`cargo audit` / `cargo deny`** | Vulnerability audit / dependency policies. Absent from CI (F19). |
-| **bincode / serde / tokio / parking_lot / arrayvec / ipnet / range-cmp / chrono / rand / once_cell / tracing** | Dependencies: binary serialization; (de)serialization; async runtime; non-poisoning locks; `ArrayVec` (inline vector, B-tree nodes); network/CIDR types; key↔range comparison (`RangeOrdering`); `DateTime<Utc>` (LWW timestamps); randomness; lazy init; structured logs. |
-| **`Arc` / `RwLock` / `unwrap` / `panic=abort` / `overflow-checks`** | Atomic shared pointer; reader-writer lock; panicking unwrap; panic strategy; arithmetic-overflow checking (disabled in release → F7). |
-| **`ExactSizeIterator` / `FusedIterator` / `DoubleEndedIterator`** | Rust iterator traits targeted by issue #92 (full RSOS contract, §2.4). |
-
----
-
-## 4. Bibliography
-
-### 4.1 Cross-community vocabulary
-
-> Two literatures work on the same recursive-partition skeleton under two names. This document
-> searched one of them until 2026-08-14. The map is the instrument that catches the other; it is not
-> a claim that the two are interchangeable — the rows marked **No** are where conflating them
-> produces a wrong statement.
-
-| Here (`cs.DC` / `cs.CR`) | There (`cs.IT` / `cs.NI`) | Same? |
-|---|---|---|
-| **RBSR** — range-based set reconciliation | **PSR** — partitioned set reconciliation | **Cousins.** Same skeleton; the per-partition primitive differs — next row |
-| `Fingerprint` / `RangeAggregate` / comparison value `f_p` | **SR** — set representation data structure `Z` | **No.** `Z.recovery()` restores the differing *elements* (CPI / IBLT / BCH); a fingerprint only decides equality |
-| enumeration threshold `t`, on `\|X ∩ [l,u)\|` — **range size** | `m̄`, on `δ` — **number of differences** (= sketch capacity) | **No.** Analogous role, different quantity |
-| fan-out `b`, `FixedFanOut`, balanced `b`-partition (Def. 3.8) | partition arity; **`Q`-ary** / **`d`-ary** splitting | ≈ |
-| difference size `d` | `δ` | Yes |
-| store size `n` | — (PSR bounds are stated over `δ` alone) | No counterpart |
-| refinement round / one-way message | communication round | ≈ |
-| `T_loc` | time complexity | ≈ |
-
-**The two lines share one ancestor and have not read each other since.** Verified from both reference
-lists: Meyer (SRDS 2023) and arXiv:2603.19820 [16] both cite Minsky & Trachtenberg (Allerton 2002);
-arXiv:2603.19820's 27 references carry **no** tree-algorithm, PSR-as-named or benchmarking-framework
-work, and arXiv:2509.02373's 25 references carry **no** Meyer, Amparore, Negentropy or Willow.
-
-```
-                 Minsky & Trachtenberg, Allerton 2002
-                        (divide-and-conquer root)
-                    ┌──────────────┴──────────────┐
-      fingerprint-based                      sketch-based
-      RBSR  (cs.DC/cs.CR)                    PSR  (cs.IT/cs.NI)
-      Meyer 2023 → Amparore 2026             Lázaro & Stefanović 2025 (EPSR)
-      Negentropy, Willow                     CPI, IBLT, GenSync, tree algorithms
-                    └──────── no citations either way ────────┘
-```
-
-*Bibliographic caveat, resolved 2026-08-21 (BU TR 2002-01 read as PDF):* both forms name the same
-work — the BU technical report is titled **Practical Set Reconciliation**, and its own title page
-states that a version appeared as **Scalable Set Reconciliation** at Allerton 2002. Cite
-"Scalable" for the Allerton version, "Practical" for the TR.
-
-| Community | Venues | Terms to search |
-|---|---|---|
-| Distributed systems / P2P | SRDS, ICDCS, EuroSys + PaPoC, arXiv preprints, protocol specs | range-based set reconciliation, anti-entropy, Merkle diff, range fingerprint, prolly/MST |
-| Information theory / networking | IEEE Trans. Inf. Theory, **IEEE TNSM**, IEEE Trans. Commun., SIGCOMM, ISIT | partitioned set reconciliation, characteristic polynomial interpolation, PinSketch/BCH, IBLT, MET-IBLT, rateless |
-| Random access / MAC — *EPSR's source* | IEEE Trans. Inf. Theory, IEEE Trans. Commun., ISIT, GLOBECOM | tree algorithms, collision resolution, splitting algorithms, **`Q`-ary** / **`d`-ary**, Capetanakis, Tsybakov–Mikhailov |
-
-### 4.2 Entry format
-
-```
-- **Authors**, *Title*, `arXiv:NNNN.NNNNNvV` | `doi:10.xxxx/…` (venue, year) — <url>
-  **Bears on:** <one sentence — the single claim that touches this repo>. → #NNN, §X.Y
-```
-
-1. **Version-pinned identifier.** `arXiv:2509.02373v1`, never bare — a claim can move between
-   versions, and a silently retargeting citation is the drift §9 exists to stop.
-2. **`Bears on:` is mandatory, one sentence.** No bearing, no entry; background belongs in §3.
-3. **Forward pointer**, so the bibliography is navigable in both directions rather than write-only.
-
-Entries predating this format are grandfathered; add the two fields when next touching one.
-
-### 4.3 Search log
-
-The coverage boundary is a fact, and it had no home — so a survey pass could not tell what an earlier
-pass had already ruled out. Record negative results too.
-
-| Date | Terms / dialect | Scope | Outcome |
-|---|---|---|---|
-| 2026-05-30 | "range-based set reconciliation" | `cs.DC` / `cs.CR` | Baseline survey. Held the Allerton-2002 root but **never searched the PSR dialect** |
-| 2026-08-10 | arXiv:2603.19820 + its four repositories | targeted | §1.3/§2.1/§2.2/§2.3 revised, 8 references added |
-| 2026-08-14 | "partitioned set reconciliation"; reference lists of arXiv:2509.02373 (25) and arXiv:2603.19820 (27), walked one level | `cs.IT` / `cs.NI` | **§4.4's `cs.IT` group** — EPSR, GenSync, the tree-algorithm arity lineage, multi-party, MET-IBLT. §2.2 revised |
-| 2026-08-14 | `q`-ary trie / digital-tree space law, `q`/ln `q` | analysis of algorithms | **Not found, and not needed.** The search assumed the law had to be borrowed; it derives in four lines from the protocol itself (§2.2), so this row is closed by derivation rather than by citation |
-| 2026-08-17 | post-2026-08-14 sweep: new arXiv/venue results on range-based/partitioned set reconciliation, rateless IBLT/CertainSync follow-ups, multi-party reconciliation, prolly/Merkle tree updates, Willow/Earthstar changes, GenSync follow-ups, PODC 2026 accepted-papers list | `cs.DC`/`cs.CR`/`cs.IT` + venue programs, via WebSearch (WebFetch could not reach `arxiv.org`, `dl.acm.org`, `ceur-ws.org`, `semanticscholar.org` or `podc.org` from this session — network egress proxy blocked all five; findings below are WebSearch-summary-sourced, not read from the primer PDF) | One finding, §2.1: Rawat et al. 2026 (§4.4) bounds prolly trees' cascading-rechunking cost. Nothing new found on the other axes — RIBLT/CertainSync/ConflictSync/Rateless-Bloom-Filters lineage, multi-party reconciliation (still 2013–2021), and Willow/Earthstar are unchanged since the last pass over each |
-| 2026-08-19 | citation-tracking pass on the two pivot papers: `"<title>" cited by`/`follow-up` per Meyer arXiv:2212.13567 and Yang et al. arXiv:2402.02668 | targeted, via WebSearch only (`arxiv.org`, `api.semanticscholar.org`, `api.openalex.org` all confirmed egress-blocked this session — no programmatic citation graph available, summaries only) | Confirmed arXiv:2603.19820 (already §4.4) is Meyer's direct RBSR heir. CertainSync and ConflictSync (already §4.4) confirmed as RIBLT's real follow-ups; ConflictSync's venue resolved to PaPoC 2026. No new reference found beyond what §4.4 already held |
-| 2026-08-20 | range selection, range median, orthogonal range searching — static and dynamic, with their cell-probe lower bounds | `cs.DS` / `cs.CG`, a **third dialect** entered for the first time, for [#360](https://github.com/Akvize/reconcile-rs/issues/360)'s go/no-go; via WebSearch only (WebFetch egress-blocked for `users-cs.au.dk`, `people.csail.mit.edu` and every other academic host tried — nothing read as a PDF) | **§4.4's `cs.DS` group**, and the go/no-go itself: the range-restricted `Select` is a named, tight, solved problem, and at `δ` = 2 it is *cheaper* than the aggregate beside it. **Two boundaries recorded rather than crossed:** whether the `(lg lg n)²` gap between a buildable `O(lg² n)` and the `Ω((lg n/lg lg n)²)` floor closes for a *group-valued* box aggregate — the weighted lower bound is confirmed, no matching upper bound was found — and a linear-space Chan–Wilkinson range-selection result, cited secondhand in several summaries, which could not be confirmed and was deliberately held out — **both resolved 2026-08-20, next row but one** |
-| 2026-08-20 | `arXiv:2603.19820v1` read as a PDF, first time end to end (supplied directly — egress still blocks `arxiv.org`) | primary source, targeted at every claim this page and [#360](https://github.com/Akvize/reconcile-rs/issues/360) make about it | **Four corrections.** (a) The §8 line about balancing counts is Amparore *reporting Willow*, not his own requirement, and the wording circulated here was a paraphrase presented as a quote. (b) His actual future-work sentence names **composite-key** reconciliation and asks for a theory of *balancing **and** summarization* — both halves, which is what the note now answers. (c) Def. 3.9 has **five** queries plus `Insert`/`Delete`; `Enumerate` was missing from this repo's count, fixed in `rbsr`'s docs. (d) The paper states **no** `log_b(n/t)` depth bound and no laminar/signature-collapse argument — those belong to Meyer, not here; its own bounds are execution-sensitive (`T_loc = O(Qh)`, Lemma B.2 / Thm B.3). **Confirmed unchanged:** §6.1's SHA-256-truncated-to-128 `f_p` and its "probabilistically sound rather than information-theoretically exact" wording (verbatim), the out-of-scope collision analysis, Def. 3.4's monoid lift, and Negentropy's `(timestamp, identifier)` order — §2.1 needed no change |
-| 2026-08-20 | `arXiv:2212.13567` (Meyer) read as a PDF, first time end to end (supplied directly) | primary source, targeted at the depth/round bound this repo quotes as `log_b n` | **The bound is §3.2.2's**, not Amparore's: tree height `≤ 2·⌈log_b(n_min)⌉`, lowered by `⌊log_b(t)⌋`, so rounds are `2 + 2·⌈log_b(n_min)⌉ − ⌊log_b(t)⌋ ∈ O(lg n)` — the factor 2 is the peer alternation, which the `log_b(n/t)` shorthand drops. §4.3 realizes the cut as *"looking up items by index in an order-statistic tree"*, i.e. Algorithm 2 four years early, and prices one range fingerprint at `O(lg n_i)`. Two findings beyond the check: §3.2.1 fn. 2 says correctness needs only that subranges **cover** the parent, not partition it (disjointness is what the *exact-count* argument needs); and **§5.1 answers half of [#360](https://github.com/Akvize/reconcile-rs/issues/360)'s last open question** — boundaries "randomly shift[ed] by a small number of items" preserve the worst-case round bound and boundaries "chosen fully at random" give `O(lg n)` w.h.p., so Def. 3.8's exactness is not load-bearing. Note the tension with [#356](https://github.com/Akvize/reconcile-rs/issues/356): a *hash-derived* split breaks termination in ~99.5% of drives while a *random* one is fine — the difference is independence from protocol state, worth stating wherever #356 is cited |
-| 2026-08-20 | the six `cs.DS` papers §4.4 cites for bounds, read as primary documents (supplied directly) | primary source, targeted at every quantifier `ARCHITECTURE.md` §7 and [#360](https://github.com/Akvize/reconcile-rs/issues/360) rest on | **Bounds confirmed, three qualifications.** (a) Larsen's query is a **dominance** sum over points carrying `Θ(lg n)`-bit weights, with `t_u` **worst case** and `t_q` expected-average — a box aggregate answers dominance and a 256-bit group summary pads to `Θ(lg n)` bits, so the reduction holds, but the worst-case hypothesis is now stated rather than assumed. (b) He–Munro–Nicholson's Thm 1 exposes range **selection** only; the range-rank half the box reduction needs is Brodal–Jørgensen's, at `O(n lg n/lg lg n)` space — so "linear space" applies to the selection half alone. (c) Their query leaves the cut axis free (semi-bounded); RBSR refines fully-bounded boxes, which contain that case, so the cited cost lower-bounds rather than settles it. **Two findings:** Chan–Wilkinson **does** exist (added to §4.4; the SODA 2011 venue this row first recorded was corrected to SODA 2013 on 2026-08-21 — see the entry) and states the selection/3-sided-counting link the reduction uses; and static `δ=2` is *cheaper than dynamic `δ=1`* — linear-space `O(lg_w n)` box counting, `Θ(lg n/lg lg n)` selection — which sharpens #360's per-session-snapshot question into its most promising one. Pătraşcu STOC'07 arrived as a scan and is attributed through Larsen's account |
-| 2026-08-20 | Willow's *3d Range-Based Set Reconciliation* spec read as a PDF (supplied directly; `willowprotocol.org/specs/3d-range-based-set-reconciliation/` 404s — the live path is `/specs/rbsr/`, which is what arXiv:2603.19820 ref. [25] gives) | primary source, targeted at the split rule | **It settles the question in one sentence, and the answer commits it:** *"it is crucial for overall efficiency to **not split based on volume** […] but to split into subranges in which the peer holds **roughly the same number** of AuthorisedEntries"*. So the one deployed 3D RBSR rejects the geometric cut by name, is committed to a box-restricted order statistic and to the aggregate lower bound, and states neither. Its "roughly" is the *approximate* form — the primitive [#360](https://github.com/Akvize/reconcile-rs/issues/360) leaves as its one open question — so a shipped protocol already depends on a cost nobody has established. Separately: the spec states a fingerprint collision *requirement* ("even when facing maliciously crafted input sets") and defers the hash choice to Meyer §5B, a **1-D** survey; #360's transport result is what justifies that borrowing, and Willow does not argue it |
-| 2026-08-21 | primary-source reading campaign: 36 PDFs supplied by upload (egress still blocked) and read in full — both pivots (arXiv:2212.13567v2, arXiv:2603.19820v1), the `cs.IT` group (MTZ 2003, BU TR 2002-01, EPSR, Vogel arXiv:2302.08145, Janssen–de Jong 2000, RIBLT v3, CertainSync, MET-IBLT v2, Eppstein SIGCOMM'11, Goodrich–Mitzenmacher arXiv:1101.2245), the security group (Wagner, Bellare–Micciancio EUROCRYPT'97, Clarke ASIACRYPT'03, LtHash ePrint 2019/227), `cs.DS` (Chan–Larsen–Pătraşcu arXiv:1103.5510, BGJS TCS 2011, and the six already-read range-query papers), AB-tree (paper + code), Demers PODC'87, HLC, DVV, the Negentropy primer; `negentropy`, `gensync-core`, `gensync-benchmarking`, `abtree_public` cloned and checked at source | targeted, uploads + git proxy | This section's `cs.IT` abstract-sourced warning is discharged for the papers listed. Corrections folded into §2.1 (varint attribution), §4.1 (Allerton caveat resolved), §4.4 (AB-tree mechanism); #185's RIBLT row corrected (incremental encoder mode documented in the primary source); #468's `t = 2b` cutoff confirmed in Negentropy source (`splitRange`: `buckets = 16`, IdList below `buckets * 2`) |
-| 2026-08-21 (second wave) | three further supplied documents, same campaign: Mathys–Flajolet in full (the free/blocked-access throughput tables), `arXiv:1604.03030v1` (Weinstein–Yu, FOCS 2016), the AFP entry *A Set Reconciliation Algorithm* (Hofmeier & Karayel) | targeted, uploads | Three verdicts. §2.2's M–F row corrected — "quickly degrades" was this file's gloss: free access peaks at `Q` = 3, `Q` = 4 still beats binary, and fair coins are fixed throughout, so the split distribution is never optimised (the ground Vogel et al. reopen); §4.4's Capetanakis/M–F entry aligned. Weinstein–Yu Thm 1: **amortized, randomized** `Ω((lg n/lg lg n)²)` for dynamic *weighted* 2-D orthogonal range counting (weights in `[n]`, cell probe, `w = Θ(lg n)`) — [#360](https://github.com/Akvize/reconcile-rs/issues/360)'s summarization lower bound is no worst-case artefact; the bibliography entry belongs beside Larsen in the `cs.DS` group [PR #485](https://github.com/Akvize/reconcile-rs/pull/485) introduces, and is now carried there — recorded here first only to avoid a cross-branch collision. The AFP entry identified: it mechanizes MTZ 2003's CPI, not range-based reconciliation — §4.4's MTZ entry now carries the reference and its scope |
-
-### 4.4 Bibliography
-
-**Set reconciliation — range-based (`cs.DC` / `cs.CR`)**
-- A. Meyer, *Range-Based Set Reconciliation*, arXiv:2212.13567 (IEEE SRDS 2023) — https://arxiv.org/abs/2212.13567 ; primer: https://logperiodic.com/rbsr.html
-- L. Yang, Y. Gilad, M. Alizadeh, *Practical Rateless Set Reconciliation*, SIGCOMM 2024, arXiv:2402.02668 — https://arxiv.org/abs/2402.02668 ; impl. https://github.com/yangl1996/riblt
-- minisketch (Bitcoin Core) — https://github.com/bitcoin-core/minisketch ; BIP 330 — https://bips.dev/330/
-- Erlay (Naumenko et al., CCS 2019) — https://arxiv.org/abs/1905.10518
-- E. G. Amparore, *RBSR via Range-Summarizable Order-Statistics Stores* (RSOS / AELMDB), arXiv:2603.19820 (2026) — https://arxiv.org/html/2603.19820 ; software: AELMDB https://github.com/amparore/aelmdb , Negentropy integration https://github.com/amparore/negentropy-aelmdb , benchmark harness https://github.com/amparore/bench-aelmdb
-- A. Meyer, K. Scherer, *Range-Based Set Reconciliation without Homomorphic Hashing*, preprint 2024 —
-  https://aljoscha-meyer.de/assets/landing/rbsr_nonhomomorphic.pdf — RBSR over history-independent,
-  clamping-invariant trees using conventional hashes. **The direct counter-argument to §2.3 #1**:
-  the composable-monoid summary is one design point, not a requirement of the algorithm.
-  **Bears on §2.2 twice more**, both read from the source (2026-08-20). §IV.B states the
-  matched-range property as the *design requirement* — "if they do store the same set in a range,
-  their clamped subtrees will be equal, and hence have equal root hashes" — so §2.2's replay result
-  rests on what makes a range fingerprint work at all, not on the additive combiner, and survives
-  this paper's own construction. §II states RBSR's distinguishing claim against the field: MST
-  "can protect against malicious input only by randomizing the tree construction for each
-  reconciliation session", CPI/IBLT/RIBLT likewise, leaving RBSR "the only algorithm to handle
-  adversarial inputs without resorting to per-session randomization". That is the same property
-  §2.2 prices on the other axis — no per-session randomization is also no independent trial per
-  peer. → §2.2, §2.3, [#354](https://github.com/Akvize/reconcile-rs/issues/354)
-- L. Gong, Z. Liu, L. Liu, J. Xu, M. Ogihara, T. Yang, *Space- and computationally-efficient set
-  reconciliation via Parity Bitmap Sketch (PBS)*, VLDB 14(4), 2020 — a further point on the
-  communication/computation Pareto front, alongside RIBLT and minisketch (§2.2).
-- Y. Minsky, A. Trachtenberg, *Scalable set reconciliation*, Allerton 2002 (= BU TR 2002-01,
-  *Practical Set Reconciliation* — same work, two titles; §4.1) — the divide-and-conquer
-  ancestry of range-based refinement, predating the RBSR framing. **Also the root of the PSR line**
-  ([§4.1](#41-cross-community-vocabulary)): the one paper both dialects cite, and the reason this
-  page held the ancestor for months without ever reaching its `cs.IT` continuation.
-- *CertainSync: Rateless Set Reconciliation with Certainty*, arXiv:2504.08314v1 (ACM SIGMETRICS
-  Performance Evaluation Review, June 2025) — https://arxiv.org/abs/2504.08314
-  **Bears on:** direct RIBLT follow-up removing the estimator/parametrization step §2.2 flags as
-  RIBLT's one soft spot — doesn't change the hybrid-RBSR-plus-sketch conclusion, strengthens the
-  "which sketch" half of it. → §2.2, [#185](https://github.com/Akvize/reconcile-rs/issues/185)
-- *ConflictSync: Bandwidth Efficient Synchronization of Divergent State*, arXiv:2505.01144v1 (2025,
-  Baquero group; published PaPoC 2026 — 13th Workshop on Principles and Practice of Consistency for
-  Distributed Data, April 2026) — the first digest-driven synchronisation algorithm for state-based
-  CRDTs, cutting transfer up to 18× — https://arxiv.org/abs/2505.01144
-  **Bears on:** state-based-CRDT sync converging toward digest-driven sync, i.e. toward what this
-  crate already does — same read as CertainSync, orthogonal axis (conflict resolution, not the
-  refinement algorithm). → §1.5, §2.4 item 7
-- *Rateless Bloom Filters*, arXiv:2510.27614 (2025, Baquero group) — https://arxiv.org/abs/2510.27614
-  ; both validate §2.2's hybrid conclusion and show delta-CRDT sync converging toward digest-driven
-  sync, i.e. toward what this crate already does.
-
-**Set reconciliation — partitioned and sketch-based (`cs.IT` / `cs.NI`)** *(§4.1's other dialect,
-opened 2026-08-14. arXiv:2509.02373 and arXiv:2603.19820 were read as PDFs; the rest of this group is
-sourced from abstracts and search summaries — read before quoting a number from it.)*
-
-- **F. Lázaro, Č. Stefanović**, *Tree algorithms for set reconciliation*, `arXiv:2509.02373v1`
-  (submitted to IEEE, 2025) — https://arxiv.org/abs/2509.02373
-  **Bears on:** EPSR transmits one child's SR per split and derives the sibling's by subtracting from
-  the parent's, so a **group**-valued summary saves one transmission per split where a monoid or a
-  conventional hash cannot — `Fingerprint` (add/sub mod 2²⁵⁶) qualifies. Their near-halving is
-  specific to **binary** partitioning; at fan-out `b` the saving is `1/b`, ~6 % at `b` = 16.
-  → [#298](https://github.com/Akvize/reconcile-rs/issues/298), [#185](https://github.com/Akvize/reconcile-rs/issues/185), §2.2
-- **N. Boškov, A. Trachtenberg, D. Starobinski**, *GenSync: A New Framework for Benchmarking and
-  Optimizing Reconciliation of Data*, `doi:10.1109/TNSM.2022.3164369` (IEEE TNSM 19(4), 2022) —
-  https://github.com/nislab/gensync
-  **Bears on:** an open-source testbed for set-reconciliation *families* with a cgroup-based
-  latency/bandwidth/loss lane, reporting no universally dominant protocol; **carries no RBSR**, so a
-  harness claim here scopes to refinement policies inside RBSR, and its injection lane is the prior
-  art #280 weighed before building its own (§2.2). → [#280](https://github.com/Akvize/reconcile-rs/issues/280), [#174](https://github.com/Akvize/reconcile-rs/issues/174), §2.2
-- **J. Capetanakis**, *Tree algorithms for packet broadcast channels*, `doi:10.1109/TCOM.1979.1094661`
-  (IEEE Trans. Commun. 25(5), 1979) · **P. Mathys, P. Flajolet**, *Q-ary collision resolution
-  algorithms in random-access systems with free or blocked channel access*,
-  `doi:10.1109/TIT.1985.1057013` (IEEE Trans. Inf. Theory 31(2), 1985)
-  **Bears on:** the founding and the `Q`-ary analyses of splitting when conflict locations are
-  unknown — free-access throughput peaks at `Q` = 3 and falls only gradually past it (§2.2's
-  corrected row), near where this repo's measured `b`/ln `b` optimum also lands; fair coins
-  throughout, so the split *distribution* is never optimised. Different objective (channel
-  throughput), so a convergence to investigate, not a transferable bound.
-  → [#257](https://github.com/Akvize/reconcile-rs/issues/257), §2.2
-- **Q. Vogel, Y. Deshpande, Č. Stefanović, W. Kellerer**, *Analysis of d-ary tree algorithms with
-  successive interference cancellation*, `doi:10.1017/jpr.2023.107` (J. Applied Prob. 61(3), 2024;
-  preprint `arXiv:2302.08145`) — https://arxiv.org/abs/2302.08145
-  **Bears on:** disproves binary-optimality — maximal throughput is reachable at any `d` ≥ 2 **given
-  suitable splitting probabilities** — so the binding axis is plausibly the split *distribution*
-  rather than the arity, which is what Def. 3.8's balanced equal-rank partition fixes and what
-  [#318](https://github.com/Akvize/reconcile-rs/issues/318) proposes to vary. → [#318](https://github.com/Akvize/reconcile-rs/issues/318), §2.2
-- **A. J. E. M. Janssen, M. J. de Jong**, *Analysis of contention tree algorithms*,
-  `doi:10.1109/18.868486` (IEEE Trans. Inf. Theory 46(6), 2000)
-  **Bears on:** levels-to-resolution statistics for arbitrary node degree — the analytical form of
-  the round-count column `benches/protocol.rs` reports empirically. → [#257](https://github.com/Akvize/reconcile-rs/issues/257)
-- **Y. Minsky, A. Trachtenberg, R. Zippel**, *Set reconciliation with nearly optimal communication
-  complexity*, `doi:10.1109/TIT.2003.815784` (IEEE Trans. Inf. Theory 49(9), 2003)
-  **Bears on:** CPI, the primitive PSR partitions down to and the `≈ b·d` optimum §2.2's table
-  quotes through minisketch. Mechanized: the AFP entry *A Set Reconciliation Algorithm* (Hofmeier &
-  Karayel — https://www.isa-afp.org/entries/Set_Reconciliation.html) proves CPI's decode∘encode
-  round-trip in Isabelle/HOL (`decode_encode_correct`, its single top-level theorem). Functional
-  correctness only: the abstract's "nearly optimal communication complexity" quotes this paper's
-  title, no cost theorem is formalized, and nothing in it touches range-based splitting — a
-  mechanized-RBSR effort would start from zero above the polynomial libraries. → §2.2
-- **M. Mitzenmacher, R. Pagh**, *Simple multi-party set reconciliation*,
-  `doi:10.1007/s00446-017-0316-0` (Distributed Computing 31(6), 2018; preprint `arXiv:1311.2037`) —
-  https://arxiv.org/abs/1311.2037
-  **Bears on:** the only entry here that is not two-party. Every cost model on this page is stated
-  for one pair while `ReplicatedMap` runs an N-node cluster at O(N) write amplification — the
-  literature §2.2's fleet result is answered against. → §1.2, §2.2, [#174](https://github.com/Akvize/reconcile-rs/issues/174), [#354](https://github.com/Akvize/reconcile-rs/issues/354)
-- **F. Lázaro, B. Matuz**, *A rate-compatible solution to the set reconciliation problem*,
-  `arXiv:2211.05472v2` (IEEE Trans. Commun. 71(10), 2023 — v2 is the accepted revision) —
-  https://arxiv.org/abs/2211.05472
-  **Bears on:** MET-IBLTs reconcile **without estimating `|d|`** and without worst-case oversizing —
-  a third option against which #185 weighs a fixed-capacity IBLT (needs a capacity guess) and RIBLT
-  (Ω(n) encoder per session). → [#185](https://github.com/Akvize/reconcile-rs/issues/185)
-- **M. Goodrich, M. Mitzenmacher**, *Invertible Bloom lookup tables*, Allerton 2011 ·
-  **D. Eppstein, M. Goodrich, F. Uyeda, G. Varghese**, *What's the difference? Efficient set
-  reconciliation without prior context*, `doi:10.1145/2043164.2018462` (SIGCOMM 2011) ·
-  **P. Ozisik et al.**, *Graphene*, `doi:10.1145/3341302.3342082` (SIGCOMM 2019)
-  **Bears on:** the IBLT origin, the difference-digest framing §1.3's table row rests on, and the
-  Bloom-prefilter-plus-IBLT hybrid that prefigures ConflictSync's two-stage design.
-  → [#185](https://github.com/Akvize/reconcile-rs/issues/185), §1.3
-
-**Merkle / anti-entropy structures**
-- A. Auvolat, F. Taïani, *Merkle Search Trees*, SRDS 2019 — https://inria.hal.science/hal-02303490 ; crate https://github.com/domodwyer/merkle-search-tree ; Bluesky/atproto usage — https://atproto.com/specs/repository
-- Prolly trees (Dolt/Noms) — https://docs.dolthub.com/architecture/storage-engine/prolly-tree ; https://www.dolthub.com/blog/2025-06-03-people-keep-inventing-prolly-trees/
-- J. Gustafson, *Merklizing the key/value store* (Merkle radix / SMT) — https://joelgustafson.com/posts/2023-05-04/merklizing-the-key-value-store-for-fun-and-profit/
-- Merkle-CRDTs, arXiv:2004.00107 — https://arxiv.org/abs/2004.00107
-- Dynamo (DeCandia et al., SOSP 2007) — https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf
-- Cassandra repair / over-streaming — https://www.pythian.com/blog/effective-anti-entropy-repair-cassandra
-- Willow 3d-RBSR (fingerprint security) — https://willowprotocol.org/specs/3d-range-based-set-reconciliation/index.html ; Negentropy — https://github.com/hoytech/negentropy
-- Demers et al., *Epidemic Algorithms*, PODC 1987 ; SWIM — https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf ; memberlist — https://github.com/hashicorp/memberlist
-- **B. Doerr, A. Kostrygin**, *Randomized Rumor Spreading Revisited*, `arXiv:2303.11150v1` (full
-  version of ICALP 2017) — https://arxiv.org/abs/2303.11150
-  **Bears on:** the sharpest gossip round counts to additive constants (push-pull:
-  `log₃n + log₂ln n ± O(1)`), and the theorem that constant per-message loss destroys the
-  double-exponential end phase — message complexity degrades from `Θ(n log log n)` to
-  `Θ(n log n)` — a published anchor for loss, not RTT, being the binding term on an unreliable
-  transport. → [#336](https://github.com/Akvize/reconcile-rs/issues/336), §1.3
-- A. Rawat, T. K. Vangani, H. Cornelius, V. Daza, *Accelerating Prolly Trees: Simplified Chunking for
-  Rapid Updates*, DLT 2024 workshop (CEUR-WS Vol-3791, paper 8) — https://ceur-ws.org/Vol-3791/paper8.pdf
-  ; journal version `doi:10.1145/3785142` (ACM Distributed Ledger Technologies: Research and
-  Practice, online 2026-01-06)
-  **Bears on:** replaces the classic rolling-hash chunker's O(N)-worst-case cascading rechunking
-  with an anchor-node design bounding each insertion to one chunk plus an O(H) anchor-path update
-  (≤2H hashes), height staying O(log n) — narrows but does not remove §2.1's "heavy machinery /
-  higher latency" ❌ against FingerprintTreeMap. → §2.1
-
-**Aggregate-augmented and page-oriented trees** *(the structural ancestry of `FingerprintTreeMap`,
-surfaced by arXiv:2603.19820's related work — §2.4 P1/P2 and issues #257/#271 all land here)*
-- S. Tatham, *Counted B-Trees* (2004) — https://www.chiark.greenend.org.uk/~sgtatham/algorithms/cbtree.html
-  — the subtree-count augmentation giving O(log n) rank/select. Direct prior art for `tree_size`:
-  the order-statistic half of RSOS is a documented classic, not a 2026 result.
-- Z. Zhao, D. Xie, F. Li, *AB-tree: Index for Concurrent Random Sampling and Updates*,
-  `doi:10.14778/3538598.3538606` (VLDB 15(9), 2022) — https://vldb.org/pvldb/vol15/p1835-zhao.pdf ;
-  code (primary source read for this entry — `vldb.org` was egress-blocked) via
-  https://github.com/zzy7896321/abtree_public.
-  **Bears on:** the mechanism is not root-path locking — writers update the in-page aggregate in
-  place with atomic Fetch-And-Add (weight updates commute, §3.1) *and* prepend immutable delta
-  records (tagged by inserting xmin) to a lock-free per-child-page version chain, which snapshot
-  readers use to **subtract invisible deltas** from the in-place value (§4.4); stored weights are
-  deliberately inexact upper bounds corrected by rejection sampling (Def. 1) — AB-tree buys
-  concurrency by relaxing the exactness a sound SKIP cannot relax. An epoch-based GC reclaims dead
-  chain nodes; the root's entry is deliberately not removed on the hot path — that detail is in the
-  code alone (`_abt_install_version_chain`'s comment; vacuum collects it when the tree quiesces),
-  not in the paper (corrected 2026-08-21, paper + code read). →
-  [#359](https://github.com/Akvize/reconcile-rs/issues/359), §2.4 item 10.
-- F. Li, M. Hadjieleftheriou, G. Kollios, L. Reyzin, *Dynamic authenticated index structures for
-  outsourced databases* (Embedded Merkle B-tree), SIGMOD 2006 — twenty years of prior art on
-  caching digests inside a B-tree. Different goal (verifiable query answering, not range
-  aggregation), but it bounds any novelty claim and supplies the vocabulary if inclusion proofs
-  ever become a requirement.
-- S. Roura, *A new method for balancing binary search trees*, ICALP 2001 — balancing by subtree
-  weight; background for the untuned interaction between the tree order (6) and the protocol
-  fan-out ([#257](https://github.com/Akvize/reconcile-rs/issues/257)).
-- H. Chu et al., *LMDB* — https://github.com/LMDB — a copy-on-write, memory-mapped B+-tree with
-  lock-free MVCC readers and a single writer. Named here because that *is* the property epic
-  [#271](https://github.com/Akvize/reconcile-rs/issues/271) sets out to build in safe Rust: the
-  build-vs-adopt comparison should be made against it explicitly rather than by default.
-
-**Range selection and orthogonal range searching (`cs.DS` / `cs.CG`)** *(a third dialect, opened
-2026-08-20 for [#360](https://github.com/Akvize/reconcile-rs/issues/360): the operation a `δ > 1` RSOS
-needs beyond Def. 3.9 is this literature's central object, and its bounds are settled. **`δ` is the
-dimension throughout this group and [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, not [§4.1](#41-cross-community-vocabulary)'s
-PSR difference size** — the one symbol the three dialects genuinely collide on. Umbrella survey:
-P. K. Agarwal, *Range searching*, Handbook of Discrete and Computational Geometry 3rd ed. ch. 41 —
-https://users.cs.duke.edu/~pankaj/publications/surveys/rs3ed.pdf . Sourced from search summaries, §4.3.)*
-
-- **M. He, J. I. Munro, P. K. Nicholson**, *Dynamic range selection in linear space*, `arXiv:1106.5076`
-  · `doi:10.1007/978-3-642-25591-5_18` (ISAAC 2011, LNCS 7074, pp. 160–169) —
-  https://arxiv.org/abs/1106.5076
-  **Bears on:** its problem statement *is* the missing operation — the `k`-th smallest `y` among the
-  points whose `x` lies in a query range — at `O((lg n/lg lg n)²)` query and amortized update in
-  **linear** space. The primitive #360 expected to be the blocker is the affordable half.
-  → [#360](https://github.com/Akvize/reconcile-rs/issues/360), [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7
-- **A. G. Jørgensen, K. G. Larsen**, *Range selection and median: tight cell probe lower bounds and
-  adaptive data structures*, `doi:10.1137/1.9781611973082.63` (SODA 2011, pp. 805–813) —
-  https://cs.au.dk/~larsen/papers/range_median.pdf
-  **Bears on:** `Ω(lg n/lg lg n)` for *static* range selection in `n·lg^O(1) n` bits, matched by
-  Brodal & Jørgensen (ISAAC 2009, https://users-cs.au.dk/gerth/papers/isaac09median.pdf) — so the
-  primitive's price is **tight**, not merely unimproved.
-  → [#360](https://github.com/Akvize/reconcile-rs/issues/360)
-- **K. G. Larsen**, *The cell probe complexity of dynamic range counting*, `arXiv:1105.5933` ·
-  `doi:10.1145/2213977.2213987` (STOC 2012, pp. 85–94) — https://arxiv.org/abs/1105.5933 ;
-  strengthening **M. Pătraşcu**, *Lower bounds for 2-dimensional range counting*,
-  `doi:10.1145/1250790.1250797` (STOC 2007, pp. 40–46)
-  **Bears on:** the load-bearing citation of the no-go. `t_q = Ω((lg n/lg(w·t_u))²)`, i.e.
-  `Ω((lg n/lg lg n)²)` at cell size `w = Θ(lg n)` under any polylog update, for **weighted** 2D range
-  counting — and `Aggregate` carries a 256-bit `Fingerprint`. It therefore binds the operation Def. 3.9
-  **already has**, which is why `δ > 1` is priced by the dimension and not by the new primitive.
-  → [#360](https://github.com/Akvize/reconcile-rs/issues/360), §2.1
-- **O. Weinstein, H. Yu**, *Amortized dynamic cell-probe lower bounds from four-party communication*,
-  `arXiv:1604.03030v1` (FOCS 2016) — https://arxiv.org/abs/1604.03030
-  **Bears on:** closes the escape hatch the row above leaves open. Larsen's `t_u` is **worst case**, so an
-  amortized structure was the one way a `δ = 2` box aggregate could still have been cheap; its Thm 1 gives
-  the same `Ω((lg n/lg lg n)²)` **amortized and randomized**, for dynamic weighted 2-D orthogonal range
-  counting (weights in `[n]`, `w = Θ(lg n)`). The `δ = 1` baseline two rows down already allows
-  amortization, so the two ends of §7's comparison are now quantified alike. Read in [§4.3](#43-search-log)'s
-  2026-08-21 second wave, not on this page's own pass.
-  → [#360](https://github.com/Akvize/reconcile-rs/issues/360), [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7
-- **T. M. Chan, B. T. Wilkinson**, *Adaptive and Approximate Orthogonal Range Counting*,
-  SODA 2013 — http://tmc.web.engr.illinois.edu/orcount_soda.pdf (the September 2012 preprint, the
-  document read for this page; its "last year's SODA" designates [JL11] = SODA 2011)
-  **Bears on** *(venue corrected 2026-08-21 — first recorded as SODA 2011 with a doi from that
-  year's volume, which the preprint's own dating rules out; no doi pinnable offline, pin when next
-  touched, §4.2)*: held out of this page on 2026-08-20 as unconfirmable from summaries, then read: it
-  exists, it gives linear-space range selection at `O(1 + lg_w k)` — matching [JL11]'s lower bound
-  exactly — and it states in one line the link #360's box reduction runs on, that range selection
-  "is closely related to 2-D 3-sided orthogonal range counting". Its static linear-space
-  `O(lg_w n)` box counting is why the per-session-snapshot question is #360's live one.
-  → [#360](https://github.com/Akvize/reconcile-rs/issues/360)
-- **M. Pătraşcu, E. D. Demaine**, *Tight bounds for the partial-sums problem*,
-  `doi:10.5555/982792.982796` (SODA 2004; journal version *Logarithmic lower bounds in the cell-probe
-  model*, SIAM J. Comput. 35(4), 2006, pp. 932–963)
-  **Bears on:** the one-dimensional baseline the row above is measured against — dynamic partial sums cost
-  `Θ(1 + lg n/lg(w/s))` for cell size `w` and summary width `s`, hence `Θ(lg n)` once the summary is a
-  word wide. `FingerprintTreeMap`'s `O(lg n)` aggregate is **optimal**, not merely adequate, so the
-  `δ > 1` comparison is tight on both sides. → [#360](https://github.com/Akvize/reconcile-rs/issues/360), §2.3
-
-**Consistency & conflict resolution**
-- Kingsbury (Jepsen), *The trouble with timestamps* — https://aphyr.com/posts/299-the-trouble-with-timestamps ; *Jepsen: Cassandra* — https://aphyr.com/posts/294-jepsen-cassandra
-- S. Kulkarni et al., *Hybrid Logical Clocks*, 2014 — https://cse.buffalo.edu/tech-reports/2014-04.pdf
-- Shapiro et al., *CRDTs*, INRIA RR-7506 / SSS 2011 — https://inria.hal.science/inria-00555588/en/
-- Preguiça et al., *Dotted Version Vectors*, arXiv:1011.5808 — https://arxiv.org/abs/1011.5808
-- Clarke et al., *Incremental Multiset Hash Functions*, ASIACRYPT 2003 — https://people.csail.mit.edu/devadas/pubs/mhashes.pdf
-  **Bears on** *(no arXiv/doi pinnable offline — supplied-PDF read; pin when next touched, §4.2)*:
-  MSet-Add-Hash is the one short-output additive construction with a security proof —
-  keyed by a PRF whose key is **secret to the verifier** (bound `u²/2^m + (d/n)^l`); with the key
-  known and the nonce fixed, security degrades to exactly the weighted-knapsack problem Wagner's
-  k-tree attacks — so a cluster-shared key protects against outsiders only, never key holders.
-  → [#337](https://github.com/Akvize/reconcile-rs/issues/337), #471
-- **M. Bellare, D. Micciancio**, *A New Paradigm for Collision-free Hashing: Incrementality at
-  Reduced Cost*, EUROCRYPT 1997 — https://cseweb.ucsd.edu/~mihir/papers.html
-  **Bears on** *(no arXiv/doi pinnable offline — supplied-PDF read; pin when next touched, §4.2)*:
-  defines the randomize-then-combine paradigm (AdHASH/MuHASH/LtHASH) and reduces
-  AdHASH collisions to the weighted-knapsack problem — the security framework a keyed lift argues
-  in; its pre-Wagner "a few hundred bits" sizing is exactly what Wagner broke.
-  → [#337](https://github.com/Akvize/reconcile-rs/issues/337), §2.4 P0-1
-- **K. Lewi, W. Kim, I. Maykov, S. Weis**, *Securing Update Propagation with Homomorphic Hashing*
-  (LtHash), IACR ePrint 2019/227 — https://eprint.iacr.org/2019/227.pdf
-  **Bears on** *(ePrint carries no doi; id pinned as 2019/227 — §4.2 exception, declared)*:
-  the deployed post-Wagner unkeyed additive hash pays 16384 bits for ~200-bit
-  security (lthash16 = 1024 × 16-bit lanes), and its §1.3 disputes [MGS15]'s smaller sizings —
-  the quantified case that an unkeyed lift cannot stay at 256 bits, keying can.
-  → [#337](https://github.com/Akvize/reconcile-rs/issues/337), §2.4 P0-1
-- **D. Wagner**, *A Generalized Birthday Problem*, `doi:10.1007/3-540-45708-9_19` (CRYPTO 2002,
-  LNCS 2442, pp. 288–303) — https://www.iacr.org/archive/crypto2002/24420288/24420288.pdf
-  **Bears on:** the k-tree solves the balance problem over `ℤ/2^w` in subexponential time, so a wide
-  non-GF(2)-linear combiner is necessary but **not sufficient** — the source for §2.4 P0-1's
-  "Wagner-breakable", and for why more width is not the remedy.
-  → [#337](https://github.com/Akvize/reconcile-rs/issues/337), §2.4 P0-1
-- Abadi, *PACELC* — https://en.wikipedia.org/wiki/PACELC_design_principle ; ScyllaDB repair-based tombstone GC — https://www.scylladb.com/2022/06/30/preventing-data-resurrection-with-repair-based-tombstone-garbage-collection/
-
-**Product positioning**
-- Pekko Distributed Data — https://pekko.apache.org/docs/pekko/current/typed/distributed-data.html
-- Hazelcast Replicated Map — https://docs.hazelcast.com/hazelcast/5.6/data-structures/replicated-map
-- iroh / iroh-docs — https://github.com/n0-computer/iroh ; automerge — https://github.com/automerge/automerge
-
----
-
-## 5. Alphabetical index
-
-> Index of the [glossary (§3)](#3-glossary) terms. Each entry links to the subsection where the term
-> is defined: [3.1 repo → code](#g91) · [3.2 structures/algos](#g92) · [3.3 distributed](#g93) ·
-> [3.4 crypto/network](#g94) · [3.5 complexity](#g95) · [3.6 Rust](#g96).
-
-**A** — AB-tree [3.2](#g92) · AEAD [3.4](#g94) · AELMDB [3.2](#g92) · amplification [3.4](#g94) · anti-entropy [3.3](#g93) · `Arc` [3.6](#g96) · `ArrayVec` [3.6](#g96) · associative [3.3](#g93)
-
-**B** — B-tree / B+-tree [3.5](#g95) · BCH codes [3.2](#g92) · Berlekamp-Massey [3.2](#g92) · bincode [3.6](#g96) · bincode allocation bomb [3.4](#g94) · BIP 330 [3.2](#g92) · birthday bound [3.4](#g94) · BLAKE3 [3.4](#g94) · Bloom filter [3.2](#g92)
-
-**C** — CAP [3.3](#g93) · CAS [3.2](#g92) · Cassandra [3.2](#g92) · Counted B-tree [3.2](#g92) · causal consistency / causal+ [3.3](#g93) · causal stability [3.3](#g93) · CDC (content-defined chunking) [3.2](#g92) · CertainSync [3.2](#g92) · chrono [3.6](#g96) · CID [3.2](#g92) · clippy [3.6](#g96) · clock skew [3.3](#g93) · CmRDT [3.3](#g93) · collision [3.4](#g94) · commit-wait [3.3](#g93) · commutative [3.3](#g93) · content-addressing [3.2](#g92) · CPI / CPISync [3.2](#g92) · CRDT [3.3](#g93) · CvRDT [3.3](#g93)
-
-**D** — datagram [3.4](#g94) · `DateTime<Utc>` [3.6](#g96) · `DefaultHasher` [3.4](#g94) · Dolt / DoltHub [3.2](#g92) · `DoubleEndedIterator` [3.6](#g96) · DRDoS [3.4](#g94) · DTLS [3.4](#g94) · DVV (Dotted Version Vector) [3.3](#g93) · Dynamo [3.2](#g92)
-
-**E** — Earthstar [3.2](#g92) · EMB-tree (Embedded Merkle B-tree) [3.2](#g92) · epidemic [3.3](#g93) · Erlay [3.2](#g92) · eventual consistency [3.3](#g93) · `ExactSizeIterator` [3.6](#g96)
-
-**F** — fan-out [3.5](#g95) · `FusedIterator` [3.6](#g96) · fuzzing [3.6](#g96)
-
-**G** — `gc_grace_seconds` [3.3](#g93) · GF(2)-linear [3.4](#g94) · gossip [3.3](#g93) · Graphene [3.2](#g92)
-
-**H** — happens-before [3.3](#g93) · Hazelcast [§2/product](#g92) · hinted handoff [3.3](#g93) · history-independence [3.2](#g92) · HLC (Hybrid Logical Clock) [3.3](#g93) · HMAC [3.4](#g94) · homomorphic hash [3.4](#g94) · HyParView [3.3](#g93)
-
-**I** — IBLT [3.2](#g92) · idempotent [3.3](#g93) · incremental hash [3.4](#g94) · ipnet [3.6](#g96) · iroh / iroh-docs [3.2](#g92)
-
-**J** — join-semilattice [3.3](#g93)
-
-**L** — Lamport clock [3.3](#g93) · LMDB [3.2](#g92) · leading-zeros (attack) [3.2](#g92) · LtHash [3.4](#g94) · LWW (Last-Write-Wins) [3.3](#g93) · LWW-Register [3.3](#g93)
-
-**M** — MAC [3.4](#g94) · memberlist [3.3](#g93) · Merkle-CRDT [3.2](#g92) · Merkle-DAG [3.2](#g92) · Merkle radix / Patricia [3.2](#g92) · Merkle tree / root [3.2](#g92) · minisketch [3.2](#g92) · miri [3.6](#g96) · monoid [3.5](#g95) · monotone [3.3](#g93) · MSet-Mu-Hash / MSet-XOR-Hash [3.4](#g94) · MSRV [3.6](#g96) · MST (Merkle Search Tree) [3.2](#g92) · MTU [3.4](#g94) · MV-Register [3.3](#g93)
-
-**N** — *n / d / U / b* (notation) [3.5](#g95) · Negentropy [3.2](#g92) · Noise [3.4](#g94) · Noms [3.2](#g92) · NTP [3.3](#g93)
-
-**O** — O(log n) / O(d log n) [3.5](#g95) · once_cell [3.6](#g96) · order statistics (rank/select) [3.5](#g95) · OR-Set [3.3](#g93) · over-streaming [3.2](#g92)
-
-**P** — PACELC [3.3](#g93) · PBS (Parity Bitmap Sketch) [3.2](#g92) · `panic=abort` [3.6](#g96) · parking_lot [3.6](#g96) · partition [3.3](#g93) · Patricia trie [3.2](#g92) · Pekko Distributed Data [§2/product](#g92) · PinSketch [3.2](#g92) · prolly tree [3.2](#g92) · proptest [3.6](#g96) · PTP [3.3](#g93) · push / pull [3.3](#g93)
-
-**Q** — QUIC [3.4](#g94) · quickcheck [3.6](#g96) · quorum [3.3](#g93)
-
-**R** — rand [3.6](#g96) · range-cmp / `RangeOrdering` [3.6](#g96) · rank / select [3.5](#g95) · Rateless IBLT (RIBLT) [3.2](#g92) · RBSR [3.2](#g92) · read repair [3.3](#g93) · resurrection / zombie [3.3](#g93) · Riak [3.2](#g92) · rolling hash [3.2](#g92) · rumor mongering [3.3](#g93) · `RwLock` [3.6](#g96) · RSOS [3.2](#g92)
-
-**S** — ScyllaDB [3.2](#g92) · second-preimage [3.4](#g94) · SEC (Strong Eventual Consistency) [3.3](#g93) · serde [3.6](#g96) · session guarantees [3.3](#g93) · SipHash [3.4](#g94) · SMT (Sparse Merkle Tree) [3.2](#g92) · spoofing [3.4](#g94) · split-brain [3.3](#g93) · Strata Estimator [3.2](#g92) · structural sharing [3.2](#g92) · SWIM [3.3](#g93)
-
-**T** — Thomas write rule [3.3](#g93) · TLS [3.4](#g94) · tokio [3.6](#g96) · tracing [3.6](#g96) · transitive group [3.4](#g94) · TrueTime [3.3](#g93)
-
-**U** — UDP [3.4](#g94) · `unwrap` [3.6](#g96) · `overflow-checks` [3.6](#g96)
-
-**V** — vector clock / version vector [3.3](#g93) · Vivaldi [3.3](#g93) · Voldemort [3.2](#g92)
-
-**W** — Willow [3.2](#g92) · Writes-Follow-Reads [3.3](#g93)
-
-**X** — XOR [3.4](#g94) · xxHash [3.4](#g94)
-
----
-
-*The state-of-the-art positioning was produced by a literature survey across four themes
-(set-reconciliation algorithms, diffable/Merkle structures, consistency & conflict resolution, and
-the Rust ecosystem), every claim backed by a cited source. The accompanying code-audit findings,
-and their resolution record, live in [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8.*

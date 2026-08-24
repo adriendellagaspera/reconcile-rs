@@ -7,7 +7,7 @@ This file states rules, not rationale. For rationale and worked examples, follow
 duplicating them here is exactly the rot this file is meant to avoid (§10). That is a budget, not a
 preference: `./scripts/check-doc-budget.sh` fails if this file and `CLAUDE.md` exceed 200 lines
 together, since `CLAUDE.md` imports this one verbatim and a reader gets the sum. The same script
-also caps `SOTA.md` on its own, larger budget — durable reference, not read every session, but not
+also caps `SOTA.md` on its own, larger budget — durable positioning, not read every session, but not
 unbounded either.
 
 ## 1. Map
@@ -19,7 +19,7 @@ sibling) `→ reconcile` (facade), plus unpublished dev-only `devkit`. See
 
 Read first, don't duplicate: [`README.md`](./README.md) (usage/API/security/deployment),
 [`ARCHITECTURE.md`](./ARCHITECTURE.md) (module map, ports & adapters, invariants, audit history),
-[`SOTA.md`](./SOTA.md) (durable positioning/glossary/bibliography). Live correctness/security/
+[`SOTA.md`](./SOTA.md) (durable positioning; §1-§2 only). Live correctness/security/
 release status is the `v1.0.0` milestone and issue #206, not a file.
 
 ## 2. Environment
@@ -39,9 +39,9 @@ In CI's order (`.github/workflows/main.yml`):
 ```bash
 export RUSTFLAGS=-Dwarnings RUSTDOCFLAGS=-Dwarnings   # what CI sets; without it a lint warns locally, errors in CI
 cargo fmt --check
-./scripts/check-doc-budget.sh              # AGENTS.md + CLAUDE.md ≤ 200, SOTA.md §1-§2 prose ≤ 700
+./scripts/check-doc-budget.sh              # AGENTS.md + CLAUDE.md ≤ 200, SOTA.md ≤ 700
 ./scripts/check-domain-purity.sh                             # hexagonal boundary + §2 graph, §9
-./scripts/check-doc-structure.sh                             # doc links/anchors/paths, SOTA §4.2
+./scripts/check-doc-structure.sh                             # doc links/anchors/paths
 ./scripts/check-test-file-naming.sh                # split #[cfg(test)] modules named tests.rs
 ./scripts/check-file-size.sh                    # prod/test line-count budgets, warn + hard-fail
 RUSTFLAGS="$RUSTFLAGS --cfg reconcile_internal_testing" cargo clippy --workspace --all-targets
