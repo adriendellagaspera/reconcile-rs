@@ -247,21 +247,48 @@ pub struct NodeId(u64);          // replica identity — the deterministic tie-b
 pub struct ClockDrift(u64);      // a *duration*, never comparable to an instant
 ```
 
-A Hybrid Logical Clock (Kulkarni et al. 2014) *is* the pair `(physical, logical)`; `node_id` is not a
-clock component but the tie-break that makes the LWW comparison a total order. So the arithmetic
-(`Hlc::next_tick`, `Hlc::advance_past_remote`) lives on `Hlc` and takes no `NodeId` — the `Clock`
-adapter (which owns the node's identity) attaches it only when minting a `Timestamp`, storing the
-identity exactly once rather than as both a field and a component of a stored clock reading. Nesting
-costs nothing on the wire: bincode and `rsos`'s canonical encoding (§6) both write a struct as its
-fields in declaration order with no framing, so `{{physical, logical}, node_id}` is byte-identical to
-a flat triple (pinned by `tests/timestamp_wire_format.rs`).
+```mermaid
+flowchart LR
+    ts["Timestamp\nthe LWW ordering key"]
+    hlc["Hlc\nthe HLC of the paper"]
+    pt["PhysicalTime(u64)\nms since the Unix epoch"]
+    lc["LogicalCounter(u32)\nwithin one millisecond"]
+    nid["NodeId(u64)\nreplica identity"]
 
-`Timestamp` is built through one further "parse, don't validate" type, `AdmittedTime` — a remote
-physical-time reading admitted to the local clock state (the past participle: the type is evidence
-the drift check *has run*), obtainable only via `AdmittedTime::clamped_to_drift` (the untrusted path,
-applying the far-future clamp of `MAX_CLOCK_DRIFT`) or the explicitly-named `AdmittedTime::trusted`
-(the self-authored-stamp path). `Hlc::advance_past_remote` accepts nothing else, so the clamp is a
-property of the type system, not of a parameter name (§5 invariant 6 depends on this).
+    ts --> hlc
+    ts --> nid
+    hlc --> pt
+    hlc --> lc
+
+    style nid fill:#00000000
+```
+
+The split is where it is because a Hybrid Logical Clock (Kulkarni et al. 2014) *is* the pair
+`(physical, logical)` — `node_id` is the tie-break that makes the LWW comparison total, not a clock
+component. Two consequences:
+
+| | |
+|---|---|
+| the arithmetic (`Hlc::next_tick`, `Hlc::advance_past_remote`) lives on `Hlc` and takes no `NodeId` | the `Clock` adapter owns the identity and attaches it only when minting a `Timestamp`, so it is stored once rather than as both a field and part of a stored clock reading |
+| nesting costs nothing on the wire | bincode and `rsos`'s canonical encoding (§6) both write a struct as its fields in declaration order with no framing, so `{{physical, logical}, node_id}` is byte-identical to a flat triple — pinned by `tests/timestamp_wire_format.rs` |
+
+`Timestamp` is built through one further "parse, don't validate" type, `AdmittedTime` — the past
+participle is the point: the type is evidence the drift check *has run*. There are exactly two ways
+in, and `Hlc::advance_past_remote` accepts nothing else, so the clamp is a property of the type
+system rather than of a parameter name (§5 invariant 6 depends on this):
+
+```mermaid
+flowchart LR
+    remote["a peer's PhysicalTime\nuntrusted"] --> clamp["AdmittedTime::clamped_to_drift\ncaps at local now + MAX_CLOCK_DRIFT"]
+    own["a self-authored stamp\ntrusted"] --> trust["AdmittedTime::trusted"]
+    clamp --> at["AdmittedTime"]
+    trust --> at
+    at --> advance["Hlc::advance_past_remote\nthe only consumer"]
+    advance --> state["local clock state"]
+
+    style own fill:#00000000
+    style trust fill:#00000000
+```
 
 That clamp guards the *local clock state* only — a remote stamp is stored verbatim, since it is LWW
 data. `reconcile::clock`'s `BoundedInstant` performs the one further derivation that needs bounding:
@@ -443,6 +470,20 @@ The Meyer/Willow-ecosystem reference implementation
 (`github.com/earthstar-project/range-reconcile`) documents three "Bring Your Own …" extension
 points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `BYOEncoding`.
 
+Every extension point this crate has considered, its standing, and where the reasoning lives. The
+bullets below are that reasoning — this table is the lookup, not a summary that could drift from it.
+
+| extension point | status | reasoning |
+|---|---|---|
+| `Transport` (`BYOTransport`) | **realized** | §3.2 — two implementations, one load-bearing for tests |
+| A public `Encoding` port (`BYOEncoding`) | **deliberately absent** | one implementation, no test-driven second consumer; reintroducing it later is additive |
+| `BYOLiftingMonoid` | **decided: out of scope for 1.x, a 2.0 topic** | undetermined bound (`Group` vs `Monoid`), and `type Summary` has no additive path after 1.0 |
+| A multidimensional (product-order) RSOS | **decided: no-go** | below |
+| Pluggable per-value conflict resolution | **decided: deferred**, no trigger yet | below |
+| A leaf sketch (IBLT) beside the RBSR chain | **decided: out of scope for this crate** | moved to the research companion |
+| Partial replication / sharding | **the only surviving answer to capacity pressure** | below |
+| Defense against a correlated false SKIP | **decided: option A ships, B re-priced at #337** | below |
+
 - **A public `Encoding` port** is deliberately absent: `Transport` earns its port because it has two
   real implementations and `InMemoryTransport` is load-bearing for tests without real sockets; wire
   encoding has exactly one implementation and no test-driven need for a second. Reintroducing it
@@ -467,23 +508,6 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
   constraint — `rbsr` stays 0.x (#308) and `M = Fingerprint` moves no wire bytes. The rejected
   alternative (sealing `Rsos`, which keeps every option open at the cost of third-party backends) is
   argued on #298.
-- **Per-session range-boundary randomisation** — the only mechanism that decorrelates reconciliation
-  sessions ([#471](https://github.com/Akvize/reconcile-rs/issues/471)). **Undecided**, options framed.
-  Because `ϕ` is a fixed function, two peers holding equal content over a range compute equal
-  aggregates and reach the same verdict: a false SKIP is a property of the pair of *contents*, so a
-  converged fleet obtains exactly one verdict over a divergent range however many peers it has
-  ([#354](https://github.com/Akvize/reconcile-rs/issues/354)). The two candidate defences cover
-  disjoint parts of the refinement tree, which is why they are one decision:
-
-  | mechanism | covers | steady-state cost |
-  |---|---|---|
-  | random per-session cut offsets | every range **below** the outer one | none — cuts are chosen anyway on SPLIT |
-  | periodic refusal of the outer-range SKIP | the **outer** range only | `~√n / k` extra ranges per round |
-
-  Salting `ϕ` itself is **rejected up front**: it decorrelates sessions by destroying the cached
-  subtree summary, which is the `O(log n)` `Aggregate` the RSOS contract exists to provide. The
-  randomisation seam is in the driver (cut points), not in `RefinementPolicy`, so §5 invariant 12
-  is untouched; §5 invariant 10 is the one a shifted cut can break.
 - **A multidimensional (product-order) RSOS** — reconciling *boxes* in `δ > 1` dimensions instead of
   intervals in one ([#360](https://github.com/Akvize/reconcile-rs/issues/360)). **Decided: no-go.**
   Balancing (Algorithm 2's rank-cut) has a known `δ = 2` replacement (He–Munro–Nicholson range
@@ -538,6 +562,11 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
   | covers | every range **below** the outer one — the accidental collision and the slice-targeted plant | the **outer** range — the total plant, decided before any boundary is drawn |
   | steady-state cost | none: child bounds travel anyway; wire format, comparison map and policy contract untouched | `~√n/k` extra ranges per round, paid forever (~10/round at `n` = 10⁶, `k` = 100) |
   | verdict | **taken** — implementation tracked in [#502](https://github.com/Akvize/reconcile-rs/issues/502): injected RNG seam, invariant 10 re-asserted under shifted cuts | **not now** — its threat model changes at #337: before, the proportionate answer to a plant is keying the lift itself; after, the residual adversary is the *insider* a cluster key cannot exclude, and B is re-priced against exactly that (the reopening is recorded in #337's body, not left to memory) |
+
+  Salting `ϕ` itself is **rejected up front**, and is not a third option: it decorrelates sessions
+  by destroying the cached subtree summary, which is the `O(log n)` `Aggregate` the RSOS contract
+  exists to provide. A's seam is in the driver (cut points), not in `RefinementPolicy`, so §5
+  invariant 12 is untouched; invariant 10 is the one a shifted cut can break.
 
   The interim residual — a total plant is Wagner-craftable without peer credentials while the lift
   is unkeyed, and permanent per #354 — is recorded in

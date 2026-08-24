@@ -200,6 +200,12 @@ graph_status=0
 if [ -f ARCHITECTURE.md ]; then
     documented=$(
         awk '
+            # Scoped to §2, which is what this check has always claimed to read. It used to scan
+            # every fenced mermaid block in the file, so the first diagram added anywhere else
+            # (#31 put two in §4) had its nodes read as crate names and its edges as dependency
+            # edges -- a latent trap for exactly the kind of change AGENTS.md §9 asks for.
+            /^## /         { insection = ($0 ~ /^## 2\./); next }
+            !insection     { next }
             /^```mermaid/ { inblock = 1; next }
             /^```/         { inblock = 0 }
             !inblock       { next }
