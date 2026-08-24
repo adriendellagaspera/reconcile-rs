@@ -1,0 +1,39 @@
+name: breaking-label
+
+# Its own workflow rather than a job in `main.yml`, for the reason `pr-issue-references.yml`'s
+# header states about itself: `on:` is declared per workflow, and this check needs `labeled` and
+# `unlabeled` -- the events that fire when someone answers it by applying `M-breaking`. Carrying
+# those in `main.yml` would re-run the whole build (and cancel an in-flight one) every time a label
+# moved on any PR.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # A PR that drops a line from a `public-api/*.txt` snapshot -- an item gone, or a signature
+  # changed -- must carry `M-breaking`. Only that direction; `scripts/check-breaking-label.sh`'s
+  # header carries the three answers #15 asked for, including why the converse is deliberately
+  # not checked.
+  breaking-label:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        # The script diffs `base...head`, so both commits and their merge base have to be present;
+        # the default shallow checkout has neither.
+        fetch-depth: 0
+    - name: A non-additive public-API diff must carry M-breaking
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: ./scripts/check-breaking-label.sh
