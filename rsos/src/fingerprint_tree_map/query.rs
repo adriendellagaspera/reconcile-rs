@@ -29,6 +29,7 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
             mut lower_bound: Option<&'a K>,
             upper_bound: Option<&K>,
         ) -> Aggregate {
+            crate::counters::record_aggregate_node_visit();
             let lower_bound_included = match range.start_bound() {
                 Bound::Unbounded => true,
                 Bound::Included(key) | Bound::Excluded(key) => {
@@ -51,6 +52,7 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
             };
             // Both bounds inside the range: the cached subtree aggregate is the answer.
             if lower_bound_included && upper_bound_included {
+                crate::counters::record_aggregate_early_exit();
                 return node.subtree();
             }
             let mut cum = Aggregate::ZERO;
