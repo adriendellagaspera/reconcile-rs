@@ -57,7 +57,7 @@ cargo doc --workspace --all-features                          # feature-gated it
 cargo package --workspace --allow-dirty                       # release packaging, §11
 cargo deny check                                              # advisories/licenses/sources, deny.toml
 ./scripts/check-public-api.sh                                 # public-API snapshot + 0.x-leak gate, §11
-./scripts/check-mutant-count.sh   # repo-gates' 6th check; also CI-only, omitted above: test-mac-hmac's clippy/build/nextest trio with `--no-default-features --features mac-hmac` (+ the same `--cfg`, §6), coverage's `cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info` → Codecov (§7), and `cargo semver-checks --workspace` (§11, trend until a release re-baselines it)
+./scripts/check-mutant-count.sh   # repo-gates' 6th check; also CI-only, omitted above: test-mac-hmac's clippy/build/nextest trio with `--no-default-features --features mac-hmac` (+ the same `--cfg`, §6), coverage's `cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info` → Codecov (§7), and `cargo semver-checks --workspace` (§11, trend until a release re-baselines it), and `./scripts/check-body-template.sh` (PR/issue bodies against their templates, #9)
 ```
 
 `--workspace`, never `--all`. This list is what CI runs and what "done" means — gated automatically

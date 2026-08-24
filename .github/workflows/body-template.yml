@@ -1,0 +1,48 @@
+name: body-template
+
+# Its own workflow for the reason `pr-issue-references.yml`'s header gives about itself: `on:` is
+# declared per workflow, so the `issues:` trigger this needs would, inside `main.yml`, re-run the
+# whole build (and cancel an in-flight one) every time anybody edited any issue.
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+  issues:
+    types: [opened, edited]
+
+# Keyed on the thing being checked -- a PR number and an issue number share a numbering space, so
+# the event name keeps a PR edit from cancelling an issue's run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # A body that drops the template's mandatory sections, invents its own, or renames the leading
+  # table's rows. Structure only, never length: `scripts/check-body-template.sh`'s header carries
+  # what is deliberately not checked, and why.
+  pr-body:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: A PR body must conform to pull_request_template.md
+      env:
+        # An env var, not `${{ ... }}` interpolated into `run:` -- a body is attacker-controlled
+        # text and the latter is a known script-injection vector. The script only reads $PR_BODY.
+        PR_BODY: ${{ github.event.pull_request.body }}
+      run: ./scripts/check-body-template.sh pr
+
+  issue-body:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: An issue body must conform to ISSUE_TEMPLATE/issue.md
+      env:
+        ISSUE_BODY: ${{ github.event.issue.body }}
+        # Grandfathering: an issue opened before the gate never saw it, and editing one later must
+        # not fail on a template it predates.
+        ISSUE_CREATED_AT: ${{ github.event.issue.created_at }}
+      run: ./scripts/check-body-template.sh issue
