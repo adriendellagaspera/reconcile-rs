@@ -18,7 +18,7 @@
 
 use std::hash::Hash;
 use std::io;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,7 +30,7 @@ use crate::bounds::Key;
 use crate::clock::{NodeId, Timestamp};
 use crate::entry::Entry;
 use crate::persistence::Persistence;
-use crate::replicated_map::{Config, ConfigError, RunOutcome};
+use crate::replicated_map::{Config, ConfigError, RunOutcome, SyncState};
 use crate::{Discovery, ReplicatedMap};
 use rsos::Fingerprint;
 
@@ -237,6 +237,31 @@ impl<K: Key + Hash> ReplicatedSet<K> {
         self.0.forget_peer(peer);
     }
 
+    /// A snapshot of liveness for a caller building its own readiness signal. See
+    /// [`ReplicatedMap::sync_state`].
+    pub fn sync_state(&self) -> SyncState {
+        self.0.sync_state()
+    }
+
+    /// The current gossip-routing peer set. See [`ReplicatedMap::peers`].
+    pub fn peers(&self) -> Vec<IpAddr> {
+        self.0.peers()
+    }
+
+    /// The current causal-stability membership set. See [`ReplicatedMap::members`].
+    pub fn members(&self) -> Vec<IpAddr> {
+        self.0.members()
+    }
+
+    /// The transport's actual bound local address. See [`ReplicatedMap::local_addr`].
+    ///
+    /// # Errors
+    ///
+    /// If the underlying transport fails to report its local address.
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.0.local_addr()
+    }
+
     /// (runtime) Replace the declared networks. See [`ReplicatedMap::set_nets`].
     ///
     /// # Errors
@@ -306,94 +331,4 @@ impl<K: Key + Hash> ReplicatedSet<K> {
 }
 
 #[cfg(test)]
-mod replicated_set_tests {
-    use std::time::Duration;
-
-    use crate::replicated_map::{Config, MAX_NETS};
-    use crate::ReplicatedSet;
-
-    fn ephemeral_config() -> Config {
-        Config {
-            port: crate::replica::tests::next_ephemeral_test_port(),
-            listen_addr: "127.0.0.1".parse().unwrap(),
-            nets: [None; MAX_NETS],
-            remote_interval: 6,
-            remote_fanout: 2,
-            cluster_key: None,
-            insecure_no_key: true,
-            node_id: None,
-            encrypt: false,
-            reconcile_interval: Duration::from_secs(1),
-            bulk_send_rate: Some(32 * 1024 * 1024),
-            recv_buffer_size: Some(8 * 1024 * 1024),
-            send_buffer_size: Some(8 * 1024 * 1024),
-            freshness_window: gossip::replay::FRESHNESS_WINDOW_DEFAULT,
-            max_peers: 1024,
-            max_concurrent_bulk_dumps: 4,
-            snapshot_interval: Duration::from_secs(5),
-            max_clock_drift: crate::clock::MAX_CLOCK_DRIFT,
-            coalesce_window: Duration::ZERO,
-        }
-    }
-
-    /// #377: `insert`/`remove` report prior presence, `contains` reports current presence, and
-    /// bulk/`len`/`is_empty` track the same membership.
-    #[tokio::test]
-    async fn insert_remove_contains_and_bulk_agree_on_membership() {
-        let set = ReplicatedSet::<i32>::new(ephemeral_config()).await.unwrap();
-
-        assert!(set.is_empty());
-        assert!(!set.contains(&1));
-        assert!(!set.insert(1)); // wasn't present
-        assert!(set.contains(&1));
-        assert!(set.insert(1)); // already present, idempotent
-        assert_eq!(set.len(), 1);
-
-        set.insert_bulk(&[2, 3]);
-        assert_eq!(set.len(), 3);
-        assert!(set.contains(&2) && set.contains(&3));
-
-        assert!(set.remove(&1)); // was present
-        assert!(!set.contains(&1));
-        assert!(!set.remove(&1)); // already gone
-
-        set.remove_bulk(&[2, 3]);
-        assert!(set.is_empty());
-    }
-
-    /// `ReplicatedSet::set_nets` is a thin delegate to `ReplicatedMap::set_nets` — assert the
-    /// delegation actually happens (the `MAX_NETS` cap is enforced through it), not just that
-    /// calling it doesn't panic.
-    #[tokio::test]
-    async fn set_nets_enforces_max_nets_at_runtime() {
-        let set = ReplicatedSet::<i32>::new(ephemeral_config()).await.unwrap();
-
-        let within_cap: Vec<_> = (0..MAX_NETS)
-            .map(|i| format!("127.0.0.0/{}", 8 + (i % 24)).parse().unwrap())
-            .collect();
-        set.set_nets(&within_cap)
-            .expect("exactly MAX_NETS networks should be accepted");
-
-        let over_cap: Vec<_> = (0..=MAX_NETS)
-            .map(|i| format!("127.0.0.0/{}", 8 + (i % 24)).parse().unwrap())
-            .collect();
-        assert_eq!(
-            set.set_nets(&over_cap),
-            Err(crate::replicated_map::ConfigError::TooManyNets),
-            "MAX_NETS + 1 networks should be rejected"
-        );
-    }
-
-    /// `ReplicatedSet::set_coalesce_window` is a thin delegate to
-    /// `ReplicatedMap::set_coalesce_window` — assert the delegation actually happens, not just
-    /// that calling it doesn't panic (same rationale as `set_nets_enforces_max_nets_at_runtime`
-    /// above).
-    #[tokio::test]
-    async fn set_coalesce_window_actually_retunes_the_engine() {
-        let set = ReplicatedSet::<i32>::new(ephemeral_config()).await.unwrap();
-        assert_eq!(set.0.coalesce_window(), Duration::ZERO);
-
-        set.set_coalesce_window(Duration::from_millis(123));
-        assert_eq!(set.0.coalesce_window(), Duration::from_millis(123));
-    }
-}
+mod tests;

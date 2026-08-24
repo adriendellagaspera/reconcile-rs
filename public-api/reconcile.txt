@@ -341,10 +341,13 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::is_empty(&self) -> bool
 pub fn reconcile::replicated_set::ReplicatedSet<K>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::len(&self) -> usize
 pub fn reconcile::replicated_set::ReplicatedSet<K>::load_bulk(&self, &[K])
+pub fn reconcile::replicated_set::ReplicatedSet<K>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::local_net(&self) -> ipnet::ipnet::IpNet
+pub fn reconcile::replicated_set::ReplicatedSet<K>::members(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::nets(&self) -> alloc::vec::Vec<ipnet::ipnet::IpNet>
 pub async fn reconcile::replicated_set::ReplicatedSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::node_id(&self) -> lww_register::clock::NodeId
+pub fn reconcile::replicated_set::ReplicatedSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::remove(&self, &K) -> bool
 pub fn reconcile::replicated_set::ReplicatedSet<K>::remove_bulk(&self, &[K])
 pub fn reconcile::replicated_set::ReplicatedSet<K>::remove_net(&self, ipnet::ipnet::IpNet) -> bool
@@ -359,6 +362,7 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::set_remote_fanout(&self, usi
 pub fn reconcile::replicated_set::ReplicatedSet<K>::set_remote_interval(&self, u32)
 pub fn reconcile::replicated_set::ReplicatedSet<K>::set_tombstone_timeout(&self, core::time::Duration)
 pub async fn reconcile::replicated_set::ReplicatedSet<K>::start_reconciliation(&self)
+pub fn reconcile::replicated_set::ReplicatedSet<K>::sync_state(&self) -> reconcile::replicated_map::SyncState
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
@@ -556,10 +560,13 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::is_empty(&self) -> bool
 pub fn reconcile::replicated_set::ReplicatedSet<K>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::len(&self) -> usize
 pub fn reconcile::replicated_set::ReplicatedSet<K>::load_bulk(&self, &[K])
+pub fn reconcile::replicated_set::ReplicatedSet<K>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::local_net(&self) -> ipnet::ipnet::IpNet
+pub fn reconcile::replicated_set::ReplicatedSet<K>::members(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::nets(&self) -> alloc::vec::Vec<ipnet::ipnet::IpNet>
 pub async fn reconcile::replicated_set::ReplicatedSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::node_id(&self) -> lww_register::clock::NodeId
+pub fn reconcile::replicated_set::ReplicatedSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::remove(&self, &K) -> bool
 pub fn reconcile::replicated_set::ReplicatedSet<K>::remove_bulk(&self, &[K])
 pub fn reconcile::replicated_set::ReplicatedSet<K>::remove_net(&self, ipnet::ipnet::IpNet) -> bool
@@ -574,6 +581,7 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::set_remote_fanout(&self, usi
 pub fn reconcile::replicated_set::ReplicatedSet<K>::set_remote_interval(&self, u32)
 pub fn reconcile::replicated_set::ReplicatedSet<K>::set_tombstone_timeout(&self, core::time::Duration)
 pub async fn reconcile::replicated_set::ReplicatedSet<K>::start_reconciliation(&self)
+pub fn reconcile::replicated_set::ReplicatedSet<K>::sync_state(&self) -> reconcile::replicated_map::SyncState
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
