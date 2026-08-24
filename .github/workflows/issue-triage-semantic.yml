@@ -8,7 +8,7 @@ name: issue-triage-semantic
 # on free prose was measured at three false positives out of three, and no rule anywhere decides
 # whether a `C-`/`A-` label is the *right* one -- they are only counted.
 #
-# CONTRIBUTING.md already specifies this job, under "SOTA-alignment drift": *"a scheduled,
+# CONTRIBUTING.md already specifies this job, under "Positioning-alignment drift": *"a scheduled,
 # non-blocking review outside CI: real drift becomes a `C-bug` issue with the citing file/line and
 # the mismatch; no drift, no output."* Until now nothing implemented it.
 #
@@ -75,7 +75,7 @@ jobs:
             You are doing the **semantic half** of issue triage on ${{ github.repository }} — the
             half `scripts/check-issue-triage.sh` deliberately declines to judge.
 
-            CONTRIBUTING.md already specifies this job under "SOTA-alignment drift": a scheduled,
+            CONTRIBUTING.md already specifies this job under "Positioning-alignment drift": a scheduled,
             non-blocking review outside CI, where real drift becomes an issue carrying the citing
             file/line and the mismatch, and **no drift produces no output**. Honour that last
             clause literally.

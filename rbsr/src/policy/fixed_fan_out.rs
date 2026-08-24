@@ -21,7 +21,7 @@ use super::{Comparison, Decision, FanOut, RefinementPolicy, SplitStride};
 /// [`Default`] is [`FanOut::NEGENTROPY`]. `b` trades three quantities that bottom out separately —
 /// bytes and local work follow `b / ln b`, one-way messages fall as `log_b n` to a floor, and the
 /// widest round grows linearly in `b` and must fit a datagram. Swept over 2…256 by
-/// `benches/protocol.rs`'s `fan_out_sweep`; the chosen value's evidence is in `SOTA.md` §2.2.
+/// `benches/protocol.rs`'s `fan_out_sweep`; the chosen value's evidence is in `POSITIONING.md` §2.2.
 ///
 /// ```
 /// use rbsr::{Comparison, Decision, FanOut, FixedFanOut, RefinementPolicy};

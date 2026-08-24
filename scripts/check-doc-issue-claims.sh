@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every issue-state claim a document makes must still be true.
 #
-# The docs assert issue state in prose all over -- ARCHITECTURE.md and SOTA.md between them carry
+# The docs assert issue state in prose all over -- ARCHITECTURE.md and POSITIONING.md between them carry
 # dozens of issue references -- and that state moves without the prose moving with it. A predecessor
 # of this table (the now-removed PROGRESS.md) recorded exactly that failure twice in its own text
 # ("this file had claimed that prematurely while the issue was still open", #179 and #180), which is

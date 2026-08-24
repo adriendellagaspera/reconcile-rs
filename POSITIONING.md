@@ -1,26 +1,22 @@
-# State of the Art — `reconcile-rs` positioning
+# Positioning — where `reconcile-rs` sits
 
-> **Reference document.** Where `reconcile-rs` sits in the landscape of set reconciliation, diffable
-> data structures, and replica consistency. This is **durable
-> background**: the field positioning and the design taxonomy move slowly, unlike the code. It
-> deliberately carries **no status or findings** — for live correctness/security/maturity status see
-> the `v1.0.0` milestone and [issue #206](https://github.com/Akvize/reconcile-rs/issues/206); for the
-> resolved-audit historical record see [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8; for the target
-> design see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+> **Reference document.** The landscape `reconcile-rs` is judged against: set reconciliation,
+> diffable data structures, replica consistency. **Durable background** — field positioning and
+> design taxonomy move slowly, unlike the code — and deliberately **status-free**.
 >
-> - **Literature survey dated:** 2026-05-30, with a targeted addendum on 2026-08-10 (arXiv:2603.19820
->   read in full against its four published repositories; §1.3/§2.1/§2.2/§2.3 revised), a
->   cross-community pass on 2026-08-14 (the `cs.IT`/`cs.NI` dialect this document had never searched;
->   §2.2 revised), and a weekly sweep on 2026-08-17 (§2.1's prolly-tree entry revised).
-> - **Scope:** the FingerprintTreeMap as a *data structure* and RBSR as an *algorithm*, compared to the published
->   state of the art — not an audit of any particular commit.
-> - **`Fxx`** denotes a finding from the original code audit; its resolution record lives in
->   [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8.
-> - **Measured figures live in `benches/README.md`, not here** ([#346](https://github.com/Akvize/reconcile-rs/issues/346),
->   option A): §1.3/§2.2 state the claim and verdict a benchmark run supports; the harness output
->   itself — bytes, message counts, timings — is reproduced there, and the decisions it drove are
->   cited by issue number against each axis in §2.4 below. A refinement-policy or benchmark change
->   should never require editing this file.
+> | Not here | There |
+> |---|---|
+> | Live correctness/security/maturity status | the `v1.0.0` milestone, [#206](https://github.com/Akvize/reconcile-rs/issues/206) |
+> | Resolved-audit record (`Fxx` findings) | [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8 |
+> | Target design, deferred decisions | [`ARCHITECTURE.md`](./ARCHITECTURE.md) §5–§7 |
+> | Fit-for-purpose guidance | [`README.md`](./README.md) "When to use this" |
+> | Measured figures — bytes, message counts, timings | [`benches/README.md`](./benches/README.md) ([#346](https://github.com/Akvize/reconcile-rs/issues/346)) |
+> | Literature survey, glossary, bibliography, research probes | `rbsr-research` (private companion) |
+>
+> **Scope:** the `FingerprintTreeMap` as a *data structure* and RBSR as an *algorithm*, against the
+> published state of the art — not an audit of any particular commit. Literature reviewed through
+> 2026-08-17. §1.3/§2.2 state the claim and verdict a benchmark run supports; a policy or benchmark
+> change must never require editing this file.
 
 ---
 
@@ -97,7 +93,7 @@ dominates before RTT does ([#336](https://github.com/Akvize/reconcile-rs/issues/
 in the table addresses that term — which family wins is a property of the path as much as of the
 algorithm.
 
-### 1.6 The embedded in-memory data grid (IMDG) use case
+### 1.4 The embedded in-memory data grid (IMDG) use case
 
 Framed as a product rather than an algorithm, reconcile-rs is an **embedded in-memory data grid**:
 the state lives in-process, next to the application, fully replicated across a fleet of equal nodes.
@@ -113,25 +109,20 @@ a single embeddable Rust library. The pitch is "replicated state without standin
 - **Partition tolerance with automatic convergence** — nodes keep serving while partitioned and
   re-converge by anti-entropy on heal, with no manual conflict resolution (LWW).
 
-Fit-for-purpose guidance (good fit / wrong tool) lives once, in README.md's "When to use this" —
-not duplicated here. **Path to best-of-breed:** the open performance/scaling roadmap that moves
-reconcile-rs from the "real but narrow" niche of §1.2 to a credible Rust IMDG is the axis list in
-§2.4 below, each cited against the issue that carries its live status — not here.
+The roadmap from §1.2's "real but narrow" niche to a credible Rust IMDG is §2.4's axis list, each
+axis citing the issue that carries its live status.
 
 ---
 
 ## 2. Competitor audit and differentiators
 
-> This section refocuses the analysis on the **FingerprintTreeMap as a data structure** (and its protocol),
-> not on the full system. *(All structure/algo names below are defined in the
-> the surveyed literature.)* Methodological anchor: the FingerprintTreeMap **is not a Merkle tree in the
-> MST/prolly sense**. It is a *Range-Summarizable Order-Statistics Store*
-> (RSOS) — a B-tree augmented, per node, with a **composable subtree summary** (a 256-bit additive
-> fingerprint)
-> **+ an order statistic** (the subtree size). This abstraction was formalized in 2026
-> (arXiv:2603.19820) as the backend that range-based reconciliation (RBSR, Meyer 2023) needs. Its
-> **true peer group** = the other diffable structures; its **true algorithmic competitor** = the
-> other set-reconciliation families.
+> Scoped to the **`FingerprintTreeMap` as a data structure** and its protocol, not the full system.
+> Methodological anchor: the `FingerprintTreeMap` **is not a Merkle tree in the MST/prolly sense**. It
+> is a *Range-Summarizable Order-Statistics Store* (RSOS) — a B-tree augmented, per node, with a
+> **composable subtree summary** (a 256-bit additive fingerprint) **and an order statistic** (the
+> subtree size) — the abstraction formalized in 2026 (arXiv:2603.19820) as the backend range-based
+> reconciliation (RBSR, Meyer 2023) needs. Its peer group is therefore the other diffable structures
+> (§2.1), and its algorithmic competitor the other set-reconciliation families (§2.2).
 
 ### 2.1 Competitors at the "diffable data structure" level
 
@@ -217,28 +208,23 @@ copy-on-write B+-tree addressed by page number.
     [§2.4.1](#241-open-research-questions). The failure mode `f_p = id` covers
     outright is the rarer one; the one an LWW register produces continuously falls back on Σ's
     injectivity alone. Truncating a count-folding hash (Negentropy) trades the probability-1 half
-    away entirely; comparing `(count, Σ mod 2^τ)` would keep it for the price of a varint. This
-    boundary is also a **policy** signal, not only a correctness one:
-    [#318](https://github.com/Akvize/reconcile-rs/issues/318)'s divergence-adaptive fan-out keys off
-    the same count delta and inherits the same blind spot — settling #318's frequency question by
-    the same fact: the delta reads zero on the regime "an LWW register produces continuously"
-    (above) and nonzero only on the rarer one, where the shipped default already sits within single
-    digits of `SqrtFanOut` (§2.2). **Decision: not built** — record in `rbsr/src/policy.rs`'s own
-    rustdoc.
+    away entirely; comparing `(count, Σ mod 2^τ)` would keep it for the price of a varint. The same
+    boundary bounds any policy that keys off the count delta, which is why a divergence-adaptive
+    fan-out was not built ([§2.4.1](#241-open-research-questions)).
 - The remaining delta the other way is **persistence**: AELMDB is LMDB-backed (memory-mapped,
   durable); FingerprintTreeMap is in-memory only. **The structure's SOTA in this niche = "persistent
   RSOS with a secure fingerprint" — persistence is the gap that remains.**
 - **What the paper's evaluation does and does not establish.** Its headline (AELMDB 4.69×–13.98×
   faster than the `BTreeLMDB` baseline on reconciliation time) is scoped by §7.1 to single-machine,
-  fixed-protocol, reconciliation-heavy workloads. Two readings the text does not foreground, both
-  recomputed from the published `results-linux.csv`: the in-memory `Vector` backend is *faster than
-  AELMDB in all six families* (0.39×–0.59×) despite not being an RSOS at all (its `fingerprint()`
-  scans the range, O(k) not O(log n)); and the 13.98× family runs at **d ≈ 21 % of n** with 1–3
-  protocol messages — the opposite of RBSR's large-n/small-d target, a regime where the cost is
-  dominated by enumeration and point access rather than range aggregation. The result to carry
-  forward is therefore *"an aggregate-augmented persistent engine costs ~2× an in-RAM array on the
-  hot path"*, which is the number that was missing from the persistence build-vs-adopt call (see
-  [#271](https://github.com/Akvize/reconcile-rs/issues/271)), not *"in-tree aggregates beat memory"*.
+  fixed-protocol, reconciliation-heavy workloads. Two qualifications follow from its published
+  `results-linux.csv`: the in-memory `Vector` backend is *faster than AELMDB in all six families*
+  (0.39×–0.59×) despite not being an RSOS at all (its `fingerprint()` scans the range, O(k) not
+  O(log n)); and the 13.98× family runs at **d ≈ 21 % of n** with 1–3 protocol messages — the
+  opposite of RBSR's large-n/small-d target, a regime dominated by enumeration and point access
+  rather than range aggregation. The transferable result is therefore *"an aggregate-augmented
+  persistent engine costs ~2× an in-RAM array on the hot path"* — the figure the persistence
+  build-vs-adopt call ([#271](https://github.com/Akvize/reconcile-rs/issues/271)) needed — not
+  *"in-tree aggregates beat memory"*.
 
 | Structure | Position/boundary | History-indep. | Diffs… | Structural sharing / versioning | Persistence | Resists leading-zeros | Maturity |
 |---|---|---|---|---|---|---|---|
@@ -286,15 +272,14 @@ full derivations, sweeps and citations live in the linked issues and `benches/RE
   while spending an order of magnitude fewer bytes; `b`=4 wins bytes/CPU but costs an extra round
   trip. Because the policy never crosses the wire, this is a per-node choice, not a wire contract.
   Decision record and rustdoc: [#257](https://github.com/Akvize/reconcile-rs/issues/257),
-  `rbsr/src/policy.rs`. A forty-year-old analytical treatment of the same "split a population into
-  `q` groups, recurse on the conflicted ones" problem lands near the same optimum from a different
-  objective (channel throughput, not wire bytes) and reopens whether an **uneven**, signal-driven
-  split beats the balanced rank-cut `FixedFanOut`/`SqrtFanOut` both use — tracked by
-  [#318](https://github.com/Akvize/reconcile-rs/issues/318). The treatment is Capetanakis, *Tree
+  `rbsr/src/policy.rs`. Contention-tree analysis reaches a near-identical optimum for the same
+  "split a population into `q` groups, recurse on the conflicted ones" problem — Capetanakis, *Tree
   algorithms for packet broadcast channels*, `doi:10.1109/TCOM.1979.1094661`, with the `Q`-ary
-  analysis in Mathys–Flajolet, `doi:10.1109/TIT.1985.1057013`; both assume fair coins throughout, so
-  the split *distribution* is never optimised, and the objective is channel throughput rather than
-  wire bytes — which is the limit of the correspondence.
+  analysis in Mathys–Flajolet, `doi:10.1109/TIT.1985.1057013`. The correspondence stops at two
+  points: both optimise channel throughput rather than wire bytes, and both assume fair coins, so
+  the split *distribution* is never optimised. Whether an **uneven**, signal-driven split beats the
+  balanced rank-cut `FixedFanOut`/`SqrtFanOut` both use is
+  [#318](https://github.com/Akvize/reconcile-rs/issues/318).
 - **N-party fleets don't get retries for free.** Every cost model on this page is two-party; a fleet
   that is converged but for one divergence has only 2 content classes over any retry count, so
   redundancy buys nothing exactly when it's healthy (refutes arXiv:2212.13567 §5.1 by derivation).
@@ -343,7 +328,7 @@ full derivations, sweeps and citations live in the linked issues and `benches/RE
    non-narrowing split structurally forced into an `Enumerate`, which is the guard this crate
    ships. Summary and full numbers: [#356](https://github.com/Akvize/reconcile-rs/issues/356),
    [#420](https://github.com/Akvize/reconcile-rs/issues/420),
-   [#352](https://github.com/Akvize/reconcile-rs/issues/352).
+   [#352](https://github.com/Akvize/reconcile-rs/issues/352)).
 
 2. **It is a SOTA-2026-conformant RSOS**: the `tree_hash` cache (composable summary) + `tree_size`
    (order statistic) → range-summary and rank/select queries in **O(log n)** (the arXiv:2603.19820
@@ -354,11 +339,7 @@ full derivations, sweeps and citations live in the linked issues and `benches/RE
 4. **A single structure stores AND reconciles**: no separate Merkle tree to maintain (contrast
    Cassandra which builds the tree at repair time). The store *is* the reconciliation index.
 5. **Avoids Cassandra's over-streaming**: the SPLIT recursion tightens onto the ranges that
-   actually differ instead of streaming a whole fixed partition. (The split fan-out here is
-   `√m` by rank, not a fixed branching factor — arXiv:2603.19820's Algorithm 2 is stated for a
-   fixed `b`, and Negentropy's default is `b = 16`; neither is what this implementation does. That
-   deviation is no longer only a note: §2.2 quantifies what it costs, and it is the one place where
-   this implementation is *worse* than the family it belongs to.)
+   actually differ instead of streaming a whole fixed partition.
 6. **Rust-native, in-process, embeddable**: a real ecosystem niche (mature equivalents = JVM).
 
 ### 2.4 The design axes of a *true* SOTA RSOS
@@ -372,7 +353,7 @@ status, so this section never needs an edit when that status changes.
 1. **Secure and wide fingerprint**: replace the 64-bit XOR with a **≥256-bit, non-GF(2)-linear**
    combiner (hash-then-add mod 2²⁵⁶, MSet-Mu-Hash/LtHash) or *keyed*. XOR = self-inverse + linear →
    craftable collisions (Gaussian elimination ~2 s even in 256-bit) + birthday at 2³². The path
-   taken by Negentropy. **This is THE criterion that separates a "toy" structure from a SOTA one.**
+   taken by Negentropy. **This is the criterion that separates a toy structure from a SOTA one**
    (cf. F6, [#111](https://github.com/Akvize/reconcile-rs/issues/111)) — but width alone settles
    only the *honest* model: modular addition at 256 bits stays Wagner-breakable, and the keyed-lift
    fix is [#337](https://github.com/Akvize/reconcile-rs/issues/337).
@@ -387,13 +368,11 @@ status, so this section never needs an edit when that status changes.
    also enables sum/min/max/count and sketches. Enables **embedding a sketch in the leaves** (hybrid
    RBSR + a leaf sketch) to break the O(log n) RTT cost (§2.2). **Waived to 2.0** —
    [#298](https://github.com/Akvize/reconcile-rs/issues/298), decision recorded in `ARCHITECTURE.md` §7.
-5. **Fully expose the RSOS contract** — ✅ **done**: `rank`/`select`/`range` are `pub` on the standalone
-   `rsos` crate's `FingerprintTreeMap` (ARCHITECTURE.md §3.2), a reusable generic building block
-   independent of `reconcile`. (Previously in tension with an earlier ARCHITECTURE.md draft that kept
-   these `pub(crate)` inside the monolithic crate; resolved in favor of exposure once `rsos` became its
-   own published-intent crate.) Remaining: lazy + double-ended iterators —
-   [#92](https://github.com/Akvize/reconcile-rs/issues/92) (the umbrella that consolidated #89–#91),
-   naming freezes tracked by [#291](https://github.com/Akvize/reconcile-rs/issues/291).
+5. **Fully expose the RSOS contract**: `rank`/`select`/`range` are `pub` on the standalone `rsos`
+   crate's `FingerprintTreeMap` ([`ARCHITECTURE.md`](./ARCHITECTURE.md) §3.2), a reusable generic
+   building block independent of `reconcile`. Lazy and double-ended iterators
+   [#92](https://github.com/Akvize/reconcile-rs/issues/92), naming freezes
+   [#291](https://github.com/Akvize/reconcile-rs/issues/291).
 
 **P2 — Durability & distributed properties carried by the structure:**
 6. **Persistence / content-addressing** *(the big gap vs prolly/AELMDB)*: (a) snapshot+WAL including
@@ -411,32 +390,22 @@ status, so this section never needs an edit when that status changes.
    [#110](https://github.com/Akvize/reconcile-rs/issues/110)) — pluggable CRDT deferred, no trigger
    fired: [#184](https://github.com/Akvize/reconcile-rs/issues/184), decision recorded in
    `ARCHITECTURE.md` §7.
-10. **Write cost under concurrency** *(the axis the family's cost models omit)*: answering
+8. **Write cost under concurrency** *(the axis the family's cost models omit)*: answering
    `Aggregate(l, u)` in O(log n) requires an up-to-date summary on every node from leaf to root, so
    **every insert writes the root** — a contention point the contract creates, not an implementation
    defect. arXiv:2603.19820 §7.1 scopes its evaluation to single-machine with no concurrency, and no
-   RBSR work prices it. The prior art is outside the line: **AB-tree** (Zhao–Xie–Li,
-   `doi:10.14778/3538598.3538606`, VLDB 15(9) 2022)
-   sheds the contention by storing inexact weights, which a sound SKIP cannot (`benches/README.md`'s
-   `contention` benchmark, [#359](https://github.com/Akvize/reconcile-rs/issues/359)/#445/#446).
-   **Measured, then re-measured** ([#454](https://github.com/Akvize/reconcile-rs/issues/454)): at
-   `N=1` (no lock contention) the contract alone costs 0.298× a no-aggregate `BTreeMap` under the
-   same lock, and 6.8 cached-aggregate writes per insert — a count identical on any machine. #359
-   read the fp/btree *ratio*, saw it flat to `N=16`, and called the tax bounded. That does not
-   follow: both arms sit behind the same lock, so `1/X = S + H(N)` for each, and a ratio of two
-   terms that grow together is flat *because* they grow together, not because the root-write share
-   is capped. **Subtracting** reciprocal throughputs cancels `H` where dividing them cannot, and
-   leaves a gap growing 1.7× to `N=4` (#455) — an upper bound, so the growth is established and its
-   attribution is not. Model, confounds and the many-core prediction: #457, #456,
-   `benches/README.md`. Numbering starts at 10 so P0–P3's existing ids stay stable.
+   RBSR work prices it. The prior art sits outside the line: **AB-tree** (Zhao–Xie–Li,
+   `doi:10.14778/3538598.3538606`, VLDB 15(9) 2022) sheds the contention by storing inexact weights,
+   which a sound SKIP cannot. Measurements, model and confounds: `benches/README.md`'s `contention`
+   target, [#359](https://github.com/Akvize/reconcile-rs/issues/359).
 
 **P3 — What makes it *believed* to be SOTA:**
-8. **Property-testing + fuzzing as a foundation**: `proptest` vs `BTreeMap` oracle +
+9. **Property-testing + fuzzing as a foundation**: `proptest` vs `BTreeMap` oracle +
    `check_invariants`, and especially **the convergence property** (two random trees → diff loop →
    identical state + ranges = true symmetric difference, under reordered/duplicated/dropped
    messages). The category standard (`merkle-search-tree` is fuzz-tested). (cf. F11,
    [#113](https://github.com/Akvize/reconcile-rs/issues/113))
-9. **First-class adversarial robustness**: segment-bound validation, allocation bounds, bounded
+10. **First-class adversarial robustness**: segment-bound validation, allocation bounds, bounded
    fan-out — to hold up against hostile peers (the MST/Willow use case).
    [#284](https://github.com/Akvize/reconcile-rs/issues/284) (RSOS contract),
    [#230](https://github.com/Akvize/reconcile-rs/issues/230) (oversize values),
@@ -444,8 +413,8 @@ status, so this section never needs an edit when that status changes.
 
 ### 2.4.1 Open research questions
 
-Opened 2026-08-14: where this repository can test a claim the published work leaves open. One row
-per issue, none of them a 1.0 gate; the claim and the evidence live in the issue, not here.
+Where this repository can test a claim the published work leaves open. None is a 1.0 gate; the
+claim, the method and the numbers live in the issue and in `rbsr-research`, never here.
 
 | Question | Issue |
 |---|---|
@@ -453,31 +422,18 @@ per issue, none of them a 1.0 gate; the claim and the evidence live in the issue
 | What is the false-convergence rate at reduced fingerprint width, and do the two layers scale as predicted? | [#355](https://github.com/Akvize/reconcile-rs/issues/355) |
 | Post-#257 the comparison-map width is a security question, not a bandwidth one — price it in both models | [#357](https://github.com/Akvize/reconcile-rs/issues/357) |
 | Can any path fold one multiset element twice, and what does that cost the summary? | [#358](https://github.com/Akvize/reconcile-rs/issues/358) |
-| The contract writes the root on every insert (P2 item 10 above). Where does that bind? | [#359](https://github.com/Akvize/reconcile-rs/issues/359) |
+| The contract writes the root on every insert (P2 item 8 above). Where does that bind? | [#359](https://github.com/Akvize/reconcile-rs/issues/359) |
 
-Five results landed with this index rather than as open issues, because they close rather than open
-a question: a divergence-adaptive policy is confined to the count, and the count is blind exactly
-where the exact-count guarantee has already run out (folded into
-[#318](https://github.com/Akvize/reconcile-rs/issues/318)); re-ordering the store does not rescue
-that signal — a position-map experiment shows only a
-leading-component reorder makes a divergence visible, so "make `π` injective" is the wrong
-rule, relocation is; the multidimensional extension is settled on paper as a **no-go**, read against
-`arXiv:2603.19820v1` itself — its §8 asks for a theory of *balancing **and** summarization* beyond
-one dimension, and the two part company: balancing breaks at one line of its Algorithm 2 and
-recovers, the box `Aggregate` Def. 3.9 already carries meets an unconditional cell-probe floor, so
-the obstruction is the summary rather than the dimension, and the protocol side transports verbatim
-([#360](https://github.com/Akvize/reconcile-rs/issues/360); mechanism and bounds in
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, and the
-write-up itself a preprint this repository deliberately does not version); `Comparison` no longer hands a policy the fingerprint
-at all — narrowed to `span()`/`remote_size()`/`agrees()`, making the violation structurally
-unspellable rather than merely bounded
-([#352](https://github.com/Akvize/reconcile-rs/issues/352)); and a hash-derived
-split rule does not cleanly exceed the bound — the sharper, statistically unambiguous result is
-that it breaks the protocol's termination guarantee instead, in ~99.5% of drives
-([#356](https://github.com/Akvize/reconcile-rs/issues/356), full numbers in §2.3's "Empirical
-grounding for the split-boundary half of this claim").
-[#354](https://github.com/Akvize/reconcile-rs/issues/354) left it the other way: opened as a
-question, closed by derivation rather than the campaign it proposed (§2.2).
+Results that closed a question rather than opening one, one line each:
+
+| Result | Record |
+|---|---|
+| A divergence-adaptive fan-out is confined to the count, and the count is blind exactly where the exact-count guarantee has already run out (§2.1). **Not built.** | [#318](https://github.com/Akvize/reconcile-rs/issues/318), `rbsr/src/policy.rs` |
+| Re-ordering the store does not rescue that signal: only a leading-component reorder makes a divergence visible, so relocation is the lever and injectivity of `π` is not. | `rbsr-research` |
+| The multidimensional extension is a **no-go** on paper: `arXiv:2603.19820v1` §8 asks for a theory of balancing *and* summarization beyond one dimension, and the two part company — balancing breaks at one line of its Algorithm 2 and recovers, while the box `Aggregate` of its Def. 3.9 meets an unconditional cell-probe floor. The obstruction is the summary, not the dimension; the protocol side transports verbatim. | [#360](https://github.com/Akvize/reconcile-rs/issues/360), [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7 |
+| `Comparison` no longer hands a policy the fingerprint at all — narrowed to `span()`/`remote_size()`/`agrees()` — so a non-narrowing split is structurally unspellable rather than merely bounded. | [#352](https://github.com/Akvize/reconcile-rs/issues/352) |
+| A hash-derived split rule does not exceed the union bound; it breaks the protocol's termination guarantee instead. | [#356](https://github.com/Akvize/reconcile-rs/issues/356), `rbsr-research` |
+| An N-party fleet buys no redundancy from retries when it is converged but for one divergence (§2.2) — closed by derivation, not by the measurement campaign it proposed. | [#354](https://github.com/Akvize/reconcile-rs/issues/354) |
 
 **SOTA target by axis:**
 

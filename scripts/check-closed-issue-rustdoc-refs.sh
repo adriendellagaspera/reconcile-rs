@@ -10,7 +10,7 @@
 # stripped their now-closed #280/#288 citations down to that prose) -- so removing a closed
 # reference costs nothing but the vestige.
 #
-# This is deliberately the opposite policy from SOTA.md/ARCHITECTURE.md, where a closed-issue
+# This is deliberately the opposite policy from POSITIONING.md/ARCHITECTURE.md, where a closed-issue
 # citation is the point: those are durable-reference docs (excluded from the published package,
 # Cargo.toml's `exclude`), and `check-doc-issue-claims.sh` already polices
 # them on a narrower question -- not "is this issue closed" but "does this document's own state

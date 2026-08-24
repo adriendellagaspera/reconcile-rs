@@ -22,7 +22,7 @@
 //! `V = ()`. Two values under one key therefore differ in fingerprint but agree in count.
 //!
 //! Positioning, competitors, and the open design axes (generic summary monoid, persistence):
-//! `SOTA.md` §2.2/§2.4, `ARCHITECTURE.md` §7.
+//! `POSITIONING.md` §2.2/§2.4, `ARCHITECTURE.md` §7.
 //!
 //! | Def. 3.9 operation | [`Rsos`] trait method | [`FingerprintTreeMap`] inherent method |
 //! |---|---|---|

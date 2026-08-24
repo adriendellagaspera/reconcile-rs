@@ -328,7 +328,8 @@ fn corpora() -> Vec<(&'static str, Vec<i32>, Vec<i32>)> {
 /// real cut is possible (`span() > 1`) — it asks for a stride wider than any span instead.
 /// `ARCHITECTURE.md` §5 invariant 13 (#420): included in [`policies`] so the driver's guard,
 /// not this policy's own hygiene, is what the convergence matrix below is proving. Without
-/// that guard this would hang exactly like #356's `FingerprintDerivedSplit` probe.
+/// that guard this would hang exactly like `rbsr-research`'s `FingerprintDerivedSplit` probe
+/// (#356).
 #[derive(Clone, Copy, Debug, Default)]
 struct NeverNarrows;
 

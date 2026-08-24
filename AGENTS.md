@@ -4,11 +4,9 @@ Source of truth for any human or AI agent working here, across tools (Claude Cod
 ...). Tool-specific files (`CLAUDE.md`) import this file and add nothing that contradicts it.
 
 This file states rules, not rationale. For rationale and worked examples, follow the links —
-duplicating them here is exactly the rot this file is meant to avoid (§10). That is a budget, not a
-preference: `./scripts/check-doc-budget.sh` fails if this file and `CLAUDE.md` exceed 200 lines
-together, since `CLAUDE.md` imports this one verbatim and a reader gets the sum. The same script
-also caps `SOTA.md` on its own, larger budget — durable positioning, not read every session, but not
-unbounded either.
+duplicating them here is exactly the rot this file is meant to avoid (§10), and it is a budget, not
+a preference: `./scripts/check-doc-budget.sh` caps this file plus `CLAUDE.md` cumulatively, and
+`POSITIONING.md` on its own larger budget. Its header carries the reasoning.
 
 ## 1. Map
 
@@ -19,8 +17,10 @@ sibling) `→ reconcile` (facade), plus unpublished dev-only `devkit`. See
 
 Read first, don't duplicate: [`README.md`](./README.md) (usage/API/security/deployment),
 [`ARCHITECTURE.md`](./ARCHITECTURE.md) (module map, ports & adapters, invariants, audit history),
-[`SOTA.md`](./SOTA.md) (durable positioning; §1-§2 only). Live correctness/security/
-release status is the `v1.0.0` milestone and issue #206, not a file.
+[`POSITIONING.md`](./POSITIONING.md) (durable positioning: the niche, the competitor audit, the
+design axes). Live correctness/security/release status is the `v1.0.0` milestone and issue #206, not
+a file. The literature survey, glossary, bibliography and research probes behind it live in
+`rbsr-research`, the private companion — never copied back here.
 
 ## 2. Environment
 
@@ -39,7 +39,7 @@ In CI's order (`.github/workflows/main.yml`):
 ```bash
 export RUSTFLAGS=-Dwarnings RUSTDOCFLAGS=-Dwarnings   # what CI sets; without it a lint warns locally, errors in CI
 cargo fmt --check
-./scripts/check-doc-budget.sh              # AGENTS.md + CLAUDE.md ≤ 200, SOTA.md ≤ 700
+./scripts/check-doc-budget.sh              # AGENTS.md + CLAUDE.md ≤ 200, POSITIONING.md ≤ 700
 ./scripts/check-domain-purity.sh                             # hexagonal boundary + §2 graph, §9
 ./scripts/check-doc-structure.sh                             # doc links/anchors/paths
 ./scripts/check-test-file-naming.sh                # split #[cfg(test)] modules named tests.rs
@@ -148,9 +148,8 @@ transport/auth/replay/discovery knows what an `Entry`/`Timestamp`/`Key` is; if a
 that edge, it has landed in the wrong crate. Widening either set means updating the script **and**
 `ARCHITECTURE.md` §2 together; the §2 half is gated — part 3 checks its graph against the manifests.
 
-Docs that change with code, same PR: `README.md`, `ARCHITECTURE.md` §1–§3, this file. `SOTA.md`:
-durable reference, not updated for routine changes. Live correctness/security/release status lives
-in the `v1.0.0` milestone and issue #206 — a GitHub query, not a file to keep in sync by hand.
+Docs that change with code, same PR: `README.md`, `ARCHITECTURE.md` §1–§3, this file.
+`POSITIONING.md` is a durable reference, not updated for routine changes (§1).
 
 **Every fact lives in exactly one place; everywhere else links to it.** A restatement is a second
 copy that drifts, and the drifted copy is read as true. Hence **prose is the last resort**, in docs

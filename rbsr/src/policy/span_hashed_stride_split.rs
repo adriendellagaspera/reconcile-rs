@@ -15,14 +15,14 @@ use super::{Comparison, Decision, RefinementPolicy, SplitStride};
 
 /// The width of the span-independent probes' stride range: strides land in `1..=STRIDE_SPREAD`.
 ///
-/// Named once because `FingerprintDerivedSplit` (#356's oracle-coupled probe) and
-/// [`SpanHashedStrideSplit`] must draw from the *same* support for the second to be a control for
-/// the first.
+/// Named once because `rbsr-research`'s `FingerprintDerivedSplit` (#356's oracle-coupled probe)
+/// and [`SpanHashedStrideSplit`] must draw from the *same* support for the second to be a control
+/// for the first.
 pub const STRIDE_SPREAD: u64 = 32;
 
 /// **Test-only probe (#356), `cfg(reconcile_internal_testing)`-gated.**
-/// `FingerprintDerivedSplit`'s stride *distribution*, drawn from the span instead of the
-/// fingerprint: `1 + mix(span) mod 32`.
+/// `rbsr-research`'s `FingerprintDerivedSplit` stride *distribution*, drawn from the span instead
+/// of the fingerprint: `1 + mix(span) mod 32`.
 ///
 /// The tighter of the two oracle-independent controls.
 /// [`ConstantStrideSplit`](super::ConstantStrideSplit) differs from the coupled probe in both the

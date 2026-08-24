@@ -19,9 +19,9 @@ use super::{Comparison, Decision, RefinementPolicy, SplitStride};
 /// A constant is trivially "a function of the data alone", so this satisfies the
 /// oracle-independence [`Comparison`]'s law is about, and cannot be accused of reading the digest.
 /// It is nonetheless *not* progress-making once a range's span falls to `stride` or below, which is
-/// the point: it is the control deciding whether `FingerprintDerivedSplit`'s (#356's oracle-coupled
-/// probe) failure is caused by the oracle coupling or by the span-independent magnitude that came
-/// with it. Never a shipped policy — see
+/// the point: it is the control deciding whether the failure of `rbsr-research`'s
+/// `FingerprintDerivedSplit` (#356's oracle-coupled probe) is caused by the oracle coupling or by
+/// the span-independent magnitude that came with it. Never a shipped policy — see
 /// `tests/the_progress_guard_settles_the_two_cases_its_own_tests_miss.rs`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ConstantStrideSplit(SplitStride);

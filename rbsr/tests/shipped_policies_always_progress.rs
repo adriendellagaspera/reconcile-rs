@@ -13,7 +13,7 @@
 //! rather than something they lean on: catching a regression here, at the policy, is cheaper than
 //! catching it as a forced-`Enumerate` fallback at the driver.
 //!
-//! `FingerprintDerivedSplit` (#356) is deliberately excluded — it exists precisely to violate this
+//! `rbsr-research`'s `FingerprintDerivedSplit` (#356) is deliberately excluded — it exists to violate this
 //! law, `cfg(reconcile_internal_testing)`-gated so it can never ship. `oracle_dependent_split_vs_the_union_bound.rs`
 //! measures it.
 
