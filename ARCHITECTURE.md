@@ -189,22 +189,28 @@ implementor now states its clamp policy explicitly. Both constructors' rustdoc c
 writeup — what a non-monotonic `now()`, an `observe` not chased by `now() > t`, or a clamping
 `observe_trusted` each silently break.
 
-**Visibility.** `Clock`/`Transport`/`Persistence`/`Discovery` are public ports on their owning crate.
-The mechanism they wrap is not part of `reconcile`'s own re-export surface (`reconcile::*` does not
-re-export `rbsr::protocol_round`/`initial_ranges`/`RangeAggregate` or `gossip::bincode::{encode,
-decode_stream}`) — but since `rsos` and `rbsr` are themselves published-intent, reusable crates
-(AGENTS.md §11), their tree/protocol primitives (`rank`/`select`/`range`, `protocol_round`,
-`protocol_round_with_policy`, `initial_ranges`, `RangeAggregate`, `EnumerationRange`, `RoundOutcome`
-and the `RefinementPolicy` seam) are genuinely `pub` at the crate level, for a consumer who depends
-on `rsos`/`rbsr` directly instead of through `reconcile`. Injecting a policy is therefore an
-`rbsr`-level operation today: `reconcile`'s own `Config` is `Copy` (a fixed-size `nets` array exists
-to keep it so), which a boxed or borrowed policy would break, and choosing what the facade should
-expose is a separate decision that wants the measured comparison first — see `SOTA.md` §2.2. `gossip::bincode`'s
-functions are `pub` for the same reason (`reconcile` must reach them across the crate boundary), just
-not re-exported. `Codec` was considered and dissolved as a trait: one implementation, no
-object-safety need (methods are generic, always carried as a type parameter), and no plausible
-second use (compression interacts with authenticate-before-decode; cross-language interop needs a
-published wire spec, not a Rust trait).
+**Visibility.** `Clock`/`Transport`/`Persistence`/`Discovery` are public ports on their owning
+crate. What the mechanism behind them exposes, and to whom:
+
+| item | `pub` on | re-exported by `reconcile` |
+|---|---|---|
+| `Clock` / `Transport` / `Persistence` / `Discovery` | owning crate | yes — the ports are the seam |
+| `rank` / `select` / `range` | `rsos` | no |
+| `protocol_round` / `protocol_round_with_policy` / `initial_ranges` | `rbsr` | no |
+| `RangeAggregate` / `EnumerationRange` / `RoundOutcome` / the `RefinementPolicy` seam | `rbsr` | no |
+| `bincode::{encode, decode_stream}` | `gossip` | no |
+
+The right-hand column is not an oversight: `rsos` and `rbsr` are published-intent, reusable crates
+(AGENTS.md §11), so their primitives are `pub` for a consumer depending on them directly, while
+`reconcile`'s own surface stays the facade. `gossip::bincode` is `pub` for the narrower reason that
+`reconcile` must reach it across a crate boundary.
+
+Two consequences follow, and both are decisions rather than accidents:
+
+| | |
+|---|---|
+| Injecting a `RefinementPolicy` is an `rbsr`-level operation | `reconcile`'s `Config` is `Copy` (the fixed-size `nets` array exists to keep it so), which a boxed or borrowed policy would break. What the facade should expose wants the measured comparison first — `SOTA.md` §2.2 |
+| `Codec` was considered and dissolved as a trait | one implementation; no object-safety need (its methods are generic, always carried as a type parameter); no plausible second use — compression interacts with authenticate-before-decode, and cross-language interop needs a published wire spec, not a Rust trait |
 
 ---
 
@@ -409,13 +415,19 @@ guarantees whose resolution history §8 tracks.
 A `Fingerprint` is a wire token: "the same element gives the same 256 bits everywhere, forever" has
 two halves, and both are owned by `rsos`. Pinning the *hash function* to BLAKE3 is only the first;
 the second is the byte stream fed into it. `rsos::encoding` is a `serde::Serializer` writing an
-injective, length-prefixed byte stream straight into BLAKE3 — fixed-width little-endian integers,
-`u64` length prefixes on strings/bytes/sequences, `u32` variant indices for enums, struct fields in
-declaration order with no names, and map entries **sorted by encoded key** (what makes a `HashMap`
-summarize identically to a `BTreeMap` with the same entries). It adds no dependency (`serde` was
-already there) and no codec crate, so `rsos` stays the zero-infrastructure leaf §2.1 requires.
-`lift(&k, &v)` is that encoding of key then value; `digest` is the single-value form `version_hash`
-uses.
+injective, length-prefixed byte stream straight into BLAKE3:
+
+| Rust shape | wire encoding |
+|---|---|
+| integers | fixed-width, little-endian |
+| `str` / `[u8]` / sequences | `u64` length prefix, then the elements |
+| enums | `u32` variant index, then the payload |
+| structs | fields in declaration order, names omitted |
+| maps | entries **sorted by encoded key** — what makes a `HashMap` summarize identically to a `BTreeMap` holding the same entries |
+
+It adds no dependency (`serde` was already there) and no codec crate, so `rsos` stays the
+zero-infrastructure leaf §2.1 requires. `lift(&k, &v)` is that encoding of key then value; `digest`
+is the single-value form `version_hash` uses.
 
 This replaced deriving fingerprint bytes from `std::hash::Hash`, whose per-impl byte sequences Rust
 does not stabilize (a future `Hash for str` would move every fingerprint in every cluster) and which
