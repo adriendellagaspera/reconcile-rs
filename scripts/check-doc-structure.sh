@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Structural correctness of the repository's Markdown, in three parts: link targets resolve, anchor
-# links resolve, and SOTA.md's bibliography entries carry what §4.2 says they must. A fourth part
-# extends this across the Markdown/Rust boundary: a rustdoc's `SOTA.md §N.M` citation must still
-# name a section that exists.
+# links resolve, and -- across the Markdown/Rust boundary -- a rustdoc's `SOTA.md §N.M` citation
+# still names a section that exists.
+#
+# A fourth part checked SOTA.md's bibliography entry format (§4.2). It went with the bibliography:
+# §3-§5 had no consumer in this repository and left with the rest of the literature material, so
+# the check had nothing left to validate and a gate that validates nothing is worse than none.
 #
 # Why this is gated rather than reviewed: a link that resolves nowhere renders as a link. Nothing
 # about `[`Payload`](../gossip/src/auth.rs)` looks wrong in a diff -- ARCHITECTURE.md sits at the
@@ -113,30 +116,6 @@ for doc in "${DOCS[@]}"; do
     done < <(grep -oE '`[A-Za-z0-9_][A-Za-z0-9_./*{}-]*`' "$doc" | tr -d '`')
 done
 
-# ---- 4: SOTA.md bibliography entry format (§4.2) -----------------------------------------------
-# §4.2 grandfathers entries written before the rule, so this cannot demand `Bears on:` everywhere.
-# What it can demand is that an entry which *opts in* is complete: a version-pinned identifier and a
-# forward pointer. That makes the format self-enforcing as entries migrate, with no flag day -- and
-# it is exactly the shape §10 asks for, since "remember to pin the version" is otherwise a rule a
-# human applies by eye.
-entries=0
-if [ -f SOTA.md ]; then
-    while IFS=$'\t' read -r lineno block; do
-        entries=$((entries + 1))
-        if ! grep -qE 'arXiv:[0-9]{4}\.[0-9]{4,5}v[0-9]+|doi:10\.' <<<"$block"; then
-            fail "SOTA.md:$lineno: entry has 'Bears on:' but no version-pinned arXiv id or doi: (§4.2 rule 1)"
-        fi
-        if ! grep -qF '→' <<<"$block"; then
-            fail "SOTA.md:$lineno: entry has 'Bears on:' but no '→' forward pointer (§4.2 rule 3)"
-        fi
-    done < <(awk '
-        /^- / { if (buf != "" && buf ~ /Bears on:/) printf "%d\t%s\n", start, buf; buf = $0; start = NR; next }
-        /^[[:space:]]+/ { if (buf != "") buf = buf " " $0; next }
-        { if (buf != "" && buf ~ /Bears on:/) printf "%d\t%s\n", start, buf; buf = "" }
-        END { if (buf != "" && buf ~ /Bears on:/) printf "%d\t%s\n", start, buf }
-    ' SOTA.md)
-fi
-
 # ---- 5: `SOTA.md §N.M` citations in the Rust sources resolve to an existing heading -------------
 #
 # Rustdocs cite SOTA.md by section number instead of restating its prose (AGENTS.md §9: a fact
@@ -174,6 +153,6 @@ if [ -f SOTA.md ]; then
     )
 fi
 
-echo "check-doc-structure: ${#DOCS[@]} docs, $links_checked anchor links, $entries §4.2 entries, $sota_citations SOTA.md citations"
+echo "check-doc-structure: ${#DOCS[@]} docs, $links_checked anchor links, $sota_citations SOTA.md citations"
 
 exit "$status"

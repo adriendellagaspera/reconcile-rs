@@ -48,7 +48,6 @@ SOTA_PROSE_MAX_LINES=700
 
 # The heading that opens the reference half. Load-bearing: if it is renamed, this script
 # fails loudly rather than silently budgeting the whole file again.
-SOTA_REFERENCE_HEADING="## 3. Glossary"
 
 # Resolve the repo root from the script's own location (not `git rev-parse`, since the
 # pre-commit hook runs this against a bare `git checkout-index` copy with no `.git`).
@@ -100,23 +99,14 @@ if [ "$total" -gt "$AGENTS_MAX_LINES" ]; then
 fi
 
 echo
-echo "SOTA.md (durable reference; prose capped, reference half reported):"
+echo "SOTA.md (durable positioning, capped in full):"
 if check_missing SOTA.md; then
     total=$(wc -l <SOTA.md)
-    # `|| true`: under `set -e` a failing grep in a command substitution aborts the script
-    # outright, which would make a renamed heading exit 1 with no diagnostic at all --
-    # the silent failure this branch exists to replace.
-    boundary=$(grep -n -m1 -F -x "$SOTA_REFERENCE_HEADING" SOTA.md | cut -d: -f1) || true
-    if [ -z "$boundary" ]; then
-        echo "check-doc-budget: SOTA.md has no '$SOTA_REFERENCE_HEADING' heading — the prose/reference" >&2
-        echo "boundary this budget is scoped to is gone. Fix the heading or update the script." >&2
-        exit 1
-    fi
-    prose=$((boundary - 1))
-    reference=$((total - prose))
+    # No prose/reference split any more: the glossary, bibliography and index (§3-§5) had no
+    # consumer in this repository -- nothing outside SOTA.md itself cited them -- and moved out
+    # with the rest of the literature material. What is left is §1-§2, all of it capped.
+    prose=$total
     printf '  %-22s %4d / %d\n' "§1-§2 prose" "$prose" "$SOTA_PROSE_MAX_LINES"
-    printf '  %-22s %4d   (uncapped)\n' "§3-§5 reference" "$reference"
-    printf '  %-22s %4d\n' "total" "$total"
     if [ "$prose" -gt "$SOTA_PROSE_MAX_LINES" ]; then
         echo >&2
         echo "check-doc-budget: SOTA.md's §1-§2 prose is $prose lines, over the" >&2
@@ -124,9 +114,8 @@ if check_missing SOTA.md; then
         echo >&2
         echo "Move it rather than compressing it: a measurement or worked example belongs in" >&2
         echo "ARCHITECTURE.md or a test's module docs, a live status belongs in the tracker" >&2
-        echo "(AGENTS.md §1/§9). Adding a glossary, bibliography or index entry is never what" >&2
-        echo "fires this — those sections are deliberately uncapped. Raising the constant is a" >&2
-        echo "deliberate decision: change it above and say why in the commit." >&2
+        echo "(AGENTS.md §1/§9). Raising the constant is a deliberate decision: change it above" >&2
+        echo "and say why in the commit." >&2
         echo >&2
         status=1
     fi
