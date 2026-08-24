@@ -499,6 +499,15 @@ points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `B
   per-element diff/tombstone/datagram-ceiling rationale, and how it differs from textbook add-wins
   (#231). That encoding is a large part of why this seam is affordable to leave deferred. Full
   reasoning, the five-edge cost breakdown and the ranked shortlist: #184.
+- **A leaf sketch (IBLT) beside the RBSR chain** — the single-shot candidate `SOTA.md` §1.3/§2.2
+  weighs against refinement. **Decided: out of scope for this crate**, and both open questions with
+  it — the global-sidecar vs per-range shape
+  ([#11](https://github.com/adriendellagaspera/reconcile-rs/issues/11) (closed)) and the ranking
+  against the loss term that dominates before RTT does
+  ([#12](https://github.com/adriendellagaspera/reconcile-rs/issues/12) (closed)). Both moved to the
+  private research companion (`rbsr-research` issues 6 and 7): the algorithm is untested here, so it
+  is research, not engineering this crate ships. `RoundOutcome` therefore gains no `sketch_ranges`
+  field, and no store-wide structure is written on every insert.
 - **Partial replication / sharding** — the only surviving answer to capacity pressure
   ([#186](https://github.com/Akvize/reconcile-rs/issues/186)). A pluggable `Storage` backend
   (on-disk / LSM / content-addressed) was evaluated as an alternative and **rejected permanently**:
