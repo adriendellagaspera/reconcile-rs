@@ -17,6 +17,7 @@ use crate::entry::{Entry, State};
 use crate::observability;
 use gossip::auth;
 
+use super::collision;
 use super::pacing::DumpChannel;
 use super::{send_messages_to, version_hash, Message, Replica, MAX_MESSAGES_PER_DATAGRAM};
 
@@ -198,7 +199,16 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 let mut guard = self.map.write();
                 for (k, v) in to_apply {
                     let merged_v = match guard.get(&k) {
-                        Some(local_v) => local_v.merge(&v),
+                        Some(local_v) => {
+                            // #24: the one state `merge` cannot resolve -- two nodes sharing a
+                            // node id stamp different content identically, so each side keeps its
+                            // own and neither converges. Reported here, where it first becomes
+                            // observable, instead of diverging in silence.
+                            if collision::is_node_id_collision(local_v, &v) {
+                                self.report_node_id_collision();
+                            }
+                            local_v.merge(&v)
+                        }
                         None => v,
                     };
                     let version = merged_v.is_tombstone().then(|| version_hash(&merged_v));
