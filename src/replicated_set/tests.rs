@@ -117,7 +117,9 @@ async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
 async fn local_addr_matches_the_configured_bind_address() {
     let config = ephemeral_config();
     let expected = SocketAddr::new(config.listen_addr, config.port);
-    let set = ReplicatedSet::<i32>::new(config).await.expect("bind failed");
+    let set = ReplicatedSet::<i32>::new(config)
+        .await
+        .expect("bind failed");
     assert_eq!(
         set.local_addr().expect("transport must report its address"),
         expected
