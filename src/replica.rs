@@ -11,7 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize};
+use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -167,10 +167,9 @@ pub(crate) struct Inner<K, V> {
     /// Exposed via [`node_id_is_random`](Replica::node_id_is_random) so that the store
     /// layer can warn operators when persistence is configured but the identity is ephemeral.
     pub(crate) node_id_is_random: bool,
-    /// Set once a node-id collision has been reported, so the warning names the fault once
-    /// rather than on every key of every round for as long as the collision lasts
+    /// Reports a node-id collision once, however many keys and rounds keep tripping the detector
     /// (`collision::is_node_id_collision`).
-    pub(crate) collision_reported: AtomicBool,
+    pub(crate) collision_reporter: collision::CollisionReporter,
     /// Hard cap on the number of tracked remote peers. Datagrams from unknown senders are dropped
     /// before any per-sender state is allocated when the membership set reaches this size.
     max_peers: PeerCap,

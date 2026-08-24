@@ -205,7 +205,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                             // own and neither converges. Reported here, where it first becomes
                             // observable, instead of diverging in silence.
                             if collision::is_node_id_collision(local_v, &v) {
-                                self.report_node_id_collision();
+                                self.collision_reporter.report(self.node_id());
                             }
                             local_v.merge(&v)
                         }

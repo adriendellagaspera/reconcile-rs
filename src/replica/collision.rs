@@ -26,16 +26,13 @@
 //! trip. The digest is computed only once stamps compare equal, which for distinct ids requires
 //! the same node, same physical millisecond and same counter -- i.e. effectively never.
 
-use std::hash::Hash;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tracing::error;
 
-use crate::bounds::{Key, Value};
-use crate::clock::Timestamp;
+use crate::bounds::Value;
+use crate::clock::{NodeId, Timestamp};
 use crate::entry::Entry;
-
-use super::Replica;
 
 /// `true` when `local` and `remote` claim the same [`Timestamp`] while holding different content
 /// -- the observable signature of two nodes sharing a [`NodeId`](crate::clock::NodeId).
@@ -46,25 +43,36 @@ pub(crate) fn is_node_id_collision<V: Value>(
     local.stamp == remote.stamp && rsos::digest(&local.state) != rsos::digest(&remote.state)
 }
 
-impl<K: Key + Hash, V: Value> Replica<K, V> {
-    /// Report a detected collision, once per replica: while one lasts, every key of every round
-    /// trips the same detector, and a per-key line would bury the one fact an operator needs.
+/// The once-per-replica guard around the collision report.
+///
+/// A collision is not a single event: while one lasts, every key of every round trips the
+/// detector. A per-key line would bury the one fact an operator needs, so the first call reports
+/// and every later one is silent.
+pub(crate) struct CollisionReporter(AtomicBool);
+
+impl CollisionReporter {
+    pub(crate) fn new() -> Self {
+        CollisionReporter(AtomicBool::new(false))
+    }
+
+    /// Report a detected collision, returning whether *this* call is the one that reported.
     ///
     /// `error!`, not `warn!`: unlike the ephemeral-identity warning on
     /// [`with_persistence`](crate::ReplicatedMap::with_persistence), this is not a configuration
     /// smell that may be deliberate -- it is data not converging, now.
-    pub(crate) fn report_node_id_collision(&self) {
-        if self.collision_reported.swap(true, Ordering::Relaxed) {
-            return;
+    pub(crate) fn report(&self, node_id: NodeId) -> bool {
+        if self.0.swap(true, Ordering::Relaxed) {
+            return false;
         }
         error!(
-            node_id = self.node_id().get(),
+            node_id = node_id.get(),
             "two peers are writing under the same node id: a remote entry carries this node's \
              exact timestamp with different content, which last-write-wins cannot order, so the \
              two sides will not converge on the affected keys. Node ids are drawn at random and \
              are unique only probabilistically (lww_register::clock::NodeId); set a distinct, \
              stable Config::with_node_id on every node. Reported once per process."
         );
+        true
     }
 }
 
@@ -110,6 +118,26 @@ mod tests {
             &Entry::present(s, "same".to_string()),
             &Entry::present(s, "same".to_string())
         ));
+    }
+
+    /// The guard's whole contract: the first call reports, every later one is silent. Without
+    /// this, a reporter that never reports -- or one that reports on every key of every round --
+    /// both pass the detector tests above.
+    #[test]
+    fn the_first_report_is_the_only_one() {
+        let reporter = CollisionReporter::new();
+        assert!(
+            reporter.report(NodeId::new(7)),
+            "the first call must report"
+        );
+        assert!(
+            !reporter.report(NodeId::new(7)),
+            "the second call must stay quiet"
+        );
+        assert!(
+            !reporter.report(NodeId::new(7)),
+            "and so must every later one"
+        );
     }
 
     /// Different stamps are ordinary LWW, whatever the contents: `merge` has a total order to
