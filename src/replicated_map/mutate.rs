@@ -7,6 +7,7 @@
 // except according to those terms.
 
 use std::hash::Hash;
+use std::sync::Arc;
 
 use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
@@ -23,21 +24,23 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     ///
     /// # Deadlock
     ///
-    /// `callback` runs while the map **write** lock is held. Calling any read or write method
-    /// (`get`, `insert`, `for_each`, another `get_mut`, …) from `callback` self-deadlocks — see
-    /// [`get`](Self::get)'s `# Deadlock` section.
+    /// `callback` runs while the write lock is held (#34: a dedicated mutex, not the map lock a
+    /// reader also takes). Calling a write method (`insert`, `update`, another `get_mut`, …) from
+    /// `callback` self-deadlocks — the mutex is not reentrant. A pure read (`get`, `for_each`, …)
+    /// no longer takes this lock at all and is safe to call from `callback`.
     ///
     /// # Panics
     ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// the callback mutates a live entry).
     pub fn get_mut<F: FnOnce(Option<&mut V>)>(&self, k: &K, callback: F) {
-        // Mint the timestamp before taking the map lock, matching the lock order of `insert`
+        // Mint the timestamp before taking the write lock, matching the lock order of `insert`
         // (clock, then map → projection).
         let now = self.engine.clock_now();
         let mut updated: Option<Entry<Timestamp, V>> = None;
-        let mut guard = self.engine.map.write();
-        guard.with_mut(k, |maybe_entry| {
+        let _guard = self.engine.write_lock.lock();
+        let mut map = (*self.engine.map.load_full()).clone();
+        map.with_mut(k, |maybe_entry| {
             if let Some(entry) = maybe_entry {
                 callback(entry.value_mut());
                 entry.stamp = now;
@@ -47,11 +50,14 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             }
         });
         // The mutation bypassed `insert`: refresh the projection (lock order map → projection).
-        if let Some(entry) = guard.get(k) {
+        if let Some(entry) = map.get(k) {
             let projected = entry.project();
-            self.engine.projection.write().insert(k.clone(), projected);
+            let mut projection = (*self.engine.projection.load_full()).clone();
+            projection.insert(k.clone(), projected);
+            self.engine.projection.store(Arc::new(projection));
         }
-        drop(guard);
+        self.engine.map.store(Arc::new(map));
+        drop(_guard);
         if let Some(value) = updated {
             self.engine.broadcast_update(k.clone(), value);
         }
@@ -62,11 +68,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     ///
     /// The shared core of [`update`](Self::update) and [`upsert`](Self::upsert).
     fn mutate_live<F: FnOnce(&mut V)>(&self, k: &K, callback: F) -> bool {
-        // Mint the timestamp before taking the map lock, matching the lock order of `insert`.
+        // Mint the timestamp before taking the write lock, matching the lock order of `insert`.
         let now = self.engine.clock_now();
         let mut updated: Option<Entry<Timestamp, V>> = None;
-        let mut guard = self.engine.map.write();
-        guard.with_mut(k, |maybe_entry| {
+        let _guard = self.engine.write_lock.lock();
+        let mut map = (*self.engine.map.load_full()).clone();
+        map.with_mut(k, |maybe_entry| {
             if let Some(entry) = maybe_entry {
                 if let Some(value) = entry.value_mut() {
                     callback(value);
@@ -76,12 +83,15 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             }
         });
         if updated.is_some() {
-            if let Some(entry) = guard.get(k) {
+            if let Some(entry) = map.get(k) {
                 let projected = entry.project();
-                self.engine.projection.write().insert(k.clone(), projected);
+                let mut projection = (*self.engine.projection.load_full()).clone();
+                projection.insert(k.clone(), projected);
+                self.engine.projection.store(Arc::new(projection));
             }
         }
-        drop(guard);
+        self.engine.map.store(Arc::new(map));
+        drop(_guard);
         if let Some(value) = updated {
             self.engine.broadcast_update(k.clone(), value);
             true

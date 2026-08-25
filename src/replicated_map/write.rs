@@ -263,11 +263,11 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         );
     }
 
-    /// Collect the live keys currently satisfying `select`, holding the map read lock only for
-    /// the scan (dropped before any deletion). Shared by [`clear`](Self::clear),
-    /// [`retain`](Self::retain), and [`delete_range`](Self::delete_range).
+    /// Collect the live keys currently satisfying `select`, scanning an `Arc` snapshot rather than
+    /// holding any lock. Shared by [`clear`](Self::clear), [`retain`](Self::retain), and
+    /// [`delete_range`](Self::delete_range).
     fn live_keys_where<P: FnMut(&K, &V) -> bool>(&self, mut select: P) -> Vec<K> {
-        let guard = self.engine.map.read();
+        let guard = self.engine.map.load_full();
         guard
             .range(..)
             .filter_map(|(k, entry)| {
@@ -293,13 +293,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// Delete every live entry for which `keep` returns `false`, as broadcast tombstones. Keys
-    /// where `keep` returns `true` are retained. The predicate runs under the read lock; keep it
-    /// cheap and side-effect free.
-    ///
-    /// # Deadlock
-    ///
-    /// `keep` runs while the map read lock is held. Calling a write method from `keep`
-    /// self-deadlocks — see [`get`](Self::get)'s `# Deadlock` section.
+    /// where `keep` returns `true` are retained. `keep` runs over an `Arc` snapshot rather than
+    /// under any lock (#34), so calling back into a write method from it no longer risks a
+    /// self-deadlock the way it did before #34; keep it cheap and side-effect free regardless.
     ///
     /// # Panics
     ///
@@ -320,7 +316,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// the range is non-empty; a no-op call never spawns).
     pub fn delete_range<R: RangeBounds<K>>(&self, range: R) {
         let keys: Vec<K> = {
-            let guard = self.engine.map.read();
+            let guard = self.engine.map.load_full();
             guard
                 .range(range)
                 .filter_map(|(k, entry)| entry.value().map(|_| k.clone()))
@@ -351,7 +347,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         loop {
             for key in self.tombstones.expired(wall_clock_now()) {
                 // Version token of the tombstone actually stored, matched against peer acks.
-                let version = self.engine.map.read().get(&key).map(version_hash);
+                let version = self.engine.map.load_full().get(&key).map(version_hash);
                 let Some(version) = version else {
                     // The key is no longer present (overwritten or already removed): stop
                     // tracking it.

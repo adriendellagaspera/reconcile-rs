@@ -19,13 +19,15 @@ use crate::FingerprintTreeMap;
 use super::{send_messages_to, Message, Replica, SendPorts, PEER_EXPIRATION};
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
-    /// Insert into the dated `map` **and** mirror the value-only projection (and the
-    /// live-tombstone index), under a consistent lock order (`map` -> `live_tombstones` ->
-    /// `projection`) shared by every mutation path so the structures never deadlock against each
-    /// other. The caller already holds the `map` write guard.
+    /// Insert into an already-loaded, already-owned clone of the dated `map` **and** mirror the
+    /// value-only projection (and the live-tombstone index). The caller must hold
+    /// [`write_lock`](super::Inner::write_lock) and `store()` both `map`/`projection` back once it
+    /// is done — this only mutates the two owned clones handed to it, so several calls can share
+    /// one load/store pair (see [`just_insert_bulk`](Self::just_insert_bulk)).
     pub(super) fn map_insert(
         &self,
-        guard: &mut FingerprintTreeMap<K, Entry<Timestamp, V>>,
+        map: &mut FingerprintTreeMap<K, Entry<Timestamp, V>>,
+        projection: &mut FingerprintTreeMap<K, State<V>>,
         key: K,
         value: Entry<Timestamp, V>,
     ) -> Option<Entry<Timestamp, V>> {
@@ -41,8 +43,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 live_tombstones.remove(&key);
             }
         }
-        self.projection.write().insert(key.clone(), value.project());
-        guard.insert(key, value)
+        projection.insert(key.clone(), value.project());
+        map.insert(key, value)
     }
 
     pub(super) fn get_peers(&self) -> Vec<IpAddr> {
@@ -64,8 +66,13 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             observability::record_insert();
         }
 
-        let mut guard = self.map.write();
-        self.map_insert(&mut guard, key, value)
+        let _guard = self.write_lock.lock();
+        let mut map = (*self.map.load_full()).clone();
+        let mut projection = (*self.projection.load_full()).clone();
+        let ret = self.map_insert(&mut map, &mut projection, key, value);
+        self.map.store(Arc::new(map));
+        self.projection.store(Arc::new(projection));
+        ret
     }
 
     /// Broadcast a batch of messages to every known peer, on a detached task so the write path
@@ -114,10 +121,14 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 observability::record_insert();
             }
         }
-        let mut guard = self.map.write();
+        let _guard = self.write_lock.lock();
+        let mut map = (*self.map.load_full()).clone();
+        let mut projection = (*self.projection.load_full()).clone();
         for (key, value) in key_values {
-            self.map_insert(&mut guard, key.clone(), value.clone());
+            self.map_insert(&mut map, &mut projection, key.clone(), value.clone());
         }
+        self.map.store(Arc::new(map));
+        self.projection.store(Arc::new(projection));
     }
 
     pub fn insert_bulk(&self, key_values: &[(K, Entry<Timestamp, V>)]) {

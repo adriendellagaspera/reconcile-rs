@@ -17,7 +17,7 @@ use super::Replica;
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
     pub fn fingerprint<R: RangeBounds<K>>(&self, range: R) -> Fingerprint {
-        self.map.read().aggregate(range).fingerprint()
+        self.map.load_full().aggregate(range).fingerprint()
     }
 
     /// Fingerprint of the value-only [`projection`](Self::projection) over a range.
@@ -25,7 +25,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// This is the timestamp-less counterpart of [`fingerprint`](Self::fingerprint); a dateless
     /// read replica that has converged with this store computes the same value over the same range.
     pub fn value_fingerprint<R: RangeBounds<K>>(&self, range: R) -> Fingerprint {
-        self.projection.read().aggregate(range).fingerprint()
+        self.projection.load_full().aggregate(range).fingerprint()
     }
 
     /// Mint a fresh Hybrid Logical Clock timestamp for a local write.

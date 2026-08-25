@@ -28,8 +28,9 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use arc_swap::ArcSwap;
 use ipnet::IpNet;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tracing::{debug, warn};
@@ -65,7 +66,15 @@ type OnUpdateCallback<K, V> = Box<dyn Send + Sync + Fn(&K, &State<V>)>;
 pub struct ReadReplicaMap<K, V> {
     /// The value-only tree mirroring the dated store. Its range fingerprints are timestamp-less by
     /// construction (see [`State`]), matching a dated peer's value-only projection.
-    tree: Arc<RwLock<FingerprintTreeMap<K, State<V>>>>,
+    ///
+    /// `ArcSwap`, not `RwLock` (#34, mirroring `Replica`'s `Inner::map`/`Inner::projection`): a
+    /// reader `load_full()`s an owned `Arc` with no lock at all. The one writer (`integrate`)
+    /// serializes through [`write_lock`](Self::write_lock).
+    tree: Arc<ArcSwap<FingerprintTreeMap<K, State<V>>>>,
+    /// Serializes every writer of [`tree`](Self::tree), the same load-clone-mutate-store
+    /// discipline as `Replica`'s `Inner::write_lock` — never `ArcSwap::rcu`, whose optimistic
+    /// retry could replay a writer's side effects.
+    write_lock: Arc<Mutex<()>>,
     port: u16,
     /// The datagram-I/O port (default adapter: [`UdpTransport`]), shared with every clone. A read
     /// replica sends and receives exclusively through it, exactly like
@@ -99,6 +108,7 @@ impl<K, V> Clone for ReadReplicaMap<K, V> {
     fn clone(&self) -> Self {
         ReadReplicaMap {
             tree: self.tree.clone(),
+            write_lock: self.write_lock.clone(),
             port: self.port,
             transport: self.transport.clone(),
             net: self.net.clone(),
@@ -235,7 +245,10 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             .or_else(|| nets.first().copied())
             .unwrap_or_else(|| "127.0.0.1/8".parse().unwrap());
         ReadReplicaMap {
-            tree: Arc::new(RwLock::new(FingerprintTreeMap::<K, State<V>>::new())),
+            tree: Arc::new(ArcSwap::new(Arc::new(
+                FingerprintTreeMap::<K, State<V>>::new(),
+            ))),
+            write_lock: Arc::new(Mutex::new(())),
             port: config.port,
             transport,
             net: Arc::new(RwLock::new(net)),

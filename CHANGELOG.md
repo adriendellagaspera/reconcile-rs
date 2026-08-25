@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version numbers follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: a minor bump can carry breaking changes).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING**: `ValueRef<'a, V>` is now `ValueRef<K, V>` (#34) — it owns an immutable `Arc`
+  snapshot of the backing tree plus the looked-up key instead of a lock guard, so holding one no
+  longer risks a deadlock against a concurrent write on the same handle. See
+  [MIGRATING.md](MIGRATING.md).
+
+### Added
+
+- `ReplicatedMap::snapshot()`/`value_snapshot()` and `ReadReplicaMap::snapshot()` (#34): zero-copy
+  `Arc` snapshots of the backing tree for scanning with `rsos`'s existing `iter`/`range`, no lock
+  and no lifetime tied to the handle.
+
 ## [0.4.0] - 2026-08-22
 
 Publishes the two decisions found auditing pre-freeze wire gaps (#382, #463) — both
@@ -58,6 +73,7 @@ additive-only-until-this-point, so this is the last release either could land in
 Last release before the workspace split. See the
 [GitHub release notes](https://github.com/Akvize/reconcile-rs/releases/tag/v0.2.1).
 
+[Unreleased]: https://github.com/Akvize/reconcile-rs/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/Akvize/reconcile-rs/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Akvize/reconcile-rs/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Akvize/reconcile-rs/releases/tag/v0.2.1

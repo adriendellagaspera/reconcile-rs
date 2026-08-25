@@ -24,7 +24,7 @@ use crate::transport::InMemoryNetwork;
 /// Live (value-only) view of an engine's map, for comparing convergence regardless of stamps.
 fn live_view(eng: &Replica<u32, u32>) -> BTreeMap<u32, u32> {
     eng.map
-        .read()
+        .load_full()
         .iter()
         .filter_map(|(k, e)| e.value().map(|v| (*k, *v)))
         .collect()
@@ -103,7 +103,7 @@ async fn wide_scattered_divergence_converges_on_a_single_round() {
     while Instant::now() < repair_deadline {
         let all_tombstoned = missing.iter().all(|k| {
             b.map
-                .read()
+                .load_full()
                 .get(k)
                 .is_some_and(crate::entry::Entry::is_tombstone)
         });

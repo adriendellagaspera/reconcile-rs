@@ -20,8 +20,9 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tracing::{debug, info, warn};
 
+use arc_swap::ArcSwap;
 use ipnet::IpNet;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 use crate::bounds::{Key, Value};
 use crate::clock::{Clock, HlcClock, NodeId, Timestamp};
@@ -222,8 +223,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             Arc::new(RandomProbe::new(Arc::clone(&nets), Arc::clone(&rng)));
         Replica {
             inner: Arc::new(Inner {
-                map: Arc::new(RwLock::new(map)),
-                projection: Arc::new(RwLock::new(projection)),
+                map: Arc::new(ArcSwap::new(Arc::new(map))),
+                projection: Arc::new(ArcSwap::new(Arc::new(projection))),
+                write_lock: Mutex::new(()),
                 port: config.port,
                 transport,
                 nets,

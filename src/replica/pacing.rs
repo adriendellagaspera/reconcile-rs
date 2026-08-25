@@ -163,7 +163,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 messages = Vec::new();
                 match channel {
                     DumpChannel::Dated => {
-                        let guard = map.read();
+                        let guard = map.load_full();
                         for range in ranges {
                             for (k, v) in guard.range(range) {
                                 messages.push(Message::Update((k.clone(), v.clone())));
@@ -171,7 +171,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         }
                     }
                     DumpChannel::ValueOnly => {
-                        let guard = projection.read();
+                        let guard = projection.load_full();
                         for range in ranges {
                             for (k, v) in guard.range(range) {
                                 messages.push(Message::ValueUpdate((k.clone(), v.clone())));

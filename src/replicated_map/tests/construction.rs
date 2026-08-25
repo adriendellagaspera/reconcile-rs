@@ -27,7 +27,7 @@ async fn node_id_is_readable_and_matches_the_minted_stamp() {
             .unwrap();
     assert_eq!(store.node_id(), NodeId::new(0xABCD));
     store.insert(1, 1);
-    let stamp = store.engine.map.read().get(&1).unwrap().stamp;
+    let stamp = store.engine.map.load_full().get(&1).unwrap().stamp;
     assert_eq!(stamp.node_id(), store.node_id());
 }
 

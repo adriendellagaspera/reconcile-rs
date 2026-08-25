@@ -38,15 +38,16 @@ pub(super) fn backoff_delay(attempt: u32) -> Duration {
     LOAD_RETRY_BASE_DELAY * 2u32.pow(attempt - 1)
 }
 
-/// Entries cloned per map read-lock acquisition while building a snapshot (`Self::snapshot`).
+/// Entries cloned per `Arc` snapshot re-load while building a persisted snapshot
+/// (`Self::persist_snapshot`).
 ///
-/// Cloning the whole map under one continuous read lock stalls every writer for as long as the
-/// clone takes — proportional to map size, unbounded. Chunking bounds a single stall to
-/// the time to clone this many entries, releasing the lock between chunks so a waiting writer can
-/// interleave. The resulting snapshot is not a single linearizable instant — later chunks can
-/// reflect writes concurrent with earlier ones — but that is no different from what the gossip
-/// protocol itself already reconciles range-by-range, and each individual entry is still read
-/// atomically (`ARCHITECTURE.md` §5 invariant 8's per-key LWW model needs no more).
+/// Predates #34's move from `RwLock` to `ArcSwap`: chunking used to bound how long one
+/// continuous read-lock acquisition could stall a writer. A writer never blocks on a reader under
+/// `ArcSwap` at all, so that motivation is gone, but the resulting snapshot is still not a single
+/// linearizable instant — a fresh `load_full()` between chunks can observe a write concurrent
+/// with an earlier chunk — which is no different from what the gossip protocol itself already
+/// reconciles range-by-range, and each individual entry is still read atomically
+/// (`ARCHITECTURE.md` §5 invariant 8's per-key LWW model needs no more).
 pub(super) const SNAPSHOT_CHUNK_SIZE: usize = 4096;
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
@@ -148,15 +149,14 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Capture the full store state and hand it to the persistence backend.
     ///
-    /// Clones the map in [`SNAPSHOT_CHUNK_SIZE`]-entry chunks, releasing the read lock between
-    /// chunks, rather than holding it for one continuous `O(map size)` clone — see
-    /// [`SNAPSHOT_CHUNK_SIZE`]'s doc for why a non-instantaneous snapshot is an acceptable
-    /// trade-off here. Records [`last_snapshot_at`](super::ReplicatedMap::sync_state) on success.
+    /// Clones the map in [`SNAPSHOT_CHUNK_SIZE`]-entry chunks — see that constant's doc for why a
+    /// non-instantaneous snapshot is an acceptable trade-off here. Records
+    /// [`last_snapshot_at`](super::ReplicatedMap::sync_state) on success.
     fn snapshot_inner(&self) -> io::Result<()> {
         let mut entries: DatedEntries<K, V> = Vec::new();
         let mut cursor: Option<K> = None;
         loop {
-            let guard = self.engine.map.read();
+            let guard = self.engine.map.load_full();
             let chunk: Vec<(K, Entry<Timestamp, V>)> = match &cursor {
                 None => guard
                     .range(..)
@@ -189,7 +189,11 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// As [`snapshot_inner`](Self::snapshot_inner), logging rather than propagating a failure —
     /// the shape the periodic background task and [`run`](super::ReplicatedMap::run)'s shutdown
     /// flush both want.
-    pub(super) fn snapshot(&self) {
+    ///
+    /// Named `persist_snapshot`, not `snapshot` (#34): that name now belongs to the public,
+    /// in-memory `Arc` snapshot ([`ReplicatedMap::snapshot`](super::ReplicatedMap::snapshot)) —
+    /// an unrelated concept that happens to share the word.
+    pub(super) fn persist_snapshot(&self) {
         if let Err(err) = self.snapshot_inner() {
             warn!("failed to persist reconcile store snapshot: {err}");
         }
@@ -212,7 +216,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     pub(super) async fn snapshot_periodically(&self) {
         loop {
             tokio::time::sleep(self.snapshot_interval).await;
-            self.snapshot();
+            self.persist_snapshot();
         }
     }
 }

@@ -89,13 +89,14 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::fingerprint<R: core::o
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::first_key_value(&self) -> core::option::Option<(K, V)>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::for_each<F: core::ops::function::FnMut(&K, &V)>(&self, F)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::for_each_in_range<R: core::ops::range::RangeBounds<K>, F: core::ops::function::FnMut(&K, &V)>(&self, R, F)
-pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::get(&self, &K) -> core::option::Option<reconcile::value_ref::ValueRef<'_, V>>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::get(&self, &K) -> core::option::Option<reconcile::value_ref::ValueRef<K, V>>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::get_cloned(&self, &K) -> core::option::Option<V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::is_empty(&self) -> bool
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::last_key_value(&self) -> core::option::Option<(K, V)>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::len(&self) -> usize
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::range_to_vec<R: core::ops::range::RangeBounds<K>>(&self, R) -> alloc::vec::Vec<(K, V)>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::snapshot(&self) -> alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::to_vec(&self) -> alloc::vec::Vec<(K, V)>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::values(&self) -> alloc::vec::Vec<V>
@@ -116,11 +117,11 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery_interva
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
 impl<K, V> core::clone::Clone for reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::clone(&self) -> Self
-impl<K, V> core::marker::Freeze for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Freeze, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Freeze
-impl<K, V> core::marker::Send for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Send, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Send
-impl<K, V> core::marker::Sync for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Sync, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Unpin, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::UnsafeUnpin, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::UnsafeUnpin
+impl<K, V> core::marker::Freeze for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::Freeze, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Freeze
+impl<K, V> core::marker::Send for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::Send, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::Sync, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::Unpin, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::UnsafeUnpin, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::UnsafeUnpin
 impl<K, V> !core::panic::unwind_safe::RefUnwindSafe for reconcile::read_replica_map::ReadReplicaMap<K, V>
 impl<K, V> !core::panic::unwind_safe::UnwindSafe for reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub mod reconcile::read_replica_set
@@ -264,15 +265,17 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::fingerprint<R: core::ops:
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::first_key_value(&self) -> core::option::Option<(K, V)>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::for_each<F: core::ops::function::FnMut(&K, &V)>(&self, F)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::for_each_in_range<R: core::ops::range::RangeBounds<K>, F: core::ops::function::FnMut(&K, &V)>(&self, R, F)
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get(&self, &K) -> core::option::Option<reconcile::value_ref::ValueRef<'_, V>>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get(&self, &K) -> core::option::Option<reconcile::value_ref::ValueRef<K, V>>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_cloned(&self, &K) -> core::option::Option<V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::is_empty(&self) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::last_key_value(&self) -> core::option::Option<(K, V)>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::len(&self) -> usize
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::range_to_vec<R: core::ops::range::RangeBounds<K>>(&self, R) -> alloc::vec::Vec<(K, V)>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot(&self) -> alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>>>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::to_vec(&self) -> alloc::vec::Vec<(K, V)>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::value_snapshot(&self) -> alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::values(&self) -> alloc::vec::Vec<V>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_mut<F: core::ops::function::FnOnce(core::option::Option<&mut V>)>(&self, &K, F)
@@ -388,17 +391,17 @@ impl<K> core::marker::UnsafeUnpin for reconcile::replicated_set::ReplicatedSet<K
 impl<K> !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_set::ReplicatedSet<K>
 impl<K> !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_set::ReplicatedSet<K>
 pub mod reconcile::value_ref
-pub struct reconcile::value_ref::ValueRef<'a, V>(_)
-impl<V> core::ops::deref::Deref for reconcile::value_ref::ValueRef<'_, V>
-pub type reconcile::value_ref::ValueRef<'_, V>::Target = V
-pub fn reconcile::value_ref::ValueRef<'_, V>::deref(&self) -> &V
-impl<'a, V> core::marker::Freeze for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::marker::Freeze
-impl<'a, V> !core::marker::Send for reconcile::value_ref::ValueRef<'a, V>
-impl<'a, V> core::marker::Sync for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::marker::Sync
-impl<'a, V> core::marker::Unpin for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::marker::Unpin
-impl<'a, V> core::marker::UnsafeUnpin for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::marker::UnsafeUnpin
-impl<'a, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::panic::unwind_safe::RefUnwindSafe
-impl<'a, V> core::panic::unwind_safe::UnwindSafe for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::panic::unwind_safe::UnwindSafe
+pub struct reconcile::value_ref::ValueRef<K, V>(_)
+impl<K: core::cmp::Ord, V> core::ops::deref::Deref for reconcile::value_ref::ValueRef<K, V>
+pub type reconcile::value_ref::ValueRef<K, V>::Target = V
+pub fn reconcile::value_ref::ValueRef<K, V>::deref(&self) -> &V
+impl<K, V> core::marker::Freeze for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Freeze
+impl<K, V> core::marker::Send for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::UnsafeUnpin
+impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::panic::unwind_safe::UnwindSafe
 pub struct reconcile::FileSnapshot
 impl reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::new(impl core::convert::AsRef<std::path::Path>) -> Self
@@ -423,13 +426,14 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::fingerprint<R: core::o
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::first_key_value(&self) -> core::option::Option<(K, V)>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::for_each<F: core::ops::function::FnMut(&K, &V)>(&self, F)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::for_each_in_range<R: core::ops::range::RangeBounds<K>, F: core::ops::function::FnMut(&K, &V)>(&self, R, F)
-pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::get(&self, &K) -> core::option::Option<reconcile::value_ref::ValueRef<'_, V>>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::get(&self, &K) -> core::option::Option<reconcile::value_ref::ValueRef<K, V>>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::get_cloned(&self, &K) -> core::option::Option<V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::is_empty(&self) -> bool
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::last_key_value(&self) -> core::option::Option<(K, V)>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::len(&self) -> usize
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::range_to_vec<R: core::ops::range::RangeBounds<K>>(&self, R) -> alloc::vec::Vec<(K, V)>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::snapshot(&self) -> alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::to_vec(&self) -> alloc::vec::Vec<(K, V)>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::values(&self) -> alloc::vec::Vec<V>
@@ -450,11 +454,11 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery_interva
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
 impl<K, V> core::clone::Clone for reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::clone(&self) -> Self
-impl<K, V> core::marker::Freeze for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Freeze, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Freeze
-impl<K, V> core::marker::Send for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Send, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Send
-impl<K, V> core::marker::Sync for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Sync, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Unpin, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::UnsafeUnpin, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::UnsafeUnpin
+impl<K, V> core::marker::Freeze for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::Freeze, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Freeze
+impl<K, V> core::marker::Send for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::Send, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::Sync, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::Unpin, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::UnsafeUnpin, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::UnsafeUnpin
 impl<K, V> !core::panic::unwind_safe::RefUnwindSafe for reconcile::read_replica_map::ReadReplicaMap<K, V>
 impl<K, V> !core::panic::unwind_safe::UnwindSafe for reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub struct reconcile::ReadReplicaSet<K>(_)
@@ -520,15 +524,17 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::fingerprint<R: core::ops:
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::first_key_value(&self) -> core::option::Option<(K, V)>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::for_each<F: core::ops::function::FnMut(&K, &V)>(&self, F)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::for_each_in_range<R: core::ops::range::RangeBounds<K>, F: core::ops::function::FnMut(&K, &V)>(&self, R, F)
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get(&self, &K) -> core::option::Option<reconcile::value_ref::ValueRef<'_, V>>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get(&self, &K) -> core::option::Option<reconcile::value_ref::ValueRef<K, V>>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_cloned(&self, &K) -> core::option::Option<V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::is_empty(&self) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::last_key_value(&self) -> core::option::Option<(K, V)>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::len(&self) -> usize
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::range_to_vec<R: core::ops::range::RangeBounds<K>>(&self, R) -> alloc::vec::Vec<(K, V)>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot(&self) -> alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>>>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::to_vec(&self) -> alloc::vec::Vec<(K, V)>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::value_snapshot(&self) -> alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::values(&self) -> alloc::vec::Vec<V>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_mut<F: core::ops::function::FnOnce(core::option::Option<&mut V>)>(&self, &K, F)
@@ -613,14 +619,14 @@ impl<K> core::marker::Unpin for reconcile::replicated_set::ReplicatedSet<K> wher
 impl<K> core::marker::UnsafeUnpin for reconcile::replicated_set::ReplicatedSet<K> where reconcile::replicated_map::ReplicatedMap<K, ()>: core::marker::UnsafeUnpin
 impl<K> !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_set::ReplicatedSet<K>
 impl<K> !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_set::ReplicatedSet<K>
-pub struct reconcile::ValueRef<'a, V>(_)
-impl<V> core::ops::deref::Deref for reconcile::value_ref::ValueRef<'_, V>
-pub type reconcile::value_ref::ValueRef<'_, V>::Target = V
-pub fn reconcile::value_ref::ValueRef<'_, V>::deref(&self) -> &V
-impl<'a, V> core::marker::Freeze for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::marker::Freeze
-impl<'a, V> !core::marker::Send for reconcile::value_ref::ValueRef<'a, V>
-impl<'a, V> core::marker::Sync for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::marker::Sync
-impl<'a, V> core::marker::Unpin for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::marker::Unpin
-impl<'a, V> core::marker::UnsafeUnpin for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::marker::UnsafeUnpin
-impl<'a, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::panic::unwind_safe::RefUnwindSafe
-impl<'a, V> core::panic::unwind_safe::UnwindSafe for reconcile::value_ref::ValueRef<'a, V> where lock_api::rwlock::MappedRwLockReadGuard<'a, parking_lot::raw_rwlock::RawRwLock, V>: core::panic::unwind_safe::UnwindSafe
+pub struct reconcile::ValueRef<K, V>(_)
+impl<K: core::cmp::Ord, V> core::ops::deref::Deref for reconcile::value_ref::ValueRef<K, V>
+pub type reconcile::value_ref::ValueRef<K, V>::Target = V
+pub fn reconcile::value_ref::ValueRef<K, V>::deref(&self) -> &V
+impl<K, V> core::marker::Freeze for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Freeze
+impl<K, V> core::marker::Send for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::UnsafeUnpin
+impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::panic::unwind_safe::UnwindSafe

@@ -122,7 +122,11 @@ async fn a_reserved_message_does_not_block_the_rest_of_the_datagram() {
          processed — the whole datagram must not be dropped for one unrecognised-content tag"
     );
     assert_eq!(
-        engine.map.read().get(&1).and_then(|v| v.value().copied()),
+        engine
+            .map
+            .load_full()
+            .get(&1)
+            .and_then(|v| v.value().copied()),
         Some(7),
         "the real Update alongside the reserved message must actually be applied, not just \
          reported as spoke_dated"

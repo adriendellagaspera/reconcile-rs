@@ -6,26 +6,46 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! [`ValueRef`]: the read-locked handle [`ReplicatedMap::get`](crate::ReplicatedMap::get) and
+//! [`ValueRef`]: the handle [`ReplicatedMap::get`](crate::ReplicatedMap::get) and
 //! [`ReadReplicaMap::get`](crate::ReadReplicaMap::get) return.
 
 use std::ops::Deref;
+use std::sync::Arc;
 
-use parking_lot::MappedRwLockReadGuard;
+use crate::clock::Timestamp;
+use crate::entry::{Entry, State};
+use crate::FingerprintTreeMap;
 
-/// A read-locked reference to a live value.
+/// Which backing tree a [`ValueRef`] was built over: [`ReplicatedMap`](crate::ReplicatedMap)'s
+/// dated map, or [`ReadReplicaMap`](crate::ReadReplicaMap)'s value-only projection. `pub(crate)`
+/// so `get()` in either module can construct one, but the shape stays opaque to callers (#297).
+pub(crate) enum Snapshot<K, V> {
+    Dated(Arc<FingerprintTreeMap<K, Entry<Timestamp, V>>>, K),
+    Projected(Arc<FingerprintTreeMap<K, State<V>>>, K),
+}
+
+/// A snapshot-backed reference to a live value.
 ///
-/// Opaque wrapper over this crate's internal lock guard (#297): naming the concrete
-/// `parking_lot` guard type in a public signature would force every dependent onto this crate's
-/// exact `parking_lot` version. Derefs to `&V`; holding one across a write on the same handle
-/// deadlocks — see [`ReplicatedMap::get`](crate::ReplicatedMap::get)'s docs for the pattern to
-/// avoid and [`ReplicatedMap::get_cloned`](crate::ReplicatedMap::get_cloned) for the safe default.
-pub struct ValueRef<'a, V>(pub(crate) MappedRwLockReadGuard<'a, V>);
+/// #34: owns an immutable `Arc` snapshot of the whole backing tree rather than holding a lock —
+/// unlike the pre-#34, `RwLock`-guard-backed version, a `ValueRef` may be held indefinitely,
+/// including across a write on the same handle, with no deadlock risk: the write installs a fresh
+/// tree behind a new `Arc`, and this `ValueRef` still points at whichever tree was live when
+/// `get` returned it. Derefs to `&V`.
+pub struct ValueRef<K, V>(pub(crate) Snapshot<K, V>);
 
-impl<V> Deref for ValueRef<'_, V> {
+impl<K: Ord, V> Deref for ValueRef<K, V> {
     type Target = V;
 
     fn deref(&self) -> &V {
-        &self.0
+        match &self.0 {
+            Snapshot::Dated(snapshot, key) => snapshot
+                .get(key)
+                .and_then(|entry| entry.value())
+                .expect("ValueRef always wraps a key live in the snapshot it was built from"),
+            Snapshot::Projected(snapshot, key) => snapshot
+                .get(key)
+                .and_then(|state| state.as_value())
+                .expect("ValueRef always wraps a key live in the snapshot it was built from"),
+        }
     }
 }
