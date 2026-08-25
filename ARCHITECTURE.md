@@ -480,7 +480,7 @@ bullets below are that reasoning — this table is the lookup, not a summary tha
 | `BYOLiftingMonoid` | **decided: out of scope for 1.x, a 2.0 topic** | undetermined bound (`Group` vs `Monoid`), and `type Summary` has no additive path after 1.0 |
 | A multidimensional (product-order) RSOS | **decided: no-go** | below |
 | Pluggable per-value conflict resolution | **decided: deferred**, no trigger yet | below |
-| A leaf sketch (IBLT) beside the RBSR chain | **decided: out of scope for this crate** | moved to the research companion |
+| A leaf sketch (IBLT) beside the RBSR chain | **decided: out of scope for this crate** | untested algorithm — research, not engineering this crate ships |
 | Partial replication / sharding | **the only surviving answer to capacity pressure** | below |
 | Defense against a correlated false SKIP | **decided: option A ships, B re-priced at #337** | below |
 
@@ -540,10 +540,10 @@ bullets below are that reasoning — this table is the lookup, not a summary tha
   it — the global-sidecar vs per-range shape
   ([#11](https://github.com/adriendellagaspera/reconcile-rs/issues/11) (closed)) and the ranking
   against the loss term that dominates before RTT does
-  ([#12](https://github.com/adriendellagaspera/reconcile-rs/issues/12) (closed)). Both moved to the
-  private research companion (`rbsr-research` issues 6 and 7): the algorithm is untested here, so it
-  is research, not engineering this crate ships. `RoundOutcome` therefore gains no `sketch_ranges`
-  field, and no store-wide structure is written on every insert.
+  ([#12](https://github.com/adriendellagaspera/reconcile-rs/issues/12) (closed)). Neither is pursued
+  here: the algorithm is untested, so it is research rather than engineering this crate ships.
+  `RoundOutcome` therefore gains no `sketch_ranges` field, and no store-wide structure is written on
+  every insert.
 - **Partial replication / sharding** — the only surviving answer to capacity pressure
   ([#186](https://github.com/Akvize/reconcile-rs/issues/186)). A pluggable `Storage` backend
   (on-disk / LSM / content-addressed) was evaluated as an alternative and **rejected permanently**:
