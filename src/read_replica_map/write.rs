@@ -7,6 +7,7 @@
 // except according to those terms.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::time::timeout;
@@ -40,8 +41,8 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     }
 
     /// Integrate inbound value-only updates by plain overwrite (a read replica holds no timestamp to
-    /// compare against — it trusts the authoritative dated peer). Hooks run outside the map lock,
-    /// so a hook may safely call back into the read replica.
+    /// compare against — it trusts the authoritative dated peer). Hooks run outside the write
+    /// lock, so a hook may safely call back into the read replica.
     pub(super) fn integrate(&self, updates: Vec<(K, State<V>)>) {
         if updates.is_empty() {
             return;
@@ -52,10 +53,12 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                 hook(k, state);
             }
         }
-        let mut guard = self.tree.write();
+        let _guard = self.write_lock.lock();
+        let mut tree = (*self.tree.load_full()).clone();
         for (k, state) in updates {
-            guard.insert(k, state);
+            tree.insert(k, state);
         }
+        self.tree.store(Arc::new(tree));
     }
 
     /// Bundle the outbound ports the batched-send helpers need, exactly as
@@ -80,7 +83,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// kicking off / continuing a value-only reconciliation round. `send_buf` is caller-owned so
     /// [`run`](Self::run)'s hot loop can reuse one allocation across rounds.
     async fn start_reconciliation_inner(&self, send_buf: &mut Vec<u8>) {
-        let segments = rbsr::initial_ranges(&*self.tree.read());
+        let segments = rbsr::initial_ranges(&*self.tree.load_full());
         send_buf.clear();
         for segment in segments {
             gossip::bincode::encode(
@@ -161,7 +164,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             let mut out_comparison = Vec::new();
             let mut differences = Vec::new();
             {
-                let guard = self.tree.read();
+                let guard = self.tree.load_full();
                 rbsr::protocol_round(
                     &*guard,
                     value_in_comparison,

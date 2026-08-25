@@ -65,7 +65,7 @@ async fn insert_broadcasts_immediately_without_a_reconciliation_round() {
     let mut received = None;
     while Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(20)).await;
-        if let Some(entry) = b.map.read().get(&7) {
+        if let Some(entry) = b.map.load_full().get(&7) {
             received = entry.value().copied();
             if received.is_some() {
                 break;
@@ -126,7 +126,7 @@ async fn broadcast_update_pushes_immediately_without_a_reconciliation_round() {
     let mut received = None;
     while Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(20)).await;
-        if let Some(entry) = b.map.read().get(&7) {
+        if let Some(entry) = b.map.load_full().get(&7) {
             received = entry.value().copied();
             if received.is_some() {
                 break;

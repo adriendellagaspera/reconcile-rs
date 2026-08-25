@@ -66,7 +66,11 @@ async fn equal_stamp_update_is_not_reapplied() {
         "an equal-stamp Update must not be re-applied (pre-insert hook must not run)"
     );
     assert_eq!(
-        engine.map.read().get(&key).and_then(|v| v.value().copied()),
+        engine
+            .map
+            .load_full()
+            .get(&key)
+            .and_then(|v| v.value().copied()),
         Some(1),
         "an equal-stamp Update must not overwrite the locally-held value"
     );

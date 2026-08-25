@@ -68,7 +68,7 @@ async fn replicates_tombstones() {
     // The tombstone itself is still retained internally (the tree keeps it until the dated peer
     // observes it acknowledged and moves on) — `len` deliberately doesn't surface that raw size.
     assert_eq!(
-        read_replica.tree.read().len(),
+        read_replica.tree.load_full().len(),
         1,
         "the tombstone is retained as a tree entry"
     );

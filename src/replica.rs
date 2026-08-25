@@ -15,8 +15,9 @@ use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use arc_swap::ArcSwap;
 use ipnet::IpNet;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use rand::rngs::StdRng;
 use serde::{Deserialize, Serialize};
 
@@ -66,12 +67,26 @@ pub(crate) struct Replica<K, V> {
 
 /// Shared, refcounted state of a [`Replica`]; see that struct for the rationale.
 pub(crate) struct Inner<K, V> {
-    pub(crate) map: Arc<RwLock<FingerprintTreeMap<K, Entry<Timestamp, V>>>>,
+    /// `ArcSwap`, not `RwLock` (#34): a reader `load_full()`s an owned `Arc` with no lock at all,
+    /// which is what makes it safe to hold across an `.await` point
+    /// ([`start_reconciliation`](Self::start_reconciliation),
+    /// [`handle_messages`](Self::handle_messages)) — `ArcSwap::load()`'s pooled `Guard` is
+    /// documented as unsuitable for that. A writer clones the current `Arc` (an O(1) root bump,
+    /// #41), mutates the clone with the ordinary COW `&mut self` API, and `store()`s it back,
+    /// serialized through [`write_lock`](Self::write_lock) — see that field for why.
+    pub(crate) map: Arc<ArcSwap<FingerprintTreeMap<K, Entry<Timestamp, V>>>>,
     /// Value-only **projection** of [`map`](Self::map), kept in sync at every mutation.
     ///
     /// Timestamp-less by construction (`ARCHITECTURE.md` §5 invariant 8), which is what lets a
     /// dateless read replica converge with this dated store. Never touches causal stability.
-    pub(crate) projection: Arc<RwLock<FingerprintTreeMap<K, State<V>>>>,
+    pub(crate) projection: Arc<ArcSwap<FingerprintTreeMap<K, State<V>>>>,
+    /// Serializes every writer of [`map`](Self::map)/[`projection`](Self::projection)/
+    /// [`live_tombstones`](Self::live_tombstones), so the three stay consistent with each other
+    /// (`ARCHITECTURE.md` §5 invariant 8, `Replica::map_insert`'s lock-order comment). Deliberately
+    /// a plain mutex around the load-clone-mutate-store sequence, never `ArcSwap::rcu`: an
+    /// optimistic-retry `rcu` closure can re-run under contention, which would replay the
+    /// `live_tombstones`/`projection` side effects more than once.
+    pub(crate) write_lock: Mutex<()>,
     port: u16,
     /// The datagram-I/O port (default adapter: [`UdpTransport`]). The engine sends and receives
     /// only through this, so it never names a concrete socket type.

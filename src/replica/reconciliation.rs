@@ -28,7 +28,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let timer = observability::timer();
         observability::record_reconcile_round();
         let segments = {
-            let guard = self.map.read();
+            let guard = self.map.load_full();
             rbsr::initial_ranges(&*guard)
         };
         send_buf.clear();
@@ -125,7 +125,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let n = keys.len();
         let budget = send_buf.len() + TOMBSTONE_ACK_RESEND_BYTE_BUDGET;
         let start = (round as usize) % n;
-        let map_guard = self.map.read();
+        let map_guard = self.map.load_full();
         let mut appended = 0;
         let mut budget_truncated = false;
         for offset in 0..n {

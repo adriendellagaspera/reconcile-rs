@@ -26,7 +26,7 @@ use crate::transport::InMemoryNetwork;
 /// Live (value-only) view of an engine's map, for comparing convergence regardless of stamps.
 fn live_view(eng: &Replica<u32, u32>) -> BTreeMap<u32, u32> {
     eng.map
-        .read()
+        .load_full()
         .iter()
         .filter_map(|(k, e)| e.value().map(|v| (*k, *v)))
         .collect()

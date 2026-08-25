@@ -164,7 +164,7 @@ fn pre_insert_hook_can_call_insert_again_from_network_path_without_deadlock() {
 
             // Read back the value the re-entrant hook inserted from the network path. The read
             // guard is dropped explicitly so it does not outlive `engine` at the block's end.
-            let map_guard = engine.map.read();
+            let map_guard = engine.map.load_full();
             let reinserted = map_guard.get(&142).and_then(|v| v.value().copied());
             drop(map_guard);
             reinserted

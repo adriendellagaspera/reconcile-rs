@@ -31,7 +31,7 @@ async fn persistence_roundtrip_recovers_entries_and_tombstones() {
     store.insert(2, 22);
     store.remove(&2); // tombstone
     let expected = store.fingerprint(..);
-    store.snapshot(); // force a durable write
+    store.persist_snapshot(); // force a durable write
 
     // A brand-new store recovers the previous state from the same file.
     let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
@@ -156,10 +156,10 @@ async fn invalid_data_panics_without_retrying() {
     assert!(start.elapsed() < super::super::persistence::LOAD_RETRY_BASE_DELAY);
 }
 
-/// `snapshot` clones the map in `SNAPSHOT_CHUNK_SIZE`-entry chunks, releasing and
-/// re-acquiring the read lock between them. Insert enough entries to force several chunk
-/// boundaries and confirm every one of them still round-trips — the chunking must not drop,
-/// duplicate, or reorder entries relative to the previous whole-map-under-one-lock snapshot.
+/// `persist_snapshot` clones the map in `SNAPSHOT_CHUNK_SIZE`-entry chunks, re-loading the `Arc`
+/// snapshot between them. Insert enough entries to force several chunk boundaries and confirm
+/// every one of them still round-trips — the chunking must not drop, duplicate, or reorder
+/// entries relative to a single whole-map clone.
 #[tokio::test]
 async fn snapshot_across_multiple_chunks_recovers_every_entry() {
     let dir = tempfile::tempdir().unwrap();
@@ -174,7 +174,7 @@ async fn snapshot_across_multiple_chunks_recovers_every_entry() {
         store.just_insert(k, k * 2);
     }
     let expected = store.fingerprint(..);
-    store.snapshot();
+    store.persist_snapshot();
 
     let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
         .await
@@ -212,7 +212,7 @@ async fn restart_preserves_membership_and_acks() {
         .entry(5)
         .or_default()
         .insert(peer, 123);
-    store.snapshot();
+    store.persist_snapshot();
 
     let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
         .await
@@ -250,12 +250,18 @@ async fn restart_keeps_tombstone_gc_gated() {
     store.insert(1, 11);
     store.remove(&1); // tombstone, never acknowledged by `peer`
 
-    let version = store.engine.map.read().get(&1).map(version_hash).unwrap();
+    let version = store
+        .engine
+        .map
+        .load_full()
+        .get(&1)
+        .map(version_hash)
+        .unwrap();
     assert!(
         !store.engine.is_tombstone_stable(&1, version),
         "precondition: tombstone is gated before restart"
     );
-    store.snapshot();
+    store.persist_snapshot();
 
     // Sanity check the hazard: a *fresh* store (no recovered membership) would consider the
     // same tombstone stable and collect it.
@@ -264,7 +270,13 @@ async fn restart_keeps_tombstone_gc_gated() {
         .expect("bind failed");
     fresh.insert(1, 11);
     fresh.remove(&1);
-    let fresh_version = fresh.engine.map.read().get(&1).map(version_hash).unwrap();
+    let fresh_version = fresh
+        .engine
+        .map
+        .load_full()
+        .get(&1)
+        .map(version_hash)
+        .unwrap();
     assert!(
         fresh.engine.is_tombstone_stable(&1, fresh_version),
         "a fresh restart with no membership would (wrongly) GC the tombstone — the hazard this guards against"
@@ -279,7 +291,7 @@ async fn restart_keeps_tombstone_gc_gated() {
     let version = restarted
         .engine
         .map
-        .read()
+        .load_full()
         .get(&1)
         .map(version_hash)
         .unwrap();
@@ -331,7 +343,7 @@ async fn restart_clock_advanced_past_persisted_max_stamp() {
     let minted_stamp = store
         .engine
         .map
-        .read()
+        .load_full()
         .get(&99)
         .map(|entry| entry.stamp)
         .expect("key 99 must be present after insert");
@@ -385,7 +397,7 @@ async fn restart_insert_beats_persisted_tombstone() {
     let minted_stamp = store
         .engine
         .map
-        .read()
+        .load_full()
         .get(&7)
         .map(|entry| entry.stamp)
         .expect("key 7 must be present after insert");

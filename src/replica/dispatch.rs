@@ -8,6 +8,7 @@
 
 use std::hash::Hash;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use tracing::{debug, instrument, trace, warn};
 
@@ -75,7 +76,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // record tombstone acknowledgments received from the peer
         if !acks.is_empty() {
             let peer_ip = peer.ip();
-            let map_guard = self.map.read();
+            let map_guard = self.map.load_full();
             let mut guard = self.tombstone_acks.write();
             for (key, version) in acks {
                 // Only acks for locally-held tombstones, so `tombstone_acks` cannot grow
@@ -96,7 +97,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             let mut differences = Vec::new();
             let mut out_comparison = Vec::new();
             {
-                let guard = self.map.read();
+                let guard = self.map.load_full();
                 rbsr::protocol_round(
                     &*guard,
                     in_comparison,
@@ -126,7 +127,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 // (`stash_pending_dump`/`spawn_paced_send`, #516) — never a silent drop.
                 if let Some((peer_guard, global_guard)) = self.try_claim_dump_slot(peer) {
                     let updates: Vec<Message<K, Entry<Timestamp, V>, State<V>>> = {
-                        let guard = self.map.read();
+                        let guard = self.map.load_full();
                         let mut updates = Vec::new();
                         for range in differences {
                             for (k, v) in guard.range(range) {
@@ -162,7 +163,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             //    re-enter the lock and deadlock.
             let mut to_apply: Vec<(K, Entry<Timestamp, V>)> = Vec::new();
             {
-                let guard = self.map.read();
+                let guard = self.map.load_full();
                 for (k, remote_v) in updates {
                     // Advance our clock past the timestamp carried by the remote value, so a
                     // later local write is ordered after everything we have seen. This is
@@ -196,9 +197,11 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             // 3) Re-acquire and re-reconcile: the lock was released, so a concurrent write may
             //    have landed. `reconcile` is idempotent `max`, so re-applying is safe either way.
             if !to_apply.is_empty() {
-                let mut guard = self.map.write();
+                let _guard = self.write_lock.lock();
+                let mut map = (*self.map.load_full()).clone();
+                let mut projection = (*self.projection.load_full()).clone();
                 for (k, v) in to_apply {
-                    let merged_v = match guard.get(&k) {
+                    let merged_v = match map.get(&k) {
                         Some(local_v) => {
                             // #24: the one state `merge` cannot resolve -- two nodes sharing a
                             // node id stamp different content identically, so each side keeps its
@@ -212,13 +215,15 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         None => v,
                     };
                     let version = merged_v.is_tombstone().then(|| version_hash(&merged_v));
-                    self.map_insert(&mut guard, k.clone(), merged_v);
+                    self.map_insert(&mut map, &mut projection, k.clone(), merged_v);
                     if let Some(version) = version {
                         acks_to_send.push(Message::Ack::<K, Entry<Timestamp, V>, State<V>>((
                             k, version,
                         )));
                     }
                 }
+                self.map.store(Arc::new(map));
+                self.projection.store(Arc::new(projection));
             }
             if !acks_to_send.is_empty() {
                 send_messages_to(&acks_to_send, &self.send_ports(), &peer, send_buf).await;
@@ -233,7 +238,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             let mut differences = Vec::new();
             let mut out_comparison = Vec::new();
             {
-                let guard = self.projection.read();
+                let guard = self.projection.load_full();
                 rbsr::protocol_round(
                     &*guard,
                     value_in_comparison,
@@ -255,7 +260,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             if !differences.is_empty() {
                 if let Some((peer_guard, global_guard)) = self.try_claim_dump_slot(peer) {
                     let updates: Vec<Message<K, Entry<Timestamp, V>, State<V>>> = {
-                        let guard = self.projection.read();
+                        let guard = self.projection.load_full();
                         let mut updates = Vec::new();
                         for range in differences {
                             for (k, p) in guard.range(range) {

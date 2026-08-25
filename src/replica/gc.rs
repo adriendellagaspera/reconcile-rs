@@ -8,6 +8,7 @@
 
 use std::hash::Hash;
 use std::net::IpAddr;
+use std::sync::Arc;
 
 use serde::Serialize;
 
@@ -30,10 +31,15 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Remove a key from the dated `map`, its value-only projection, and the live-tombstone
     /// index (the GC removal path).
     pub(crate) fn gc_remove(&self, key: &K) -> Option<Entry<Timestamp, V>> {
-        let mut guard = self.map.write();
+        let _guard = self.write_lock.lock();
+        let mut map = (*self.map.load_full()).clone();
+        let mut projection = (*self.projection.load_full()).clone();
         self.live_tombstones.write().remove(key);
-        self.projection.write().remove(key);
-        guard.remove(key)
+        projection.remove(key);
+        let ret = map.remove(key);
+        self.map.store(Arc::new(map));
+        self.projection.store(Arc::new(projection));
+        ret
     }
 
     /// Whether the tombstone for `key` at this version has been acknowledged by every member and
@@ -68,7 +74,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         if live.is_empty() {
             return false;
         }
-        let map = self.map.read();
+        let map = self.map.load_full();
         let acks = self.tombstone_acks.read();
         live.iter().any(|key| {
             let Some(entry) = map.get(key) else {

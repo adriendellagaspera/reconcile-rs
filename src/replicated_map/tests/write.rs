@@ -66,7 +66,7 @@ mod tombstone_expiry_bound {
 
         // The stored stamp must be untouched.
         assert_eq!(
-            store.engine.map.read().get(&1).unwrap().stamp,
+            store.engine.map.load_full().get(&1).unwrap().stamp,
             stamp,
             "the stored stamp must be exactly as received — only the expiry instant is bounded"
         );

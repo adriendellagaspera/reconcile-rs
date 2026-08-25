@@ -21,6 +21,10 @@ use proptest::prelude::*;
 
 use rsos::{Aggregate, FingerprintTreeMap};
 
+/// A retained snapshot: the oracle it must still match, the tree clone itself, and the
+/// `aggregate(..)` recorded right after cloning (`Op::Snapshot`'s doc).
+type RetainedSnapshot = (BTreeMap<u8, u16>, FingerprintTreeMap<u8, u16>, Aggregate);
+
 #[derive(Clone, Debug)]
 enum Op {
     Insert(u8, u16),
@@ -47,8 +51,7 @@ proptest! {
     ) {
         let mut tree: FingerprintTreeMap<u8, u16> = FingerprintTreeMap::new();
         let mut oracle: BTreeMap<u8, u16> = BTreeMap::new();
-        let mut snapshots: Vec<(BTreeMap<u8, u16>, FingerprintTreeMap<u8, u16>, Aggregate)> =
-            Vec::new();
+        let mut snapshots: Vec<RetainedSnapshot> = Vec::new();
 
         for op in ops {
             match op {

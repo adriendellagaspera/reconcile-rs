@@ -163,7 +163,7 @@ async fn converge_with_coalescing(entries: &[(u32, u32)]) -> BTreeMap<u32, u32> 
 
     let live_view = |eng: &Replica<u32, u32>| -> BTreeMap<u32, u32> {
         eng.map
-            .read()
+            .load_full()
             .iter()
             .filter_map(|(k, e)| e.value().map(|v| (*k, *v)))
             .collect()
