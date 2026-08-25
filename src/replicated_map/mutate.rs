@@ -133,6 +133,16 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     ///
     /// The update branch is atomic; the insert branch behaves like [`insert`](Self::insert).
     ///
+    /// # Atomicity
+    ///
+    /// Not a compare-and-swap, node-local or otherwise: the update branch holds the map write lock
+    /// across the whole read-modify-write and so is atomic against a concurrent local writer or the
+    /// reconciliation loop *once `k` is live*, but the insert branch is a plain, unconditional
+    /// [`insert`](Self::insert) — two local callers racing on the same absent `k` can both take that
+    /// branch, and last-write-wins (by `Timestamp`, not by call order) decides the survivor exactly
+    /// as it would between two nodes. See "Conflict resolution" in the crate README for why a
+    /// cluster-wide conditional write isn't offered at all.
+    ///
     /// # Deadlock
     ///
     /// `f` runs while the map write lock is held on the update branch — same hazard as
@@ -173,6 +183,17 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Return the live value for `k`, inserting (and broadcasting) `f()` first if it is
     /// absent/tombstoned. Under last-write-wins, two nodes racing to insert converge by timestamp
     /// order; this node returns the value it observed/created.
+    ///
+    /// # Atomicity
+    ///
+    /// Not atomic, not even node-locally: the read and the insert are two separate lock
+    /// acquisitions with no lock held across `f()`, unlike [`upsert`](Self::upsert)'s update branch.
+    /// Two local callers racing on the same absent `k` can each see it absent, each run `f()`, and
+    /// each insert — last-write-wins then picks the survivor by `Timestamp`, and a caller whose
+    /// insert loses still returns the value *it* computed, not the one that ends up stored. Use
+    /// [`update`](Self::update)/[`upsert`](Self::upsert) instead when the key is expected to already
+    /// be live; see "Conflict resolution" in the crate README for why no conditional insert
+    /// (`insert_if_absent`) is offered as a stronger alternative.
     ///
     /// # Panics
     ///

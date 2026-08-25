@@ -643,6 +643,19 @@ survivor — the merge is commutative, associative, idempotent (genuine Strong E
 LWW still discards one of two *genuinely concurrent* writes by design; recovering both needs version
 vectors or a CRDT, out of scope here.
 
+**No conditional write.** Neither `compare_and_swap` nor `insert_if_absent` is exposed, and none is
+planned as a cluster-wide primitive: this crate is AP + LWW + no consensus, so a cluster-wide CAS is
+unsound by construction — two nodes can each observe the same expected value, each swap, each
+broadcast, and LWW then silently keeps only the later-timestamped write, discarding the other (the
+exact outcome a CAS exists to prevent). A method named `compare_and_swap` that quietly meant
+"node-local only" would be worse than no method at all. What ships instead —
+[`ReplicatedMap::update`]/[`upsert`]/[`get_or_insert_with`] — gives an atomicity guarantee only as
+strong as *mutating an already-live key*; their rustdoc `# Atomicity` sections spell out exactly how
+far each one reaches, including that `upsert`'s and `get_or_insert_with`'s insert-on-absent path is
+plain last-write-wins, racy against a second local caller the same way it is against a second node.
+A consensus-backed conditional write (a Raft metadata plane, a per-key lease) is out of scope for
+this crate.
+
 Each node uses a random `NodeId` by default; set an explicit one with
 `Config::with_node_id(NodeId::new(id))` for a stable, reproducible ordering (e.g. in tests) — every
 node in a cluster must use a distinct id. `Timestamp`'s type design (why `Hlc`/`PhysicalTime`/
