@@ -110,6 +110,10 @@ impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::re
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::run(self)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<V>) + 'static>(&self, F)
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::start_reconciliation(&self)
+impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
 impl<K, V> core::clone::Clone for reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::clone(&self) -> Self
 impl<K, V> core::marker::Freeze for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Freeze, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Freeze
@@ -134,6 +138,9 @@ pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_net(&self, ipnet::ipn
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<()>) + 'static>(&self, F)
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::start_reconciliation(&self)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 impl<K> core::clone::Clone for reconcile::read_replica_set::ReadReplicaSet<K>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::clone(&self) -> Self
@@ -437,6 +444,10 @@ impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::re
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::run(self)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<V>) + 'static>(&self, F)
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::start_reconciliation(&self)
+impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
 impl<K, V> core::clone::Clone for reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::clone(&self) -> Self
 impl<K, V> core::marker::Freeze for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>: core::marker::Freeze, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::Freeze
@@ -460,6 +471,9 @@ pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_net(&self, ipnet::ipn
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<()>) + 'static>(&self, F)
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::start_reconciliation(&self)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 impl<K> core::clone::Clone for reconcile::read_replica_set::ReadReplicaSet<K>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::clone(&self) -> Self
