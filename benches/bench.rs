@@ -10,6 +10,7 @@ use imp::main;
 
 mod imp {
     use std::collections::BTreeMap;
+    use std::hint::black_box;
     use std::io;
     use std::net::{IpAddr, SocketAddr};
     use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -309,6 +310,83 @@ mod imp {
             );
             size *= 10;
         }
+    }
+
+    /// Dataset sizes for `bulk_load_just_insert`, matching `system.rs`'s `bulk_load`/`point_read`
+    /// default sweep — duplicated rather than shared for the reason `rtt_sweep` above states (each
+    /// bench binary is a separate compilation unit). Extendable the same way, via
+    /// `RECONCILE_BENCH_SIZES` (`benches/README.md`).
+    fn bulk_load_sizes() -> Vec<usize> {
+        match std::env::var("RECONCILE_BENCH_SIZES") {
+            Ok(v) => v
+                .split(',')
+                .map(|s| {
+                    s.trim()
+                        .parse()
+                        .expect("RECONCILE_BENCH_SIZES: not a list of usize")
+                })
+                .collect(),
+            Err(_) => vec![10, 100, 1_000, 10_000, 100_000],
+        }
+    }
+
+    /// Deterministic `(key, value)` corpus, identical to `system.rs`'s `corpus` — duplicated for
+    /// the same cross-binary reason as [`bulk_load_sizes`].
+    fn just_insert_corpus(n: usize) -> Vec<(u32, u32)> {
+        (0..n as u32)
+            .map(|k| (k, k.wrapping_mul(2_654_435_761)))
+            .collect()
+    }
+
+    /// Cycles through `20_000..60_000` rather than a raw `fetch_add` on a `u16` counter, matching
+    /// `system.rs`'s `next_bench_port` (its own docs explain why: enough warm-up iterations
+    /// overflow a bare `u16` and hand `Config::port` a wrapped `0`, which it rejects).
+    fn next_just_insert_port() -> u16 {
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let i = NEXT.fetch_add(1, Ordering::Relaxed);
+        20_000 + (i % 40_000) as u16
+    }
+
+    /// Per-entry `just_insert` throughput — #51's own external-prototype metric (`just_insert` of
+    /// `String -> Vec<u8>`, "~190k-430k inserts/s") gets an in-repo counterpart at last. `just_insert`
+    /// is local-only, no broadcast (`src/replicated_map/write.rs`'s own docs), and a
+    /// `reconcile_internal_testing` seam (AGENTS.md §6) unreachable from the feature-gate-free
+    /// `system.rs` — hence living here, next to `service_reconcile_rtt`'s own `just_insert` use.
+    /// Isolates the per-call cost of inserting one entry at a time, fingerprint maintenance and
+    /// all, from `bulk_load`'s (`system.rs`) `insert_bulk`, which amortises setup across the whole
+    /// batch — both #51's metric and the in-repo bulk-write path, at the same sizes, side by side.
+    fn bulk_load_just_insert(c: &mut Criterion) {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let mut group = c.benchmark_group("bulk_load_just_insert");
+        group.plot_config(PlotConfiguration::default().summary_scale(AxisScale::Logarithmic));
+        for size in bulk_load_sizes() {
+            let kvs = just_insert_corpus(size);
+            group.throughput(Throughput::Elements(size as u64));
+            group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, _| {
+                b.iter_batched(
+                    || {
+                        rt.block_on(async {
+                            ReplicatedMap::<u32, u32>::new(
+                                Config::default()
+                                    .with_port(next_just_insert_port())
+                                    .with_listen_addr("127.0.0.1".parse().unwrap())
+                                    .with_net("127.0.0.1/8".parse().unwrap())
+                                    .with_insecure_no_key(),
+                            )
+                            .await
+                            .expect("bind failed")
+                        })
+                    },
+                    |store| {
+                        for &(k, v) in &kvs {
+                            black_box(store.just_insert(k, v));
+                        }
+                    },
+                    criterion::BatchSize::SmallInput,
+                );
+            });
+        }
+        group.finish();
     }
 
     fn service_send(c: &mut Criterion) {
@@ -1050,6 +1128,7 @@ mod imp {
         fingerprint_tree_map_remove,
         fingerprint_tree_map_range_fingerprint,
         read_replica_memory,
+        bulk_load_just_insert,
         service_send,
         service_reconcile,
         service_reconcile_rtt,
