@@ -128,12 +128,14 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let map_guard = self.map.load_full();
         let mut appended = 0;
         let mut budget_truncated = false;
-        for offset in 0..n {
+        // Rotated, not `(start + offset) % n`-indexed: a slice out of bounds panics instead of
+        // silently wrapping, so a corrupted `start` (e.g. overflowing past `n`) fails loudly
+        // rather than composing with the modulo below into an unobservable no-op.
+        for key in keys[start..].iter().chain(keys[..start].iter()) {
             if send_buf.len() >= budget {
                 budget_truncated = true;
                 break;
             }
-            let key = &keys[(start + offset) % n];
             // Re-confirm against the map: the tombstone may have been resurrected or GC'd since
             // we snapshotted the index, and only the live tombstone's version is a valid ack.
             if let Some(v) = map_guard.get(key).filter(|v| v.is_tombstone()) {
