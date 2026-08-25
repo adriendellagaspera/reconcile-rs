@@ -25,12 +25,11 @@
 //! **Trial count and seeding.** [`TRIALS`] independent pure-deletion instances, each a fresh
 //! universe of up to a few hundred keys with a non-empty deleted subset, seeded from the trial
 //! index (`StdRng::seed_from_u64`) — a recorded counter, not the process RNG, so a failure
-//! reproduces from the printed trial number alone. Convergence is driven to a full fixed point
-//! (mirroring `rbsr/tests/balance_under_position_map.rs`'s `drive` loop) and the discovered
-//! enumeration ranges are checked against the *true* symmetric difference: any key in `S` that
-//! never surfaces there is exactly the signature of a false SKIP the type system otherwise makes
-//! unreachable, so this test is the regression guard on that unreachability actually holding in the
-//! driver's own code, not merely in the `Aggregate` type it compares.
+//! reproduces from the printed trial number alone. Convergence is driven to a full fixed point and
+//! the discovered enumeration ranges are checked against the *true* symmetric difference: any key
+//! in `S` that never surfaces there is exactly the signature of a false SKIP the type system
+//! otherwise makes unreachable, so this test is the regression guard on that unreachability
+//! actually holding in the driver's own code, not merely in the `Aggregate` type it compares.
 
 #![forbid(unsafe_code)]
 

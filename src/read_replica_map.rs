@@ -229,7 +229,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         }
         let authenticator_enabled = !matches!(authenticator, auth::Authenticator::Disabled);
         // A read replica tracks a single network: the one containing its listen address, else the
-        // first declared network, else the historical loopback default.
+        // first declared network, else the loopback default.
         let nets: Vec<IpNet> = config.nets.iter().flatten().copied().collect();
         let net = net_of(&nets, config.listen_addr)
             .or_else(|| nets.first().copied())

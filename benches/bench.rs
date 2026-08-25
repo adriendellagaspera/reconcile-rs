@@ -561,51 +561,9 @@ mod imp {
         }
     }
 
-    /// The refinement chain, timed, over an injected-RTT link: composes
-    /// `ReplicatedMap::new_with_transport`, `gossip::netem::NetemTransport` and the existing `rtt_sweep`
-    /// (`system.rs`'s, duplicated above) with `service_reconcile`'s own divergence mechanism — the
-    /// only one that exercises refinement rather than the outer-range mismatch `cold_sync_rtt`
-    /// builds (`benches/README.md` "Pricing that end-to-end...").
-    ///
-    /// Only the initiator loads the `n`-entry corpus; the peer starts empty and pulls the whole
-    /// dataset via cold-sync, the same bootstrap `cold_sync_rtt` already exercises at this `n` ×
-    /// `NetemTransport` × RTT matrix (`benches/README.md`'s `cold_sync_rtt` section). Loading both
-    /// peers independently and assuming they already match at the root — the fingerprint being a
-    /// function of `(key, value)` alone (`version_hash` hashes the value, not the stamp —
-    /// `src/replica/gc.rs`), so two separately timestamped copies of the same corpus agree there —
-    /// was tried first and hit a genuine non-convergence at larger `n` under nonzero RTT,
-    /// specific to `NetemTransport`'s queue-and-pump delivery under high datagram volume rather
-    /// than the protocol itself (a plain transport, and even a trivially delayed one, never
-    /// reproduced it). `reconcile_interval` is set far longer than any sample, so every round
-    /// below is the one `start_reconciliation` explicitly triggers, not a background tick.
-    ///
-    /// Per sample: `just_remove` the `d` chosen keys on the initiator (a genuine content
-    /// difference, not a timestamp race), trigger one round, poll until the responder reflects the
-    /// removal; then `just_insert` them back and repeat, so the pair returns to baseline for the
-    /// next sample. `d = 0` has no keys to remove — its round finds nothing to refine, so it is
-    /// timed via `RecvCountingTransport` instead (see that type's docs).
-    ///
-    /// A rare round independently stalls outright under this harness — not slow, permanently
-    /// stuck — traced to the two `run()` loops' genuine concurrency under a multi-threaded
-    /// runtime; pinning this benchmark's own runtime to `current_thread` (below) cuts the rate
-    /// sharply but not to zero, and the one-time settle/warm-up step below retries wholesale
-    /// ([`MAX_BUILD_ATTEMPTS`]) rather than assuming `current_thread` alone is enough. Rebuilding
-    /// the whole pair *inside* a timed sample was tried too and made things worse — accumulating a
-    /// fresh `NetemTransport` pair's pump tasks on every Criterion sample, rather than once per
-    /// `(n, rtt)`, made the underlying stall more frequent, not less.
-    ///
-    /// Separately, and unrelated to that stall: a single `start_reconciliation` does **not**
-    /// reliably drive a large *scattered* divergence (many separate leaf-level differences, e.g.
-    /// `d = 1000` at `n = 10_000`) to completion by itself — confirmed by a standalone repro
-    /// outside Criterion entirely (`git log` on this file) that a round genuinely plateaus part-way
-    /// (partial progress, then no further progress for 15s+) and only a *fresh* trigger resumes it,
-    /// converging fully within a handful of retriggers every time tried. This matches #185's own
-    /// "N round trips" model rather than contradicting it: [`trigger_and_converge`] below
-    /// retriggers (bounded, [`MAX_ROUND_RETRIGGERS`]) when a round does not converge on its own,
-    /// and the total elapsed time across every retrigger counts toward the sample — that total *is* the
-    /// measurement, not an artifact of it. A *clustered* divergence of the same `d` converges in
-    /// one round even at `d = 1000`, so this is specific to how many separate ranges must resolve,
-    /// not to `d` alone.
+    /// Retries permitted for building and settling a fresh `(store1, store2)` pair before a
+    /// `(n, rtt)` sweep point gives up — see [`service_reconcile_rtt`]'s docs for why a fresh pair
+    /// occasionally needs one.
     const MAX_BUILD_ATTEMPTS: u32 = 20;
 
     /// Poll `condition` until it holds or a generous wall-clock deadline passes, returning
@@ -656,13 +614,45 @@ mod imp {
         );
     }
 
+    /// The refinement chain, timed, over an injected-RTT link: composes
+    /// `ReplicatedMap::new_with_transport`, `gossip::netem::NetemTransport` and the existing `rtt_sweep`
+    /// (`system.rs`'s, duplicated above) with `service_reconcile`'s own divergence mechanism — the
+    /// only one that exercises refinement rather than the outer-range mismatch `cold_sync_rtt`
+    /// builds (`benches/README.md` "Pricing that end-to-end...").
+    ///
+    /// One peer loads the `n`-entry corpus and seeds the other, which starts empty and pulls the
+    /// whole dataset via cold-sync (`cold_sync_rtt`'s own bootstrap, proven reliable across this
+    /// same `n` × `NetemTransport` × RTT matrix) — loading both peers independently and assuming
+    /// they already match at the root does not converge reliably at larger `n` under nonzero RTT: a
+    /// `NetemTransport` queue/pump artifact under high datagram volume, not a protocol issue.
+    /// `reconcile_interval` is fixed far longer than any sample, so every round below is the one
+    /// `start_reconciliation` explicitly triggers, never a background tick.
+    ///
+    /// Per sample: `just_remove` the `d` chosen keys on the initiator (a genuine content
+    /// difference, not a timestamp race), trigger one round, poll until the responder reflects the
+    /// removal; then `just_insert` them back and repeat, so the pair returns to baseline for the
+    /// next sample. `d = 0` has no keys to remove — its round finds nothing to refine, so it is
+    /// timed via `RecvCountingTransport` instead (see that type's docs).
+    ///
+    /// Two failure modes this harness works around, both reproduced outside Criterion too
+    /// (`benches/README.md`'s "past a fixed-capacity sketch"/"n = 10⁶" sections carry the measured
+    /// consequences):
+    /// - A round can stall outright — not slow, permanently stuck — under the two `run()` loops'
+    ///   genuine concurrency on a multi-threaded runtime. Pinning this benchmark's own runtime to
+    ///   `current_thread` (below) cuts the rate sharply but not to zero, so settling a fresh pair
+    ///   retries wholesale ([`MAX_BUILD_ATTEMPTS`]) rather than assuming `current_thread` alone
+    ///   suffices; rebuilding happens once per `(n, rtt)`, not per sample, which keeps the retry
+    ///   cheap regardless.
+    /// - A single `start_reconciliation` does not reliably drive a large *scattered* divergence
+    ///   (many separate leaf-level differences, e.g. `d = 1000` at `n = 10_000`) to completion: the
+    ///   round can plateau part-way and only a fresh trigger resumes it. This matches #185's "N
+    ///   round trips" model rather than contradicting it: [`trigger_and_converge`] retriggers
+    ///   (bounded, [`MAX_ROUND_RETRIGGERS`]) when a round does not converge on its own, and the
+    ///   total elapsed time across every retrigger counts toward the sample — that total *is* the
+    ///   measurement. A *clustered* divergence of the same `d` converges in one round even at
+    ///   `d = 1000`, so this is specific to how many separate ranges must resolve, not to `d`
+    ///   alone.
     fn service_reconcile_rtt(c: &mut Criterion) {
-        // Single-threaded, unlike every other bench function here: the two `run()` loops below
-        // are genuinely concurrent under the default multi-threaded runtime, and an isolated
-        // repro traced a rare stall to exactly that — pinned to one thread (cooperative
-        // scheduling, no true concurrency between the two loops), the same repro over hundreds of
-        // rounds saw at most a stall in the first round or two, the known one-time warm-up cost
-        // below already accounts for.
         let net = "127.0.0.1/8".parse().unwrap();
         let port = 9_990;
 
@@ -707,11 +697,10 @@ mod imp {
                 };
 
                 // Building this pair and driving it through settling and warm-up is a one-time
-                // cost per `(n, rtt)`, not per Criterion sample, so retrying it wholesale on a
-                // stall — rebuilding from a fresh network and addresses — is cheap: at most a
-                // couple of dozen extra pairs across the whole sweep, nothing like the thousands
-                // a per-sample retry would cost (and did, before this was reverted to one pair
-                // per `(n, rtt)` — see this function's docs).
+                // cost per `(n, rtt)`, not per Criterion sample (`service_reconcile_rtt`'s docs),
+                // so retrying it wholesale on a stall — rebuilding from a fresh network and
+                // addresses — is cheap: at most a couple of dozen extra pairs across the whole
+                // sweep.
                 let (store1, store2, _received1, received2, tasks) = rt.block_on(async {
                     let mut attempt = 0u32;
                     loop {
@@ -743,15 +732,9 @@ mod imp {
                             Arc::new(transport2),
                         );
                         // Only `store1` is pre-loaded; `store2` starts empty and pulls the whole
-                        // corpus via cold-sync (`cold_sync_rtt`'s own bootstrap, proven reliable
-                        // across this same `n` × `NetemTransport` × RTT matrix). Loading both
-                        // independently and assuming they already match at the root — the design
-                        // this replaced — hit a genuine non-convergence (`benches/README.md`
-                        // "service_reconcile_rtt"'s docs) at larger `n` under nonzero RTT
-                        // specifically through `NetemTransport`, not through the protocol itself
-                        // (a plain, undelayed transport and even a trivially delayed one never
-                        // reproduced it): high datagram volume against `NetemTransport`'s
-                        // queue-and-pump delivery path, not a correctness issue in the library.
+                        // corpus via cold-sync — see `service_reconcile_rtt`'s docs for why
+                        // (`cold_sync_rtt`'s own bootstrap, proven reliable across this same `n` ×
+                        // `NetemTransport` × RTT matrix).
                         store1.insert_bulk(&key_values);
                         store1.seed_peer(addr2);
                         store2.seed_peer(addr1);

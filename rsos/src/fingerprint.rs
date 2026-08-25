@@ -62,14 +62,10 @@ use crate::encoding;
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Fingerprint(pub [u64; 4]);
 
-// #382: a uniformly random 256-bit value gets nothing from bincode's default varint integer
-// encoding except a length byte on every incompressible limb (36 B on the wire instead of 32).
-// Serializing through `[u8; 32]` instead of `[u64; 4]` sidesteps that per-field choice entirely —
-// bytes are never varint-compressed, in any `serde` backend — so this is the raw 32-byte encoding
-// regardless of which `Serializer`/`Deserializer` processes it. Deliberately a wire break: see
-// `tests/wire_format.rs`'s golden vector, and the `rsos::encoding` canonical (BLAKE3 input) format
-// this does not touch — that Serializer already encodes every integer at fixed width, so this
-// change is observable only in the codecs (bincode) that didn't already do that.
+// ARCHITECTURE.md §5 invariant 1 (#382): serializing through `[u8; 32]` rather than `[u64; 4]`
+// avoids bincode's per-limb varint length byte, in any `serde` backend. Deliberately a wire
+// break — see `tests/wire_format.rs`'s golden vector. Does not touch `rsos::encoding` (§6),
+// which already encodes every integer at fixed width.
 impl Serialize for Fingerprint {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.to_le_bytes().serialize(serializer)

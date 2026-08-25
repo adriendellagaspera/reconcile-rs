@@ -44,8 +44,7 @@ impl Comparison {
         self.local == self.remote
     }
 
-    /// Child ranges already emitted this round: the round-budget seam
-    /// (`POSITIONING.md` §2.4 P3-10).
+    /// Child ranges already emitted this round: the round-budget seam.
     ///
     /// Counted in ranges, not bytes — this crate owns no encoding. No shipped policy reads it;
     /// [`RefinementPolicy`](super::RefinementPolicy) carries a worked capping example.
