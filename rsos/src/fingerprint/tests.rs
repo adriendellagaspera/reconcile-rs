@@ -170,3 +170,60 @@ fn digest_is_lift_without_a_key_half() {
     assert_eq!(digest(&"Hello"), lift(&(), &"Hello"));
     assert_ne!(digest(&"Hello"), digest(&"Hell"));
 }
+
+// Keyed lift (issue #19): closes the Wagner-grinding gap for holders of the key.
+
+#[test]
+fn lift_keyed_is_deterministic_and_injective() {
+    let key = LiftKey::new([3u8; 32]);
+    assert_eq!(lift_keyed(&key, &1u64, &"a"), lift_keyed(&key, &1u64, &"a"));
+    assert_ne!(lift_keyed(&key, &1u64, &"a"), lift_keyed(&key, &2u64, &"a"));
+    assert_ne!(lift_keyed(&key, &1u64, &"a"), lift_keyed(&key, &1u64, &"b"));
+}
+
+#[test]
+fn lift_keyed_differs_across_keys_and_from_unkeyed() {
+    let key_a = LiftKey::new([1u8; 32]);
+    let key_b = LiftKey::new([2u8; 32]);
+    // Two different keys lift the same pair to unrelated fingerprints -- the property that stops
+    // an attacker who does not hold the key from predicting, and therefore grinding, a collision.
+    assert_ne!(
+        lift_keyed(&key_a, &1u64, &"a"),
+        lift_keyed(&key_b, &1u64, &"a")
+    );
+    // Keying changes the output at all -- an implementation that ignored the key and fell back to
+    // the unkeyed hash would defeat the whole point silently.
+    assert_ne!(lift_keyed(&key_a, &1u64, &"a"), lift(&1u64, &"a"));
+}
+
+#[test]
+fn digest_keyed_is_lift_keyed_without_a_key_half() {
+    let key = LiftKey::new([5u8; 32]);
+    assert_eq!(
+        digest_keyed(&key, &"Hello"),
+        lift_keyed(&key, &(), &"Hello")
+    );
+    assert_ne!(digest_keyed(&key, &"Hello"), digest_keyed(&key, &"Hell"));
+}
+
+#[test]
+fn lift_key_debug_never_prints_the_key_material() {
+    let key = LiftKey::new([0xAB; 32]);
+    assert_eq!(format!("{key:?}"), "LiftKey(\"<redacted>\")");
+}
+
+/// Independent oracle: `lift_keyed` must be exactly `blake3::Hasher::new_keyed` over the same
+/// canonical encoding `lift` uses -- not some other transform of the key bytes -- so a future
+/// refactor of `Blake3Hasher::new` can't silently stop keying without a wire-visible change.
+#[test]
+fn lift_keyed_matches_an_independently_built_blake3_keyed_hasher() {
+    let key_bytes = [9u8; 32];
+    let key = LiftKey::new(key_bytes);
+    let mut oracle = blake3::Hasher::new_keyed(&key_bytes);
+    encoding::encode_into(&mut oracle, &50u64).expect("canonical encoding cannot fail");
+    encoding::encode_into(&mut oracle, &"Hello").expect("canonical encoding cannot fail");
+    assert_eq!(
+        lift_keyed(&key, &50u64, &"Hello"),
+        Fingerprint::from_le_bytes(oracle.finalize().as_bytes())
+    );
+}

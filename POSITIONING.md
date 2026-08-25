@@ -354,8 +354,10 @@ status, so this section never needs an edit when that status changes.
    craftable collisions (Gaussian elimination ~2 s even in 256-bit) + birthday at 2³². The path
    taken by Negentropy. **This is the criterion that separates a toy structure from a SOTA one**
    (cf. F6, [#111](https://github.com/Akvize/reconcile-rs/issues/111)) — but width alone settles
-   only the *honest* model: modular addition at 256 bits stays Wagner-breakable, and the keyed-lift
-   fix is [#337](https://github.com/Akvize/reconcile-rs/issues/337).
+   only the *honest* model: modular addition at 256 bits stays Wagner-breakable against a writer with
+   no cluster key. The keyed-lift fix (`rsos::LiftKey`) landed in
+   [#337](https://github.com/Akvize/reconcile-rs/issues/337) (this fork: issue #19) for holders of
+   the key; the insider residual it leaves is `ARCHITECTURE.md` §7's reopened question.
 2. **Decouple "empty" from "hash==0"** (`size==0`) — otherwise the structure can claim "converged"
    while having lost data. (cf. F1, [#106](https://github.com/Akvize/reconcile-rs/issues/106))
 3. **Stable, versioned hash as a wire contract** (pinned SipHash/xxHash/BLAKE3 + golden-vector).

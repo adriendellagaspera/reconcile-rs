@@ -51,6 +51,24 @@ fn debug_never_prints_key_material() {
 }
 
 #[test]
+fn derive_lift_key_is_deterministic_and_key_dependent() {
+    // Same cluster key -> same derived subkey every time, which is what lets every peer in the
+    // cluster derive a matching `rsos::LiftKey` independently, with no extra coordination.
+    assert_eq!(key(1).derive_lift_key(), key(1).derive_lift_key());
+    // Different cluster keys -> unrelated subkeys, so two clusters (or a peer mid-rotation) never
+    // collide on a lift key by accident.
+    assert_ne!(key(1).derive_lift_key(), key(2).derive_lift_key());
+}
+
+#[test]
+fn derive_lift_key_is_not_the_raw_cluster_key() {
+    // Domain separation (issue #19): a leak of the derived lift key must not hand over the raw
+    // cluster key the datagram MAC also depends on, and vice versa.
+    let k = key(7);
+    assert_ne!(&k.derive_lift_key(), k.as_bytes());
+}
+
+#[test]
 fn cluster_key_error_display_messages() {
     assert_eq!(
         ClusterKeyError::WrongHexLength(10).to_string(),

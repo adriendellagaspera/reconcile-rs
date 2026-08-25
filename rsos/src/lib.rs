@@ -57,7 +57,7 @@ pub mod fingerprint_tree_map_iter;
 mod rsos_trait;
 
 pub use aggregate::Aggregate;
-pub use fingerprint::{digest, lift, Fingerprint};
+pub use fingerprint::{digest, digest_keyed, lift, lift_keyed, Fingerprint, LiftKey};
 pub use fingerprint_tree_map::{Entry, FingerprintTreeMap, ItemRange};
 pub use fingerprint_tree_map_iter::{IntoIter, IntoKeys, IntoValues, Iter, Keys, Values};
 pub use rsos_trait::Rsos;

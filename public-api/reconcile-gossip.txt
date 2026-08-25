@@ -57,6 +57,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::auth::Authent
 impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::auth::Authenticated
 pub struct reconcile_gossip::auth::ClusterKey(_)
 impl reconcile_gossip::auth::ClusterKey
+pub fn reconcile_gossip::auth::ClusterKey::derive_lift_key(&self) -> [u8; 32]
 pub fn reconcile_gossip::auth::ClusterKey::from_hex(&str) -> core::result::Result<Self, reconcile_gossip::auth::ClusterKeyError>
 pub fn reconcile_gossip::auth::ClusterKey::new([u8; 32]) -> Self
 impl core::clone::Clone for reconcile_gossip::auth::ClusterKey

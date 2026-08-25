@@ -9,4 +9,5 @@
 mod aggregate;
 mod basic;
 mod invariants;
+mod keyed_lift;
 mod query;

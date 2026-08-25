@@ -170,6 +170,14 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         node_id_is_random: bool,
     ) -> Self {
         config.check_key_or_insecure_opt_in();
+        // Derived before `config.cluster_key` is moved into the authenticator below (issue #19):
+        // a cluster key closes the Wagner-grinding gap on the range fingerprint too, not just the
+        // datagram MAC, via an independent BLAKE3-derived subkey — see `ClusterKey::derive_lift_key`
+        // and `rsos::fingerprint`'s module doc. `None` (no cluster key) keeps today's unkeyed lift.
+        let lift_key = config
+            .cluster_key
+            .as_ref()
+            .map(|key| rsos::LiftKey::new(key.derive_lift_key()));
         let authenticator = auth::Authenticator::new(config.cluster_key, config.encrypt);
         match &authenticator {
             #[cfg(feature = "encryption")]
@@ -204,8 +212,14 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 rate
             }
         });
-        let map = FingerprintTreeMap::<K, Entry<Timestamp, V>>::new();
-        let projection = FingerprintTreeMap::<K, State<V>>::new();
+        let map = match lift_key.clone() {
+            Some(lift_key) => FingerprintTreeMap::<K, Entry<Timestamp, V>>::with_lift_key(lift_key),
+            None => FingerprintTreeMap::<K, Entry<Timestamp, V>>::new(),
+        };
+        let projection = match lift_key {
+            Some(lift_key) => FingerprintTreeMap::<K, State<V>>::with_lift_key(lift_key),
+            None => FingerprintTreeMap::<K, State<V>>::new(),
+        };
         // The geographical networks this cluster spans. With none declared, fall back to a
         // single flat loopback cluster.
         let mut nets: Vec<IpNet> = config.nets.iter().flatten().copied().collect();

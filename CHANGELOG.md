@@ -12,12 +12,28 @@ All notable changes to this project are documented here. Format follows
   snapshot of the backing tree plus the looked-up key instead of a lock guard, so holding one no
   longer risks a deadlock against a concurrent write on the same handle. See
   [MIGRATING.md](MIGRATING.md).
+- A configured cluster key now also keys the range-fingerprint lift (#19, migrated from
+  `akvize/reconcile-rs#337`): `Replica`/`ReadReplicaMap` derive an independent BLAKE3 subkey from
+  `Config::cluster_key` (`ClusterKey::derive_lift_key`) and pass it to `rsos::FingerprintTreeMap`,
+  closing the Wagner-grinding gap on `rsos::Fingerprint` (README "Security model") for anyone who is
+  not a cluster-key holder. Purely additive at the API and wire-encoding level — no `WIRE_VERSION`
+  bump, `Fingerprint` is still 32 bytes either way — but **operationally a coordinated-rollout
+  change for an authenticated cluster**: a node upgrading before its peers computes different
+  fingerprints for identical data until every node is upgraded (safe — every range just looks
+  different meanwhile, nothing is lost — but wasteful). A cluster running
+  `Config::with_insecure_no_key()` is unaffected either way; the lift stays unkeyed exactly as
+  before.
 
 ### Added
 
 - `ReplicatedMap::snapshot()`/`value_snapshot()` and `ReadReplicaMap::snapshot()` (#34): zero-copy
   `Arc` snapshots of the backing tree for scanning with `rsos`'s existing `iter`/`range`, no lock
   and no lifetime tied to the handle.
+- `rsos::LiftKey`, `rsos::lift_keyed`, `rsos::digest_keyed`, and
+  `FingerprintTreeMap::with_lift_key` (#19): the keyed-lift primitive above, usable directly by a
+  third party driving `rsos`/`rbsr` without the `reconcile` facade.
+- `gossip::auth::ClusterKey::derive_lift_key` (#19): the BLAKE3 `derive_key` subkey `reconcile` now
+  feeds to `rsos::LiftKey`, independent of the datagram MAC's own use of the same cluster key.
 
 ## [0.4.0] - 2026-08-22
 
