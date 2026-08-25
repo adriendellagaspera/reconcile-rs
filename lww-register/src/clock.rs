@@ -55,8 +55,7 @@ pub struct ClockDrift(u64);
 /// unauthenticated packet stamped near `u64::MAX` pins every node's clock there permanently.
 /// Overridable per clock (`HlcClock::with_max_clock_drift`).
 ///
-/// The clamp limits how far a remote stamp advances the *local clock state*; it never rewrites an
-/// already-minted stamp, and the remote's own [`Timestamp`] still competes in LWW unchanged.
+/// Scope: the *local clock state* only, as covered in this module's docs above.
 pub const MAX_CLOCK_DRIFT: ClockDrift = ClockDrift::from_millis(3_600_000); // 1 hour
 
 /// The **physical time** of a [`Timestamp`]: an instant, in milliseconds since the Unix epoch.

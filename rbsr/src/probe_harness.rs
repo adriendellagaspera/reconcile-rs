@@ -10,11 +10,9 @@
 //! `RefinementPolicy` probes: a reduced-width store and a driver that **proves** a stall instead
 //! of inferring one from a round cap.
 //!
-//! This is the minimal slice `shipped_policies_always_progress.rs`'s sibling invariant-13 coverage
-//! needs — a reduced-width store and a driver, nothing about measuring or reporting a rate. A
-//! consumer building the fuller measurement apparatus (collision-rate tallying, Wilson intervals,
-//! an `EnumerateBelow`/`Observing` policy wrapper) depends on this module for the store and driver
-//! and adds that layer on top, rather than this crate carrying research-only reporting code.
+//! Scope is the store and driver only — this crate carries no collision-rate tallying, confidence
+//! intervals, or policy-wrapper instrumentation; that is the minimal slice
+//! `shipped_policies_always_progress.rs`'s sibling invariant-13 coverage needs.
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;

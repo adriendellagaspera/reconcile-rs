@@ -10,64 +10,44 @@
 //! plain `BTreeMap`, each behind one shared `parking_lot::RwLock` of the exact shape
 //! `src/replica.rs` uses for its `map` field (`Arc<RwLock<FingerprintTreeMap<K, V>>>`).
 //!
-//! **Why this exists (#445, #359).** The RSOS contract (`rsos/src/fingerprint_tree_map.rs`) must
-//! answer `Aggregate(l, u)` in `O(log n)`, which means every insert updates the composable summary
-//! on every node from the leaf to the root — a write to the hottest node in the tree, on every
-//! insert, by construction. Today that cost is invisible: `src/replicated_map.rs` already
-//! serialises every writer behind one global `RwLock`, so the root write costs nothing beyond the
-//! lock itself. This target isolates the two: the `FingerprintTreeMap` arm pays the lock *and* the
-//! root-path aggregate maintenance; the `BTreeMap` arm pays the same lock and the same insert shape
-//! with no aggregate to maintain. The delta between the two arms, at each `N`, is the RSOS
-//! contract's own share of the write cost — the number #359 asked for.
+//! Isolates the RSOS contract's own write cost (#445, #359): the `FingerprintTreeMap` arm pays the
+//! lock plus the root-path aggregate maintenance `rsos::fingerprint_tree_map`'s `O(log n)`
+//! `Aggregate(l, u)` bound requires; the `BTreeMap` arm pays the same lock and insert shape with no
+//! aggregate to maintain. The delta between the two arms, at each `N`, is the contract's own share
+//! of the write cost. Full method and results: `benches/README.md`.
 //!
-//! **What #455 changed.** #359 reported one run per `(N, arm)` and compared two tables by eye. Two
-//! things replace that here:
+//! Reports three quantities (#455), none of them a plain fp/btree ratio — that quotient's two
+//! terms both grow with `N`, so it cannot say which one moved:
 //!
-//! 1. **A counted result**, printed under `--cfg reconcile_internal_testing` and independent of
-//!    any machine:
-//!    `rsos::counters` reports how many cached aggregates an insert maintains. That number does not
-//!    move between a laptop and a 128-core server, so a reader can check it without the hardware.
-//! 2. **A statistically treated wall-clock result**: [`TRIALS`] repeated trials per `(N, arm)`,
-//!    arms **paired** within a trial, their order alternated between trials, and every
-//!    `(N, trial)` of the sweep executed in one shuffled schedule — reported as means with
-//!    percentile-bootstrap intervals (`devkit::stats`).
-//! 3. **A statistic that answers the actual question.** #359 read the fp/btree *ratio*, which is a
-//!    quotient of two terms that both grow with `N` and so cannot say which moved. Both arms sit
-//!    behind the same lock, so `1/X_arm = S_arm + H(N)` and the difference of reciprocal
-//!    throughputs cancels the shared lock term: `Δ = 1/X_fp − 1/X_btree ≥ S_fp − S_btree`, an
-//!    upper bound on the contract's own per-insert cost — exact at `N = 1`, where nothing waits.
-//!    Δ is what the report leads with (#457).
+//! - A machine-independent **counted** result (`rsos::counters`, behind
+//!   `--cfg reconcile_internal_testing`): cached aggregates an insert maintains, unaffected by the
+//!   host.
+//! - A **timed** result over [`TRIALS`] repeated trials per `(N, arm)`, arms paired within a trial
+//!   and order-alternated, the whole `(N, trial)` sweep run in one shuffled schedule, reported as
+//!   percentile-bootstrap-interval means (`devkit::stats`).
+//! - **Delta**, `1/X_fp − 1/X_btree` per trial: cancels the shared lock term
+//!   (`1/X_arm = S_arm + H(N)`) to bound the contract's own per-insert cost from above, exact at
+//!   `N = 1` — the statistic the report leads with (#457).
 //!
-//! Throughput stays wall-clock on purpose: lock waiting *is* elapsed time, and there is no counted
-//! proxy for it. The counted line prices the contract's own work; the timed lines price what the
-//! lock does to it.
+//! Throughput stays wall-clock on purpose: lock waiting *is* elapsed time, with no counted proxy
+//! for it.
 //!
-//! **What is, and is not, measured.** Both arms insert into a map pre-filled to [`PREFILL`] entries
-//! (a representative tree depth — an empty map has no root path worth contending on), then `N`
-//! threads each insert their own disjoint block of fresh keys, one `write()` acquisition per key,
-//! exactly the shape `Replica::just_insert`/gossip receipt takes today. Pre-fill and thread setup
-//! happen outside the timed region; only the concurrent insert phase is timed. This is a **lock
+//! **What is, and is not, measured.** Both arms insert into a map pre-filled to [`PREFILL`]
+//! entries, then `N` threads each insert their own disjoint block of fresh keys, one `write()`
+//! acquisition per key — `Replica::just_insert`/gossip receipt's own shape. This is a **lock
 //! contention** benchmark, not a lock-free redesign or a COW prototype — both are #271/#273/#274.
 //!
-//! **Comparability caveat (#281).** Both arms run in the same process, on the same hardware, over
-//! the same harness, in the same run — the only comparison the *timed* half supports is arm against
-//! arm, at a given `N`, on the machine that produced the numbers. Absolute ops/s are not portable
-//! across machines. The *counted* half carries no such caveat, which is the point of having it.
+//! **Comparability caveat (#281).** Every timed comparison is arm-against-arm on the machine that
+//! produced it; absolute ops/s are not portable across machines. The counted half carries no such
+//! caveat.
 //!
-//! **Sweeping other hardware (#456).** Every parameter is overridable from the environment, so a
-//! machine with more cores than this repository's CI runner needs no source edit:
+//! Every parameter is overridable from the environment (#456), and `CONTENTION_RAW=1` emits one
+//! line per trial so several invocations can be pooled into the invocation-level statistics
+//! `benches/README.md` documents — the experimental unit is the invocation, not the trial:
 //!
 //! ```sh
 //! CONTENTION_WRITERS=1,2,4,8,16,32,64,128 CONTENTION_TRIALS=30 cargo bench --bench contention
 //! ```
-//!
-//! **The experimental unit is the invocation, not the trial.** Trials inside one process share a
-//! machine phase — a co-tenant's load, a thermal state, one allocator's layout — so an interval
-//! computed from them measures within-process dispersion and is silent about the drift between
-//! processes, which on a shared machine is the larger term. `CONTENTION_RAW=1` prints one
-//! comma-separated line per trial (`[contention-raw]` prefix) so several invocations can be pooled
-//! and the statistics redone downstream; `benches/README.md` carries the recipe. Anything published
-//! from a single invocation is a pilot, not a result.
 //!
 //! Reproduction and results: `benches/README.md`. Not run in CI (only compile-checked); run locally
 //! with `cargo bench --bench contention`.

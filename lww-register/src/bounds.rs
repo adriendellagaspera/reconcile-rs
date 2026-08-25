@@ -26,8 +26,8 @@ impl<T> Key for T where T: Clone + Debug + Ord + Send + Sync + Serialize + Deser
 /// Bundle of the data bounds required of a value type. Blanket-implemented; never implemented by
 /// hand.
 ///
-/// No `Ord` and no `PartialEq`: under last-write-wins the receive path decides everything by
-/// comparing stamps, so a value is never ordered or compared.
+/// No `Ord` and no `PartialEq` — `ARCHITECTURE.md` §4.1 states why: under last-write-wins, a value
+/// is never ordered or compared.
 pub trait Value: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}
 
 impl<T> Value for T where T: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}
