@@ -340,9 +340,8 @@ full derivations, sweeps and citations live in the linked issues and `benches/RE
    range it cuts, or terminate because the peer cuts instead — an oracle-coupled split policy can
    violate it and stall the protocol (measured up to 91.6% of drives pre-fix). This repository's
    fix is a driver guard, not a runtime check: `ARCHITECTURE.md` §5 invariant 13 makes a
-   non-narrowing split structurally forced into an `Enumerate`. Empirical grounding and the ported
-   oracle-probe measurements live in `rbsr-research` (this crate keeps only the shipped guard);
-   summary and full numbers: [#356](https://github.com/Akvize/reconcile-rs/issues/356),
+   non-narrowing split structurally forced into an `Enumerate`, which is the guard this crate
+   ships. Summary and full numbers: [#356](https://github.com/Akvize/reconcile-rs/issues/356),
    [#420](https://github.com/Akvize/reconcile-rs/issues/420),
    [#352](https://github.com/Akvize/reconcile-rs/issues/352).
 

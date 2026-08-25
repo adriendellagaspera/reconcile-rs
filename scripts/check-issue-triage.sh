@@ -308,8 +308,8 @@ fi
 # it says the work is not happening here, so an unticked box is the accurate record of exactly that
 # -- ticking it would claim work nobody did, which is the failure the `BOXES_SINCE` note above
 # refuses for the historical tail on the same grounds. Measured on 2026-08-24: the eight-issue
-# sketch/IBLT cluster (#10-#13, #17, #22, #25, #45) closed `not_planned` when it moved to the
-# research companion, and rule 7 failed every run afterwards with no honest fix available to it.
+# sketch/IBLT cluster (#10-#13, #17, #22, #25, #45) closed `not_planned` on a rescope, and rule 7
+# failed every run afterwards with no honest fix available to it.
 # Only an explicit `NOT_PLANNED` is excluded -- a missing or null `stateReason` still gets checked,
 # since "cannot tell" is not "exempt" (the same reading rule 6's UNKNOWN branch applies).
 #
