@@ -65,7 +65,7 @@ use super::{Comparison, Decision, FanOut, RefinementPolicy, SplitStride};
 /// at 8-byte values, any payload while `d` stays small. **Keep the default when values are large
 /// *and* differences are many**: extra elements cost more transmission time than the round trips
 /// they buy, and `d`, not `n`, decides it. Both figures assume a lossless link at line rate; under
-/// loss the binding term is `reconcile_interval` per lost datagram instead (`SOTA.md` §2.2).
+/// loss the binding term is `reconcile_interval` per lost datagram instead (`POSITIONING.md` §2.2).
 ///
 /// It ships because the arithmetic, not the conclusion, is what generalizes: a narrower
 /// conflict-resolution stamp, a set-shaped store (`V = ()`) or keys dearer than values move the

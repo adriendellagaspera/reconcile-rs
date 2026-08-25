@@ -71,8 +71,8 @@ asynchronously and merge last-write-wins.
 - collaborative text editing — use a sequence CRDT (Yjs/Automerge-style) instead.
 
 Because every replica holds everything, memory use and write fan-out grow with the dataset and the
-node count; see [`SOTA.md`](SOTA.md) for the detailed positioning and the issue tracker for current
-performance limitations.
+node count; see [`POSITIONING.md`](POSITIONING.md) for the detailed positioning and the issue
+tracker for current performance limitations.
 
 ## Modelling sets
 
@@ -138,8 +138,8 @@ deliberately out of this crate's lean core, not an oversight in this encoding.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — the crate/module map, the ports & adapters (hexagonal)
   design, domain types and their rationale, the load-bearing invariants, and (§8) the resolution
   history of the original code audit's findings.
-- [`SOTA.md`](SOTA.md) — state-of-the-art positioning, competitor audit, glossary and bibliography.
-  Durable background; carries no status.
+- [`POSITIONING.md`](POSITIONING.md) — where this crate sits in the landscape: the niche, the
+  competitor audit, and the design axes an RSOS is judged on. Durable background; carries no status.
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed release to release.
 - [`MIGRATING.md`](MIGRATING.md) — upgrading from `0.2.1`, the last pre-workspace-split release.
 - [`SECURITY.md`](SECURITY.md) — supported versions and how to report a vulnerability privately.

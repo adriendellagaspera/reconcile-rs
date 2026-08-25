@@ -50,7 +50,7 @@ exclude = [
     "CONTRIBUTING.md",
     "examples/k8s/",
     "ARCHITECTURE.md",
-    "SOTA.md",
+    "POSITIONING.md",
 ]
 
 # docs.rs builds default features only by default; this renders every feature-gated item (with its

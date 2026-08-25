@@ -30,6 +30,18 @@
 # non-additive here. That is the intended bias: it is loud at the one moment a human is already
 # looking at the blessed diff, and the remedy is one label or one sentence, not a silent pass.
 #
+# One reformatting is filtered rather than left loud: a trait-bound conjunction (`A + B`) is an
+# *unordered* set in Rust -- `dyn Fn(..) + Send + Sync` and `dyn Fn(..) + Sync + Send` are the same
+# bound, never a different one. `cargo-public-api` renders such a run in whatever order rustdoc's
+# JSON backend emits it, which is nightly-version-dependent and carries no semver weight (#66: a
+# nightly bump alone reordered `ReadReplicaMap`'s synthesized `Send`/`Sync`/`Unpin`/... impls, ten
+# lines, zero content change). Left unfiltered, every such nightly drift would demand a false
+# `M-breaking` on a diff that removed nothing -- exactly the "cry wolf" failure mode §3's rationale
+# above already rejects for the opposite direction. A `-`/`+` block is trusted as reordering-only
+# only when it is a clean, equal-length swap (no line added or dropped) *and* every pair is
+# identical once each bound-conjunction run within it is sorted; anything looser -- an added or
+# removed line, a bound whose token set actually changed -- still counts as removed, unfiltered.
+#
 # Fixture mode: set PR_LABELS to a newline-separated label list to exercise the rule without `gh`.
 set -Eeuo pipefail
 
@@ -55,7 +67,65 @@ added=$(grep -c '^+[^+]' <<<"$diff" || true)
 
 echo "check-breaking-label: public-API snapshot diff — $added added, $removed removed/changed"
 
-if [ "$removed" -eq 0 ]; then
+# Walks the diff in order, grouping each maximal run of `-` lines with the `+` run immediately
+# following it. Filters that pair out (never touching `real_removed`) only when the two runs are
+# the same length and every line matches once its bound-conjunction runs (`A + B + C`, no other
+# punctuation in a token) are sorted -- an unordered-set comparison, not a text one. A `-` run with
+# no matching `+` run, a length mismatch, or a pair that still differs after sorting is real,
+# unfiltered. Prints the real-removed lines so the failure message below never shows reordering
+# noise a human would have to mentally filter back out.
+real_removed_output=$(python3 -c '
+import re, sys
+
+BOUND_RUN = re.compile(r"\b[A-Za-z_][\w:]*(?:\s\+\s[A-Za-z_][\w:]*)+\b")
+
+
+def normalize(body):
+    return BOUND_RUN.sub(lambda m: " + ".join(sorted(m.group(0).split(" + "))), body)
+
+
+lines = sys.stdin.read().split("\n")
+i, n = 0, len(lines)
+real_removed = []
+while i < n:
+    line = lines[i]
+    if line.startswith(("--- ", "+++ ", "@@", "diff --git", "index ")):
+        i += 1
+        continue
+    if line.startswith("-") and not line.startswith("---"):
+        rem = []
+        j = i
+        while j < n and lines[j].startswith("-") and not lines[j].startswith("---"):
+            rem.append(lines[j])
+            j += 1
+        add = []
+        k = j
+        while k < n and lines[k].startswith("+") and not lines[k].startswith("+++"):
+            add.append(lines[k])
+            k += 1
+        if len(rem) == len(add) and rem and all(
+            normalize(r[1:]) == normalize(a[1:]) for r, a in zip(rem, add)
+        ):
+            i = k
+            continue
+        real_removed.extend(rem)
+        i = k
+        continue
+    i += 1
+print(len(real_removed))
+for line in real_removed:
+    print(line)
+' <<<"$diff")
+
+real_removed=$(head -n1 <<<"$real_removed_output")
+real_removed_lines=$(tail -n+2 <<<"$real_removed_output")
+
+if [ "$removed" -gt "$real_removed" ]; then
+    echo "check-breaking-label: $((removed - real_removed)) of those are trait-bound reorderings" \
+        "only (Rust's \`A + B\` conjunctions are unordered) — not counted as removed"
+fi
+
+if [ "$real_removed" -eq 0 ]; then
     echo "check-breaking-label: additive only, no M-breaking required"
     exit 0
 fi
@@ -77,7 +147,7 @@ if grep -qxF 'M-breaking' <<<"$labels"; then
 fi
 
 echo >&2
-grep '^-[^-]' <<<"$diff" | sed 's/^/  /' >&2
+sed 's/^/  /' <<<"$real_removed_lines" >&2
 echo >&2
 echo "check-breaking-label: the lines above leave the public API in this PR, and it carries no" >&2
 echo "M-breaking. Either apply the label (non-additive: needs a major version and a MIGRATING.md" >&2

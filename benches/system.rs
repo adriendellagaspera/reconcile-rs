@@ -445,7 +445,7 @@ const PROPAGATION_NODE_COUNTS: &[usize] = &[2, 4, 8, 16, 32];
 
 /// Gossip fan-out: what one node sends for a single write as `N` grows. `Replica::broadcast` is
 /// unbounded — only the periodic WAN round is capped by `remote_fanout` — so this quantifies that
-/// `O(N)` cost (`SOTA.md` §1.2). Traffic is printed, not timed: it is exact, not a statistic.
+/// `O(N)` cost (`POSITIONING.md` §1.2). Traffic is printed, not timed: it is exact, not a statistic.
 fn gossip_fanout(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "gossip_fanout");

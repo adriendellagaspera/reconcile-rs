@@ -136,7 +136,7 @@ mod tests {
 
     /// The contract's price, stated exactly: overwriting an existing key changes no tree shape, so
     /// the aggregates it must refresh are precisely those on the key's root path — one per level,
-    /// no more. This is the `O(log n)`-writes-per-write claim `SOTA.md` §2.4 item 10 rests on.
+    /// no more. This is the `O(log n)`-writes-per-write claim `POSITIONING.md` §2.4 item 8 rests on.
     #[test]
     fn overwriting_a_key_updates_one_aggregate_per_level_of_its_root_path() {
         let mut map = FingerprintTreeMap::new();

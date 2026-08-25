@@ -223,10 +223,10 @@ wire/on-disk format, the protocol, crypto, or GC gets an **adversarial review be
 exceptions. AGENTS.md §10 sends a by-eye rule to CI instead; this one stays by eye because it judges
 whether a change is *correct*, which no command decides.
 
-### SOTA-alignment drift
+### Positioning-alignment drift
 
-A rustdoc citing `SOTA.md §N.M` splits into a checkable half and an unavailable one. That the
-section still exists is `check-doc-structure.sh`'s part 5 — a `git grep`-shaped fact, gated the
+A rustdoc citing `POSITIONING.md §N.M` splits into a checkable half and an unavailable one. That the
+section still exists is `check-doc-structure.sh`'s part 4 — a `git grep`-shaped fact, gated the
 same way a Markdown link is. That the rustdoc's *characterization* still matches what the cited
 section currently says is not: it is the same kind of judgment call as the paragraph above, and a
 regex heuristic over free prose has already been measured to fail here (`check-doc-issue-claims.sh`'s

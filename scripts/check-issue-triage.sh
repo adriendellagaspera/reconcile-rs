@@ -35,7 +35,7 @@
 #
 # Nothing here requires a trigger, judges whether a sentence is one, or reads free prose. It
 # validates only what an issue opted into stating, which is how §4.2's bibliography format
-# migrates in `SOTA.md` too: grandfather everything, bind what opts in.
+# migrates in `POSITIONING.md` too: grandfather everything, bind what opts in.
 #
 # The defect it catches is real and was live on 2026-08-14: #185 sat `S-parked` reading "gated
 # on #280" for hours after #280 closed. Nothing pointed at it; the label said "not now" while

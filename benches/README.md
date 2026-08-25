@@ -184,7 +184,7 @@ cargo bench --bench system -- gossip_fanout_rtt
 ```
 
 Every other benchmark in this repository runs at RTT ≈ 0 and loss = 0, which prices the axis RBSR is
-good at (bytes) and zeroes the one it is worst at (`SOTA.md` §1.3: sequential round-trips). These
+good at (bytes) and zeroes the one it is worst at (`POSITIONING.md` §1.3: sequential round-trips). These
 four lanes are the instrument that answer [#280](https://github.com/Akvize/reconcile-rs/issues/280)
 and, for `gossip_fanout_rtt`, the RTT-sweep half of
 [#187](https://github.com/Akvize/reconcile-rs/issues/187)'s measurement arm (#280 shipped
@@ -233,7 +233,7 @@ Both deltas are constants in RTT, and both are integer numbers of one-way hops:
 
 - **A write propagates in one hop, not a chain.** `Replica::broadcast` sends every local write to
   every known peer directly, so `gossip_propagation` costs exactly RTT/2 — flat in `N`, and
-  unaffected by `SOTA.md`'s O(log n)-rounds argument, which is about *reconciliation*, not gossip.
+  unaffected by `POSITIONING.md`'s O(log n)-rounds argument, which is about *reconciliation*, not gossip.
 - **Cold sync costs exactly one round trip, whatever the dataset size.** Not O(log n): an empty peer
   has nothing to refine. Its outer range differs, the answer is the whole dataset, and the exchange
   is two one-way hops — the empty node's initial ranges out, the values back. The `n=1000` and
@@ -243,7 +243,7 @@ Both deltas are constants in RTT, and both are integer numbers of one-way hops:
   counts its rounds, and the rows above are what converts that count into seconds: **one protocol
   round trip costs one RTT, measured, with no hidden multiplier**. Refinement depth, message count,
   round trips and the resulting wall clock at 50 ms RTT, across n = 10³…10⁶ at `b` = 16 (`d` = 1, one
-  element missing; `SOTA.md` §2.2 draws the "worst family on latency" conclusion from this table
+  element missing; `POSITIONING.md` §2.2 draws the "worst family on latency" conclusion from this table
   without repeating the numbers):
 
   | quantity | n = 10³ | 10⁴ | 10⁵ | 10⁶ |
@@ -396,7 +396,7 @@ later, then barely move between 10⁴ and 10⁵ where the counted model is also 
 literally, #185's own "4 round trips ≈ 200 ms at n = 10⁶" figure is **not confirmed as stated**:
 every size below 10⁶ already costs more measured round trips than the counted model's flat "3"
 implies, and 10⁶ itself is not a stable single number at all (below) — measured against a moving,
-sometimes much larger, target rather than a clean step to 4. This does not *contradict* `SOTA.md`
+sometimes much larger, target rather than a clean step to 4. This does not *contradict* `POSITIONING.md`
 §1.3's "worst family on latency" takeaway — it reinforces it: the O(log n) round-trip count the
 counted model predicts is a floor this lane already exceeds below 10⁶, and at 10⁶ the round-trip
 count stops being a fixed function of `n` at all (below), which is a strictly worse property for
@@ -547,7 +547,7 @@ it reaches 160 908 B over 3 300 ranges, i.e. three datagrams and ~189 fragments 
 `send_messages_paced` chunks past the ceiling rather than failing.
 
 The default's own evidence (why `b` = 16, why not `SqrtFanOut` or an enumeration threshold) lives in
-`SOTA.md` §2.2 and `rbsr/src/policy.rs`'s rustdoc, not here — this target measures the shipped
+`POSITIONING.md` §2.2 and `rbsr/src/policy.rs`'s rustdoc, not here — this target measures the shipped
 default against itself as the code changes, not against alternatives.
 
 The split rule itself is pinned by unit tests in `rbsr/src/protocol.rs`
@@ -724,32 +724,25 @@ between `N = 3` and `N = 4`; the further rise to 3.2× at `N = 16` in the table 
 the oversubscribed regime and **cannot be separated from preemption-while-holding-lock on this
 machine**.
 
-### What this answers for #359 — and what it revises
+### What this answers for #359
 
 At `N = 1` there is no lock contention at all, so `FingerprintTreeMap` running at 0.298× a bare
 `BTreeMap`'s throughput under the identical lock is the RSOS contract's own per-insert cost, alone:
-258 ns, buying the 6.76 cached-aggregate writes the counted half prices. That part of #359 stands,
-and is now an interval rather than a reading of two runs.
+258 ns, buying the 6.76 cached-aggregate writes the counted half prices — an interval, not a reading
+of two runs.
 
-**The rest of #359's conclusion does not survive the sharper statistic.** #359 reported that the
-fingerprint/btree ratio "does not widen" with `N` and concluded that the root-path write "does not
-become a *larger* share of the cost as writer count grows". The ratio does behave that way here —
-0.298 at `N = 1`, 0.310 at `N = 16`, indistinguishable. But a ratio of two terms that both grow is
-flat precisely *because* they grow together, so its flatness is not evidence about either one. With
-the lock's common cost cancelled, `delta` runs 258 ns at `N = 1` to 837 ns at `N = 16` — **3.2×,
-every step's interval excluding zero**. The conclusion to carry forward is therefore:
+The fingerprint/btree **ratio** is flat across the sweep (0.298 at `N = 1`, 0.310 at `N = 16`), and
+that flatness carries no information about either arm: both terms grow, and a ratio of two terms
+growing together is flat for that reason. With the lock's common cost cancelled, `delta` runs 258 ns
+at `N = 1` to 837 ns at `N = 16` — **3.2× across the sweep, every step's interval excluding zero**.
 
-> The gap between the two arms, with the lock's common cost cancelled, grows 3.2× across this
-> sweep. #359's flat ratio is not evidence that the contract's write cost stays bounded under
-> contention — a flat ratio is exactly what two terms growing together produce.
-
-Read at the right scope, that is: **the 1.7× under full subscription is the defensible figure**, and
-the 3.2× across the whole sweep is an upper bound on an upper bound, since its second half is
-confounded by oversubscription. `delta` also bounds the gap from above rather than pinning it (the
-model section below says why), so whether all of even the 1.7× is the contract's own cost or part is
-a differential lock effect is **bounded here, not decided**. Deciding it needs each arm's parking
-behaviour measured directly. A mechanism consistent with the growth, and the prediction it makes for
-many-core hardware, is [#457](https://github.com/Akvize/reconcile-rs/issues/457)'s.
+Read at the right scope, **1.7× under full subscription is the defensible figure**; the 3.2× is an
+upper bound on an upper bound, its second half confounded by oversubscription. `delta` bounds the gap
+from above rather than pinning it (the model section below says why), so whether all of the 1.7× is
+the contract's own cost or part is a differential lock effect is **bounded here, not decided** —
+deciding it needs each arm's parking behaviour measured directly. A mechanism consistent with the
+growth, and its prediction for many-core hardware, is
+[#457](https://github.com/Akvize/reconcile-rs/issues/457)'s.
 
 ### A model for the curve, and where it breaks ([#457](https://github.com/Akvize/reconcile-rs/issues/457))
 
@@ -875,5 +868,5 @@ exists. The counted half carries none of this — that is the point of having it
 ## Not covered yet
 
 - **External comparisons** (e.g. point-read vs Redis over loopback) are intentionally out of scope here to keep the default `cargo bench` dependency-light. They belong behind an optional, non-CI Cargo feature in a follow-up.
-- **No other reconciliation implementation has ever been run in this harness** — not Negentropy, not RIBLT, not AELMDB. This is the *algorithm-family* half of the row above, and it is a separate gap with a separate consequence: every comparison these benchmarks support is `reconcile-rs` against `reconcile-rs` (policy against policy, `b` against `b`, RTT lane against RTT lane). Where `SOTA.md` §1.3 and §2.2 place this crate beside another family, the other family's numbers are **quoted from its paper**, on other hardware and sometimes in another cost model. That is enough to orient a design choice and not enough to support "X beats Y", which is why `SOTA.md` §1.3 now says so at the table. [#174](https://github.com/Akvize/reconcile-rs/issues/174) dropped the external-comparison criterion deliberately (version drift, cross-process flakiness, CI weight); reinstating it is the prerequisite for any like-for-like claim, and is a decision, not an omission. [#362](https://github.com/Akvize/reconcile-rs/issues/362) reinstates the half those three reasons do not reach — the *counted* columns against Negentropy, from a committed fixture pinning its commit SHA, with no timing, no build dependency and no CI.
+- **No other reconciliation implementation has ever been run in this harness** — not Negentropy, not RIBLT, not AELMDB. This is the *algorithm-family* half of the row above, and it is a separate gap with a separate consequence: every comparison these benchmarks support is `reconcile-rs` against `reconcile-rs` (policy against policy, `b` against `b`, RTT lane against RTT lane). Where `POSITIONING.md` §1.3 and §2.2 place this crate beside another family, the other family's numbers are **quoted from its paper**, on other hardware and sometimes in another cost model. That is enough to orient a design choice and not enough to support "X beats Y", which `POSITIONING.md` §1.3 states at the table. [#174](https://github.com/Akvize/reconcile-rs/issues/174) dropped the external-comparison criterion deliberately (version drift, cross-process flakiness, CI weight); reinstating it is the prerequisite for any like-for-like claim, and is a decision, not an omission. [#362](https://github.com/Akvize/reconcile-rs/issues/362) reinstates the half those three reasons do not reach — the *counted* columns against Negentropy, from a committed fixture pinning its commit SHA, with no timing, no build dependency and no CI.
 - The `img/perf-*.png` graphs in the repo root are produced out-of-band from the `bench` target's Criterion output; regenerating them is a manual step (there is no committed plotting pipeline).

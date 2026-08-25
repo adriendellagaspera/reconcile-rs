@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
-# Structural correctness of the repository's Markdown, in three parts: link targets resolve, anchor
-# links resolve, and -- across the Markdown/Rust boundary -- a rustdoc's `SOTA.md §N.M` citation
-# still names a section that exists.
-#
-# A fourth part checked SOTA.md's bibliography entry format (§4.2). It went with the bibliography:
-# §3-§5 had no consumer in this repository and left with the rest of the literature material, so
-# the check had nothing left to validate and a gate that validates nothing is worse than none.
+# Structural correctness of the repository's Markdown, in four parts: link targets resolve, anchor
+# links resolve, backticked path-shaped references name real paths, and -- across the Markdown/Rust
+# boundary -- a rustdoc's `POSITIONING.md §N.M` citation still names a section that exists.
 #
 # Why this is gated rather than reviewed: a link that resolves nowhere renders as a link. Nothing
 # about `[`Payload`](../gossip/src/auth.rs)` looks wrong in a diff -- ARCHITECTURE.md sits at the
@@ -48,7 +44,7 @@ mapfile -t DOCS < <(
 
 # GitHub's heading-slug rule, as applied to a heading's text: lowercase, drop Markdown emphasis and
 # link syntax, drop remaining punctuation, spaces to hyphens. Explicit `<a id="…">` anchors count
-# too -- SOTA.md's glossary uses them (`g91`…`g96`) precisely because its headings are numbered.
+# too.
 #
 # Cached per file, and matched by string containment rather than by piping into `grep -q`. Both
 # choices are bug fixes, not style: `grep -q` exits at the first match, the SIGPIPE kills the `sed`
@@ -116,10 +112,10 @@ for doc in "${DOCS[@]}"; do
     done < <(grep -oE '`[A-Za-z0-9_][A-Za-z0-9_./*{}-]*`' "$doc" | tr -d '`')
 done
 
-# ---- 5: `SOTA.md §N.M` citations in the Rust sources resolve to an existing heading -------------
+# ---- 4: `POSITIONING.md §N.M` citations in the Rust sources resolve to an existing heading -----
 #
-# Rustdocs cite SOTA.md by section number instead of restating its prose (AGENTS.md §9: a fact
-# lives in exactly one place). When a section is renumbered or dropped, nothing about `SOTA.md
+# Rustdocs cite POSITIONING.md by section number instead of restating its prose (AGENTS.md §9: a fact
+# lives in exactly one place). When a section is renumbered or dropped, nothing about `POSITIONING.md
 # §2.4` in a rustdoc looks wrong in a diff -- the same failure mode part 1 catches for a Markdown
 # link that resolves nowhere, just across the Markdown/Rust boundary that part never crossed.
 #
@@ -127,32 +123,32 @@ done
 # like `g91`) has no cheap way to verify without a real risk of false positives, so it is left
 # alone -- the same trade this script's part 3 already makes for backticked paths.
 #
-# The match requires the § to sit directly against the backtick-quoted `SOTA.md` token, not merely
-# share a line with it: `rsos/src/lib.rs`'s "`SOTA.md` §2.2/§2.4, `ARCHITECTURE.md` §7" is one real
+# The match requires the § to sit directly against the backtick-quoted `POSITIONING.md` token, not merely
+# share a line with it: `rsos/src/lib.rs`'s "`POSITIONING.md` §2.2/§2.4, `ARCHITECTURE.md` §7" is one real
 # line with two unrelated citations, and a looser match attributes the ARCHITECTURE.md §7 to
-# SOTA.md -- the exact class of wrong-file misattribution `check-pr-closes-issues.sh`'s own header
+# POSITIONING.md -- the exact class of wrong-file misattribution `check-pr-closes-issues.sh`'s own header
 # warns about for issue numbers.
-sota_citations=0
-if [ -f SOTA.md ]; then
-    mapfile -t SOTA_SECTIONS < <(
-        grep -oE '^#{2,3}[[:space:]]+[0-9]+(\.[0-9]+)?' SOTA.md | sed -E 's/^#{2,3}[[:space:]]+//'
+positioning_citations=0
+if [ -f POSITIONING.md ]; then
+    mapfile -t POSITIONING_SECTIONS < <(
+        grep -oE '^#{2,3}[[:space:]]+[0-9]+(\.[0-9]+)?' POSITIONING.md | sed -E 's/^#{2,3}[[:space:]]+//'
     )
     while IFS=: read -r file lineno text; do
         while IFS= read -r section; do
             [ -z "$section" ] && continue
-            sota_citations=$((sota_citations + 1))
+            positioning_citations=$((positioning_citations + 1))
             known=0
-            for s in "${SOTA_SECTIONS[@]}"; do
+            for s in "${POSITIONING_SECTIONS[@]}"; do
                 [ "$s" = "$section" ] && known=1 && break
             done
-            [ "$known" = 1 ] || fail "$file:$lineno: cites \`SOTA.md\` §$section, which does not exist"
+            [ "$known" = 1 ] || fail "$file:$lineno: cites \`POSITIONING.md\` §$section, which does not exist"
         done < <(grep -oE '§[0-9]+(\.[0-9]+)?' <<<"$text" | tr -d '§')
     done < <(
-        grep -rnoE '`SOTA\.md`[[:space:]]+§[0-9]+(\.[0-9]+)?(/§[0-9]+(\.[0-9]+)?)*' \
+        grep -rnoE '`POSITIONING\.md`[[:space:]]+§[0-9]+(\.[0-9]+)?(/§[0-9]+(\.[0-9]+)?)*' \
             --include='*.rs' --exclude-dir=target -- .
     )
 fi
 
-echo "check-doc-structure: ${#DOCS[@]} docs, $links_checked anchor links, $sota_citations SOTA.md citations"
+echo "check-doc-structure: ${#DOCS[@]} docs, $links_checked anchor links, $positioning_citations POSITIONING.md citations"
 
 exit "$status"

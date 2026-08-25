@@ -15,7 +15,7 @@
 //! depends on it the same way.
 //!
 //! Every other benchmark in this repository runs at RTT ≈ 0, which prices the axis RBSR is good at
-//! (bytes) and zeroes the axis it is worst at (`SOTA.md` §1.3: sequential round-trips). This module
+//! (bytes) and zeroes the axis it is worst at (`POSITIONING.md` §1.3: sequential round-trips). This module
 //! is the missing instrument, not a fix: it makes the round-trip column cost something.
 //!
 //! Split across two files by concern: this one owns the impairment *parameters* a caller

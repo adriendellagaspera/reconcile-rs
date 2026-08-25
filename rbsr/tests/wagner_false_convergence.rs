@@ -15,7 +15,7 @@
 //! k-tree applies to `ℤ/2^w` *with no error term*, because reduction mod `2^j` is a group
 //! homomorphism and merging on low-order bits is therefore exact) with a single key then removed
 //! from one peer, so the fingerprints no longer agree and neither do the counts. Pinned because the
-//! guarantee is claimed with probability 1 and with no hypothesis on the lift — `SOTA.md` §2.1
+//! guarantee is claimed with probability 1 and with no hypothesis on the lift — `POSITIONING.md` §2.1
 //! records what it covers and what it does not — so it must hold at every width, not merely be
 //! probable at the shipped one.
 //!

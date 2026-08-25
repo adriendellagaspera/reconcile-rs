@@ -36,7 +36,7 @@ mod rank;
 use rank::{BoundedRange, InvertedRange};
 
 /// The refinement policy [`protocol_round`] applies. Costs: `benches/protocol.rs`; the evidence
-/// for this default: `SOTA.md` §2.2.
+/// for this default: `POSITIONING.md` §2.2.
 const DEFAULT_POLICY: FixedFanOut = FixedFanOut::new(FanOut::NEGENTROPY);
 
 /// The start bound of a [`RangeAggregate`] range: `Included` or `Unbounded`, never `Excluded`.

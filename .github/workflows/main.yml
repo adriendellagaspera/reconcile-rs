@@ -70,7 +70,7 @@ jobs:
   # This repository's own invariants, none of which compiles anything (~2 s all told) -- hence no
   # path filter: gating a free check can only ever skip it wrongly. Two of them are not
   # documentation-only anyway. `check-domain-purity.sh` reads the manifests and `lww-register/src`;
-  # `check-doc-structure.sh` greps rustdoc for `SOTA.md` citations. A `**/*.md` filter would have
+  # `check-doc-structure.sh` greps rustdoc for `POSITIONING.md` citations. A `**/*.md` filter would have
   # been wrong on its own terms.
   #
   # `check-mutant-count.sh` needs `cargo-mutants` on `PATH` (unlike the four scripts above, which
@@ -84,11 +84,11 @@ jobs:
       with:
         # Pin matches mutants.yml -- keep both in sync.
         tool: cargo-mutants@27.1.0
-    - name: Doc budget (AGENTS.md + CLAUDE.md, and SOTA.md, line caps)
+    - name: Doc budget (AGENTS.md + CLAUDE.md cumulative, POSITIONING.md separately)
       run: ./scripts/check-doc-budget.sh
     - name: Domain purity (hexagonal boundary + ARCHITECTURE.md §2's graph vs the manifests)
       run: ./scripts/check-domain-purity.sh
-    - name: Doc structure (link/anchor/path resolution, SOTA.md §4.2 entry format)
+    - name: Doc structure (link/anchor/path resolution, rustdoc POSITIONING.md citations)
       run: ./scripts/check-doc-structure.sh
     - name: Test-file naming (split #[cfg(test)] modules are named tests.rs, not <name>_tests.rs)
       run: ./scripts/check-test-file-naming.sh

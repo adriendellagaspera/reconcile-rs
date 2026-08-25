@@ -5,7 +5,7 @@
 `reconcile-rs` is a reconciliation service that keeps a key-value map synchronised across several
 instances. This document describes the architecture as it stands today — a completed hexagonal
 (ports & adapters) split into five crates. Correctness and security properties are tracked below
-(§8); state-of-the-art positioning is in [`SOTA.md`](./SOTA.md). Code locations are given as
+(§8); state-of-the-art positioning is in [`POSITIONING.md`](./POSITIONING.md). Code locations are given as
 `file:line` against the current tree.
 
 The public API and the on-wire / on-disk formats are pre-1.0 and may change. Only `reconcile` is
@@ -209,7 +209,7 @@ Two consequences follow, and both are decisions rather than accidents:
 
 | | |
 |---|---|
-| Injecting a `RefinementPolicy` is an `rbsr`-level operation | `reconcile`'s `Config` is `Copy` (the fixed-size `nets` array exists to keep it so), which a boxed or borrowed policy would break. What the facade should expose wants the measured comparison first — `SOTA.md` §2.2 |
+| Injecting a `RefinementPolicy` is an `rbsr`-level operation | `reconcile`'s `Config` is `Copy` (the fixed-size `nets` array exists to keep it so), which a boxed or borrowed policy would break. What the facade should expose wants the measured comparison first — `POSITIONING.md` §2.2 |
 | `Codec` was considered and dissolved as a trait | one implementation; no object-safety need (its methods are generic, always carried as a type parameter); no plausible second use — compression interacts with authenticate-before-decode, and cross-language interop needs a published wire spec, not a Rust trait |
 
 ---
@@ -419,9 +419,9 @@ guarantees whose resolution history §8 tracks.
    docs, invariant 10's partition argument). `protocol_round_with_policy` does not trust a
    plugged-in policy to hold that: a `Split` for `span() > 1` that would not narrow the range is
    converted to an `Enumerate` before it reaches the fan-out loop, so every span a policy actually
-   splits strictly shrinks and no range can loop on a content-determined fixed point. #356's
-   `FingerprintDerivedSplit` probe hung on ~99.5% of drives before this guard existed; re-measured
-   at 200,000/200,000 (both widths) afterward (`SOTA.md` §2.3). Guarded by
+   splits strictly shrinks and no range can loop on a content-determined fixed point. The
+   oracle-coupled probe that motivated it (#356) hung on ~99.5% of drives before this guard existed
+   and converged 200,000/200,000 at both widths afterward. Guarded by
    `rbsr/src/protocol.rs::non_progressing_split_is_converted_to_enumerate`, the `NeverNarrows`
    policy exercised through the same convergence matrix as every shipped policy, and pinned for the
    shipped policies themselves by `rbsr/tests/shipped_policies_always_progress.rs`.
@@ -489,7 +489,7 @@ bullets below are that reasoning — this table is the lookup, not a summary tha
   encoding has exactly one implementation and no test-driven need for a second. Reintroducing it
   later is additive — bincode becomes the default behind the trait — so the cost of waiting for a
   real second consumer is low.
-- **`BYOLiftingMonoid`** — the generic summary ([`SOTA.md`](./SOTA.md) §2.4 P1-4). **Decided: out of
+- **`BYOLiftingMonoid`** — the generic summary ([`POSITIONING.md`](./POSITIONING.md) §2.4 P1-4). **Decided: out of
   scope for 1.x, a 2.0 topic** ([#298](https://github.com/Akvize/reconcile-rs/issues/298)).
   `Rsos::aggregate`/`RsosView::aggregate` keep the concrete `(usize, Fingerprint)` for the whole 1.x
   line; `lift`/`combine`/`neutral` stays the vocabulary if it is revisited.
@@ -517,7 +517,7 @@ bullets below are that reasoning — this table is the lookup, not a summary tha
   dynamic 2D range tree, the direct extension of `FingerprintTreeMap`) costs ~20–30× `T_loc` and
   space at `n` = 10⁶–10⁹. Full argument, citations and the position-map corollary ("relocation, not
   injectivity, is the fix"): [#360](https://github.com/Akvize/reconcile-rs/issues/360) and
-  [`SOTA.md`](./SOTA.md) §2.4.1 — written up separately as a preprint responding to
+  [`POSITIONING.md`](./POSITIONING.md) §2.4.1 — written up separately as a preprint responding to
   arXiv:2603.19820 §8, deliberately not versioned here.
 - **Pluggable per-value conflict resolution** — CRDT values beyond LWW-Register
   ([#184](https://github.com/Akvize/reconcile-rs/issues/184)). **Decided: deferred**, no trigger has
@@ -535,7 +535,7 @@ bullets below are that reasoning — this table is the lookup, not a summary tha
   per-element diff/tombstone/datagram-ceiling rationale, and how it differs from textbook add-wins
   (#231). That encoding is a large part of why this seam is affordable to leave deferred. Full
   reasoning, the five-edge cost breakdown and the ranked shortlist: #184.
-- **A leaf sketch (IBLT) beside the RBSR chain** — the single-shot candidate `SOTA.md` §1.3/§2.2
+- **A leaf sketch (IBLT) beside the RBSR chain** — the single-shot candidate `POSITIONING.md` §1.3/§2.2
   weighs against refinement. **Decided: out of scope for this crate**, and both open questions with
   it — the global-sidecar vs per-range shape
   ([#11](https://github.com/adriendellagaspera/reconcile-rs/issues/11) (closed)) and the ranking
@@ -548,7 +548,7 @@ bullets below are that reasoning — this table is the lookup, not a summary tha
   ([#186](https://github.com/Akvize/reconcile-rs/issues/186)). A pluggable `Storage` backend
   (on-disk / LSM / content-addressed) was evaluated as an alternative and **rejected permanently**:
   larger-than-RAM and full replication are in direct tension — a node holding everything but
-  spilling to disk on read destroys the crate's one unambiguous advantage (`SOTA.md` §1.6). Proposal
+  spilling to disk on read destroys the crate's one unambiguous advantage (`POSITIONING.md` §1.4). Proposal
   and staging: #186.
 - **Defense against a correlated false SKIP** — whether to spend anything on the residual #354
   establishes: a false SKIP is a function of the *content pair*, so a converged fleet replays one

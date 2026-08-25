@@ -45,7 +45,7 @@ impl Comparison {
     }
 
     /// Child ranges already emitted this round: the round-budget seam
-    /// (`SOTA.md` §2.4 P3-9).
+    /// (`POSITIONING.md` §2.4 P3-10).
     ///
     /// Counted in ranges, not bytes — this crate owns no encoding. No shipped policy reads it;
     /// [`RefinementPolicy`](super::RefinementPolicy) carries a worked capping example.
