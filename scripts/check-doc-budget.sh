@@ -24,7 +24,6 @@
 # When either budget fires, the fix is to *move* prose, not to compress it into denser
 # prose:
 #   - rationale, measurements and worked examples  -> CONTRIBUTING.md or ARCHITECTURE.md
-#   - a literature survey, glossary or bibliography -> rbsr-research
 #   - a live status                                 -> the tracker
 #   - a rule someone must remember and apply by eye -> a script wired into a hook and CI
 # Raising a cap is a deliberate decision, not the default remedy: change the constant

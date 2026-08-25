@@ -11,7 +11,6 @@
 > | Target design, deferred decisions | [`ARCHITECTURE.md`](./ARCHITECTURE.md) §5–§7 |
 > | Fit-for-purpose guidance | [`README.md`](./README.md) "When to use this" |
 > | Measured figures — bytes, message counts, timings | [`benches/README.md`](./benches/README.md) ([#346](https://github.com/Akvize/reconcile-rs/issues/346)) |
-> | Literature survey, glossary, bibliography, research probes | `rbsr-research` (private companion) |
 >
 > **Scope:** the `FingerprintTreeMap` as a *data structure* and RBSR as an *algorithm*, against the
 > published state of the art — not an audit of any particular commit. Literature reviewed through
@@ -414,7 +413,7 @@ status, so this section never needs an edit when that status changes.
 ### 2.4.1 Open research questions
 
 Where this repository can test a claim the published work leaves open. None is a 1.0 gate; the
-claim, the method and the numbers live in the issue and in `rbsr-research`, never here.
+claim, the method and the numbers live in the issue, never here.
 
 | Question | Issue |
 |---|---|
@@ -429,10 +428,10 @@ Results that closed a question rather than opening one, one line each:
 | Result | Record |
 |---|---|
 | A divergence-adaptive fan-out is confined to the count, and the count is blind exactly where the exact-count guarantee has already run out (§2.1). **Not built.** | [#318](https://github.com/Akvize/reconcile-rs/issues/318), `rbsr/src/policy.rs` |
-| Re-ordering the store does not rescue that signal: only a leading-component reorder makes a divergence visible, so relocation is the lever and injectivity of `π` is not. | `rbsr-research` |
+| Re-ordering the store does not rescue that signal: only a leading-component reorder makes a divergence visible, so relocation is the lever and injectivity of `π` is not. | [#360](https://github.com/Akvize/reconcile-rs/issues/360) |
 | The multidimensional extension is a **no-go** on paper: `arXiv:2603.19820v1` §8 asks for a theory of balancing *and* summarization beyond one dimension, and the two part company — balancing breaks at one line of its Algorithm 2 and recovers, while the box `Aggregate` of its Def. 3.9 meets an unconditional cell-probe floor. The obstruction is the summary, not the dimension; the protocol side transports verbatim. | [#360](https://github.com/Akvize/reconcile-rs/issues/360), [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7 |
 | `Comparison` no longer hands a policy the fingerprint at all — narrowed to `span()`/`remote_size()`/`agrees()` — so a non-narrowing split is structurally unspellable rather than merely bounded. | [#352](https://github.com/Akvize/reconcile-rs/issues/352) |
-| A hash-derived split rule does not exceed the union bound; it breaks the protocol's termination guarantee instead. | [#356](https://github.com/Akvize/reconcile-rs/issues/356), `rbsr-research` |
+| A hash-derived split rule does not exceed the union bound; it breaks the protocol's termination guarantee instead. | [#356](https://github.com/Akvize/reconcile-rs/issues/356) |
 | An N-party fleet buys no redundancy from retries when it is converged but for one divergence (§2.2) — closed by derivation, not by the measurement campaign it proposed. | [#354](https://github.com/Akvize/reconcile-rs/issues/354) |
 
 **SOTA target by axis:**

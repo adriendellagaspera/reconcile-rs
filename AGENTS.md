@@ -19,8 +19,7 @@ Read first, don't duplicate: [`README.md`](./README.md) (usage/API/security/depl
 [`ARCHITECTURE.md`](./ARCHITECTURE.md) (module map, ports & adapters, invariants, audit history),
 [`POSITIONING.md`](./POSITIONING.md) (durable positioning: the niche, the competitor audit, the
 design axes). Live correctness/security/release status is the `v1.0.0` milestone and issue #206, not
-a file. The literature survey, glossary, bibliography and research probes behind it live in
-`rbsr-research`, the private companion — never copied back here.
+a file.
 
 ## 2. Environment
 

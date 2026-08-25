@@ -128,10 +128,9 @@ pub enum Decision {
 /// Whenever [`Comparison::span`] is greater than one, `decide` must return a
 /// [`Decision::Split`] whose stride is strictly less than the span — a real cut, not the
 /// single-child identity split [`Decision::Split`]'s docs carve out for `span() <= 1`. Every
-/// shipped policy holds this (pinned by `tests/shipped_policies_always_progress.rs`);
-/// `rbsr-research`'s `FingerprintDerivedSplit` probe (#356) does not — a content-determined stride
-/// can land a range on a fixed point that never shrinks. Measurements: `ARCHITECTURE.md` §5
-/// invariant 13.
+/// shipped policy holds this (pinned by `tests/shipped_policies_always_progress.rs`); the
+/// oracle-coupled probe (#356) does not — a content-determined stride can land a range on a fixed
+/// point that never shrinks. Measurements: `ARCHITECTURE.md` §5 invariant 13.
 ///
 /// Breaking the law no longer hangs the driver: `protocol_round_with_policy` converts a
 /// non-progressing `Split` into an `Enumerate` rather than trusting a plugged-in policy to hold
@@ -154,7 +153,7 @@ pub enum Decision {
 /// A fan-out keyed off the `span`/`remote_size` delta was considered and rejected: that delta is
 /// zero on the regime that matters most (same key set, differing values, e.g. an LWW register in
 /// steady state), so such a policy would reproduce the default there and differ from it only where
-/// the win is already small. Decision record: `POSITIONING.md` §2.4.1; numbers: `rbsr-research`.
+/// the win is already small. Decision record: `POSITIONING.md` §2.4.1.
 ///
 /// # Implementing your own
 ///

@@ -419,9 +419,9 @@ guarantees whose resolution history §8 tracks.
    docs, invariant 10's partition argument). `protocol_round_with_policy` does not trust a
    plugged-in policy to hold that: a `Split` for `span() > 1` that would not narrow the range is
    converted to an `Enumerate` before it reaches the fan-out loop, so every span a policy actually
-   splits strictly shrinks and no range can loop on a content-determined fixed point. The probe that
-   motivated it, `rbsr-research`'s `FingerprintDerivedSplit` (#356), hung on ~99.5% of drives before
-   this guard existed and converged 200,000/200,000 at both widths afterward. Guarded by
+   splits strictly shrinks and no range can loop on a content-determined fixed point. The
+   oracle-coupled probe that motivated it (#356) hung on ~99.5% of drives before this guard existed
+   and converged 200,000/200,000 at both widths afterward. Guarded by
    `rbsr/src/protocol.rs::non_progressing_split_is_converted_to_enumerate`, the `NeverNarrows`
    policy exercised through the same convergence matrix as every shipped policy, and pinned for the
    shipped policies themselves by `rbsr/tests/shipped_policies_always_progress.rs`.
