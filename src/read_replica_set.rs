@@ -20,10 +20,13 @@
 use std::io;
 use std::net::IpAddr;
 use std::ops::RangeBounds;
+use std::sync::Arc;
+use std::time::Duration;
 
 use ipnet::IpNet;
 
 use crate::bounds::Key;
+use crate::discovery::Discovery;
 use crate::entry::State;
 use crate::read_replica_map::ReadReplicaMap;
 use crate::replicated_map::Config;
@@ -72,6 +75,25 @@ impl<K: Key> ReadReplicaSet<K> {
     /// (runtime) Retune the probed network. See [`ReadReplicaMap::set_net`].
     pub fn set_net(&self, net: IpNet) {
         self.0.set_net(net);
+    }
+
+    /// Attach a dynamic peer-discovery source. See [`ReadReplicaMap::with_discovery`].
+    #[must_use]
+    pub fn with_discovery(self, discovery: Arc<dyn Discovery>) -> Self {
+        ReadReplicaSet(self.0.with_discovery(discovery))
+    }
+
+    /// Discover peers by resolving a DNS name. See [`ReadReplicaMap::with_dns_discovery`].
+    #[must_use]
+    pub fn with_dns_discovery(self, name: impl Into<String>, port: u16) -> Self {
+        ReadReplicaSet(self.0.with_dns_discovery(name, port))
+    }
+
+    /// Set how often the discovery task resolves the peer set. See
+    /// [`ReadReplicaMap::with_discovery_interval`].
+    #[must_use]
+    pub fn with_discovery_interval(self, interval: Duration) -> Self {
+        ReadReplicaSet(self.0.with_discovery_interval(interval))
     }
 
     /// The network this read replica currently probes. See [`ReadReplicaMap::net`].
@@ -278,5 +300,75 @@ mod read_replica_set_tests {
                 .expect("recv_from failed");
         assert!(size > 0, "the datagram sent to the peer was empty");
         assert_eq!(from.ip(), replica_addr);
+    }
+
+    /// #30: `with_discovery`/`with_discovery_interval` actually forward into the wrapped
+    /// `ReadReplicaMap`'s `run()` loop — a replica configured with discovery alone (no
+    /// `with_seed`) still converges once discovery resolves the dated peer.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn with_discovery_converges_without_with_seed() {
+        use crate::discovery::{DiscoverFuture, Discovery, DiscoveryKind};
+        use crate::replicated_set::ReplicatedSet;
+        use std::net::IpAddr;
+        use std::sync::Arc;
+        use tokio_util::sync::CancellationToken;
+
+        #[derive(Clone)]
+        struct FixedDiscovery(IpAddr);
+        impl Discovery for FixedDiscovery {
+            fn discover(&self) -> DiscoverFuture<'_> {
+                let addr = self.0;
+                Box::pin(async move { Ok(vec![addr]) })
+            }
+            fn kind(&self) -> DiscoveryKind {
+                DiscoveryKind::Authoritative
+            }
+        }
+
+        let port = crate::replica::tests::next_ephemeral_test_port();
+        let net: ipnet::IpNet = "127.0.7.0/24".parse().unwrap();
+        let dated_addr: IpAddr = "127.0.7.10".parse().unwrap();
+        let replica_addr: IpAddr = "127.0.7.11".parse().unwrap();
+
+        let dated = ReplicatedSet::<i32>::new(
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(dated_addr)
+                .with_net(net)
+                .with_insecure_no_key(),
+        )
+        .await
+        .expect("bind failed");
+        assert!(!dated.insert(9), "key 9 must be newly inserted");
+
+        let replica = ReadReplicaSet::<i32>::new(
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(replica_addr)
+                .with_net(net)
+                .with_insecure_no_key(),
+        )
+        .await
+        .expect("bind failed")
+        .with_discovery(Arc::new(FixedDiscovery(dated_addr)))
+        .with_discovery_interval(Duration::from_millis(15));
+
+        let dated_task = tokio::spawn(dated.clone().run(CancellationToken::new()));
+        let replica_task = tokio::spawn(replica.clone().run());
+
+        let mut converged = false;
+        for _ in 0..300 {
+            if replica.contains(&9) {
+                converged = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        dated_task.abort();
+        replica_task.abort();
+        assert!(
+            converged,
+            "replica never converged via discovery alone (no with_seed)"
+        );
     }
 }

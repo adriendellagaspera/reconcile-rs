@@ -184,7 +184,16 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
 
     /// Run the read replica's reconciliation loop forever. Spawn this on a task; the read replica
     /// converges to the dated cluster's current values and reflects deletions as tombstones.
+    ///
+    /// Alongside it, drives the discovery task ([`with_discovery`](Self::with_discovery)) when one
+    /// is configured — a no-op otherwise.
     pub async fn run(self) {
+        tokio::join!(self.run_reconciliation_loop(), self.discover_periodically());
+    }
+
+    /// The reconciliation half of [`run`](Self::run), split out so it can run concurrently with
+    /// [`discover_periodically`](Self::discover_periodically).
+    async fn run_reconciliation_loop(&self) {
         let mut recv_buf = [0; BUFFER_SIZE + 1];
         let mut send_buf = Vec::new();
         self.start_reconciliation_inner(&mut send_buf).await;
