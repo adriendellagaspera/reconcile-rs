@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 
 use proptest::prelude::*;
 
-use rsos::FingerprintTreeMap;
+use rsos::{Aggregate, FingerprintTreeMap};
 
 #[derive(Clone, Debug)]
 enum Op {
@@ -47,7 +47,8 @@ proptest! {
     ) {
         let mut tree: FingerprintTreeMap<u8, u16> = FingerprintTreeMap::new();
         let mut oracle: BTreeMap<u8, u16> = BTreeMap::new();
-        let mut snapshots: Vec<(BTreeMap<u8, u16>, FingerprintTreeMap<u8, u16>)> = Vec::new();
+        let mut snapshots: Vec<(BTreeMap<u8, u16>, FingerprintTreeMap<u8, u16>, Aggregate)> =
+            Vec::new();
 
         for op in ops {
             match op {
@@ -58,7 +59,9 @@ proptest! {
                     prop_assert_eq!(tree.remove(&k), oracle.remove(&k));
                 }
                 Op::Snapshot => {
-                    snapshots.push((oracle.clone(), tree.clone()));
+                    let snap = tree.clone();
+                    let snap_aggregate = snap.aggregate(..);
+                    snapshots.push((oracle.clone(), snap, snap_aggregate));
                 }
             }
             tree.check_invariants();
@@ -66,12 +69,16 @@ proptest! {
 
         // Every snapshot taken along the way must still describe exactly what its own oracle
         // held at that point -- untouched by every insert/remove/split/merge/steal that ran on
-        // `tree` afterward.
-        for (oracle_snapshot, tree_snapshot) in &snapshots {
+        // `tree` afterward. Its `aggregate(..)` -- computed once right after cloning -- must also
+        // still match when recomputed now: a COW fork that missed a shared node would leak a
+        // later mutation into the snapshot's fingerprint without necessarily changing its
+        // enumerated contents.
+        for (oracle_snapshot, tree_snapshot, snap_aggregate) in &snapshots {
             tree_snapshot.check_invariants();
             let got: Vec<(u8, u16)> = tree_snapshot.range(..).map(|(k, v)| (*k, *v)).collect();
             let want: Vec<(u8, u16)> = oracle_snapshot.iter().map(|(k, v)| (*k, *v)).collect();
             prop_assert_eq!(got, want);
+            prop_assert_eq!(tree_snapshot.aggregate(..), *snap_aggregate);
         }
 
         // The live tree still agrees with its own oracle too.
@@ -97,6 +104,7 @@ proptest! {
 
         let mut old_clone = tree.clone();
         let old_oracle = oracle.clone();
+        let old_clone_aggregate = old_clone.aggregate(..);
 
         for op in later_ops {
             match op {
@@ -110,6 +118,11 @@ proptest! {
             }
         }
         tree.check_invariants();
+
+        // `old_clone`'s aggregate, recorded right after cloning, must still hold: none of the
+        // splits/merges/steals `tree` just ran should have leaked into a node `old_clone` shares.
+        prop_assert_eq!(old_clone.aggregate(..), old_clone_aggregate);
+        let tree_aggregate_before_old_clone_mutation = tree.aggregate(..);
 
         // Now mutate the old clone -- it must still be exactly what it was when cloned, and its
         // own edits from here must not reach `tree`.
@@ -126,5 +139,9 @@ proptest! {
         let got: Vec<(u8, u16)> = tree.range(..).map(|(k, v)| (*k, *v)).collect();
         let want: Vec<(u8, u16)> = oracle.iter().map(|(k, v)| (*k, *v)).collect();
         prop_assert_eq!(got, want);
+
+        // Mutating `old_clone` (going the other direction) must likewise leave `tree`'s
+        // aggregate untouched.
+        prop_assert_eq!(tree.aggregate(..), tree_aggregate_before_old_clone_mutation);
     }
 }

@@ -27,9 +27,10 @@
 //!    which is the property that makes the policy swappable without a protocol
 //!    break -- [`diff_convergence`].
 //!
-//! 3. A cloned `FingerprintTreeMap` is unaffected by any later mutation of the tree it was cloned
-//!    from, and vice versa — the property that makes `Clone`'s newly shallow, `Arc`-sharing
-//!    implementation (#41) safe to treat as a full snapshot — [`cow_snapshots`].
+//! 3. A cloned `FingerprintTreeMap` -- and its `aggregate(..)` -- is unaffected by any later
+//!    mutation of the tree it was cloned from, and vice versa — the property that makes
+//!    `Clone`'s newly shallow, `Arc`-sharing implementation (#41) safe to treat as a full
+//!    snapshot — [`cow_snapshots`].
 //!
 //! Plus two narrower oracles: encoding injectivity/order-independence
 //! ([`encoding_injectivity`]) and driving the diff protocol with an adversarial `RsosView`
