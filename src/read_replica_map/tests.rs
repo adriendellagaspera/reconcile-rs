@@ -392,26 +392,43 @@ async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
     false
 }
 
-/// A discovery source returning a fixed, swappable address list — the read-replica analogue of
+/// A discovery source returning a fixed, swappable response — the read-replica analogue of
 /// `replicated_map/tests/discovery.rs`'s `FakeDiscovery`, minus the presence bookkeeping a read
 /// replica has no use for (no membership, no GC gate to protect).
 #[derive(Clone)]
+enum FakeDiscoveryResp {
+    /// A successful resolution returning this address list.
+    Present(Vec<IpAddr>),
+    /// A transient failure (e.g. a DNS blip).
+    Blip,
+}
+
+#[derive(Clone)]
 struct FakeDiscovery {
-    addrs: Arc<parking_lot::RwLock<Vec<IpAddr>>>,
+    resp: Arc<parking_lot::RwLock<FakeDiscoveryResp>>,
 }
 
 impl FakeDiscovery {
     fn new(addrs: Vec<IpAddr>) -> Self {
         FakeDiscovery {
-            addrs: Arc::new(parking_lot::RwLock::new(addrs)),
+            resp: Arc::new(parking_lot::RwLock::new(FakeDiscoveryResp::Present(addrs))),
         }
+    }
+
+    fn set(&self, resp: FakeDiscoveryResp) {
+        *self.resp.write() = resp;
     }
 }
 
 impl crate::discovery::Discovery for FakeDiscovery {
     fn discover(&self) -> crate::discovery::DiscoverFuture<'_> {
-        let addrs = self.addrs.read().clone();
-        Box::pin(async move { Ok(addrs) })
+        let resp = self.resp.read().clone();
+        Box::pin(async move {
+            match resp {
+                FakeDiscoveryResp::Present(addrs) => Ok(addrs),
+                FakeDiscoveryResp::Blip => Err(Box::new(std::io::Error::other("blip")) as _),
+            }
+        })
     }
 
     fn kind(&self) -> crate::discovery::DiscoveryKind {
@@ -519,6 +536,37 @@ async fn discover_periodically_never_seeds_its_own_address() {
     assert!(
         !read_replica.get_peers().contains(&own_addr),
         "a read replica must never seed its own address as a peer"
+    );
+    handle.abort();
+}
+
+/// #30: a failing discovery round (e.g. a DNS blip) must seed nothing and must not stop the
+/// loop — a later successful round still seeds normally, proving the failure is transient
+/// rather than fatal.
+#[tokio::test(flavor = "multi_thread")]
+async fn discover_periodically_survives_a_failed_round_and_recovers() {
+    let discovered: IpAddr = "127.0.9.65".parse().unwrap();
+    let fake = FakeDiscovery::new(vec![]);
+    fake.set(FakeDiscoveryResp::Blip);
+    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
+        .await
+        .expect("bind failed")
+        .with_discovery(Arc::new(fake.clone()))
+        .with_discovery_interval(Duration::from_millis(10));
+
+    let loop_replica = read_replica.clone();
+    let handle = tokio::spawn(async move { loop_replica.discover_periodically().await });
+
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    assert!(
+        read_replica.get_peers().is_empty(),
+        "a failing discovery round must never seed a peer"
+    );
+
+    fake.set(FakeDiscoveryResp::Present(vec![discovered]));
+    assert!(
+        wait_until(|| read_replica.get_peers().contains(&discovered)).await,
+        "discovery must recover and seed once the source starts succeeding again"
     );
     handle.abort();
 }
