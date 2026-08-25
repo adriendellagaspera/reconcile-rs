@@ -7,11 +7,15 @@
 // except according to those terms.
 
 //! System-level, end-to-end benchmarks driving the **public** `ReplicatedMap` API (point-read
-//! latency vs `HashMap`/`BTreeMap`, per-entry memory footprint, bulk-load throughput, cold anti-
-//! entropy convergence between two in-process nodes, gossip fan-out and propagation latency as
-//! node count grows, convergence under injected RTT and loss, and durable rejoin — snapshot-load
-//! time alone, then reconverge time and wire bytes for a snapshot-resumed rejoin against a cold
-//! one). Unlike the `bench` target, these reach no crate internals, so they need no feature gate.
+//! latency vs `HashMap`/`BTreeMap`, per-entry memory footprint (both a `size_of` fact and a real
+//! per-entry heap-cost measurement, #28/#47), bulk-load throughput, cold anti-entropy convergence
+//! between two in-process nodes, gossip fan-out and propagation latency as node count grows,
+//! convergence under injected RTT and loss, and durable rejoin — snapshot-load time alone, then
+//! reconverge time and wire bytes for a snapshot-resumed rejoin against a cold one). Unlike the
+//! `bench` target, these reach no crate internals, so they need no feature gate. `point_read`/
+//! `bulk_load`/`heap_footprint` each carry a `_heap` or inline heap-indirected (`String -> Vec<u8>`)
+//! variant alongside the `Copy` (`u32 -> u32`) baseline, isolating #28's confound #1 (key/value
+//! types).
 //!
 //! The `*_rtt` lanes answer the round-trip question: every other benchmark here runs at RTT ≈ 0,
 //! which prices bytes and zeroes round-trips — the axis RBSR is worst on. They run over the seeded
@@ -21,11 +25,12 @@
 //! Reproduction and interpretation are documented in `benches/README.md`. Not run in CI (only
 //! compile-checked); run locally with `cargo bench --bench system`.
 
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{BTreeMap, HashMap};
 use std::hint::black_box;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -47,10 +52,54 @@ use gossip::netem::{Link, Netem, NetemTransport, Probability, Rtt, Seed};
 /// Dataset sizes swept by the size-parameterised benchmarks (log scale).
 const SIZES: &[usize] = &[10, 100, 1_000, 10_000, 100_000];
 
+/// `point_read`/`bulk_load`/`heap_footprint`'s own sweep: [`SIZES`] by default, so a plain `cargo
+/// bench` stays fast (`benches/README.md`), extendable past 100k without a source edit via
+/// `RECONCILE_BENCH_SIZES` (a comma-separated override, the same env-var-configurability
+/// `contention.rs` uses) — #28's "sweep reaches ≥ 1M (opt-in for the largest)":
+///
+/// ```sh
+/// RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000 cargo bench --bench system -- point_read
+/// RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000,4000000 cargo bench --bench system -- bulk_load
+/// ```
+fn size_sweep() -> Vec<usize> {
+    match std::env::var("RECONCILE_BENCH_SIZES") {
+        Ok(v) => v
+            .split(',')
+            .map(|s| {
+                s.trim()
+                    .parse()
+                    .expect("RECONCILE_BENCH_SIZES: not a list of usize")
+            })
+            .collect(),
+        Err(_) => SIZES.to_vec(),
+    }
+}
+
 /// Deterministic `(key, value)` corpus: sequential keys keep every backend's layout comparable.
 fn corpus(n: usize) -> Vec<(u32, u32)> {
     (0..n as u32)
         .map(|k| (k, k.wrapping_mul(2_654_435_761)))
+        .collect()
+}
+
+/// Payload length of the heap-indirected corpus's value, in bytes — matching one of #47's own
+/// headline dataset shapes (its 64 B/256 B rows) so `heap_footprint`'s numbers below are directly
+/// comparable to that issue's external-prototype table rather than an arbitrary size.
+const HEAP_VALUE_LEN: usize = 64;
+
+/// Deterministic heap-indirected `(key, value)` corpus: `String` key, `Vec<u8>` value — the type
+/// pair every external-prototype table in #47/#51/#52 measured, and #28's confound #1 (key/value
+/// types) isolated from `corpus`'s `Copy` `u32 -> u32` baseline. Zero-padded decimal keys keep
+/// lexicographic order matching `corpus`'s numeric order, so both corpora exercise the same
+/// sequential-insertion shape.
+fn corpus_heap(n: usize, value_len: usize) -> Vec<(String, Vec<u8>)> {
+    (0..n as u32)
+        .map(|k| {
+            let key = format!("{k:010}");
+            let mut value = vec![0u8; value_len];
+            value[..4].copy_from_slice(&k.wrapping_mul(2_654_435_761).to_le_bytes());
+            (key, value)
+        })
         .collect()
 }
 
@@ -63,12 +112,55 @@ fn log_group<'a>(
     group
 }
 
-/// A fresh port per call — `Config::port` must be nonzero — so many [`loaded_store`]s can
-/// coexist.
+/// Tracks live heap bytes through the global allocator, powering [`heap_footprint`]'s real
+/// per-entry measurement for #47 — see that function's docs for the methodology and its limits.
+/// Wraps [`System`]; every other allocation in this binary (Criterion's own, tokio's, ...) also
+/// flows through it, which is why [`heap_footprint`] snapshots [`LIVE_BYTES`] immediately around
+/// the one call it means to price rather than trusting a running total.
+struct CountingAllocator;
+
+/// Net bytes currently outstanding through [`CountingAllocator`], process-wide.
+static LIVE_BYTES: AtomicI64 = AtomicI64::new(0);
+
+// SAFETY: every call forwards to `System`, the platform default `GlobalAlloc`, unchanged except
+// for the counter update — the allocation/deallocation contract is `System`'s, not altered here.
+unsafe impl GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let ptr = System.alloc(layout);
+        if !ptr.is_null() {
+            LIVE_BYTES.fetch_add(layout.size() as i64, Ordering::Relaxed);
+        }
+        ptr
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        System.dealloc(ptr, layout);
+        LIVE_BYTES.fetch_sub(layout.size() as i64, Ordering::Relaxed);
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        let new_ptr = System.realloc(ptr, layout, new_size);
+        if !new_ptr.is_null() {
+            LIVE_BYTES.fetch_add(new_size as i64 - layout.size() as i64, Ordering::Relaxed);
+        }
+        new_ptr
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: CountingAllocator = CountingAllocator;
+
+/// A fresh port per call — `Config::port` must be nonzero — so many [`loaded_store`]s can coexist.
+/// Cycles through `20_000..60_000` rather than a raw `fetch_add` on a `u16` counter: `bulk_load`'s
+/// `iter_batched` setup closure calls this once per warm-up/measured iteration, and a cheap
+/// closure (small `size`) runs it tens of thousands of times inside Criterion's 3 s warm-up alone —
+/// enough to overflow a bare `AtomicU16` and hand `Config::port` a wrapped `0`, which it rejects.
+/// UDP sockets release their port immediately on drop (no `TIME_WAIT`, unlike TCP), so cycling back
+/// through an already-used port is safe once its `ReplicatedMap` has gone out of scope.
 fn next_bench_port() -> u16 {
-    use std::sync::atomic::{AtomicU16, Ordering};
-    static NEXT: AtomicU16 = AtomicU16::new(22_000);
-    NEXT.fetch_add(1, Ordering::Relaxed)
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    let i = NEXT.fetch_add(1, Ordering::Relaxed);
+    20_000 + (i % 40_000) as u16
 }
 
 /// An in-process, peerless store loaded with `kvs`.
@@ -88,11 +180,28 @@ fn loaded_store(rt: &Runtime, kvs: &[(u32, u32)]) -> ReplicatedMap<u32, u32> {
     })
 }
 
+/// As [`loaded_store`], for the heap-indirected `String -> Vec<u8>` type pair.
+fn loaded_store_heap(rt: &Runtime, kvs: &[(String, Vec<u8>)]) -> ReplicatedMap<String, Vec<u8>> {
+    rt.block_on(async {
+        let store = ReplicatedMap::<String, Vec<u8>>::new(
+            Config::default()
+                .with_port(next_bench_port())
+                .with_listen_addr("127.0.0.1".parse().unwrap())
+                .with_net("127.0.0.1/8".parse().unwrap())
+                .with_insecure_no_key(),
+        )
+        .await
+        .expect("bind failed");
+        store.insert_bulk(kvs);
+        store
+    })
+}
+
 /// Point-read latency: `ReplicatedMap::get` against std collections at the same sizes.
 fn point_read(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "point_read");
-    for &size in SIZES {
+    for size in size_sweep() {
         let kvs = corpus(size);
         let probe = kvs[size / 2].0;
         let store = loaded_store(&rt, &kvs);
@@ -112,11 +221,37 @@ fn point_read(c: &mut Criterion) {
     group.finish();
 }
 
+/// As [`point_read`], for the heap-indirected `String -> Vec<u8>` type pair (#28's confound #1) —
+/// isolates whether `point_read`'s ratio against `HashMap`/`BTreeMap` is a property of the B-tree
+/// descent or an artefact of `Copy` keys/values never chasing a pointer.
+fn point_read_heap(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+    let mut group = log_group(c, "point_read_heap");
+    for size in size_sweep() {
+        let kvs = corpus_heap(size, HEAP_VALUE_LEN);
+        let probe = kvs[size / 2].0.clone();
+        let store = loaded_store_heap(&rt, &kvs);
+        let hashmap: HashMap<String, Vec<u8>> = kvs.iter().cloned().collect();
+        let btreemap: BTreeMap<String, Vec<u8>> = kvs.iter().cloned().collect();
+
+        group.bench_with_input(BenchmarkId::new("ReplicatedMap", size), &size, |b, _| {
+            b.iter(|| black_box(store.get(black_box(&probe)).map(|g| g.clone())));
+        });
+        group.bench_with_input(BenchmarkId::new("HashMap", size), &size, |b, _| {
+            b.iter(|| black_box(hashmap.get(black_box(&probe)).cloned()));
+        });
+        group.bench_with_input(BenchmarkId::new("BTreeMap", size), &size, |b, _| {
+            b.iter(|| black_box(btreemap.get(black_box(&probe)).cloned()));
+        });
+    }
+    group.finish();
+}
+
 /// Bulk-load throughput: `insert_bulk` of `N` fresh entries into an empty store.
 fn bulk_load(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "bulk_load");
-    for &size in SIZES {
+    for size in size_sweep() {
         let kvs = corpus(size);
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, _| {
@@ -124,6 +259,28 @@ fn bulk_load(c: &mut Criterion) {
             // context; `block_on` here runs sequentially after the setup's, never nested inside it.
             b.iter_batched(
                 || loaded_store(&rt, &[]),
+                |store| rt.block_on(async { store.insert_bulk(black_box(&kvs)) }),
+                criterion::BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
+}
+
+/// As [`bulk_load`], for the heap-indirected `String -> Vec<u8>` type pair — #51's own external
+/// prototype measured this type pair, not `u32 -> u32`; this is `insert_bulk`'s counterpart.
+/// `bulk_load_just_insert` (`benches/bench.rs`) is the per-entry `just_insert` counterpart to both
+/// this and `bulk_load` — it needs a `reconcile_internal_testing` seam this feature-gate-free
+/// binary cannot reach (`benches/README.md`).
+fn bulk_load_heap(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+    let mut group = log_group(c, "bulk_load_heap");
+    for size in size_sweep() {
+        let kvs = corpus_heap(size, HEAP_VALUE_LEN);
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, _| {
+            b.iter_batched(
+                || loaded_store_heap(&rt, &[]),
                 |store| rt.block_on(async { store.insert_bulk(black_box(&kvs)) }),
                 criterion::BatchSize::SmallInput,
             );
@@ -151,6 +308,86 @@ fn memory_footprint(c: &mut Criterion) {
     // A trivial timed anchor so the report participates in a normal `cargo bench` run.
     c.bench_function("memory_footprint::size_of", |b| {
         b.iter(|| black_box(std::mem::size_of::<Entry<Timestamp, [u8; 64]>>()));
+    });
+}
+
+/// Real per-entry heap-cost measurement for #47: live heap bytes the global allocator reports
+/// growing across one `ReplicatedMap::load_bulk` call of an `N`-entry corpus, divided by `N`.
+/// Printed, like `memory_footprint`, rather than timed — a byte count, not a duration — over both
+/// `size_sweep()` and both type pairs `point_read`/`bulk_load` cover, so a `RECONCILE_BENCH_SIZES`
+/// override extends this too.
+///
+/// # Methodology
+///
+/// [`CountingAllocator`] nets every allocation's requested [`Layout::size`] against every
+/// deallocation's, so [`LIVE_BYTES`] is the bytes outstanding through this process's allocator at
+/// any instant. Each measurement: build the `N`-entry corpus and an empty, peerless store (both
+/// outside the snapshot window, so corpus storage and socket/runtime setup never enter the delta),
+/// snapshot `LIVE_BYTES`, call `store.load_bulk(&corpus)` — synchronous and non-broadcasting, so
+/// nothing else in the process allocates concurrently with it — snapshot again, and divide the
+/// delta by `N`.
+///
+/// # Limits — read before comparing this to #47's RSS-based headline
+///
+/// - **Requested, not granted, bytes.** A real allocator (glibc `malloc` here) rounds a request up
+///   to its own size class; actual heap growth is `>=` this count, never less. This number is a
+///   **floor** on real RSS growth, not an apples-to-apples read of #47's `/usr/bin/time`-style
+///   measurement — a gap is *at least* allocator rounding, not by itself evidence against the
+///   structural (`ArrayVec`-slack / fingerprint-cache / dated-value-wrapper) decomposition there.
+/// - **No fragmentation, no arena overhead counted.** Freed-but-unreused heap holes, `malloc`'s own
+///   per-chunk bookkeeping, and address space the allocator reserves ahead of demand are all
+///   invisible to a requested-bytes count, for the same reason.
+/// - **Net delta, not gross.** A tree rebalance that frees and reallocates a node nets to ~0 here
+///   even though the freed bytes were real, transient heap pressure — this measures the *result*
+///   of loading `N` entries, not every allocation the tree performed to get there.
+/// - **Single global allocator, single timed window.** Valid only because `load_bulk` is
+///   synchronous and never spawns — true here, not a general property of this technique.
+fn heap_footprint(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+
+    fn report(label: &str, n: usize, raw_bytes_per_entry: usize, before: i64, after: i64) {
+        let delta = after - before;
+        let per_entry = delta as f64 / n as f64;
+        let raw = raw_bytes_per_entry as f64;
+        println!(
+            "[heap_footprint] {label}, n={n}: {delta} B live-heap growth, {per_entry:.1} B/entry \
+             (raw key+value = {raw:.0} B/entry, overhead = {overhead:.2}x)",
+            overhead = per_entry / raw.max(1.0),
+        );
+    }
+
+    for size in size_sweep() {
+        // u32 -> u32: `Copy`, no heap indirection of its own, isolating the tree's own per-entry
+        // structural overhead (#47's three causes) from any heap cost the value type would add.
+        let kvs = corpus(size);
+        let store = loaded_store(&rt, &[]);
+        let before = LIVE_BYTES.load(Ordering::Relaxed);
+        store.load_bulk(&kvs);
+        let after = LIVE_BYTES.load(Ordering::Relaxed);
+        report(
+            "u32 -> u32",
+            size,
+            2 * std::mem::size_of::<u32>(),
+            before,
+            after,
+        );
+        drop((kvs, store));
+
+        // String -> Vec<u8>: the heap-indirected type pair #47's external prototype measured.
+        let kvs = corpus_heap(size, HEAP_VALUE_LEN);
+        let raw = kvs.first().map_or(0, |(k, v)| k.len() + v.len());
+        let store = loaded_store_heap(&rt, &[]);
+        let before = LIVE_BYTES.load(Ordering::Relaxed);
+        store.load_bulk(&kvs);
+        let after = LIVE_BYTES.load(Ordering::Relaxed);
+        report("String -> Vec<u8>", size, raw, before, after);
+        drop((kvs, store));
+    }
+
+    // A trivial timed anchor so the report participates in a normal `cargo bench` run, like
+    // `memory_footprint`'s.
+    c.bench_function("heap_footprint::live_bytes", |b| {
+        b.iter(|| black_box(LIVE_BYTES.load(Ordering::Relaxed)));
     });
 }
 
@@ -1119,8 +1356,11 @@ fn durable_rejoin_network(c: &mut Criterion) {
 criterion_group!(
     benches,
     point_read,
+    point_read_heap,
     bulk_load,
+    bulk_load_heap,
     memory_footprint,
+    heap_footprint,
     cold_sync,
     gossip_fanout,
     gossip_propagation,

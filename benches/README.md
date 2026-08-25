@@ -32,15 +32,151 @@ Criterion writes HTML reports and raw CSV under `target/criterion/`; open `targe
 
 ## What each benchmark covers
 
-- **`point_read`** — `ReplicatedMap::get` latency vs `HashMap` and `BTreeMap` across dataset sizes. The store walks the B-tree (`O(log n)`), so this quantifies the read-path cost against the flat-map baselines (drives #171).
-- **`memory_footprint`** — prints the fixed per-entry footprint of the dated cell `Entry<Timestamp, V>` vs the value-only mirror projection `State<V>` across value payload sizes; the delta is the mirror's per-entry saving (drives #170). Printed, not timed.
-- **`bulk_load`** — `insert_bulk` throughput (entries/s) filling an empty store, across sizes (drives #173).
+- **`point_read`** — `ReplicatedMap::get` latency vs `HashMap` and `BTreeMap` across dataset sizes. The store walks the B-tree (`O(log n)`), so this quantifies the read-path cost against the flat-map baselines (drives #52). `point_read_heap` is its heap-indirected (`String -> Vec<u8>`) counterpart — see "Re-measuring #47/#51/#52" below.
+- **`memory_footprint`** — prints the fixed per-entry footprint of the dated cell `Entry<Timestamp, V>` vs the value-only mirror projection `State<V>` across value payload sizes; the delta is the mirror's per-entry saving. Printed, not timed. `heap_footprint` is the real per-entry **heap**-cost measurement (drives #47) — see "Re-measuring #47/#51/#52" below.
+- **`bulk_load`** — `insert_bulk` throughput (entries/s) filling an empty store, across sizes (drives #51). `bulk_load_heap` is its heap-indirected counterpart; `bulk_load_just_insert` (`benches/bench.rs`, below) is the per-entry `just_insert` counterpart to both.
 - **`cold_sync`** — wall time for an **empty** node to converge with a **full** one purely via anti-entropy: the full node is pre-loaded before it has any peer (nothing is broadcast eagerly), then the empty node seeds it and pulls the whole dataset through the range-diff protocol; timed until fingerprints match (drives #168). Loopback, i.e. RTT ≈ 0; `cold_sync_rtt` below prices the difference (**+1.0 × RTT**, flat in `N`).
 - **`gossip_fanout`** — bytes/datagrams *one node* sends for a single write, as peer count `N` grows (`2..128`, full-mesh-seeded, on an in-process `InMemoryNetwork` — no real sockets). `Replica::broadcast` (`src/replica.rs`) sends every local write to **all** known peers with no bound (only the separate, periodic WAN anti-entropy round is capped by `remote_fanout`), so this is expected, and confirmed, to be O(N) per node. Prints the exact datagram/byte count per write (deterministic, like `memory_footprint`) alongside the timed send-loop cost (drives #174's scaling gap). Also RTT ≈ 0; `gossip_fanout_rtt` prices that (**flat** — the send-side cost has no round trip to lengthen, unlike `gossip_propagation_rtt`; #187).
 - **`gossip_propagation`** — wall time from a write on one node to **every** other node observing it, as `N` grows (`2..32`, smaller range than `gossip_fanout` — see the caveat below). Unlike `gossip_fanout`, every node runs its real receive/reconcile loop throughout: the steady-state counterpart to `cold_sync`'s from-scratch convergence (drives #174's scaling gap). Also RTT ≈ 0; `gossip_propagation_rtt` prices that (**+0.5 × RTT** — one hop, not a chain).
 - **`broadcast_coalescing`** — datagrams/bytes the origin sends for one write burst, and the burst's convergence latency, `Config::coalesce_window` disabled against enabled (below, drives #187's "soften" half).
 - **`netem_calibration`**, **`cold_sync_rtt`**, **`gossip_propagation_rtt`**, **`gossip_fanout_rtt`** — the injected-RTT/loss lane. Its own section below.
 - **`durable_rejoin`** — two parts, own section below: `load` times reloading an `N`-entry `FileSnapshot` from disk alone; `snapshot`/`cold` compare a snapshot-resumed rejoin against a cold one on reconverge time **and** wire bytes (drives #172).
+
+## Re-measuring #47/#51/#52 (#28)
+
+#47/#51/#52 each carried an external-prototype evidence table predating this harness, disagreeing
+with `benches/system.rs`'s own numbers by up to ~60× — #28's own finding, across four confounds at
+once: key/value types (`u32 -> u32` vs the prototype's heap-indirected `String -> Vec`), scale (the
+sweep stopped at 100k, the prototype ran to 4M), write path (`just_insert` vs `insert_bulk`), and
+elapsed code (the prototype predates the workspace split). This section adds what #28 asked for —
+a heap-indirected type variant, a sweep reaching 1M, a `just_insert` counterpart, and a real
+per-entry heap-cost measurement — and reports what changed.
+
+**The size sweep** (`point_read`/`bulk_load`/`heap_footprint`'s `size_sweep()`) stays at
+`SIZES` (`10..100_000`) by default so a plain `cargo bench` stays fast; extend it with
+`RECONCILE_BENCH_SIZES`, a comma-separated override:
+
+```sh
+RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000 cargo bench --bench system -- point_read
+RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000,4000000 cargo bench --bench system -- bulk_load
+```
+
+**The heap-indirected type variant** — `point_read_heap`/`bulk_load_heap`/`heap_footprint`'s
+`String -> Vec<u8>` corpus, `corpus_heap` (`benches/system.rs`) — uses a 64 B value, one of #47's
+own headline dataset shapes, so its numbers are directly comparable to that issue's table rather
+than an arbitrary size.
+
+**The `just_insert` counterpart** — `bulk_load_just_insert` — lives in `benches/bench.rs`, not here:
+`just_insert` is a `reconcile_internal_testing` seam (AGENTS.md §6) this feature-gate-free binary
+cannot reach, the same reason `service_reconcile_rtt` lives there. Per-entry, no broadcast, at the
+same sizes as `bulk_load`:
+
+```sh
+RUSTFLAGS='--cfg reconcile_internal_testing' cargo bench --bench bench -- bulk_load_just_insert
+```
+
+### Results: `point_read`, `Copy` vs heap-indirected, out to 1M
+
+Measured on a 4-core sandboxed VM, release profile, `Seed::DEFAULT`'s deterministic corpus.
+`n=1000000` is a `--quick` sample (lower statistical confidence — the other rows are full-confidence
+Criterion samples); read a cross-row trend, not the last digit:
+
+| n | `ReplicatedMap<u32,u32>` | `HashMap` | `BTreeMap` | `ReplicatedMap<String,Vec<u8>>` | `HashMap` | `BTreeMap` |
+|---:|---:|---:|---:|---:|---:|---:|
+| 10 | 67.3 ns | 19.6 ns | 11.0 ns | 184 ns | 47.6 ns | 45.7 ns |
+| 100 | 86.9 ns | 18.8 ns | 13.5 ns | 292 ns | 48.2 ns | 55.6 ns |
+| 1 000 | 117 ns | 20.5 ns | 21.9 ns | 421 ns | 47.3 ns | 91.5 ns |
+| 10 000 | 164 ns | 19.0 ns | 31.6 ns | 576 ns | 48.9 ns | 144 ns |
+| 100 000 | 177 ns | 18.9 ns | 32.3 ns | 658 ns | 48.8 ns | 142 ns |
+| 1 000 000 | 220 ns | 19.0 ns | 27.2 ns | 814 ns | 46.9 ns | 108 ns |
+
+**The `Copy` ratio at 100k (~9.4× `HashMap`, ~5.5× `BTreeMap`) is already wider than #52's own
+in-repo table (~4.9×/~2.9×, `u32` at the same size)** — a different machine/run, not a regression;
+this file's convention throughout is that absolute numbers don't cross machines, only shapes and
+ratios do. The shape #52 draws its conclusion from — `ReplicatedMap` growing with `n` while both
+flat maps stay near-flat — holds at every size through 1M, `Copy` or heap-indirected.
+**Confound #1 (key/value types) is real, but modest next to the 60×**: the heap-indirected
+`ReplicatedMap` column runs 2.7–3.7× its `Copy` counterpart at the same `n` — string comparison
+during B-tree descent costs materially more than `u32` comparison — but even the heap-indirected
+column (814 ns at 1M) is nowhere near #52's quoted "≈20–50× a hash map" territory: at 1M it is
+~17× the heap-indirected `HashMap` column, past #52's already-revised ~5× but still well short of
+the prototype's headline. Type alone does not explain the original 60× gap; scale and elapsed code
+(#28's other two confounds) plausibly account for more of it than type does.
+
+### Results: `bulk_load`, `Copy` vs heap-indirected, `insert_bulk` vs `just_insert`, out to 1M
+
+Same run, same caveats (`n=1000000` is `--quick`):
+
+| n | `insert_bulk`, `u32,u32` | `insert_bulk`, `String,Vec<u8>` | `just_insert`, `u32,u32` (per-entry) |
+|---:|---:|---:|---:|
+| 10 | 454 Kelem/s | 175 Kelem/s | 520 Kelem/s |
+| 100 | 1 076 Kelem/s | 251 Kelem/s | 531 Kelem/s |
+| 1 000 | 1 176 Kelem/s | 251 Kelem/s | 388 Kelem/s |
+| 10 000 | 1 064 Kelem/s | 218 Kelem/s | 295 Kelem/s |
+| 100 000 | 899 Kelem/s | 194 Kelem/s | 235 Kelem/s |
+| 1 000 000 | 772 Kelem/s | 99 Kelem/s | 190 Kelem/s |
+
+**`just_insert`'s in-repo range (190–531 Kelem/s) lands squarely inside #51's own external-prototype
+range (~190–430k inserts/s)** — the closest match anywhere in this re-measurement pass, once the
+write path is held equal (both are per-entry, no-bulk-amortization inserts) even though the type
+pair still differs (`u32` here, `String -> Vec` there). **`insert_bulk` vs `just_insert`, same
+`u32,u32` type so the comparison isolates the write-path confound alone: the ratio is not constant**
+— 0.87× at `n=10` (bulk's own per-call setup dominates at that batch size, so bulk is *slower*
+per-entry than one-at-a-time there) rising to 4.06× at 1M. The amortization #51's proposal assumes
+is real, grows with batch size, and is already partly captured by the existing bulk path before any
+bottom-up build exists — but it is a curve, not a fixed multiplier, so a single headline ratio
+(#51's "~3–7×") understates it at large `n` and overstates it at small `n`. The heap-indirected
+`insert_bulk` column (99–251 Kelem/s) is not compared to `just_insert` here: that pair differs by
+both confounds (type *and* write path) at once, exactly the entanglement #28 flagged — isolating
+type alone needs a heap-indirected `just_insert`, not yet added (a natural follow-up, not required
+by #28's acceptance criteria). Every column here **declines past ~1k–10k** rather than holding
+`bulk_load`'s original flat-ish shape — consistent with `heap_footprint`'s finding below that
+per-entry heap cost is still climbing at those sizes, so cache and allocator pressure both worsen
+into the millions range this sweep newly reaches.
+
+### Results: `heap_footprint`, the real per-entry heap-cost measurement for #47
+
+Methodology, and its limits, are `heap_footprint`'s own doc comment (`benches/system.rs`) — read it
+before quoting this table: it is a **floor** on real RSS growth (requested, not granted, allocator
+bytes; no fragmentation or arena overhead), not an equal comparison to #47's `/usr/bin/time`-style
+headline. `Copy` (`u32 -> u32`, raw = 8 B/entry) isolates the tree's own structural overhead; the
+heap-indirected corpus uses `HEAP_VALUE_LEN` = 64 B (raw = key + value = 74 B/entry), one of #47's
+own dataset shapes, so the two are comparable:
+
+| n | `u32,u32` B/entry | overhead | `String,Vec<u8>` (64 B value) B/entry | overhead |
+|---:|---:|---:|---:|---:|
+| 10 | 0.0 B | — | 110 B | 1.48× |
+| 100 | 287 B | 35.8× | 579 B | 7.82× |
+| 1 000 | 317 B | 39.6× | 622 B | 8.41× |
+| 10 000 | 321 B | 40.1× | 629 B | 8.49× |
+| 100 000 | 322 B | 40.2× | 629 B | 8.51× |
+| 1 000 000 | 322 B | 40.2× | 630 B | 8.51× |
+
+Both columns settle by `n` = 10 000 and stay flat through 1M — consistent with #47's own "per-entry
+overhead is ~constant in value size" reading, now shown constant in `n` as well. `n` = 10's `Copy`
+row (exactly 0.0 B) is not measurement noise: an empty store's root is already one allocated `Node`
+whose `ArrayVec`s carry inline capacity for `MAX_CAPACITY` (11 in #47's own worked example) entries
+before a split allocates a second node — ten entries fit entirely inside that pre-existing root, so
+`load_bulk` grows nothing on the heap. `n=10`'s heap-indirected row is *not* zero (110 B) because
+each `String`/`Vec<u8>` value is its own heap allocation regardless of tree structure — this row
+isolates that from the tree's own per-node growth, visible only once `n` exceeds a node's capacity.
+
+**The heap-indirected floor (630 B/entry at 1M, 64 B values) lands close to #47's own headline for
+the same value size** — its "4M × 64 B: +2899 MiB, ~760 B/entry" row — the closest agreement
+anywhere in this pass, and in the direction the "floor, not ceiling" methodology predicts (630 <
+760: allocator rounding and fragmentation account for at least the remaining ~130 B). **The `Copy`
+floor (322 B/entry, `u32 -> u32`) is the harder number to reconcile**: #47's own analytical
+decomposition (`K = V = u64`, ~70% occupancy) put total structural overhead at ~90 B/entry — well
+under a third of this measurement, and re-scaling that estimate down to `u32`'s smaller raw
+keys/values would shrink its `keys`/`values` `ArrayVec` terms further, *widening* the gap rather
+than closing it (the two largest terms — the 32 B-per-element `hashes` cache and the `children`
+array — don't depend on `K`/`V` at all, so they can't close it either). Two live-heap-only
+measurements this pass cannot distinguish between: real occupancy is materially lower than the
+analytical model's
+~70% assumption (sequential ascending insertion is a plausible driver — B-tree splits under
+monotonic keys tend to leave the *previous* node full and the new one minimal, not both at the
+model's assumed fill), or the decomposition itself is missing a term. Both are #47's to resolve, not
+this benchmark's — see that issue for the re-triage this number feeds.
 
 ## Broadcast coalescing (#187)
 
