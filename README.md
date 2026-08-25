@@ -479,6 +479,19 @@ membership and no GC gate an absence could wrongly release, so a resolved addres
 a gossip peer, ages out after 60 s of silence like any other, and every `Discovery` implementation
 is accepted regardless of `kind()` — there is no decommissioning step to guard (#30).
 
+It also exposes the same lifecycle/introspection surface as a dated store, where it applies (#30):
+`local_addr`, `sync_state` (rounds/`last_round_at`/peer count — no `last_snapshot_at`, since it
+never persists, below), `peers`, `seed_peer` (the `&self` counterpart of `with_seed`), and
+`set_reconcile_interval` to retune the idle re-initiation cadence live. Two `ReplicatedMap`
+accessors have no counterpart, deliberately: `node_id()` (a read replica mints no `Timestamp`s, so
+it has no HLC identity) and `members()` (it holds no causal-stability membership at all — see
+above — so there is no stronger "GC-gating" peer tier to distinguish from `peers()`).
+
+It never persists: a restart always cold-starts empty and re-syncs from the dated cluster over the
+same protocol it uses steady-state. That re-sync is cheap by design (a value-only diff, no
+timestamp), so a matching `with_persistence`/snapshot story was not built — the whole point of a
+disposable read replica is that losing one costs nothing worse than a resync.
+
 ## Multiple geographical locations
 
 A single cluster can span several geographical locations (issue #53). Each location is **just an
@@ -547,7 +560,10 @@ anti-entropy — the worst case is suboptimal WAN traffic, never silent divergen
 *not* a security boundary (authentication is the cluster key); a declared net only tells the node
 which address range to send discovery probes into, so **only declare ranges you operate**. When
 migrating a region, prefer `add_net(new)` *before* `remove_net(old)` so discovery keeps the cluster
-well-connected throughout. `ReadReplicaMap` exposes the analogous `set_net`.
+well-connected throughout. `ReadReplicaMap` exposes the analogous `set_net`/`net` — but only a
+single network, not the four other methods above: it runs no cross-network gossip to throttle
+(`remote_interval`/`remote_fanout` are ignored, warned about at construction), so there is no
+local/remote split for a second declared net to drive (#30).
 
 ## Kubernetes (DNS-based discovery)
 

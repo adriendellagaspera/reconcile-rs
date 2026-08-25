@@ -117,13 +117,13 @@ async fn discover_periodically_seeds_resolved_addresses_as_peers() {
         .with_discovery(Arc::new(FakeDiscovery::new(vec![discovered])))
         .with_discovery_interval(Duration::from_millis(10));
 
-    assert!(!read_replica.get_peers().contains(&discovered));
+    assert!(!read_replica.peers().contains(&discovered));
 
     let loop_replica = read_replica.clone();
     let handle = tokio::spawn(async move { loop_replica.discover_periodically().await });
 
     assert!(
-        wait_until(|| read_replica.get_peers().contains(&discovered)).await,
+        wait_until(|| read_replica.peers().contains(&discovered)).await,
         "a resolved address was never seeded as a peer"
     );
     handle.abort();
@@ -151,11 +151,11 @@ async fn discover_periodically_never_seeds_its_own_address() {
     let handle = tokio::spawn(async move { loop_replica.discover_periodically().await });
 
     assert!(
-        wait_until(|| read_replica.get_peers().contains(&other)).await,
+        wait_until(|| read_replica.peers().contains(&other)).await,
         "the other discovered address was never seeded"
     );
     assert!(
-        !read_replica.get_peers().contains(&own_addr),
+        !read_replica.peers().contains(&own_addr),
         "a read replica must never seed its own address as a peer"
     );
     handle.abort();
@@ -180,13 +180,13 @@ async fn discover_periodically_survives_a_failed_round_and_recovers() {
 
     tokio::time::sleep(Duration::from_millis(80)).await;
     assert!(
-        read_replica.get_peers().is_empty(),
+        read_replica.peers().is_empty(),
         "a failing discovery round must never seed a peer"
     );
 
     fake.set(FakeDiscoveryResp::Present(vec![discovered]));
     assert!(
-        wait_until(|| read_replica.get_peers().contains(&discovered)).await,
+        wait_until(|| read_replica.peers().contains(&discovered)).await,
         "discovery must recover and seed once the source starts succeeding again"
     );
     handle.abort();

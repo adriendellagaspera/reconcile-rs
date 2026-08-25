@@ -25,6 +25,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -50,6 +51,8 @@ mod discovery;
 mod membership;
 mod read;
 mod write;
+
+pub use membership::ReadSyncState;
 
 /// Default cadence of the dynamic-discovery task (see
 /// [`ReadReplicaMap::with_discovery_interval`]). Matches
@@ -102,6 +105,17 @@ pub struct ReadReplicaMap<K, V> {
     discovery: Option<Arc<dyn Discovery>>,
     /// How often the discovery task (when configured) resolves the peer set.
     discovery_interval: Duration,
+    /// Reconciliation rounds completed since construction — see [`sync_state`](Self::sync_state).
+    /// Shared across clones, mirroring [`ReplicatedMap`](crate::ReplicatedMap)'s `round` (#30).
+    round: Arc<AtomicU64>,
+    /// When the most recently completed reconciliation round started, or `None` before the first
+    /// one. Shared across clones.
+    last_round_at: Arc<RwLock<Option<Instant>>>,
+    /// The background idle timeout: how long [`run`](Self::run) waits for inbound activity before
+    /// re-initiating a round. Sourced from [`Config::reconcile_interval`], live-retunable via
+    /// [`set_reconcile_interval`](Self::set_reconcile_interval) (#30 — previously a private,
+    /// unconfigurable constant).
+    reconcile_interval: Arc<RwLock<Duration>>,
 }
 
 impl<K, V> Clone for ReadReplicaMap<K, V> {
@@ -121,6 +135,9 @@ impl<K, V> Clone for ReadReplicaMap<K, V> {
             max_peers: self.max_peers,
             discovery: self.discovery.clone(),
             discovery_interval: self.discovery_interval,
+            round: self.round.clone(),
+            last_round_at: self.last_round_at.clone(),
+            reconcile_interval: self.reconcile_interval.clone(),
         }
     }
 }
@@ -264,6 +281,9 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             max_peers: PeerCap::new(config.max_peers),
             discovery: None,
             discovery_interval: DEFAULT_DISCOVERY_INTERVAL,
+            round: Arc::new(AtomicU64::new(0)),
+            last_round_at: Arc::new(RwLock::new(None)),
+            reconcile_interval: Arc::new(RwLock::new(config.reconcile_interval)),
         }
     }
 
@@ -271,6 +291,13 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     pub fn with_seed(self, peer: IpAddr) -> Self {
         self.peers.write().insert(peer, Instant::now());
         self
+    }
+
+    /// Register or refresh a known dated peer at runtime — the `&self` counterpart of
+    /// [`with_seed`](Self::with_seed), and what a discovery source feeds in. Mirrors
+    /// [`ReplicatedMap::seed_peer`](crate::ReplicatedMap::seed_peer) (#30).
+    pub fn seed_peer(&self, peer: IpAddr) {
+        self.peers.write().insert(peer, Instant::now());
     }
 }
 
