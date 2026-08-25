@@ -472,6 +472,13 @@ tokio::spawn(read_replica.clone().run());
 A read replica **always integrates** inbound updates and **never sends authoritative values** — it
 is a sink, not a source. The dated↔dated path (and its wire format) is byte-for-byte unchanged.
 
+It also takes the same discovery builders as `ReplicatedMap` — `with_discovery`,
+`with_dns_discovery`, `with_discovery_interval` — so it is deployable on Kubernetes the same way
+(see the Kubernetes section below). It is simpler there: a read replica holds no causal-stability
+membership and no GC gate an absence could wrongly release, so a resolved address is just seeded as
+a gossip peer, ages out after 60 s of silence like any other, and every `Discovery` implementation
+is accepted regardless of `kind()` — there is no decommissioning step to guard (#30).
+
 ## Multiple geographical locations
 
 A single cluster can span several geographical locations (issue #53). Each location is **just an
@@ -584,6 +591,9 @@ feeds exact peer IPs into the always-reconciled set.
 
 This discovery feeds peers regardless of declared topology, so a discovered peer is always
 reconciled even with no `with_net`.
+
+`ReadReplicaMap`/`ReadReplicaSet` take the same three builders (see "Read replica" above) — point
+a fleet of passive replicas at the same headless `Service` a dated `ReplicatedMap` cluster uses.
 
 Set the cluster key (`Config::with_cluster_key`, from a Kubernetes `Secret`) on every pod: without
 it the cluster runs **unauthenticated** (see the Security model above). A complete, turnkey

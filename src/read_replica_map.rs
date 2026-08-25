@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ipnet::IpNet;
 use parking_lot::RwLock;
@@ -35,6 +35,7 @@ use rand::SeedableRng;
 use tracing::{debug, warn};
 
 use crate::bounds::{Key, Value};
+use crate::discovery::Discovery;
 use crate::entry::State;
 use crate::replica::PeerCap;
 use crate::replicated_map::Config;
@@ -44,9 +45,15 @@ use gossip::auth;
 use gossip::gen_ip::net_of;
 use gossip::replay;
 
+mod discovery;
 mod membership;
 mod read;
 mod write;
+
+/// Default cadence of the dynamic-discovery task (see
+/// [`ReadReplicaMap::with_discovery_interval`]). Matches
+/// [`ReplicatedMap`](crate::ReplicatedMap)'s default.
+const DEFAULT_DISCOVERY_INTERVAL: Duration = Duration::from_secs(5);
 
 type OnUpdateCallback<K, V> = Box<dyn Send + Sync + Fn(&K, &State<V>)>;
 
@@ -78,6 +85,14 @@ pub struct ReadReplicaMap<K, V> {
     /// senders are dropped before any per-sender state is allocated when the peers map reaches
     /// this size. Sourced from [`Config::max_peers`].
     max_peers: PeerCap,
+    /// Optional dynamic peer-discovery source (e.g. Kubernetes DNS), on top of the always-on random
+    /// probe each reconciliation round. Unlike [`ReplicatedMap`](crate::ReplicatedMap)'s,
+    /// discovered addresses here are never decommissioned: a read replica holds no
+    /// causal-stability membership and no GC gate to release, so there is nothing an absence needs
+    /// to protect against (module docs).
+    discovery: Option<Arc<dyn Discovery>>,
+    /// How often the discovery task (when configured) resolves the peer set.
+    discovery_interval: Duration,
 }
 
 impl<K, V> Clone for ReadReplicaMap<K, V> {
@@ -94,6 +109,8 @@ impl<K, V> Clone for ReadReplicaMap<K, V> {
             replay_filter: self.replay_filter.clone(),
             on_update: self.on_update.clone(),
             max_peers: self.max_peers,
+            discovery: self.discovery.clone(),
+            discovery_interval: self.discovery_interval,
         }
     }
 }
@@ -232,6 +249,8 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             )),
             on_update: Arc::new(RwLock::new(Box::new(|_, _| {}))),
             max_peers: PeerCap::new(config.max_peers),
+            discovery: None,
+            discovery_interval: DEFAULT_DISCOVERY_INTERVAL,
         }
     }
 
