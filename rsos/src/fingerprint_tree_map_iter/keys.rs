@@ -16,7 +16,7 @@ use crate::fingerprint_tree_map::FingerprintTreeMap;
 
 use super::{IntoKeys, Keys};
 
-impl<K, V> Iterator for IntoKeys<K, V> {
+impl<K: Clone, V: Clone> Iterator for IntoKeys<K, V> {
     type Item = K;
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(k, _)| k)
@@ -26,13 +26,13 @@ impl<K, V> Iterator for IntoKeys<K, V> {
     }
 }
 
-impl<K, V> ExactSizeIterator for IntoKeys<K, V> {
+impl<K: Clone, V: Clone> ExactSizeIterator for IntoKeys<K, V> {
     fn len(&self) -> usize {
         self.inner.len()
     }
 }
 
-impl<K, V> FusedIterator for IntoKeys<K, V> {}
+impl<K: Clone, V: Clone> FusedIterator for IntoKeys<K, V> {}
 
 impl<K: fmt::Debug + Clone, V: Clone> fmt::Debug for IntoKeys<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -40,7 +40,7 @@ impl<K: fmt::Debug + Clone, V: Clone> fmt::Debug for IntoKeys<K, V> {
     }
 }
 
-impl<K, V> FingerprintTreeMap<K, V> {
+impl<K: Clone, V: Clone> FingerprintTreeMap<K, V> {
     /// Consumes the tree, yielding `K` in ascending key order.
     ///
     /// # Examples

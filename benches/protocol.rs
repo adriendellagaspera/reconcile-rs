@@ -111,7 +111,7 @@ const DIFFERENCES: &[(usize, Clustering)] = &[
 /// Build a store of `n` sequential entries, omitting `missing`, each key carrying `value(key)`.
 /// Sequential keys: the measured quantity depends on rank positions, not key distribution, and
 /// stays reproducible without a PRNG.
-fn store_of<V: Serialize>(
+fn store_of<V: Serialize + Clone>(
     n: usize,
     missing: &[u64],
     value: impl Fn(u64) -> V,

@@ -89,7 +89,7 @@ pub trait Rsos<K> {
     fn delete(&mut self, key: &K) -> Option<Self::Value>;
 }
 
-impl<K: Serialize + Ord, V: Serialize> Rsos<K> for FingerprintTreeMap<K, V> {
+impl<K: Serialize + Ord + Clone, V: Serialize + Clone> Rsos<K> for FingerprintTreeMap<K, V> {
     type Value = V;
 
     fn size(&self) -> usize {

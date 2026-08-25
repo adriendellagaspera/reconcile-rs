@@ -7,6 +7,7 @@
 // except according to those terms.
 
 use std::borrow::Borrow;
+use std::sync::Arc;
 
 use arrayvec::ArrayVec;
 use serde::Serialize;
@@ -18,12 +19,12 @@ use crate::fingerprint::{lift, Fingerprint};
 use super::node::Node;
 use super::{element, FingerprintTreeMap, InsertionTuple, MIN_CAPACITY};
 
-impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
+impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> {
     /// Inserts `key`/`value`, returning the previous value if `key` was already present.
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         /// The right sibling to insert if this node split, the fingerprint delta, and the
         /// previous value at `key`.
-        fn aux<K: Serialize + Ord, V: Serialize>(
+        fn aux<K: Serialize + Ord + Clone, V: Serialize + Clone>(
             node: &mut Node<K, V>,
             key: K,
             value: V,
@@ -42,7 +43,10 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                 }
                 Err(index) => {
                     if let Some(children) = node.children.as_mut() {
-                        let (mut to_insert, diff_fp, ret) = aux(&mut children[index], key, value);
+                        // Forks this child's subtree via `Arc::make_mut` only if it is still
+                        // shared with an older retained version -- unshared, it mutates in place.
+                        let (mut to_insert, diff_fp, ret) =
+                            aux(Arc::make_mut(&mut children[index]), key, value);
                         if let Some((key, value, fingerprint, right_child)) = to_insert {
                             to_insert = node.insert(
                                 index,
@@ -66,19 +70,20 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                 }
             }
         }
-        let (to_insert, _, ret) = aux(&mut self.root, key, value);
+        let (to_insert, _, ret) = aux(Arc::make_mut(&mut self.root), key, value);
         // if we still have things to insert at the root, we need to create a new root
         if let Some((key, value, fingerprint, right_child)) = to_insert {
-            let new_root = Box::new(Node::new());
+            let new_root = Arc::new(Node::new());
             let old_root = std::mem::replace(&mut self.root, new_root);
             let mut children = ArrayVec::new();
             children.push(old_root);
             children.push(right_child);
-            self.root.keys.push(key);
-            self.root.values.push(value);
-            self.root.fingerprints.push(fingerprint);
-            self.root.children = Some(children);
-            self.root.refresh_aggregate();
+            let root = Arc::make_mut(&mut self.root);
+            root.keys.push(key);
+            root.values.push(value);
+            root.fingerprints.push(fingerprint);
+            root.children = Some(children);
+            root.refresh_aggregate();
         }
         trace!(
             "Updated state after insertion; global fingerprint is now {}",
@@ -92,12 +97,13 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
     /// Removes `key`, returning its value if it was present.
     pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
     where
-        K: Borrow<Q>,
+        K: Borrow<Q> + Clone,
+        V: Clone,
         Q: Ord + ?Sized,
     {
-        fn rightmost_child<K, V>(node: &mut Node<K, V>) -> (K, V, Fingerprint) {
+        fn rightmost_child<K: Clone, V: Clone>(node: &mut Node<K, V>) -> (K, V, Fingerprint) {
             if let Some(children) = node.children.as_mut() {
-                let (k, v, fp) = rightmost_child(children.last_mut().unwrap());
+                let (k, v, fp) = rightmost_child(Arc::make_mut(children.last_mut().unwrap()));
                 node.decompose_from_subtree(element(fp));
                 node.rebalance_after_deletion(node.keys.len());
                 (k, v, fp)
@@ -110,14 +116,15 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
             }
         }
         /// The fingerprint delta and the value removed at `key`, if present.
-        fn aux<K: Borrow<Q>, V, Q: Ord + ?Sized>(
+        fn aux<K: Borrow<Q> + Clone, V: Clone, Q: Ord + ?Sized>(
             node: &mut Node<K, V>,
             key: &Q,
         ) -> (Fingerprint, Option<V>) {
             match node.keys.binary_search_by(|probe| probe.borrow().cmp(key)) {
                 Ok(index) => {
                     if let Some(children) = node.children.as_mut() {
-                        let (prev_k, prev_v, prev_fp) = rightmost_child(&mut children[index]);
+                        let (prev_k, prev_v, prev_fp) =
+                            rightmost_child(Arc::make_mut(&mut children[index]));
                         node.keys[index] = prev_k;
                         let v = std::mem::replace(&mut node.values[index], prev_v);
                         let fp = std::mem::replace(&mut node.fingerprints[index], prev_fp);
@@ -134,7 +141,7 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
                 }
                 Err(index) => {
                     if let Some(children) = node.children.as_mut() {
-                        let (diff_fp, ret) = aux(&mut children[index], key);
+                        let (diff_fp, ret) = aux(Arc::make_mut(&mut children[index]), key);
                         let removed = Aggregate::new(usize::from(ret.is_some()), diff_fp);
                         node.decompose_from_subtree(removed);
                         node.rebalance_after_deletion(index);
@@ -145,7 +152,7 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
                 }
             }
         }
-        let ret = aux(&mut self.root, key).1;
+        let ret = aux(Arc::make_mut(&mut self.root), key).1;
         trace!(
             "Updated state after removal; global fingerprint is now {}",
             self.root.subtree().fingerprint()
@@ -175,6 +182,7 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
     pub fn retain<F: FnMut(&K, &V) -> bool>(&mut self, mut keep: F)
     where
         K: Clone,
+        V: Clone,
     {
         let to_remove: Vec<K> = self
             .iter()
@@ -303,7 +311,7 @@ pub struct Entry<'a, K, V> {
     key: K,
 }
 
-impl<'a, K: Serialize + Ord + Clone, V: Serialize> Entry<'a, K, V> {
+impl<'a, K: Serialize + Ord + Clone, V: Serialize + Clone> Entry<'a, K, V> {
     /// Inserts `default` if the entry is vacant, then returns the (possibly just-inserted) value.
     pub fn or_insert(self, default: V) -> &'a V {
         self.or_insert_with(|| default)

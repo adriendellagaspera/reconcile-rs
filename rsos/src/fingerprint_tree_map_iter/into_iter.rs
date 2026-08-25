@@ -10,6 +10,7 @@
 
 use std::fmt;
 use std::iter::FusedIterator;
+use std::sync::Arc;
 
 use serde::Serialize;
 
@@ -17,7 +18,9 @@ use crate::fingerprint_tree_map::FingerprintTreeMap;
 
 use super::{IntoIter, IntoIterLayer};
 
-impl<K: Serialize + Ord, V: Serialize> FromIterator<(K, V)> for FingerprintTreeMap<K, V> {
+impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FromIterator<(K, V)>
+    for FingerprintTreeMap<K, V>
+{
     /// Builds a [`FingerprintTreeMap`] from key-value pairs, sorted by key before insertion.
     fn from_iter<T>(iter: T) -> Self
     where
@@ -33,12 +36,18 @@ impl<K: Serialize + Ord, V: Serialize> FromIterator<(K, V)> for FingerprintTreeM
     }
 }
 
-impl<K, V> IntoIter<K, V> {
+impl<K: Clone, V: Clone> IntoIter<K, V> {
     /// One pop-and-possibly-expand step; recurses past `Node` frames without touching
     /// `remaining`, which `next()` adjusts exactly once per yielded element.
     fn advance(&mut self) -> Option<(K, V)> {
         match self.stack.pop() {
-            Some(IntoIterLayer::Node(mut node)) => {
+            Some(IntoIterLayer::Node(node)) => {
+                // Unshared (the common case, and the only possible one when `K`/`V` are not
+                // `Clone` -- see the `Clone` bound on this impl and on
+                // `FingerprintTreeMap::clone`, the only way to make a second `Arc` reference to
+                // this node): moves out with no clone. Shared with an older retained version:
+                // clones, same as every other COW fork point in this crate.
+                let mut node = Arc::try_unwrap(node).unwrap_or_else(|arc| (*arc).clone());
                 if let Some(mut children) = node.children {
                     self.stack
                         .push(IntoIterLayer::Node(children.pop().unwrap()));
@@ -64,7 +73,7 @@ impl<K, V> IntoIter<K, V> {
     }
 }
 
-impl<K, V> Iterator for IntoIter<K, V> {
+impl<K: Clone, V: Clone> Iterator for IntoIter<K, V> {
     type Item = (K, V);
     fn next(&mut self) -> Option<Self::Item> {
         let item = self.advance();
@@ -78,13 +87,13 @@ impl<K, V> Iterator for IntoIter<K, V> {
     }
 }
 
-impl<K, V> ExactSizeIterator for IntoIter<K, V> {
+impl<K: Clone, V: Clone> ExactSizeIterator for IntoIter<K, V> {
     fn len(&self) -> usize {
         self.remaining
     }
 }
 
-impl<K, V> FusedIterator for IntoIter<K, V> {}
+impl<K: Clone, V: Clone> FusedIterator for IntoIter<K, V> {}
 
 impl<K: fmt::Debug + Clone, V: fmt::Debug + Clone> fmt::Debug for IntoIter<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -92,7 +101,7 @@ impl<K: fmt::Debug + Clone, V: fmt::Debug + Clone> fmt::Debug for IntoIter<K, V>
     }
 }
 
-impl<K, V> IntoIterator for FingerprintTreeMap<K, V> {
+impl<K: Clone, V: Clone> IntoIterator for FingerprintTreeMap<K, V> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V>;
     /// Consumes the tree, yielding `(K, V)` in ascending key order.
