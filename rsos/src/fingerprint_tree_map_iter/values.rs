@@ -23,7 +23,7 @@ use crate::fingerprint_tree_map::FingerprintTreeMap;
 
 use super::{IntoValues, Values};
 
-impl<K, V> Iterator for IntoValues<K, V> {
+impl<K: Clone, V: Clone> Iterator for IntoValues<K, V> {
     type Item = V;
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(_, v)| v)
@@ -33,13 +33,13 @@ impl<K, V> Iterator for IntoValues<K, V> {
     }
 }
 
-impl<K, V> ExactSizeIterator for IntoValues<K, V> {
+impl<K: Clone, V: Clone> ExactSizeIterator for IntoValues<K, V> {
     fn len(&self) -> usize {
         self.inner.len()
     }
 }
 
-impl<K, V> FusedIterator for IntoValues<K, V> {}
+impl<K: Clone, V: Clone> FusedIterator for IntoValues<K, V> {}
 
 impl<K: Clone, V: fmt::Debug + Clone> fmt::Debug for IntoValues<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -47,7 +47,7 @@ impl<K: Clone, V: fmt::Debug + Clone> fmt::Debug for IntoValues<K, V> {
     }
 }
 
-impl<K, V> FingerprintTreeMap<K, V> {
+impl<K: Clone, V: Clone> FingerprintTreeMap<K, V> {
     /// Consumes the tree, yielding `V` in ascending key order.
     ///
     /// # Examples
@@ -124,7 +124,7 @@ pub(super) struct ValuesMut<'a, K, V> {
 }
 
 #[cfg(test)]
-impl<'a, K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
+impl<'a, K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> {
     /// Yields `&mut V` in ascending key order; leaves fingerprints stale.
     pub(super) fn values_mut(&'a mut self) -> ValuesMut<'a, K, V> {
         ValuesMut {
@@ -134,7 +134,7 @@ impl<'a, K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
 }
 
 #[cfg(test)]
-impl<'a, K: 'a + Serialize + Ord, V: Serialize> Iterator for ValuesMut<'a, K, V> {
+impl<'a, K: 'a + Serialize + Ord + Clone, V: Serialize + Clone> Iterator for ValuesMut<'a, K, V> {
     type Item = &'a mut V;
 
     fn next(&mut self) -> Option<Self::Item> {

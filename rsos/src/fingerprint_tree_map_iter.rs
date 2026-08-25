@@ -22,6 +22,8 @@
 //! one traversal's `impl` blocks; this file keeps the public type definitions (their module
 //! location is their `cargo public-api`-visible path -- see AGENTS.md §11).
 
+use std::sync::Arc;
+
 use crate::fingerprint_tree_map::Node;
 
 mod into_iter;
@@ -33,7 +35,7 @@ mod values;
 
 #[derive(Clone, Debug)]
 enum IntoIterLayer<K, V> {
-    Node(Box<Node<K, V>>),
+    Node(Arc<Node<K, V>>),
     Element(K, V),
 }
 

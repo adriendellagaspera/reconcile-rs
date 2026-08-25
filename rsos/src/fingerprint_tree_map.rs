@@ -20,6 +20,7 @@
 //! shared support (`Side`/`without`/`element`) every sibling draws on.
 
 use std::ops::RangeBounds;
+use std::sync::Arc;
 
 use crate::aggregate::Aggregate;
 use crate::fingerprint::Fingerprint;
@@ -42,7 +43,7 @@ const _: usize = B.checked_sub(3).expect(
      (MAX_CAPACITY == 3) a split at mid = 1 leaves a sibling with zero keys",
 );
 
-type InsertionTuple<K, V> = Option<(K, V, Fingerprint, Box<Node<K, V>>)>;
+type InsertionTuple<K, V> = Option<(K, V, Fingerprint, Arc<Node<K, V>>)>;
 
 /// Which sibling a [`Node::steal`] rotates a separator from.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -92,13 +93,13 @@ fn element(fingerprint: Fingerprint) -> Aggregate {
 /// ```
 #[derive(Clone)]
 pub struct FingerprintTreeMap<K, V> {
-    pub(crate) root: Box<Node<K, V>>,
+    pub(crate) root: Arc<Node<K, V>>,
 }
 
 impl<K, V> Default for FingerprintTreeMap<K, V> {
     fn default() -> Self {
         FingerprintTreeMap {
-            root: Box::new(Node::new()),
+            root: Arc::new(Node::new()),
         }
     }
 }

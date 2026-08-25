@@ -20,7 +20,7 @@ fn check_invariants_panics_on_a_corrupted_fingerprint_cache() {
     tree.insert(2, 20);
     tree.check_invariants();
 
-    tree.root.fingerprints[0] += lift(&999u64, &999u64);
+    std::sync::Arc::make_mut(&mut tree.root).fingerprints[0] += lift(&999u64, &999u64);
 
     let panicked =
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tree.check_invariants())).is_err();
@@ -42,9 +42,9 @@ fn check_invariants_panics_on_an_underfull_non_root_node_on_the_rightmost_spine(
     let mut tree: FingerprintTreeMap<u64, u64> = (0..200).map(|k| (k, k)).collect();
     tree.check_invariants();
 
-    fn truncate_rightmost_leaf<K, V>(node: &mut Node<K, V>) {
+    fn truncate_rightmost_leaf<K: Clone, V: Clone>(node: &mut Node<K, V>) {
         if let Some(children) = node.children.as_mut() {
-            truncate_rightmost_leaf(children.last_mut().unwrap());
+            truncate_rightmost_leaf(std::sync::Arc::make_mut(children.last_mut().unwrap()));
         } else {
             while node.keys.len() >= MIN_CAPACITY {
                 node.keys.pop();
@@ -54,7 +54,7 @@ fn check_invariants_panics_on_an_underfull_non_root_node_on_the_rightmost_spine(
         }
         node.refresh_aggregate();
     }
-    truncate_rightmost_leaf(tree.root.as_mut());
+    truncate_rightmost_leaf(std::sync::Arc::make_mut(&mut tree.root));
 
     let panicked =
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tree.check_invariants())).is_err();
@@ -142,7 +142,8 @@ fn check_invariants_catches_a_corrupted_fingerprint_cache() {
     map.insert(1, 10);
     // Combining with a nonzero fingerprint always changes the value (group addition), so
     // this is guaranteed to no longer match `lift(&1, &10)`.
-    map.root.fingerprints[0] = map.root.fingerprints[0].combine(Fingerprint([1, 0, 0, 0]));
+    let root = std::sync::Arc::make_mut(&mut map.root);
+    root.fingerprints[0] = root.fingerprints[0].combine(Fingerprint([1, 0, 0, 0]));
     map.check_invariants();
 }
 
@@ -158,9 +159,9 @@ fn check_invariants_catches_an_undersized_non_root_node() {
     }
     map.check_invariants(); // sanity: valid before corruption
 
-    fn shrink_a_leaf<K, V>(node: &mut Node<K, V>) {
+    fn shrink_a_leaf<K: Clone, V: Clone>(node: &mut Node<K, V>) {
         if let Some(children) = node.children.as_mut() {
-            shrink_a_leaf(&mut children[0]);
+            shrink_a_leaf(std::sync::Arc::make_mut(&mut children[0]));
         } else {
             while node.keys.len() >= MIN_CAPACITY {
                 node.keys.pop();
@@ -169,7 +170,7 @@ fn check_invariants_catches_an_undersized_non_root_node() {
             }
         }
     }
-    shrink_a_leaf(&mut map.root);
+    shrink_a_leaf(std::sync::Arc::make_mut(&mut map.root));
 
     map.check_invariants();
 }

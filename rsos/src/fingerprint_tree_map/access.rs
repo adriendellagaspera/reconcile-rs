@@ -8,6 +8,7 @@
 
 use std::borrow::Borrow;
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 use serde::Serialize;
 
@@ -26,27 +27,33 @@ struct KeyPath {
 
 /// Restores the aggregate invariants for one in-place value mutation, **on drop** — so a
 /// panicking callback still leaves every cached [`Aggregate`] consistent with what is stored.
-struct Relift<'a, K: Serialize, V: Serialize> {
+struct Relift<'a, K: Serialize + Clone, V: Serialize + Clone> {
     root: &'a mut Node<K, V>,
     path: KeyPath,
     key: &'a K,
 }
 
-impl<K: Serialize, V: Serialize> Relift<'_, K, V> {
+impl<K: Serialize + Clone, V: Serialize + Clone> Relift<'_, K, V> {
     /// The value this guard will re-lift, reached by following the recorded route.
+    ///
+    /// Forks each node on the route via [`Arc::make_mut`] before `callback` runs, exactly as
+    /// [`Drop::drop`]'s `repair` does on the way back -- see the module-level design note this
+    /// mirrors.
     fn value_mut(&mut self) -> &mut V {
         let mut node = &mut *self.root;
         for &index in &self.path.descent {
-            node = node.children.as_mut().expect("interior node on the route")[index].as_mut();
+            node = Arc::make_mut(
+                &mut node.children.as_mut().expect("interior node on the route")[index],
+            );
         }
         &mut node.values[self.path.key_index]
     }
 }
 
-impl<K: Serialize, V: Serialize> Drop for Relift<'_, K, V> {
+impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
     fn drop(&mut self) {
         /// The signed fingerprint delta this subtree contributed, already applied to its cache.
-        fn repair<K: Serialize, V: Serialize>(
+        fn repair<K: Serialize + Clone, V: Serialize + Clone>(
             node: &mut Node<K, V>,
             descent: &[usize],
             key_index: usize,
@@ -60,7 +67,9 @@ impl<K: Serialize, V: Serialize> Drop for Relift<'_, K, V> {
                     new_fp - old_fp
                 }
                 Some((&index, rest)) => repair(
-                    node.children.as_mut().expect("interior node on the route")[index].as_mut(),
+                    Arc::make_mut(
+                        &mut node.children.as_mut().expect("interior node on the route")[index],
+                    ),
                     rest,
                     key_index,
                     key,
@@ -146,7 +155,11 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
     /// assert_ne!(before.fingerprint(), after.fingerprint());
     /// assert_eq!(before.size(), after.size());
     /// ```
-    pub fn with_mut<R, F: FnOnce(Option<&mut V>) -> R>(&mut self, key: &K, callback: F) -> R {
+    pub fn with_mut<R, F: FnOnce(Option<&mut V>) -> R>(&mut self, key: &K, callback: F) -> R
+    where
+        K: Clone,
+        V: Clone,
+    {
         let mut descent = Vec::new();
         let mut node = self.root.as_ref();
         let key_index = loop {
@@ -163,7 +176,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
         };
 
         let mut guard = Relift {
-            root: self.root.as_mut(),
+            root: Arc::make_mut(&mut self.root),
             path: KeyPath { descent, key_index },
             key,
         };

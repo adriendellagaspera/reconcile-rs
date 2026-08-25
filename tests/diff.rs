@@ -15,7 +15,7 @@ pub fn diff<K, V>(
 ) -> (Vec<EnumerationRange<K>>, Vec<EnumerationRange<K>>)
 where
     K: Clone + Serialize + Ord,
-    V: Serialize,
+    V: Serialize + Clone,
 {
     let mut local_diff_ranges = Vec::new();
     let mut remote_diff_ranges = Vec::new();
