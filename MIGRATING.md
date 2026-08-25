@@ -1,5 +1,19 @@
 # Migration guide
 
+## Unreleased
+
+### `ValueRef` no longer borrows a lock guard
+
+`ReplicatedMap::get`/`ReadReplicaMap::get` return the same `ValueRef<...>` wrapper, but its shape
+changed from `ValueRef<'a, V>` to `ValueRef<K, V>` (#34): it now owns an immutable `Arc` snapshot
+of the whole backing tree plus the looked-up key, rather than a `parking_lot` lock guard. Action
+needed only if you named the type explicitly (e.g. `let v: ValueRef<'_, i32> = store.get(&k)`) —
+drop the lifetime argument. `Deref<Target = V>` behavior is unchanged.
+
+One behavioral improvement falls out of this: holding a `ValueRef` no longer risks a deadlock
+against a concurrent write on the same handle — the write installs a fresh tree behind a new
+`Arc`, and the `ValueRef` still points at whichever tree was live when `get` returned it.
+
 ## 0.3.0 to 0.4.0
 
 Both changes below are additive-only-until-the-1.0-wire-freeze decisions (#382, #463) — the last
