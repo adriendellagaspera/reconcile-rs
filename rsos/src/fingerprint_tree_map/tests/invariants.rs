@@ -132,9 +132,8 @@ fn with_mut_passes_the_callback_result_back() {
     tree.check_invariants();
 }
 
-/// `check_invariants` must actually detect a broken tree, not just run without asserting
-/// anything: corrupt the cached per-element fingerprint directly (private-field access, same
-/// module) and confirm it panics rather than silently accepting the mismatch.
+/// Same fault as [`check_invariants_panics_on_a_corrupted_fingerprint_cache`] above, pinned to
+/// its specific panic message rather than a generic panic.
 #[test]
 #[should_panic(expected = "per-element fingerprint cache invalid")]
 fn check_invariants_catches_a_corrupted_fingerprint_cache() {

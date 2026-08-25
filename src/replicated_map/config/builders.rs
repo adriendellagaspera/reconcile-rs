@@ -111,7 +111,7 @@ impl Config {
 
     /// Set the rate, in bytes per second, at which a single bulk anti-entropy value transfer to one
     /// peer is paced (default 32 MiB/s). See [`bulk_send_rate`](Config::bulk_send_rate); to disable
-    /// pacing (the historical back-to-back burst), set that field to `None` directly.
+    /// pacing (an unpaced back-to-back burst), set that field to `None` directly.
     #[must_use]
     pub fn with_bulk_send_rate(mut self, bytes_per_sec: usize) -> Self {
         self.bulk_send_rate = Some(bytes_per_sec);

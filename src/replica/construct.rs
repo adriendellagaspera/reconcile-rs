@@ -185,7 +185,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                      updates and poison the cluster via last-write-wins, and any host inside the \
                      configured nets will eventually receive the ENTIRE DATASET via paced diff \
                      dumps once RandomProbe discovers it. Set Config::with_cluster_key on every \
-                     node, or restrict the network to a trusted underlay. See REVIEW.md F3."
+                     node, or restrict the network to a trusted underlay. See ARCHITECTURE.md §8 \
+                     finding F3."
                 );
             }
         }
@@ -204,8 +205,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         });
         let map = FingerprintTreeMap::<K, Entry<Timestamp, V>>::new();
         let projection = FingerprintTreeMap::<K, State<V>>::new();
-        // The geographical networks this cluster spans. With none declared, fall back to the
-        // historical flat loopback cluster.
+        // The geographical networks this cluster spans. With none declared, fall back to a
+        // single flat loopback cluster.
         let mut nets: Vec<IpNet> = config.nets.iter().flatten().copied().collect();
         if nets.is_empty() {
             nets.push("127.0.0.1/8".parse().unwrap());

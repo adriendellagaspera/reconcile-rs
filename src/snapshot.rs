@@ -16,10 +16,9 @@
 //! infrastructure-free `lww-register` crate — the domain owns the contract, this adapter owns the
 //! filesystem and the codec.
 //!
-//! It briefly lived in a standalone `snapshot` crate during the workspace split and was folded back
-//! into `reconcile` afterwards: one type with no standalone reuse value did not earn a published
-//! identity of its own (ARCHITECTURE.md §2). [`FileSnapshot`] is re-exported from
-//! [`crate::persistence`] and from the crate root, which is where consumers have always seen it.
+//! One type with no standalone reuse value outside this workspace, so it stays folded into
+//! `reconcile` rather than earning its own crate (`ARCHITECTURE.md` §2). [`FileSnapshot`] is
+//! re-exported from [`crate::persistence`] and from the crate root.
 
 use std::fs;
 use std::io;

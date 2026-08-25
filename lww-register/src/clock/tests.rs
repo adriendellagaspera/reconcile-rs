@@ -277,9 +277,8 @@ fn assert_conformance_rejects_a_non_monotonic_clock() {
     });
 }
 
-/// The bug shape this test targets, independent of the open/close decision above: an
-/// `observe_trusted` that clamps like `observe`. Reintroduces own-write shadowing after a
-/// backward clock step, and used to type-check silently under the old default body.
+/// The bug shape this test targets: an `observe_trusted` that clamps like `observe`, reintroducing
+/// own-write shadowing after a backward clock step (`Clock::observe_trusted`'s docs).
 struct ClampingTrustedClock {
     node_id: NodeId,
     last: std::sync::Mutex<Hlc>,
