@@ -8,14 +8,52 @@
 
 use crate::fingerprint::LiftKey;
 
-use super::super::FingerprintTreeMap;
+use super::super::{FingerprintTreeMap, MAX_CAPACITY};
+
+/// The most items a subtree of `height` levels can hold, reimplemented independently of
+/// `bulk.rs`'s own (private, so unreachable from here) `Capacities` -- an oracle, not a call into
+/// the code under test, so it actually pins the fanout arithmetic rather than checking the
+/// implementation agrees with itself.
+fn max_capacity(height: usize) -> usize {
+    let mut cap = 0usize;
+    for _ in 0..height {
+        cap = MAX_CAPACITY + (MAX_CAPACITY + 1) * cap;
+    }
+    cap
+}
+
+/// The smallest height whose [`max_capacity`] covers `n` -- `1` for `n == 0` too: an empty tree
+/// is still a single (empty) leaf, matching [`tree_height`] and `check_invariants`'s own height
+/// count, both of which start a leaf at `1` regardless of key count.
+fn min_height_for(n: usize) -> usize {
+    let mut height = 1;
+    while max_capacity(height) < n {
+        height += 1;
+    }
+    height
+}
+
+/// `1` for a single leaf, counting levels down the leftmost spine -- independent of, and the
+/// same walk `check_invariants` itself cross-checks against a recursive count.
+fn tree_height<K, V>(tree: &FingerprintTreeMap<K, V>) -> usize {
+    let mut node = tree.root.as_ref();
+    let mut height = 1;
+    while let Some(children) = node.children.as_ref() {
+        height += 1;
+        node = &children[0];
+    }
+    height
+}
 
 /// Every size from 0 up through several tree heights (height 2 starts at 12 items, height 3 at
 /// 144, height 4 at 1728 -- `B = 6`, `MAX_CAPACITY = 11`): a bulk-built tree must independently
-/// pass [`FingerprintTreeMap::check_invariants`] and agree, element for element and in aggregate,
+/// pass [`FingerprintTreeMap::check_invariants`], agree, element for element and in aggregate,
 /// with a tree built by `n` individual [`insert`](FingerprintTreeMap::insert) calls -- exactly
-/// #51's acceptance criterion ("identical resulting fingerprints"), checked at every size rather
-/// than a handful of samples so a capacity-planning off-by-one at a height boundary cannot hide.
+/// #51's acceptance criterion ("identical resulting fingerprints") -- and reach the minimum
+/// possible height for `n` (dense packing is the whole point of a bottom-up build, not just a
+/// nice-to-have; without this check a fanout-arithmetic bug can produce a *valid* tree that is
+/// needlessly tall and nothing here would notice). Checked at every size rather than a handful of
+/// samples so a capacity-planning off-by-one at a height boundary cannot hide.
 #[test]
 fn matches_serial_insert_at_every_size_through_several_tree_heights() {
     for n in 0..2000u32 {
@@ -37,6 +75,7 @@ fn matches_serial_insert_at_every_size_through_several_tree_heights() {
             items,
             "n = {n}"
         );
+        assert_eq!(tree_height(&bulk), min_height_for(n as usize), "n = {n}");
     }
 }
 
@@ -57,6 +96,7 @@ fn matches_serial_insert_at_benchmark_scale() {
 
         assert_eq!(bulk.len(), n as usize);
         assert_eq!(bulk.aggregate(..), serial.aggregate(..), "n = {n}");
+        assert_eq!(tree_height(&bulk), min_height_for(n as usize), "n = {n}");
     }
 }
 
