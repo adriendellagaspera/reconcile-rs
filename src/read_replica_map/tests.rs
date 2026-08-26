@@ -9,6 +9,7 @@
 use crate::replicated_map::Config;
 
 mod discovery;
+mod lifecycle;
 mod membership;
 mod read;
 mod write;

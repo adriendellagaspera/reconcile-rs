@@ -26,7 +26,7 @@ async fn set_net_retunes_what_net_reports() {
     assert_eq!(read_replica.net(), retuned);
 }
 
-/// `get_peers` drops an entry once it has been silent well past `PEER_EXPIRATION`, but keeps a
+/// `peers` drops an entry once it has been silent well past `PEER_EXPIRATION`, but keeps a
 /// peer heard from well within the window.
 ///
 /// Not a boundary test: pinning the exact instant `elapsed() == PEER_EXPIRATION` would require
@@ -35,7 +35,7 @@ async fn set_net_retunes_what_net_reports() {
 /// it" — exactly the flakiness `.claude/rules/tests.md` rules out. See `.cargo/mutants.toml`'s
 /// `membership.rs:33:53` entry for the boundary-operator mutant this can't distinguish.
 #[tokio::test]
-async fn get_peers_drops_expired_entries_but_keeps_fresh_ones() {
+async fn peers_drops_expired_entries_but_keeps_fresh_ones() {
     let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
         .await
         .expect("bind failed");
@@ -51,7 +51,7 @@ async fn get_peers_drops_expired_entries_but_keeps_fresh_ones() {
         .write()
         .insert(fresh, Instant::now() - Duration::from_secs(1));
 
-    let remaining = read_replica.get_peers();
+    let remaining = read_replica.peers();
     assert!(
         !remaining.contains(&stale),
         "a peer silent past PEER_EXPIRATION must be dropped"

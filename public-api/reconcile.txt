@@ -101,11 +101,16 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::to_vec(&self) -> alloc
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::values(&self) -> alloc::vec::Vec<V>
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::net(&self) -> ipnet::ipnet::IpNet
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_net(&self, ipnet::ipnet::IpNet)
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_reconcile_interval(&self, core::time::Duration)
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> Self
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::run(self)
@@ -124,6 +129,22 @@ impl<K, V> core::marker::Unpin for reconcile::read_replica_map::ReadReplicaMap<K
 impl<K, V> core::marker::UnsafeUnpin for reconcile::read_replica_map::ReadReplicaMap<K, V> where alloc::sync::Arc<arc_swap::ArcSwapAny<alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>>>: core::marker::UnsafeUnpin, alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, alloc::boxed::Box<(dyn core::ops::function::Fn(&K, &lww_register::entry::State<V>) + core::marker::Sync + core::marker::Send)>>>: core::marker::UnsafeUnpin
 impl<K, V> !core::panic::unwind_safe::RefUnwindSafe for reconcile::read_replica_map::ReadReplicaMap<K, V>
 impl<K, V> !core::panic::unwind_safe::UnwindSafe for reconcile::read_replica_map::ReadReplicaMap<K, V>
+#[non_exhaustive] pub struct reconcile::read_replica_map::ReadSyncState
+pub reconcile::read_replica_map::ReadSyncState::last_round_at: core::option::Option<std::time::Instant>
+pub reconcile::read_replica_map::ReadSyncState::peers: usize
+pub reconcile::read_replica_map::ReadSyncState::rounds: u64
+impl core::clone::Clone for reconcile::read_replica_map::ReadSyncState
+pub fn reconcile::read_replica_map::ReadSyncState::clone(&self) -> reconcile::read_replica_map::ReadSyncState
+impl core::fmt::Debug for reconcile::read_replica_map::ReadSyncState
+pub fn reconcile::read_replica_map::ReadSyncState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile::read_replica_map::ReadSyncState
+impl core::marker::Freeze for reconcile::read_replica_map::ReadSyncState
+impl core::marker::Send for reconcile::read_replica_map::ReadSyncState
+impl core::marker::Sync for reconcile::read_replica_map::ReadSyncState
+impl core::marker::Unpin for reconcile::read_replica_map::ReadSyncState
+impl core::marker::UnsafeUnpin for reconcile::read_replica_map::ReadSyncState
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile::read_replica_map::ReadSyncState
+impl core::panic::unwind_safe::UnwindSafe for reconcile::read_replica_map::ReadSyncState
 pub mod reconcile::read_replica_set
 pub struct reconcile::read_replica_set::ReadReplicaSet<K>(_)
 impl<K: lww_register::bounds::Key> reconcile::read_replica_set::ReadReplicaSet<K>
@@ -438,11 +459,16 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::to_vec(&self) -> alloc
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::values(&self) -> alloc::vec::Vec<V>
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::net(&self) -> ipnet::ipnet::IpNet
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_net(&self, ipnet::ipnet::IpNet)
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_reconcile_interval(&self, core::time::Duration)
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> Self
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::run(self)
