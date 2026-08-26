@@ -131,8 +131,26 @@ impl<K, V> From<DatedEntries<K, V>> for PersistedState<K, V> {
 /// ```
 pub trait Persistence<K, V>: Send + Sync + 'static {
     /// Load the previously saved state, or `Ok(None)` if nothing was ever saved.
+    ///
+    /// # Call context
+    ///
+    /// Called synchronously and inline, once, from `reconcile::ReplicatedMap::with_persistence` —
+    /// before the node starts gossiping, typically from within an already-`async` caller (see that
+    /// method's own doctest). A slow or blocking implementation stalls whichever thread runs that
+    /// call; nothing else is running yet for it to hold up. `O(state size)` — the trait offers no
+    /// incremental load, so a large snapshot is read and deserialized in full, every time.
     fn load(&self) -> io::Result<Option<PersistedState<K, V>>>;
     /// Durably save the given state, atomically replacing any previous snapshot.
+    ///
+    /// # Call context
+    ///
+    /// Called synchronously and inline — never via `spawn_blocking` — both from the periodic
+    /// background snapshot task and from an explicit caller-triggered flush; a slow implementation
+    /// blocks whichever Tokio worker thread is running that call for as long as it takes. `O(state
+    /// size)` — every call transfers the *entire* map, never a diff since the last save. `state`
+    /// is internally consistent per key (each entry was read atomically) but not a single
+    /// linearizable instant across all of them — a write concurrent with the snapshot's
+    /// construction may or may not be reflected in it.
     fn save(&self, state: &PersistedState<K, V>) -> io::Result<()>;
 }
 

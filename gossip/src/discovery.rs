@@ -60,6 +60,14 @@ pub enum DiscoveryKind {
 /// hiccup decommissions nobody.
 pub trait Discovery: Send + Sync + 'static {
     /// Resolve the current candidate peer set.
+    ///
+    /// # Call context
+    ///
+    /// Awaited directly by the discovery background task's loop, once per round, with **no
+    /// caller-side timeout**: a hang here stalls that loop indefinitely (delaying every later
+    /// round), though nothing else — reconciliation and the engine's own per-net probing are
+    /// unaffected. Bound your own latency (see [`DnsDiscovery::with_timeout`]) rather than relying
+    /// on a caller-imposed deadline that does not exist.
     fn discover(&self) -> DiscoverFuture<'_>;
 
     /// How [`discover`](Self::discover)'s result is read.
