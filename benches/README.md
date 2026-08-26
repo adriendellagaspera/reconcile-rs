@@ -423,21 +423,33 @@ its RTT-independence (this table) are two separate findings, both now measured. 
 
 ### Results: loss, at `rtt=1ms`
 
+Superseded numbers (pre-#23, kept for the delta below): `gossip_propagation_rtt/N=8` at loss=1 %
+measured 100 ms, ~169× its no-loss baseline, because nothing retransmitted and the exchange was
+only repaired by the next `reconcile_interval` anti-entropy round (1 s by default). Re-measured on
+the same 4-core Xeon @ 2.10 GHz, seed `0x5eed0280`, one process covering both the RTT and loss
+sweeps together:
+
 | benchmark | no loss | loss=0.1% | loss=1% |
 |---|---:|---:|---:|
-| `cold_sync_rtt/n=1000` | 2.05 ms | 1.97 ms | 20.5 ms |
-| `cold_sync_rtt/n=10000` | 12.48 ms | 16.2 ms | 112 ms |
-| `gossip_propagation_rtt/N=8` | 595 µs | 6.55 ms | 100 ms |
+| `cold_sync_rtt/n=1000` | 1.27 ms | 2.24 ms | 5.36 ms |
+| `cold_sync_rtt/n=10000` | 13.27 ms | 15.60 ms | 36.75 ms |
+| `gossip_propagation_rtt/N=8` | 113 µs | 1.44 ms | 11.97 ms |
 
-**A lost datagram costs a full `reconcile_interval`, not a retransmit.** There is no retransmission:
-the exchange is only repaired by the next anti-entropy round, so the penalty is the cadence —
-`Config::reconcile_interval`, 1 s by default. Every cell above is that mechanism and nothing else:
-the mean is `P(any datagram of the exchange lost) × ~1 s`, which for `gossip_propagation_rtt`'s 7
-receivers is `1 − 0.99⁷ ≈ 6.8 %` → ~100 ms (measured 100 ms), and at 0.1 % is `≈ 0.7 %` → ~7 ms
-(measured 6.55 ms). Hence the wide confidence intervals: the distribution is bimodal, not noisy.
+**A lost comparison round now costs `Config::repair_interval`, not `reconcile_interval`.**
+`Message::ConvergenceAck` (#23) acks a round that converges with nothing else to report, so an
+unanswered round — the signature of a lost datagram — is retried on `repair_interval` (150 ms by
+default: "comfortably above" the 0–50 ms RTT sweep, "comfortably below" `reconcile_interval`'s 1 s,
+`DEFAULT_REPAIR_INTERVAL`'s own docs) instead of waiting out the background sweep. The mean is
+`P(any datagram of the exchange lost) × ~150 ms`: for `gossip_propagation_rtt`'s 7 receivers, 1 %
+loss is `1 − 0.99⁷ ≈ 6.8 %` → ~10.2 ms predicted against 11.97 ms measured; 0.1 % is `≈ 0.7 %` →
+~1.05 ms predicted against 1.44 ms measured. Both track the new, smaller constant; the wide
+confidence intervals persist (the distribution stays bimodal, not noisy) because the *repairing*
+round can itself lose a datagram, same as before.
 
-Operationally: **on a lossy path, `reconcile_interval` is the latency knob, not RTT.** 1 s of it
-dwarfs the 50 ms top of the RTT sweep by 20×.
+Operationally: **on a lossy path, `repair_interval` is now the latency knob, not RTT** — but at its
+150 ms default it dwarfs the RTT sweep's 50 ms top by only 3×, not the 20× `reconcile_interval`'s 1 s
+did; tuned down toward the RTT sweep's own floor (`Config::repair_interval`'s docs give the tuning
+trade-off), the gap narrows further.
 
 Every lane is seeded (`Seed::DEFAULT`, printed with the results) and the impairment stream per
 directed link replays exactly; what does not replay bit-for-bit is task interleaving on a
