@@ -63,6 +63,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             live_entry_count(total_entries, live_tombstones_len),
             live_tombstones_len,
             self.bulk_dumps_in_flight.load(Ordering::Relaxed),
+            self.broadcasts_in_flight.load(Ordering::Relaxed),
         );
 
         // De-duplicate so a discovery probe that happens to hit a known peer is not sent twice.

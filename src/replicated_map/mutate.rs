@@ -13,7 +13,7 @@ use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::Entry;
 
-use super::ReplicatedMap;
+use super::{Backpressure, ReplicatedMap};
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Mutate the value for `k` in place, then propagate like [`insert`](ReplicatedMap::insert).
@@ -63,11 +63,17 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         }
     }
 
-    /// Mutate `k` in place **only when live**, re-stamping and broadcasting; returns whether it
-    /// was. Atomic against the reconciliation loop.
+    /// Mutate `k` in place **only when live**, re-stamping it; returns the re-stamped entry, or
+    /// `None` if `k` was absent/tombstoned. Atomic against the reconciliation loop. Never
+    /// broadcasts — the caller decides how, since [`try_update`](Self::try_update) needs a slot
+    /// claimed *before* this runs (#83), unlike [`mutate_live`](Self::mutate_live)'s callers.
     ///
-    /// The shared core of [`update`](Self::update) and [`upsert`](Self::upsert).
-    fn mutate_live<F: FnOnce(&mut V)>(&self, k: &K, callback: F) -> bool {
+    /// The shared core of [`mutate_live`](Self::mutate_live) and [`try_update`](Self::try_update).
+    fn mutate_live_no_broadcast<F: FnOnce(&mut V)>(
+        &self,
+        k: &K,
+        callback: F,
+    ) -> Option<Entry<Timestamp, V>> {
         // Mint the timestamp before taking the write lock, matching the lock order of `insert`.
         let now = self.engine.clock_now();
         let mut updated: Option<Entry<Timestamp, V>> = None;
@@ -91,12 +97,20 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             }
         }
         self.engine.map.store(Arc::new(map));
-        drop(_guard);
-        if let Some(value) = updated {
-            self.engine.broadcast_update(k.clone(), value);
-            true
-        } else {
-            false
+        updated
+    }
+
+    /// Mutate `k` in place **only when live**, re-stamping and broadcasting; returns whether it
+    /// was. Atomic against the reconciliation loop.
+    ///
+    /// The shared core of [`update`](Self::update) and [`upsert`](Self::upsert).
+    fn mutate_live<F: FnOnce(&mut V)>(&self, k: &K, callback: F) -> bool {
+        match self.mutate_live_no_broadcast(k, callback) {
+            Some(value) => {
+                self.engine.broadcast_update(k.clone(), value);
+                true
+            }
+            None => false,
         }
     }
 
@@ -137,6 +151,71 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     #[must_use]
     pub fn update<F: FnOnce(&mut V)>(&self, k: &K, f: F) -> bool {
         self.mutate_live(k, f)
+    }
+
+    /// Fallible counterpart of [`update`](Self::update) (#83): claims a
+    /// [`max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts) egress slot
+    /// **before** even checking whether `k` is live, so a call is all-or-nothing the way
+    /// [`ReplicatedMap::try_insert`](super::ReplicatedMap::try_insert) is — never a mutation that
+    /// then silently fails to broadcast. Always sends immediately, bypassing coalescing, for the
+    /// same reason `try_insert` does.
+    ///
+    /// # Errors
+    ///
+    /// [`Backpressure`] when the egress budget is already at capacity. Nothing is mutated —
+    /// including when `k` turns out to be absent/tombstoned, which `update` would otherwise treat
+    /// as a safe, budget-free no-op; that asymmetry is the cost of the all-or-nothing guarantee.
+    ///
+    /// # Deadlock
+    ///
+    /// `f` runs while the map write lock is held — same hazard as
+    /// [`get_mut`](Self::get_mut)'s `# Deadlock` section.
+    ///
+    /// # Panics
+    ///
+    /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
+    /// `k` is live).
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let network = InMemoryNetwork::new();
+    /// let transport = Arc::new(network.bind("127.0.0.1:8310".parse().unwrap()));
+    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
+    ///     Config::default().with_insecure_no_key(),
+    ///     transport,
+    /// );
+    ///
+    /// assert_eq!(store.try_update(&"a".to_string(), |v| *v += 1), Ok(false));
+    ///
+    /// store.insert("a".to_string(), 1);
+    /// assert_eq!(store.try_update(&"a".to_string(), |v| *v += 1), Ok(true));
+    /// assert_eq!(store.get_cloned(&"a".to_string()), Some(2));
+    /// # }
+    /// ```
+    pub fn try_update<F: FnOnce(&mut V)>(&self, k: &K, f: F) -> Result<bool, Backpressure> {
+        let Some(guard) = self.engine.try_claim_broadcast_slot() else {
+            return Err(Backpressure {
+                in_flight: self.engine.broadcasts_in_flight(),
+                max_in_flight: self.engine.max_concurrent_broadcasts(),
+            });
+        };
+        match self.mutate_live_no_broadcast(k, f) {
+            Some(value) => {
+                self.engine
+                    .broadcast_update_with_claimed_slot(k.clone(), value, guard);
+                Ok(true)
+            }
+            None => {
+                // No live entry to update: release the claimed slot immediately rather than hold
+                // it for a broadcast that will never happen.
+                drop(guard);
+                Ok(false)
+            }
+        }
     }
 
     /// Update the live value for `k` with `f`, or insert `default` if it is absent or tombstoned.

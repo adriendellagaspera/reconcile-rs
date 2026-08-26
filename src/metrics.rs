@@ -37,6 +37,8 @@
 //! | [`ENTRIES_CURRENT`](crate::metrics::ENTRIES_CURRENT) | gauge | live (non-tombstone) entries right now |
 //! | [`TOMBSTONES_CURRENT`](crate::metrics::TOMBSTONES_CURRENT) | gauge | outstanding tombstones right now |
 //! | [`BULK_DUMPS_IN_FLIGHT`](crate::metrics::BULK_DUMPS_IN_FLIGHT) | gauge | bulk anti-entropy dumps in flight right now |
+//! | [`BROADCASTS_IN_FLIGHT`](crate::metrics::BROADCASTS_IN_FLIGHT) | gauge | write-broadcast tasks in flight right now |
+//! | [`BROADCAST_BACKPRESSURE_TOTAL`](crate::metrics::BROADCAST_BACKPRESSURE_TOTAL) | counter (`path` label) | writes that hit the egress budget (#83) |
 //! | [`PERSISTENCE_FAILURES_CURRENT`](crate::metrics::PERSISTENCE_FAILURES_CURRENT) | gauge | consecutive snapshot failures since the last success (0 when healthy) |
 
 /// Local key insertions.
@@ -89,6 +91,14 @@ pub const TOMBSTONES_CURRENT: &str = "reconcile_tombstones_current";
 /// Current count of bulk anti-entropy dumps in flight, across all peers (bounded by
 /// `Config::max_concurrent_bulk_dumps`).
 pub const BULK_DUMPS_IN_FLIGHT: &str = "reconcile_bulk_dumps_in_flight";
+/// Current count of write-broadcast tasks in flight, across every propagating local write
+/// (bounded by `Config::max_concurrent_broadcasts`, #83) — the egress-side counterpart of
+/// [`BULK_DUMPS_IN_FLIGHT`].
+pub const BROADCASTS_IN_FLIGHT: &str = "reconcile_broadcasts_in_flight";
+/// Writes that hit the `Config::max_concurrent_broadcasts` egress budget (#83), labeled `path`:
+/// `"eager"` for `insert`/`update`/`insert_bulk`, which skip only that write's broadcast and keep
+/// the local write; `"try"` for `try_insert`/`try_update`, which reject the whole call instead.
+pub const BROADCAST_BACKPRESSURE_TOTAL: &str = "reconcile_broadcast_backpressure_total";
 /// Consecutive persistence-backend snapshot failures since the last success; `0` while healthy.
 /// A sustained non-zero value means durability has been broken since it last rose from zero.
 pub const PERSISTENCE_FAILURES_CURRENT: &str = "reconcile_persistence_failures_current";

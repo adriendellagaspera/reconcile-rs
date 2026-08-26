@@ -26,6 +26,7 @@ use crate::replica::Replica;
 use crate::timeout_wheel::TimeoutWheel;
 use crate::transport::Transport;
 
+mod backpressure;
 mod config;
 mod discovery;
 mod membership;
@@ -34,6 +35,7 @@ mod persistence;
 mod read;
 mod write;
 
+pub use backpressure::Backpressure;
 pub(crate) use config::MIN_BULK_SEND_RATE;
 pub use config::{Config, ConfigError, MAX_NETS};
 #[cfg(test)]

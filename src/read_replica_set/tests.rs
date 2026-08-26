@@ -31,6 +31,7 @@ fn ephemeral_config() -> Config {
         freshness_window: gossip::replay::FRESHNESS_WINDOW_DEFAULT,
         max_peers: 1024,
         max_concurrent_bulk_dumps: 4,
+        max_concurrent_broadcasts: 1024,
         snapshot_interval: Duration::from_secs(5),
         max_clock_drift: crate::clock::MAX_CLOCK_DRIFT,
         coalesce_window: Duration::ZERO,

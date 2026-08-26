@@ -195,6 +195,17 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.bulk_dumps_in_flight.load(Ordering::Acquire)
     }
 
+    /// Number of write-broadcast tasks currently in flight (#83).
+    ///
+    /// Exposed for test assertions under `cfg(reconcile_internal_testing)`. Production code reads
+    /// the same counter unconditionally through [`Replica::broadcasts_in_flight`], via
+    /// [`Backpressure`](crate::replicated_map::Backpressure)'s construction and the
+    /// `reconcile_broadcasts_in_flight` gauge.
+    #[cfg(any(test, reconcile_internal_testing))]
+    pub(crate) fn broadcasts_in_flight_count(&self) -> usize {
+        self.broadcasts_in_flight.load(Ordering::Acquire)
+    }
+
     /// This node's configured listen address, used by discovery to never decommission itself.
     pub(crate) fn listen_addr(&self) -> IpAddr {
         self.listen_addr

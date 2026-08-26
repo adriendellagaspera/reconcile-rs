@@ -255,6 +255,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 bulk_in_flight: Arc::new(RwLock::new(HashSet::new())),
                 bulk_dumps_in_flight: Arc::new(AtomicUsize::new(0)),
                 max_concurrent_bulk_dumps: config.max_concurrent_bulk_dumps,
+                broadcasts_in_flight: Arc::new(AtomicUsize::new(0)),
+                max_concurrent_broadcasts: config.max_concurrent_broadcasts,
                 pending_dumps: Arc::new(RwLock::new(HashMap::new())),
                 pending_value_dumps: Arc::new(RwLock::new(HashMap::new())),
                 round: Arc::new(AtomicU32::new(0)),
