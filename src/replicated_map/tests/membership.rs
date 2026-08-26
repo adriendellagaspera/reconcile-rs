@@ -256,6 +256,26 @@ async fn bulk_dumps_in_flight_count_reflects_a_dump_actually_in_progress() {
     );
 }
 
+/// `broadcasts_in_flight_count` (#83) must reflect the engine's real, live counter, not a
+/// constant: claims/releases a slot directly through the engine (both crate-visible from this
+/// test module) and checks the wrapper reports each transition.
+#[tokio::test]
+async fn broadcasts_in_flight_count_reflects_claimed_and_released_slots() {
+    let store =
+        ReplicatedMap::<i32, i32>::new(ephemeral_config().with_max_concurrent_broadcasts(1))
+            .await
+            .expect("bind failed");
+
+    assert_eq!(store.broadcasts_in_flight_count(), 0);
+    let guard = store
+        .engine
+        .try_claim_broadcast_slot()
+        .expect("first slot must be available");
+    assert_eq!(store.broadcasts_in_flight_count(), 1);
+    drop(guard);
+    assert_eq!(store.broadcasts_in_flight_count(), 0);
+}
+
 /// `set_remote_interval` must actually retune the engine's cross-network cadence: with no nets
 /// declared every peer is remote by default, so this is the sole gate on contact here.
 #[tokio::test]

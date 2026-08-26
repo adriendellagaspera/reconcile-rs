@@ -26,6 +26,7 @@ pub(crate) fn next_ephemeral_test_port() -> u16 {
 }
 
 mod auth_attack;
+mod broadcast_budget;
 mod causal_stability;
 mod clock_drift;
 mod clock_port;

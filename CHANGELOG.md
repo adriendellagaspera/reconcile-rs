@@ -42,6 +42,16 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `Config::max_concurrent_broadcasts`/`with_max_concurrent_broadcasts` (default 1024, #83): bounds
+  the number of concurrently in-flight write-broadcast tasks, the egress-side counterpart of
+  `Config::max_concurrent_bulk_dumps`; the `reconcile_broadcasts_in_flight` gauge and
+  `reconcile_broadcast_backpressure_total` counter (`metrics` feature) expose the depth and every
+  rejection/skip. `ReplicatedMap::insert`/`update`/`insert_bulk` keep their infallible signatures —
+  at the budget they skip only that call's eager broadcast, recovered by the next anti-entropy
+  round or repair retry (#23). `ReplicatedMap::try_insert`/`try_update` are new, additive,
+  all-or-nothing counterparts that instead reject with `replicated_map::Backpressure` when the
+  budget is exhausted, for a caller that wants to know rather than rely on that backstop — see
+  README "Write backpressure".
 - `Config::repair_interval`/`with_repair_interval`, and
   `ReplicatedMap`/`ReplicatedSet::set_repair_interval` (#23): an RTT-scale timer (default 150 ms)
   that repairs a comparison round or bulk-transfer datagram lost in flight, decoupled from

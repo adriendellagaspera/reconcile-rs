@@ -154,6 +154,15 @@ pub(crate) struct Inner<K, V> {
     bulk_dumps_in_flight: Arc<AtomicUsize>,
     /// Global cap on the number of concurrently active paced bulk dumps.
     max_concurrent_bulk_dumps: usize,
+    /// Write-broadcast tasks currently in flight, across every propagating local write (#83) —
+    /// the egress-side counterpart of [`bulk_dumps_in_flight`](Self::bulk_dumps_in_flight). At
+    /// [`max_concurrent_broadcasts`](Self::max_concurrent_broadcasts) a new eager broadcast is
+    /// skipped rather than spawned ([`Replica::broadcast`]), or the whole call rejected with
+    /// [`Backpressure`](crate::replicated_map::Backpressure) ([`Replica::try_insert`]). Released
+    /// by an RAII guard ([`BroadcastCountGuard`](write::BroadcastCountGuard)).
+    broadcasts_in_flight: Arc<AtomicUsize>,
+    /// Global cap on the number of concurrently in-flight write-broadcast tasks.
+    max_concurrent_broadcasts: usize,
     /// Dated-channel [`EnumerationRange`](rbsr::EnumerationRange)s a round found still diverging
     /// but whose peer already had a dump in flight (#516): stashed here instead of silently
     /// dropped. Drained by the task already holding that peer's [`bulk_in_flight`](Self::bulk_in_flight)

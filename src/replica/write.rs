@@ -8,7 +8,10 @@
 
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use tracing::trace;
 
 use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
@@ -17,6 +20,29 @@ use crate::observability;
 use crate::FingerprintTreeMap;
 
 use super::{send_messages_to, Message, Replica, SendPorts, PEER_EXPIRATION};
+
+/// Broadcast-egress budget was exhausted when [`Replica::try_insert`] attempted to claim a slot
+/// (#83). Crate-internal signal carrying no state of its own — the public
+/// [`Backpressure`](crate::replicated_map::Backpressure) error
+/// [`ReplicatedMap::try_insert`](crate::replicated_map::ReplicatedMap::try_insert)/
+/// [`try_update`](crate::replicated_map::ReplicatedMap::try_update) build from it reads the
+/// in-flight/budget counts fresh through [`Replica::broadcasts_in_flight`]/
+/// [`Replica::max_concurrent_broadcasts`] rather than snapshotting them here, since the reject and
+/// the read are not atomic with each other anyway.
+pub(crate) struct BroadcastBudgetExhausted;
+
+/// RAII counter-decrement for the global concurrent-broadcast budget (#83). Mirrors
+/// [`pacing::BulkDumpCountGuard`](super::pacing::BulkDumpCountGuard): decrements the shared atomic
+/// on `Drop`, so a panicking or aborted send task cannot wedge the budget below its true capacity.
+pub(crate) struct BroadcastCountGuard {
+    counter: Arc<AtomicUsize>,
+}
+
+impl Drop for BroadcastCountGuard {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::Release);
+    }
+}
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Insert into an already-loaded, already-owned clone of the dated `map` **and** mirror the
@@ -75,10 +101,77 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         ret
     }
 
+    /// Claim one of the [`max_concurrent_broadcasts`](super::Inner::max_concurrent_broadcasts)
+    /// egress slots, or `None` if the budget is exhausted (#83). Mirrors
+    /// [`Replica::try_claim_dump_slot`]'s compare-exchange loop, without that one's per-peer half
+    /// — a write-broadcast task fans out to every peer at once, there is no per-peer slot to also
+    /// hold.
+    ///
+    /// `pub(crate)` (not private): `ReplicatedMap::try_update` (`replicated_map/mutate.rs`) claims
+    /// a slot before deciding whether the key is even live, matching [`try_insert`](Self::try_insert)'s
+    /// all-or-nothing ordering there too, and then hands the claimed guard to
+    /// [`broadcast_update_with_claimed_slot`](Self::broadcast_update_with_claimed_slot).
+    pub(crate) fn try_claim_broadcast_slot(&self) -> Option<BroadcastCountGuard> {
+        let budget = self.max_concurrent_broadcasts;
+        self.broadcasts_in_flight
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                if n < budget {
+                    Some(n + 1)
+                } else {
+                    None
+                }
+            })
+            .ok()?;
+        Some(BroadcastCountGuard {
+            counter: Arc::clone(&self.broadcasts_in_flight),
+        })
+    }
+
+    /// Write-broadcast tasks currently in flight — the depth gauge #83 asks for. Also backs
+    /// [`Backpressure`](crate::replicated_map::Backpressure)'s `in_flight` field.
+    pub(crate) fn broadcasts_in_flight(&self) -> usize {
+        self.broadcasts_in_flight.load(Ordering::Acquire)
+    }
+
+    /// The configured [`max_concurrent_broadcasts`](super::Inner::max_concurrent_broadcasts)
+    /// budget. Backs [`Backpressure`](crate::replicated_map::Backpressure)'s `max_in_flight`
+    /// field.
+    pub(crate) fn max_concurrent_broadcasts(&self) -> usize {
+        self.max_concurrent_broadcasts
+    }
+
     /// Broadcast a batch of messages to every known peer, on a detached task so the write path
     /// does not block on the network. The low-level send primitive both the immediate path and
     /// the coalescing flush ([`queue_broadcast`](Self::queue_broadcast)) reduce to.
+    ///
+    /// Bounded by [`max_concurrent_broadcasts`](super::Inner::max_concurrent_broadcasts) (#83): at
+    /// the budget, this skips spawning the task entirely rather than queuing it — the write this
+    /// call follows has already applied locally, so nothing is lost, only the eager push is
+    /// delayed to the next [`reconcile_interval`](super::Inner::reconcile_interval) round or
+    /// [`repair_interval`](super::Inner::repair_interval) retry (#23), exactly the bounded cost an
+    /// already-tolerated lost datagram is. A caller that wants to *know* egress is falling behind
+    /// rather than rely on that backstop uses [`try_insert`](Self::try_insert) instead, which
+    /// rejects the whole call up front.
     pub(super) fn broadcast(&self, messages: Vec<Message<K, Entry<Timestamp, V>, State<V>>>) {
+        let Some(guard) = self.try_claim_broadcast_slot() else {
+            observability::record_broadcast_backpressure("eager");
+            trace!(
+                "skipped write-broadcast: egress budget ({}) exhausted; the write itself already \
+                 applied, next reconciliation round recovers it",
+                self.max_concurrent_broadcasts
+            );
+            return;
+        };
+        self.spawn_broadcast(messages, guard);
+    }
+
+    /// The actual detached send task, factored out of [`broadcast`](Self::broadcast) so
+    /// [`try_insert`](Self::try_insert) can spawn it too, over a slot it already claimed itself.
+    fn spawn_broadcast(
+        &self,
+        messages: Vec<Message<K, Entry<Timestamp, V>, State<V>>>,
+        guard: BroadcastCountGuard,
+    ) {
         let peers = self.get_peers();
         let port = self.port;
         let transport = Arc::clone(&self.transport);
@@ -92,6 +185,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // rather than just the transport/auth.
         let repair_engine = self.clone();
         tokio::spawn(async move {
+            // Held for the task's lifetime, releasing the egress slot on completion, panic, or
+            // abort alike.
+            let _guard = guard;
             let ports = SendPorts {
                 transport: &*transport,
                 authenticator: &authenticator,
@@ -112,6 +208,44 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let ret = self.just_insert(key.clone(), value.clone());
         self.queue_broadcast(vec![(key, value)]);
         ret
+    }
+
+    /// Fallible counterpart of [`insert`](Self::insert) (#83): claims a
+    /// [`max_concurrent_broadcasts`](super::Inner::max_concurrent_broadcasts) egress slot
+    /// **before** touching the map, so a call either fully applies — locally and broadcast — or
+    /// not at all, never a write with a silently-skipped broadcast the way `insert` accepts.
+    /// Always sends immediately, bypassing [`queue_broadcast`](Self::queue_broadcast)'s
+    /// coalescing: a caller reaching for backpressure feedback wants to know now, not after
+    /// `coalesce_window` elapses.
+    ///
+    /// # Errors
+    ///
+    /// [`BroadcastBudgetExhausted`] when the egress budget is already at capacity. The map is
+    /// untouched — retry, buffer, or drop is the caller's call.
+    pub fn try_insert(
+        &self,
+        key: K,
+        value: Entry<Timestamp, V>,
+    ) -> Result<Option<Entry<Timestamp, V>>, BroadcastBudgetExhausted> {
+        let guard = self
+            .try_claim_broadcast_slot()
+            .ok_or(BroadcastBudgetExhausted)?;
+        let ret = self.just_insert(key.clone(), value.clone());
+        self.spawn_broadcast(vec![Message::EntryUpdate((key, value))], guard);
+        Ok(ret)
+    }
+
+    /// As [`broadcast_update`](Self::broadcast_update), but over a slot the caller already
+    /// claimed via [`try_claim_broadcast_slot`](Self::try_claim_broadcast_slot) —
+    /// `ReplicatedMap::try_update`'s live branch. Bypasses coalescing for the same reason
+    /// [`try_insert`](Self::try_insert) does.
+    pub(crate) fn broadcast_update_with_claimed_slot(
+        &self,
+        key: K,
+        value: Entry<Timestamp, V>,
+        guard: BroadcastCountGuard,
+    ) {
+        self.spawn_broadcast(vec![Message::EntryUpdate((key, value))], guard);
     }
 
     /// Broadcast a single locally-mutated entry to peers, mirroring [`insert`](Self::insert)'s

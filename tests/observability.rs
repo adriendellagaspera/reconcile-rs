@@ -181,6 +181,47 @@ async fn local_mutations_increment_metric_counters() {
     assert_eq!(removes, 1, "expected one removal to be counted");
 }
 
+/// #83: `insert` at an exhausted write-broadcast egress budget must still apply the write, and
+/// must count the skipped broadcast — `try_claim_broadcast_slot`/`record_broadcast_backpressure`
+/// both run synchronously inside `insert` (before any `.await` point), so a zero budget makes the
+/// skip, and its count, deterministic here.
+#[cfg(feature = "metrics")]
+#[tokio::test(flavor = "current_thread")]
+async fn broadcast_backpressure_increments_the_counter_at_a_zero_budget() {
+    use metrics::with_local_recorder;
+    use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+
+    keep_callsites_hot();
+    let store = ReplicatedMap::<i32, i32>::new(local_config().with_max_concurrent_broadcasts(0))
+        .await
+        .expect("bind failed");
+
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+
+    with_local_recorder(&recorder, || {
+        assert_eq!(
+            store.insert(1, 10),
+            None,
+            "the write itself must still apply"
+        );
+    });
+
+    let mut backpressure = 0u64;
+    for (composite, _unit, _desc, value) in snapshotter.snapshot().into_vec() {
+        if let DebugValue::Counter(v) = value {
+            if composite.key().name() == "reconcile_broadcast_backpressure_total" {
+                backpressure += v;
+            }
+        }
+    }
+
+    assert_eq!(
+        backpressure, 1,
+        "expected one broadcast-backpressure skip to be counted"
+    );
+}
+
 /// #27: a failed snapshot write increments `reconcile_persistence_failures_total` and raises
 /// `reconcile_persistence_failures_current`; a subsequent success resets the gauge to `0`.
 #[cfg(feature = "metrics")]
@@ -333,6 +374,33 @@ async fn read_replica_warns_about_config_fields_it_cannot_honour() {
     assert!(
         ignored_warning.is_some_and(|(_, msg)| msg.contains("remote_fanout")),
         "expected a WARN naming remote_fanout as ignored, captured: {events:?}"
+    );
+}
+
+/// #83: `max_concurrent_broadcasts` is another field a `ReadReplicaMap` cannot act on (it never
+/// originates a local write, so there is no egress path for the field to bound) — the warning
+/// above only exercises `remote_fanout` as its one representative field, so this checks the
+/// `max_concurrent_broadcasts` branch of the same `if field != default` chain directly.
+#[tokio::test(flavor = "current_thread")]
+async fn read_replica_warns_about_max_concurrent_broadcasts_specifically() {
+    keep_callsites_hot();
+    let layer = CapturingLayer::default();
+    let events = layer.0.clone();
+    let subscriber = Registry::default().with(layer);
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let network = InMemoryNetwork::new();
+    let transport = std::sync::Arc::new(network.bind("127.0.0.1:5".parse().unwrap()));
+    let config = local_config().with_max_concurrent_broadcasts(4);
+    let _replica = ReadReplicaMap::<String, String>::new_with_transport(config, transport);
+
+    let events = events.lock().unwrap();
+    let ignored_warning = events.iter().find(|(level, msg)| {
+        *level == Level::WARN && msg.contains("ReadReplicaMap ignores these Config fields")
+    });
+    assert!(
+        ignored_warning.is_some_and(|(_, msg)| msg.contains("max_concurrent_broadcasts")),
+        "expected a WARN naming max_concurrent_broadcasts as ignored, captured: {events:?}"
     );
 }
 

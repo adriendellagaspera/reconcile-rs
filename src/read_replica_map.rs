@@ -170,6 +170,9 @@ fn warn_on_ignored_config_fields(config: &Config) {
     if config.max_concurrent_bulk_dumps != default.max_concurrent_bulk_dumps {
         ignored.push("max_concurrent_bulk_dumps");
     }
+    if config.max_concurrent_broadcasts != default.max_concurrent_broadcasts {
+        ignored.push("max_concurrent_broadcasts");
+    }
     if config.nets.iter().flatten().count() > 1 {
         ignored.push("nets (only the one matching listen_addr, or the first declared, is used)");
     }

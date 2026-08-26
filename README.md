@@ -398,13 +398,16 @@ stays lean:
   Counters/histograms answer "how much has happened" (`reconcile_inserts_total`,
   `reconcile_updates_received_total`, `reconcile_bytes_sent_total`, `reconcile_send_failures_total`,
   `reconcile_datagrams_dropped_total`, `reconcile_persistence_failures_total`,
-  `reconcile_discovery_failures_total`, `reconcile_round_duration_seconds`, …); gauges answer "what
-  is the state right now" — the six an operator pages on:
+  `reconcile_discovery_failures_total`, `reconcile_round_duration_seconds`,
+  `reconcile_broadcast_backpressure_total`, …); gauges answer "what is the state right now" — the
+  seven an operator pages on:
   - `reconcile_peers_current` — size of the gossip-routing peer set.
   - `reconcile_members_current` — size of the causal-stability membership set.
   - `reconcile_entries_current` — live (non-tombstone) entries.
   - `reconcile_tombstones_current` — outstanding tombstones not yet garbage-collected.
   - `reconcile_bulk_dumps_in_flight` — bulk anti-entropy dumps in flight.
+  - `reconcile_broadcasts_in_flight` — write-broadcast tasks in flight (#83, see
+    [Write backpressure](#write-backpressure)).
   - `reconcile_persistence_failures_current` — consecutive snapshot failures since the last
     success; `0` while healthy (see [Persistence](#persistence)).
 - `metrics-prometheus` — additionally provides `reconcile::prometheus` to install a Prometheus
@@ -489,6 +492,56 @@ Only the write that finds the pending batch empty spawns the detached flush task
 ambient Tokio runtime the same way every propagating write does (see `ReplicatedMap::insert`'s `#
 Panics`); a write that joins an already-scheduled window returns without touching the reactor.
 Retunable live via `set_coalesce_window` (below).
+
+### Write backpressure
+
+Every propagating write spawns a detached task that fans the message out to every known peer
+(issue #83). Before #83 that fan-out was unbounded: nothing capped how many such tasks could be in
+flight at once, and nothing told a caller egress was falling behind. `Config::max_concurrent_broadcasts`
+(default 1024) bounds it, mirroring how `Config::max_concurrent_bulk_dumps` already bounds the
+cold-sync (ingress) side:
+
+```rust
+use reconcile::replicated_map::Config;
+
+let config = Config::new(8080)
+    .with_insecure_no_key()
+    .with_max_concurrent_broadcasts(256); // lower the egress budget from its default 1024
+```
+
+**Block vs. reject, decided:** at the budget, `insert`/`update`/`insert_bulk` keep their infallible
+signatures and never fail — they skip *only* that call's eager broadcast, and periodic
+reconciliation (`reconcile_interval`) or repair (#23) recovers it, the same bounded cost an
+already-tolerated lost datagram is. A caller that wants to *know* egress is falling behind rather
+than rely on that backstop reaches for the additive `try_insert`/`try_update` instead: both claim
+an egress slot **before** touching the map, so a call either fully applies (locally and broadcast)
+or not at all, returning `Err(Backpressure { in_flight, max_in_flight })` — never a write with a
+silently-skipped broadcast. Both always send immediately, bypassing `coalesce_window` batching, and
+require the same ambient Tokio runtime `insert` does.
+
+```rust,no_run
+# use std::sync::Arc;
+use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
+
+# #[tokio::main]
+# async fn main() {
+let network = InMemoryNetwork::new();
+let transport = Arc::new(network.bind("127.0.0.1:8080".parse().unwrap()));
+let store = ReplicatedMap::<String, i32>::new_with_transport(
+    Config::default().with_insecure_no_key(),
+    transport,
+);
+
+match store.try_insert("a".to_string(), 1) {
+    Ok(previous) => { /* applied and broadcast */ let _ = previous; }
+    Err(backpressure) => { /* egress budget exhausted; retry, buffer, or drop */ let _ = backpressure; }
+}
+# }
+```
+
+The current depth is the `reconcile_broadcasts_in_flight` gauge (below); rejections/skips are
+`reconcile_broadcast_backpressure_total`, labeled `path` (`"eager"` for the infallible skip,
+`"try"` for a `try_insert`/`try_update` rejection).
 
 ## Read replica (`ReadReplicaMap`)
 

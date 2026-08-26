@@ -48,6 +48,13 @@ pub(super) const DEFAULT_REPAIR_INTERVAL: Duration = Duration::from_millis(150);
 /// bounds total in-flight snapshot memory.
 pub(super) const DEFAULT_MAX_CONCURRENT_BULK_DUMPS: usize = 4;
 
+/// Default cap on concurrent write-broadcast tasks (see [`Config::max_concurrent_broadcasts`],
+/// #83) — the egress-side counterpart of [`DEFAULT_MAX_CONCURRENT_BULK_DUMPS`]. A broadcast task
+/// is far cheaper than a bulk dump (a small message batch, not a whole-range snapshot), so the
+/// default budget is generous: high enough that ordinary write bursts never trip it, while still
+/// bounding unbounded task growth under sustained overload.
+pub(super) const DEFAULT_MAX_CONCURRENT_BROADCASTS: usize = 1024;
+
 /// Maximum number of geographical networks (CIDRs) a [`Config`] can declare, or a running node
 /// can hold via [`ReplicatedMap::set_nets`](super::ReplicatedMap::set_nets)/
 /// [`add_net`](super::ReplicatedMap::add_net) — one behavior for the cap everywhere it is
@@ -238,6 +245,23 @@ pub struct Config {
     /// would otherwise cost M × dataset memory. An exhausted budget skips the dump before
     /// allocating; the peer's next diff round retries.
     pub max_concurrent_bulk_dumps: usize,
+    /// Maximum concurrently in-flight write-broadcast tasks, across every local write that needs
+    /// to propagate (default 1024, #83) — bounds the egress side
+    /// ([`ReplicatedMap::insert`](super::ReplicatedMap::insert)/
+    /// [`update`](super::ReplicatedMap::update)/[`insert_bulk`](super::ReplicatedMap::insert_bulk))
+    /// the way [`max_concurrent_bulk_dumps`](Self::max_concurrent_bulk_dumps) bounds the ingress
+    /// (bulk-dump) side.
+    ///
+    /// At the budget, `insert`/`update`/`insert_bulk` skip *only* the eager broadcast for that
+    /// call — the local write always applies, and periodic reconciliation
+    /// ([`reconcile_interval`](Self::reconcile_interval))/repair (#23) recovers the missed push,
+    /// the same bounded cost an already-tolerated lost datagram is.
+    /// [`ReplicatedMap::try_insert`](super::ReplicatedMap::try_insert)/
+    /// [`try_update`](super::ReplicatedMap::try_update) instead reject the whole call with
+    /// [`Backpressure`](super::Backpressure) when the budget is exhausted — neither the write nor
+    /// the broadcast applies — for a caller that wants to know egress is falling behind rather
+    /// than rely on the backstop.
+    pub max_concurrent_broadcasts: usize,
     /// How often the background task started by [`ReplicatedMap::run`](super::ReplicatedMap::run)
     /// writes a full snapshot to the persistence backend (default 5 s). Only meaningful once
     /// [`with_persistence`](super::ReplicatedMap::with_persistence) has been called — with the
@@ -298,6 +322,7 @@ impl fmt::Debug for Config {
             .field("freshness_window", &self.freshness_window)
             .field("max_peers", &self.max_peers)
             .field("max_concurrent_bulk_dumps", &self.max_concurrent_bulk_dumps)
+            .field("max_concurrent_broadcasts", &self.max_concurrent_broadcasts)
             .field("snapshot_interval", &self.snapshot_interval)
             .field("max_clock_drift", &self.max_clock_drift)
             .field("coalesce_window", &self.coalesce_window)
@@ -325,6 +350,7 @@ impl Default for Config {
             freshness_window: gossip::replay::FRESHNESS_WINDOW_DEFAULT,
             max_peers: DEFAULT_MAX_PEERS,
             max_concurrent_bulk_dumps: DEFAULT_MAX_CONCURRENT_BULK_DUMPS,
+            max_concurrent_broadcasts: DEFAULT_MAX_CONCURRENT_BROADCASTS,
             snapshot_interval: SNAPSHOT_INTERVAL,
             max_clock_drift: MAX_CLOCK_DRIFT,
             coalesce_window: Duration::ZERO,

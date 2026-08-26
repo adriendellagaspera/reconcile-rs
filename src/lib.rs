@@ -165,4 +165,13 @@ pub mod testing {
     {
         store.bulk_dumps_in_flight_count()
     }
+
+    /// Number of write-broadcast tasks currently in flight (#83).
+    pub fn broadcasts_in_flight_count<K, V>(store: &crate::ReplicatedMap<K, V>) -> usize
+    where
+        K: crate::bounds::Key + std::hash::Hash,
+        V: crate::bounds::Value,
+    {
+        store.broadcasts_in_flight_count()
+    }
 }

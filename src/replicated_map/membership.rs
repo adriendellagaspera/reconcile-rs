@@ -110,6 +110,15 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.engine.bulk_dumps_in_flight_count()
     }
 
+    /// Number of write-broadcast tasks currently in flight (#83). The same count backs the
+    /// `reconcile_broadcasts_in_flight` gauge and [`Backpressure`](super::Backpressure).
+    ///
+    /// Exposed for integration-test assertions under `cfg(reconcile_internal_testing)`.
+    #[cfg(any(test, reconcile_internal_testing))]
+    pub fn broadcasts_in_flight_count(&self) -> usize {
+        self.engine.broadcasts_in_flight_count()
+    }
+
     /// (runtime) Replace the declared geographical networks, re-deriving the local one. See
     /// [`Config::nets`](super::Config::nets).
     ///

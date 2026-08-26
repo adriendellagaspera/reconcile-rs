@@ -217,6 +217,13 @@ impl Config {
         self
     }
 
+    /// Set [`max_concurrent_broadcasts`](Config::max_concurrent_broadcasts) (default 1024, #83).
+    #[must_use]
+    pub fn with_max_concurrent_broadcasts(mut self, max: usize) -> Self {
+        self.max_concurrent_broadcasts = max;
+        self
+    }
+
     /// Set [`snapshot_interval`](Config::snapshot_interval) (default 5 s).
     #[must_use]
     pub fn with_snapshot_interval(mut self, interval: Duration) -> Self {

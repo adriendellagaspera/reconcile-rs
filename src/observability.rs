@@ -74,6 +74,14 @@ mod imp {
         counter!(DATAGRAMS_DROPPED_TOTAL, "reason" => reason).increment(1);
     }
 
+    /// A write hit the `max_concurrent_broadcasts` egress budget (#83). `path` is `"eager"`
+    /// (`insert`/`update`/`insert_bulk`: the write applied, only its broadcast was skipped) or
+    /// `"try"` (`try_insert`/`try_update`: the whole call was rejected).
+    #[inline]
+    pub(crate) fn record_broadcast_backpressure(path: &'static str) {
+        counter!(BROADCAST_BACKPRESSURE_TOTAL, "path" => path).increment(1);
+    }
+
     #[inline]
     pub(crate) fn record_reconcile_round() {
         counter!(ROUNDS_TOTAL).increment(1);
@@ -139,12 +147,14 @@ mod imp {
         entries: usize,
         tombstones: usize,
         bulk_dumps_in_flight: usize,
+        broadcasts_in_flight: usize,
     ) {
         gauge!(PEERS_CURRENT).set(peers as f64);
         gauge!(MEMBERS_CURRENT).set(members as f64);
         gauge!(ENTRIES_CURRENT).set(entries as f64);
         gauge!(TOMBSTONES_CURRENT).set(tombstones as f64);
         gauge!(BULK_DUMPS_IN_FLIGHT).set(bulk_dumps_in_flight as f64);
+        gauge!(BROADCASTS_IN_FLIGHT).set(broadcasts_in_flight as f64);
     }
 
     /// Register descriptions and units for all metrics. Idempotent; call after installing a
@@ -182,6 +192,11 @@ mod imp {
             DATAGRAMS_DROPPED_TOTAL,
             Unit::Count,
             "Datagrams dropped, by reason"
+        );
+        describe_counter!(
+            BROADCAST_BACKPRESSURE_TOTAL,
+            Unit::Count,
+            "Writes that hit the write-broadcast egress budget, by path"
         );
         describe_counter!(ROUNDS_TOTAL, Unit::Count, "Reconciliation rounds initiated");
         describe_counter!(
@@ -240,6 +255,11 @@ mod imp {
             "Current count of bulk anti-entropy dumps in flight"
         );
         describe_gauge!(
+            BROADCASTS_IN_FLIGHT,
+            Unit::Count,
+            "Current count of write-broadcast tasks in flight"
+        );
+        describe_gauge!(
             PERSISTENCE_FAILURES_CURRENT,
             Unit::Count,
             "Consecutive persistence-backend snapshot failures since the last success"
@@ -281,6 +301,9 @@ mod imp {
     pub(crate) fn record_datagram_dropped(_reason: &'static str) {}
 
     #[inline(always)]
+    pub(crate) fn record_broadcast_backpressure(_path: &'static str) {}
+
+    #[inline(always)]
     pub(crate) fn record_reconcile_round() {}
 
     #[inline(always)]
@@ -311,6 +334,7 @@ mod imp {
         _entries: usize,
         _tombstones: usize,
         _bulk_dumps_in_flight: usize,
+        _broadcasts_in_flight: usize,
     ) {
     }
 }
