@@ -55,7 +55,7 @@ async fn returned_count_matches_acks_actually_appended() {
             .expect("resend_held_tombstone_acks writes valid Message encodings");
     let acks = decoded
         .iter()
-        .filter(|m| matches!(m, Message::Ack(_)))
+        .filter(|m| matches!(m, Message::TombstoneAck(_)))
         .count();
     assert_eq!(
         acks, appended,
@@ -103,7 +103,7 @@ async fn resend_window_starts_at_round_modulo_tombstone_count() {
     let first_key = decoded
         .iter()
         .find_map(|m| match m {
-            Message::Ack((k, _)) => Some(*k),
+            Message::TombstoneAck((k, _)) => Some(*k),
             _ => None,
         })
         .expect("at least one Ack must have been written");

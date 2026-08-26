@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Wire format: a converged comparison round is now acked
+
+`rsos::protocol_round`'s pure-SKIP outcome — every active range a peer sent already matched, so
+there was nothing left to send back — now gets an explicit `ConvergenceAck` reply instead of silence
+(#23). `WIRE_VERSION` bumped `2` → `3` accordingly, consuming one of the two wire tags #463
+reserved for exactly this. **A node running this version cannot reconcile with one before it.**
+Roll out by fully draining and replacing older nodes with this version — do not mix versions in
+one cluster, same as every other `WIRE_VERSION` bump (README "Wire versioning").
+
+No action needed on the application side: this only affects what crosses the wire between peers,
+not any public type or method signature. `Config::repair_interval` (#23's other half, added
+alongside this) is what actually benefits — a converged round now clears its pending retry
+immediately instead of riding out a bounded, unacknowledged retry cycle.
+
 ### `ValueRef` no longer borrows a lock guard
 
 `ReplicatedMap::get`/`ReadReplicaMap::get` return the same `ValueRef<...>` wrapper, but its shape

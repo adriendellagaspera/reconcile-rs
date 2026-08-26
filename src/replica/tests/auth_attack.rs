@@ -27,7 +27,7 @@ fn forged_update() -> Vec<u8> {
         Hlc::new(PhysicalTime::from_millis(u64::MAX), LogicalCounter::new(0)),
         NodeId::new(0),
     );
-    let message = Message::Update::<i32, Entry<Timestamp, String>, State<String>>((
+    let message = Message::EntryUpdate::<i32, Entry<Timestamp, String>, State<String>>((
         0,
         Entry::present(far_future, "evil".to_string()),
     ));

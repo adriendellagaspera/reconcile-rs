@@ -24,6 +24,7 @@ fn ephemeral_config() -> Config {
         node_id: None,
         encrypt: false,
         reconcile_interval: Duration::from_secs(1),
+        repair_interval: Duration::from_millis(150),
         bulk_send_rate: Some(32 * 1024 * 1024),
         recv_buffer_size: Some(8 * 1024 * 1024),
         send_buffer_size: Some(8 * 1024 * 1024),

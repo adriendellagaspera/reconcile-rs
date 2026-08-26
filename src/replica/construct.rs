@@ -248,6 +248,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 remote_interval: Arc::new(AtomicU32::new(config.remote_interval)),
                 remote_fanout: Arc::new(AtomicUsize::new(config.remote_fanout)),
                 reconcile_interval: Arc::new(RwLock::new(config.reconcile_interval)),
+                repair_interval: Arc::new(RwLock::new(config.repair_interval)),
+                pending_repairs: Arc::new(RwLock::new(HashMap::new())),
                 bulk_send_rate,
                 bulk_in_flight: Arc::new(RwLock::new(HashSet::new())),
                 bulk_dumps_in_flight: Arc::new(AtomicUsize::new(0)),

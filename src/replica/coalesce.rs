@@ -45,7 +45,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         if window.is_zero() {
             let messages = key_values
                 .into_iter()
-                .map(Message::Update::<K, Entry<Timestamp, V>, State<V>>)
+                .map(Message::EntryUpdate::<K, Entry<Timestamp, V>, State<V>>)
                 .collect();
             self.broadcast(messages);
             return;
@@ -85,7 +85,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             if !batch.is_empty() {
                 let messages = batch
                     .into_iter()
-                    .map(Message::Update::<K, Entry<Timestamp, V>, State<V>>)
+                    .map(Message::EntryUpdate::<K, Entry<Timestamp, V>, State<V>>)
                     .collect();
                 engine.broadcast(messages);
             }

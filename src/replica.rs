@@ -112,6 +112,24 @@ pub(crate) struct Inner<K, V> {
     /// How long the [`run`](Self::run) loop waits for inbound activity before initiating a
     /// reconciliation round — the effective gossip cadence. Shared so it can be retuned at runtime.
     reconcile_interval: Arc<RwLock<Duration>>,
+    /// RTT-scale timer for [`repair_periodically`](Self::repair_periodically) (#23): how long an
+    /// entry in [`pending_repairs`](Self::pending_repairs) waits before being retried. Shared so
+    /// it can be retuned at runtime; mirrors [`Config::repair_interval`](crate::replicated_map::Config::repair_interval).
+    repair_interval: Arc<RwLock<Duration>>,
+    /// Peers owed a fresh comparison round within [`repair_interval`](Self::repair_interval) —
+    /// either an outstanding round this node sent that has not yet been answered, or a peer this
+    /// node just bulk-updated and wants to double-check sooner than the next background round.
+    /// Cleared the moment any reply at all is heard from that peer ([`run`](Self::run)) — an
+    /// `EntryFingerprint` that finds a real difference, an `EntryUpdate`'s tombstone ack, and a
+    /// round that resolves to a pure SKIP's [`Message::ConvergenceAck`] (#23) all clear it. What still
+    /// falls back to a bounded retry (up to
+    /// [`repair::MAX_REPAIR_ATTEMPTS`](repair::MAX_REPAIR_ATTEMPTS) times) is a datagram — the
+    /// original round, or its ack — actually lost in flight, not a converged round going
+    /// unacknowledged: the same order of magnitude as the existing per-round tombstone-ack
+    /// resend, not the bulk-transfer amplification akvize/reconcile-rs#168/#177 fixed. Given up
+    /// on after that bound, leaving it to the next full
+    /// [`reconcile_interval`](Self::reconcile_interval) round.
+    pending_repairs: Arc<RwLock<HashMap<IpAddr, repair::PendingRepair>>>,
     /// Rate (bytes/sec) at which a single bulk anti-entropy value transfer to one peer is paced, or
     /// `None` to send back-to-back. Mirrors [`Config::bulk_send_rate`](crate::replicated_map::Config::bulk_send_rate)
     /// and is read by [`spawn_paced_send`](Self::spawn_paced_send).
@@ -132,8 +150,8 @@ pub(crate) struct Inner<K, V> {
     /// lost dump-slot race never depends on a new incoming datagram or the idle
     /// [`reconcile_interval`](Self::reconcile_interval) timeout.
     pending_dumps: Arc<RwLock<HashMap<SocketAddr, Vec<EnumerationRange<K>>>>>,
-    /// Same as [`pending_dumps`](Self::pending_dumps), for the value-only channel a read replica
-    /// pulls from (`self.projection`, `Message::ValueUpdate`) — a separate stash since the two
+    /// Same as [`pending_dumps`](Self::pending_dumps), for the state-only channel a read replica
+    /// pulls from (`self.projection`, `Message::StateUpdate`) — a separate stash since the two
     /// channels share one per-peer dump slot but resolve ranges against different trees.
     pending_value_dumps: Arc<RwLock<HashMap<SocketAddr, Vec<EnumerationRange<K>>>>>,
     /// Monotonic reconciliation-round counter, shared across clones, gating the cross-network cadence.
@@ -202,39 +220,60 @@ pub(crate) struct Inner<K, V> {
 /// One atomic message of the reconciliation protocol.
 ///
 /// Variant order is the wire tag order: the **dated** channel is 0-2
-/// (`ComparisonItem`/`Update`/`Ack`), the **value-only** channel read replicas use is 3-4, and 5-6
-/// are [`reserved`](Message::Reserved5) skippable slots (#463). A node that does not know a tag
-/// past 6 still fails to deserialize and drops the whole datagram, which the receive loop
-/// tolerates — reservation buys forward compatibility for exactly one more message on each of
-/// these two tags, not an open-ended capability mechanism.
+/// (`EntryFingerprint`/`EntryUpdate`/`TombstoneAck`), the **state-only** channel read replicas use
+/// is 3-4, tag 5 is [`ConvergenceAck`](Message::ConvergenceAck) (#23, consuming one of the two
+/// wire tags #463 reserved for exactly this), and 6 is the one remaining
+/// [`reserved`](Message::Reserved6) skippable slot. A node that does not know a tag past 6 still
+/// fails to deserialize and drops the whole datagram, which the receive loop tolerates. Landing
+/// `ConvergenceAck` at tag 5 needed `WIRE_VERSION` bumped 2 → 3 (`gossip::auth::WIRE_VERSION`) —
+/// pre-1.0, that is a normal minor-version release carrying a breaking wire change
+/// (`CHANGELOG.md`/`MIGRATING.md`; `akvize/reconcile-rs#382` did the same for `Fingerprint`'s
+/// encoding), not a coordinated live-migration mechanism: `akvize/reconcile-rs#309` is the wire
+/// version byte's own origin (`ARCHITECTURE.md` §5 invariant 11), and its consequence — a
+/// mismatched peer's whole datagram rejected, no accepted-version window — is what makes *any*
+/// `WIRE_VERSION` bump a full-drain, no-mixed-versions rollout once real clusters exist, same as
+/// every prior bump. Consuming the one tag still reserved (6), or adding a seventh, needs another
+/// such bump (`ARCHITECTURE.md` §5 invariant 14).
 ///
-/// `V` is the dated value, `P` its timestamp-less projection.
+/// The naming axis is the domain's own structural split ([`Entry`] carries a `stamp`, [`State`]
+/// does not — `ARCHITECTURE.md` §5 invariant 8): the dated channel fingerprints/updates the `map`
+/// tree of `Entry<Timestamp, V>`, the state-only channel fingerprints/updates the `projection`
+/// tree of bare `State<V>`. `V` is the dated value, `P` its timestamp-less projection.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
-    /// Provides information about a set of keys that allows checking
-    /// whether there are differences between the two instances over this set
-    ComparisonItem(RangeAggregate<K>),
-    /// Provides an individual key-value pair when the protocol
-    /// has identified that it differs on the two instances
-    Update((K, V)),
+    /// A range and its aggregate over the dated `map` (an `Entry<Timestamp, V>` tree), for the
+    /// peer to compare against its own and decide skip/split/enumerate.
+    EntryFingerprint(RangeAggregate<K>),
+    /// One dated key-value pair — a full [`Entry`]: stamp plus [`State`] — the protocol identified
+    /// as differing between the two instances.
+    EntryUpdate((K, V)),
     /// Acknowledges that the sender now holds the tombstone for the given key with the
     /// given version token (see [`version_hash`]). Enables causal-stability-gated
     /// tombstone garbage collection on the receiver.
-    Ack((K, u64)),
-    /// Like [`ComparisonItem`](Message::ComparisonItem) but on the **value-only basis**: the
-    /// fingerprints were computed over timestamp-less values. A dated store answers these by
-    /// diffing against its value-only *projection* tree, never its dated map.
-    ValueComparisonItem(RangeAggregate<K>),
-    /// An individual timestamp-less update sent to a dateless read replica once the value-only diff
-    /// identified a difference. Carries the projected payload only (no [`Timestamp`]).
-    ValueUpdate((K, P)),
-    /// Reserved wire tag 5 (#463): never sent by this version, opaque length-prefixed bytes on
-    /// decode so a *future* version's real message at this tag still decodes on *this* one —
-    /// [`handle_messages`](Replica::handle_messages) ignores it rather than failing the whole
-    /// datagram, which is exactly what tags past 6 do today. Consumes the reservation the moment a
-    /// real message shape is assigned to it; a second reservation needs a new tag.
-    Reserved5(Vec<u8>),
-    /// The second of the two tags [`Reserved5`](Message::Reserved5) reserves; same contract.
+    TombstoneAck((K, u64)),
+    /// Like [`EntryFingerprint`](Message::EntryFingerprint) but over the **state-only**
+    /// `projection` tree (bare `State<V>`, no stamp): a dated store answers these by diffing
+    /// against that tree, never its dated `map`.
+    StateFingerprint(RangeAggregate<K>),
+    /// An individual timestamp-less update sent to a dateless read replica once the state-only
+    /// diff identified a difference. Carries the projected [`State`] only — no stamp, unlike
+    /// [`EntryUpdate`](Message::EntryUpdate).
+    StateUpdate((K, P)),
+    /// Acknowledges an `EntryFingerprint` round that converged with nothing to send back: every
+    /// active range the peer sent was already a match, so `rbsr::protocol_round` itself emits no
+    /// reply for it (#23). Sent from [`handle_messages`](Replica::handle_messages) whenever a
+    /// round produces neither a refined `EntryFingerprint` nor a difference to dump. Carries no
+    /// payload — `rbsr` is deliberately stateless (no session/exchange IDs), and at most one
+    /// repair is ever pending per peer ([`pending_repairs`](Inner::pending_repairs)), so "an ack
+    /// arrived at all" is everything its clearing needs to know. Consumes wire tag 5, formerly a
+    /// `Reserved5` variant of this same shape as [`Reserved6`](Message::Reserved6) below; that
+    /// other reservation is unaffected and still opaque bytes.
+    ConvergenceAck,
+    /// The one remaining reserved wire tag (#463): never sent by this version, opaque
+    /// length-prefixed bytes on decode so a *future* version's real message at this tag still
+    /// decodes on *this* one — [`handle_messages`](Replica::handle_messages) ignores it rather
+    /// than failing the whole datagram, which is exactly what a tag past 6 does today. Consumes
+    /// the reservation the moment a real message shape is assigned to it.
     Reserved6(Vec<u8>),
 }
 
@@ -247,6 +286,7 @@ mod membership;
 mod pacing;
 mod read;
 mod reconciliation;
+mod repair;
 mod run;
 mod write;
 

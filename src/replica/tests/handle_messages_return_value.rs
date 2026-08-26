@@ -65,10 +65,10 @@ async fn a_dated_update_reports_true() {
         .with_listen_addr("127.0.0.60".parse().unwrap())
         .with_insecure_no_key();
     let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
-    let message = Message::Update((1, Entry::present(future_stamp(), 7)));
+    let message = Message::EntryUpdate((1, Entry::present(future_stamp(), 7)));
     assert!(
         feed(&engine, &message).await,
-        "a dated Update must report spoke_dated = true, or run() will never grant its \
+        "a dated EntryUpdate must report spoke_dated = true, or run() will never grant its \
          sender peers/members membership"
     );
 }
@@ -81,10 +81,10 @@ async fn a_value_only_update_reports_false() {
         .with_insecure_no_key();
     let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
     let message: Message<i32, Entry<Timestamp, u8>, State<u8>> =
-        Message::ValueUpdate((1, State::Present(7)));
+        Message::StateUpdate((1, State::Present(7)));
     assert!(
         !feed(&engine, &message).await,
-        "a value-only ValueUpdate must report spoke_dated = false — a read replica must never \
+        "a state-only StateUpdate must report spoke_dated = false — a read replica must never \
          gate tombstone GC by being granted peers/members membership"
     );
 }

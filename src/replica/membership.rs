@@ -112,6 +112,18 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         *self.reconcile_interval.write() = interval;
     }
 
+    /// See [`Config::repair_interval`](crate::replicated_map::Config::repair_interval).
+    pub(crate) fn set_repair_interval(&self, interval: Duration) {
+        *self.repair_interval.write() = interval;
+    }
+
+    /// The currently configured repair timer. Exposed for integration-test assertions under
+    /// `cfg(reconcile_internal_testing)`, matching e.g. `coalesce_window`.
+    #[cfg(any(test, reconcile_internal_testing))]
+    pub(crate) fn repair_interval(&self) -> Duration {
+        *self.repair_interval.read()
+    }
+
     /// See [`Config::coalesce_window`](crate::replicated_map::Config::coalesce_window).
     pub(crate) fn set_coalesce_window(&self, window: Duration) {
         *self.coalesce_window.write() = window;

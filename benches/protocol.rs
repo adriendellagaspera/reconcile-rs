@@ -28,7 +28,7 @@
 //! are identical at every payload size, and only the per-element wire cost moves. So the drive runs
 //! once, over a `u64`-valued store, and each enumerated element is priced by encoding the dated
 //! cell the transport really ships for it, `(K, Entry<Timestamp, Vec<u8>>)`
-//! (`src/replica.rs`'s `Message::Update`), through the transport's own encoder. That is measured
+//! (`src/replica.rs`'s `Message::EntryUpdate`), through the transport's own encoder. That is measured
 //! rather than argued: `payload_size_does_not_move_the_trace` drives the same case over a `u64`, an
 //! 8-byte and a 4 KB payload and compares before any table is printed. It also buys the 4 KB
 //! column at `n = 10⁶`, which materializing 4 GB of payload twice could not.
@@ -172,7 +172,7 @@ fn dated_cell(key: u64, value_bytes: usize) -> Entry<Timestamp, Vec<u8>> {
 }
 
 /// What one enumerated element costs on the wire, one entry per [`VALUE_SIZES`] payload size:
-/// `Message::Update`'s payload (`src/replica.rs`), through the transport's own encoder.
+/// `Message::EntryUpdate`'s payload (`src/replica.rs`), through the transport's own encoder.
 ///
 /// Measured per element rather than derived from a per-entry constant — bincode's varints make the
 /// key and the stamp cost what their values happen to cost — and read straight off [`VALUE_SIZES`],

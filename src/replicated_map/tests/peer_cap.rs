@@ -16,7 +16,7 @@ fn peer_cap_default_is_1024() {
     assert_eq!(Config::default().max_peers, 1024);
 }
 
-/// A raw payload with one `ComparisonItem`: a dated message, so the receive path would add
+/// A raw payload with one `EntryFingerprint`: a dated message, so the receive path would add
 /// the sender to `members` unless the cap fires first. Starts with the wire-version byte
 /// every datagram carries, unauthenticated included — `Authenticator::Disabled` no
 /// longer passes bytes through unversioned.
@@ -34,9 +34,9 @@ fn dated_comparison_payload() -> Vec<u8> {
             i32,
             (crate::clock::Timestamp, Option<i32>),
             (crate::clock::Timestamp, Option<i32>),
-        >::ComparisonItem(seg)
+        >::EntryFingerprint(seg)
         .serialize(&mut Serializer::new(&mut buf, DefaultOptions::new()))
-        .expect("serializing ComparisonItem into a Vec cannot fail");
+        .expect("serializing EntryFingerprint into a Vec cannot fail");
     }
     buf
 }

@@ -1,8 +1,8 @@
 # cargo-mutants configuration for reconcile-rs.
 #
-# Verified against this workspace: `cargo mutants --list --workspace --all-features` yields 1952
-# mutants with this config (1980 without the exclusions below) -- the delta between them (currently
-# 28) is what proves the exclusions still do what the comments below claim. The baseline itself
+# Verified against this workspace: `cargo mutants --list --workspace --all-features` yields 1976
+# mutants with this config (2005 without the exclusions below) -- the delta between them (currently
+# 29) is what proves the exclusions still do what the comments below claim. The baseline itself
 # moves with every commit that adds or removes mutable code; `scripts/check-mutant-count.sh` (wired
 # into `repo-gates` in main.yml) re-measures both numbers on every push instead of asking a human to
 # notice and update them by hand (AGENTS.md §10) -- if it fails, update the two numbers above to
@@ -150,6 +150,16 @@ exclude_globs = ["benches/**", "examples/**"]
 # function's `Ok(BoundedRange { .. })` return is unconditional and unaffected by this branch either
 # way. No test capturing log output exists in this codebase, and none should be added just to pin
 # an operator that gates nothing but which log line fires.
+#
+# `replica/repair.rs:118:36` (`replace > with >=` in `retry_due_repairs`'s `if repair.deadline > now
+# { return true; }` "not due yet" check) is the same shape as `read_replica_map/membership.rs`'s
+# `PEER_EXPIRATION` entry above, not a coincidence -- both are a `std::time::Instant` compared
+# against `Instant::now()` with no clock-injection seam: `>` and `>=` disagree only at the exact
+# instant `deadline == now`, which a deterministic test cannot hit without the same real-time race
+# `.claude/rules/tests.md` rules out for a fixed port. Every *other* mutation at this exact site (`>`
+# to `==`, `>` to `<`) is a real behaviour change caught by `a_fresh_pending_repair_is_not_yet_due`:
+# with a 3600s-out deadline, either flips the check to "due now" and fires an unwanted first retry
+# that assertion's `attempts == 0` catches. #23.
 exclude_re = [
     "testing::",
     "impl Debug",
@@ -181,6 +191,7 @@ exclude_re = [
     "protocol/rank\\.rs:117:62: replace != with ==",
     "protocol/rank\\.rs:118:49: replace != with ==",
     "replica/construct\\.rs:194:33: replace < with <=",
+    "replica/repair\\.rs:118:36: replace > with >=",
 ]
 
 skip_calls = ["with_capacity", "reserve"]

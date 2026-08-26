@@ -34,9 +34,9 @@ use super::{Message, Replica, BUFFER_SIZE, MAX_SENDTO_RETRIES};
 /// channels share one slot but resolve ranges against different trees and message variants.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum DumpChannel {
-    /// `self.map`, resolves to [`Message::Update`].
+    /// `self.map`, resolves to [`Message::EntryUpdate`].
     Dated,
-    /// `self.projection`, resolves to [`Message::ValueUpdate`].
+    /// `self.projection`, resolves to [`Message::StateUpdate`].
     ValueOnly,
 }
 
@@ -166,7 +166,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         let guard = map.load_full();
                         for range in ranges {
                             for (k, v) in guard.range(range) {
-                                messages.push(Message::Update((k.clone(), v.clone())));
+                                messages.push(Message::EntryUpdate((k.clone(), v.clone())));
                             }
                         }
                     }
@@ -174,7 +174,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         let guard = projection.load_full();
                         for range in ranges {
                             for (k, v) in guard.range(range) {
-                                messages.push(Message::ValueUpdate((k.clone(), v.clone())));
+                                messages.push(Message::StateUpdate((k.clone(), v.clone())));
                             }
                         }
                     }

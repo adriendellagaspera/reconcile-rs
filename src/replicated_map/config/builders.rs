@@ -109,6 +109,15 @@ impl Config {
         self
     }
 
+    /// Set the RTT-scale repair timer (default 150 ms). See
+    /// [`repair_interval`](Config::repair_interval). Retunable at runtime via
+    /// [`ReplicatedMap::set_repair_interval`](crate::ReplicatedMap::set_repair_interval).
+    #[must_use]
+    pub fn with_repair_interval(mut self, interval: Duration) -> Self {
+        self.repair_interval = interval;
+        self
+    }
+
     /// Set the rate, in bytes per second, at which a single bulk anti-entropy value transfer to one
     /// peer is paced (default 32 MiB/s). See [`bulk_send_rate`](Config::bulk_send_rate); to disable
     /// pacing (an unpaced back-to-back burst), set that field to `None` directly.

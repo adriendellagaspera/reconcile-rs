@@ -18,6 +18,12 @@ All notable changes to this project are documented here. Format follows
   `reconcile` facade. Split *count* is unaffected by the shift, so wire volume and round count are
   unchanged; only a direct `rbsr` caller's call sites need the new argument. `rbsr` bumped to
   `0.2.0` for it, per AGENTS.md §11's pre-1.0 minor-for-breaking convention.
+- **BREAKING**: a comparison round that converges with nothing else to report now gets an explicit
+  `ConvergenceAck` reply instead of silence (#23) — `WIRE_VERSION` bumped `2` → `3` accordingly,
+  consuming one of the two wire tags #463 reserved for exactly this. **A node running this version
+  cannot reconcile with one before it.** Roll out by fully draining and replacing older nodes — do
+  not mix versions in one cluster, same as every other `WIRE_VERSION` bump (README "Wire
+  versioning"). See [MIGRATING.md](MIGRATING.md).
 - **BREAKING**: `ValueRef<'a, V>` is now `ValueRef<K, V>` (#34) — it owns an immutable `Arc`
   snapshot of the backing tree plus the looked-up key instead of a lock guard, so holding one no
   longer risks a deadlock against a concurrent write on the same handle. See
@@ -36,6 +42,11 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `Config::repair_interval`/`with_repair_interval`, and
+  `ReplicatedMap`/`ReplicatedSet::set_repair_interval` (#23): an RTT-scale timer (default 150 ms)
+  that repairs a comparison round or bulk-transfer datagram lost in flight, decoupled from
+  `reconcile_interval`'s background anti-entropy cadence — see README "Reconciliation interval
+  floor".
 - `ReplicatedMap::snapshot()`/`value_snapshot()` and `ReadReplicaMap::snapshot()` (#34): zero-copy
   `Arc` snapshots of the backing tree for scanning with `rsos`'s existing `iter`/`range`, no lock
   and no lifetime tied to the handle.

@@ -318,6 +318,12 @@ impl<K: Key + Hash> ReplicatedSet<K> {
         self.0.set_reconcile_interval(interval);
     }
 
+    /// (runtime) Retune the RTT-scale repair timer. See
+    /// [`ReplicatedMap::set_repair_interval`].
+    pub fn set_repair_interval(&self, interval: Duration) {
+        self.0.set_repair_interval(interval);
+    }
+
     /// (runtime) Retune the broadcast-coalescing window. See
     /// [`ReplicatedMap::set_coalesce_window`].
     pub fn set_coalesce_window(&self, window: Duration) {
