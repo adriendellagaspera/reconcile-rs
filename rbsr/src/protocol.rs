@@ -313,7 +313,7 @@ where
                 let actual_span = end_index.get() - start_index.get();
                 let remainder = actual_span % stride;
                 let short_block =
-                    (remainder != 0).then(|| rng.gen_range(0..actual_span / stride + 1));
+                    (remainder != 0).then(|| rng.gen_range(0..block_count(actual_span, stride)));
                 let mut cur_bound = start_bound;
                 let mut cur_index = start_index;
                 let mut block = 0usize;
@@ -350,6 +350,14 @@ where
         }
     }
     outcome
+}
+
+/// How many blocks a fixed `stride` cuts `actual_span` elements into: `ceil(actual_span /
+/// stride)`. Factored out of the `Decision::Split` arm so its exact arithmetic (`div_ceil`, not a
+/// hand-rolled `/ stride + 1`) is pinned by a direct unit test rather than only exercised through
+/// the fan-out loop, where a wrong-but-in-range result is easy for a property test to miss.
+fn block_count(actual_span: usize, stride: usize) -> usize {
+    actual_span.div_ceil(stride)
 }
 
 #[cfg(test)]

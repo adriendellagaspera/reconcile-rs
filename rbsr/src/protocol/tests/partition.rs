@@ -121,3 +121,84 @@ fn different_seeds_draw_different_cut_positions() {
         cuts.len()
     );
 }
+
+/// `block_count`'s exact arithmetic, pinned directly rather than only exercised through the
+/// fan-out loop, where a wrong-but-in-range block count is easy for a property test on the
+/// resulting partition to miss (any block count still partitions the parent correctly).
+#[test]
+fn block_count_is_the_ceiling_of_actual_span_over_stride() {
+    assert_eq!(
+        block_count(397, 25),
+        16,
+        "397 = 25*15 + 22: 15 full-stride blocks plus one partial"
+    );
+    assert_eq!(
+        block_count(400, 25),
+        16,
+        "400 = 25*16 exactly: divides evenly, no partial block needed"
+    );
+    assert_eq!(
+        block_count(1, 25),
+        1,
+        "a span narrower than one stride is still one (undersized) block"
+    );
+    assert_eq!(block_count(0, 25), 0, "an empty span is zero blocks");
+}
+
+/// `ARCHITECTURE.md` §5 invariant 10's sizing half, direct rather than structural: every shifted
+/// SPLIT child is exactly `stride`-sized except one `remainder`-sized block, for every draw — not
+/// just "some partition of the parent, however sized" (which
+/// `split_children_partition_the_parent_range_under_every_shift` already covers, and a `block`
+/// counter that never advances could still satisfy by accident: it would just reproduce the old
+/// always-last placement for every seed, which still partitions correctly).
+#[test]
+fn exactly_one_child_is_remainder_sized_the_rest_are_stride_sized() {
+    const STRIDE: usize = 25;
+    const REMAINDER: usize = 397 % STRIDE;
+    let store = tree(&(0..397).collect::<Vec<_>>());
+    let mut remainder_block_positions = std::collections::HashSet::new();
+    for seed in 0..64u64 {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let mut child_ranges = Vec::new();
+        let mut enumeration_ranges = Vec::new();
+        protocol_round(
+            &store,
+            vec![splitting_segment(397)],
+            &mut child_ranges,
+            &mut enumeration_ranges,
+            &mut rng,
+        );
+        let sizes: Vec<usize> = child_ranges
+            .iter()
+            .map(|child| store.aggregate(child.range.clone()).size())
+            .collect();
+        assert!(
+            sizes
+                .iter()
+                .all(|&size| size == STRIDE || size == REMAINDER),
+            "seed {seed}: every child must be stride- or remainder-sized, sizes were {sizes:?}"
+        );
+        let remainder_positions: Vec<usize> = sizes
+            .iter()
+            .enumerate()
+            .filter(|(_, &size)| size == REMAINDER)
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(
+            remainder_positions.len(),
+            1,
+            "seed {seed}: expected exactly one {REMAINDER}-sized block, sizes were {sizes:?}"
+        );
+        remainder_block_positions.insert(remainder_positions[0]);
+    }
+    // A `block` counter that never advances always places the remainder-sized block last
+    // (reproducing the pre-shift placement for every seed but one, see the doc comment above);
+    // real advancement puts it in the middle at least once across 64 draws.
+    assert!(
+        remainder_block_positions
+            .iter()
+            .any(|&position| position != 15),
+        "the remainder-sized block was always at the last position (15) across every seed — \
+         the shift looks like it never actually moves the block"
+    );
+}
