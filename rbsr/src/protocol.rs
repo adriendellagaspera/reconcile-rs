@@ -20,6 +20,8 @@
 
 use std::ops::Bound;
 
+use rand::rngs::StdRng;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -107,6 +109,7 @@ pub fn initial_ranges<K, B: RsosView<K>>(local: &B) -> Vec<RangeAggregate<K>> {
 /// [`AddAssign`](std::ops::AddAssign) accumulates a whole reconciliation.
 ///
 /// ```
+/// use rand::SeedableRng;
 /// use rsos::FingerprintTreeMap;
 /// use rbsr::{initial_ranges, protocol_round};
 ///
@@ -129,7 +132,8 @@ pub fn initial_ranges<K, B: RsosView<K>>(local: &B) -> Vec<RangeAggregate<K>> {
 ///
 /// let mut children = Vec::new();
 /// let mut enumerations = Vec::new();
-/// let outcome = protocol_round(&b, active, &mut children, &mut enumerations);
+/// let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+/// let outcome = protocol_round(&b, active, &mut children, &mut enumerations, &mut rng);
 ///
 /// assert_eq!(outcome.skipped(), 1); // `b` vs `b`
 /// assert_eq!(outcome.enumerated(), 1); // `b` vs `empty`
@@ -162,6 +166,7 @@ pub fn protocol_round<K, B: RsosView<K>>(
     active_ranges: Vec<RangeAggregate<K>>,
     child_ranges: &mut Vec<RangeAggregate<K>>,
     enumeration_ranges: &mut Vec<EnumerationRange<K>>,
+    rng: &mut StdRng,
 ) -> RoundOutcome
 where
     K: Clone,
@@ -172,6 +177,7 @@ where
         active_ranges,
         child_ranges,
         enumeration_ranges,
+        rng,
     )
 }
 
@@ -188,6 +194,7 @@ where
 /// law, at the cost of an immediate IDLIST for the ranges where it does.
 ///
 /// ```
+/// use rand::SeedableRng;
 /// use rsos::FingerprintTreeMap;
 /// use rbsr::{initial_ranges, protocol_round_with_policy, SqrtFanOut};
 ///
@@ -202,19 +209,29 @@ where
 /// let active = initial_ranges(&b);
 /// let mut children = Vec::new();
 /// let mut enumerations = Vec::new();
-/// protocol_round_with_policy(&a, &SqrtFanOut, active, &mut children, &mut enumerations);
+/// let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+/// protocol_round_with_policy(&a, &SqrtFanOut, active, &mut children, &mut enumerations, &mut rng);
 ///
 /// // `SqrtFanOut` cuts `a`'s 400-element span into exactly ⌊√400⌋ = 20 children, unlike the
 /// // default `FixedFanOut`, which would cap it at 16 regardless of the span.
 /// assert_eq!(children.len(), 20);
 /// assert!(enumerations.is_empty());
 /// ```
+///
+/// # RNG seam
+///
+/// `rng` is injected, never drawn from ambient/thread-local entropy: the driver's own tests stay
+/// deterministic under a seeded `StdRng`, and a caller with no session-scoped RNG to reuse
+/// (`Replica`/`ReadReplicaMap` share one across rounds and peers, `src/replica/dispatch.rs`) can
+/// seed one fresh per call. Consumed only when a [`Decision::Split`] actually reaches the fan-out
+/// below — a [`Decision::Skip`]/[`Decision::Enumerate`] round draws nothing.
 pub fn protocol_round_with_policy<K, B, P>(
     local: &B,
     policy: &P,
     active_ranges: Vec<RangeAggregate<K>>,
     child_ranges: &mut Vec<RangeAggregate<K>>,
     enumeration_ranges: &mut Vec<EnumerationRange<K>>,
+    rng: &mut StdRng,
 ) -> RoundOutcome
 where
     K: Clone,
@@ -285,12 +302,30 @@ where
             Decision::Split(stride) => {
                 outcome.split += 1;
                 let stride = stride.get();
+                // A fixed stride leaves one undersized block over `actual_span` (none when it
+                // divides evenly); placing that block at a session-random position among the
+                // `ceil(actual_span / stride)` blocks, instead of always last, moves every
+                // interior cut after it with the draw — ARCHITECTURE.md §7, "Defense against a
+                // correlated false SKIP", option A. Block *count* is `ceil(actual_span / stride)`
+                // for any draw, so this touches no bound invariant 10 or the fan-out width already
+                // relied on. `end_index.get() - start_index.get()`, not the policy-visible `span`
+                // a hostile backend could disagree with — see `RsosView`'s count-agreement law.
+                let actual_span = end_index.get() - start_index.get();
+                let remainder = actual_span % stride;
+                let short_block =
+                    (remainder != 0).then(|| rng.gen_range(0..actual_span / stride + 1));
                 let mut cur_bound = start_bound;
                 let mut cur_index = start_index;
+                let mut block = 0usize;
                 loop {
+                    let this_stride = if short_block == Some(block) {
+                        remainder
+                    } else {
+                        stride
+                    };
                     // `None` means the next cut would reach `end_index`: this child is the last.
                     // `Some` is in bounds for any backend by construction — see `AdmittedRank`.
-                    let Some(next_index) = cur_index.cut_before(end_index, stride) else {
+                    let Some(next_index) = cur_index.cut_before(end_index, this_stride) else {
                         let range = KeyRange::new(cur_bound, end_bound);
                         // An uncut child *is* the parent, whose aggregate is already in hand.
                         let aggregate = if cur_index == start_index {
@@ -309,6 +344,7 @@ where
                     outcome.children += 1;
                     cur_bound = StartBound::Included(next_key);
                     cur_index = next_index;
+                    block += 1;
                 }
             }
         }

@@ -167,11 +167,13 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             let mut differences = Vec::new();
             {
                 let guard = self.tree.load_full();
+                let mut rng = self.rng.write();
                 rbsr::protocol_round(
                     &*guard,
                     value_in_comparison,
                     &mut out_comparison,
                     &mut differences,
+                    &mut rng,
                 );
             }
             // `differences` are ranges this read replica would owe the peer. A read-only replica

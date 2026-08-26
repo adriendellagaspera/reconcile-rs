@@ -8,6 +8,15 @@ All notable changes to this project are documented here. Format follows
 
 ### Changed
 
+- **BREAKING**: `rbsr::protocol_round`/`protocol_round_with_policy` take a new final `&mut
+  rand::rngs::StdRng` argument (#7, migrated from `akvize/reconcile-rs#502`): a session-random
+  shift on which block of a SPLIT's fixed-stride cut is undersized, so two sessions over identical
+  stores draw different boundaries below the outer range — defense against a Wagner plant crafted
+  to land on a deterministic cut point (`ARCHITECTURE.md` §7, "Defense against a correlated false
+  SKIP"). Injected, not ambient: `Replica`/`ReadReplicaMap` pass their existing session RNG
+  (`src/replica/dispatch.rs`, `src/read_replica_map/write.rs`), unchanged for callers of the
+  `reconcile` facade. Split *count* is unaffected by the shift, so wire volume and round count are
+  unchanged; only a direct `rbsr` caller's call sites need the new argument.
 - **BREAKING**: `ValueRef<'a, V>` is now `ValueRef<K, V>` (#34) — it owns an immutable `Arc`
   snapshot of the backing tree plus the looked-up key instead of a lock guard, so holding one no
   longer risks a deadlock against a concurrent write on the same handle. See

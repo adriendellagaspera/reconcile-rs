@@ -6,6 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use rand::SeedableRng;
 use rbsr::{Comparison, Decision, FixedFanOut};
 use rsos::FingerprintTreeMap;
 
@@ -112,7 +113,13 @@ fn reconcile_settles_in_one_round_when_stores_already_agree() {
         a.insert(key, key);
         b.insert(key, key);
     }
-    let cost = reconcile(&a, &b, &FixedFanOut::default(), None);
+    let cost = reconcile(
+        &a,
+        &b,
+        &FixedFanOut::default(),
+        None,
+        &mut StdRng::seed_from_u64(0),
+    );
     assert_eq!(
         cost.messages, 1,
         "agreeing stores settle after the single top-level comparison"
@@ -141,7 +148,13 @@ fn reconcile_prices_every_enumerated_element_through_the_closure() {
         price_calls.push(key);
         vec![10, 20]
     };
-    let cost = reconcile(&a, &b, &AlwaysEnumerate, Some(&mut price));
+    let cost = reconcile(
+        &a,
+        &b,
+        &AlwaysEnumerate,
+        Some(&mut price),
+        &mut StdRng::seed_from_u64(0),
+    );
 
     assert_eq!(
         price_calls,
@@ -158,7 +171,13 @@ fn reconcile_counts_without_pricing_when_no_closure_is_given() {
     a.insert(1, 1);
     let b = FingerprintTreeMap::<u64, u64>::new();
 
-    let cost = reconcile(&a, &b, &AlwaysEnumerate, None);
+    let cost = reconcile(
+        &a,
+        &b,
+        &AlwaysEnumerate,
+        None,
+        &mut StdRng::seed_from_u64(0),
+    );
 
     assert_eq!(cost.enumerated_elements, 1);
     assert!(
@@ -173,7 +192,13 @@ fn reconcile_tallies_ranges_bytes_and_datagrams_for_a_single_round() {
     a.insert(1, 1);
     let b = FingerprintTreeMap::<u64, u64>::new();
 
-    let cost = reconcile(&a, &b, &AlwaysEnumerate, None);
+    let cost = reconcile(
+        &a,
+        &b,
+        &AlwaysEnumerate,
+        None,
+        &mut StdRng::seed_from_u64(0),
+    );
 
     // Two rounds: the empty peer answers first and enumerates its (empty) view of the range, then
     // the non-empty peer answers the resulting child and enumerates its one real key — matching

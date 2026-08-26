@@ -40,19 +40,27 @@ fn the_progress_guard_settles_the_two_cases_its_own_tests_miss() {
         for (case, termination) in [
             (
                 "oracle-independent constant stride",
-                drive(&a, &b, &deviant).termination,
+                drive(&a, &b, &deviant, &mut StdRng::seed_from_u64(seed)).termination,
             ),
             (
                 "oracle-independent span-hashed stride",
-                drive(&a, &b, &SpanHashedStrideSplit).termination,
+                drive(
+                    &a,
+                    &b,
+                    &SpanHashedStrideSplit,
+                    &mut StdRng::seed_from_u64(seed),
+                )
+                .termination,
             ),
             (
                 "deviant peer A only",
-                drive_pair(&a, &b, &deviant, &shipped).termination,
+                drive_pair(&a, &b, &deviant, &shipped, &mut StdRng::seed_from_u64(seed))
+                    .termination,
             ),
             (
                 "deviant peer B only",
-                drive_pair(&a, &b, &shipped, &deviant).termination,
+                drive_pair(&a, &b, &shipped, &deviant, &mut StdRng::seed_from_u64(seed))
+                    .termination,
             ),
         ] {
             assert_eq!(

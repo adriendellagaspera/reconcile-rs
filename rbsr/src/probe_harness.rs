@@ -197,8 +197,20 @@ fn state_recurred(state: &[RangeAggregate<u64>], active: &[RangeAggregate<u64>])
 
 /// Reconcile `a` against `b` under `policy`, alternating which peer answers, until the active
 /// family empties, a state recurs, or [`MAX_ROUNDS`] rounds pass.
-pub fn drive<P: RefinementPolicy>(a: &NarrowStore, b: &NarrowStore, policy: &P) -> Drive<u64> {
-    drive_pair(a, b, policy, policy)
+///
+/// `rng` is `protocol_round_with_policy`'s own injected cut-offset seam, reused across every round
+/// of this drive — this harness proves stalls by exact state recurrence (`state_hash`/
+/// `state_recurred`), which only a policy that never reaches a real `Decision::Split` (every
+/// shipped oracle-independent probe converts to `Enumerate` at the driver's non-progress guard
+/// before drawing) can currently exercise; a probe that does reach a real split draws a fresh
+/// shift each visit like any other caller, same as the production seam.
+pub fn drive<P: RefinementPolicy>(
+    a: &NarrowStore,
+    b: &NarrowStore,
+    policy: &P,
+    rng: &mut StdRng,
+) -> Drive<u64> {
+    drive_pair(a, b, policy, policy, rng)
 }
 
 /// [`drive`] with a **policy per peer**. A refinement policy is a purely local choice this crate
@@ -209,6 +221,7 @@ pub fn drive_pair<A: RefinementPolicy, B: RefinementPolicy>(
     b: &NarrowStore,
     policy_a: &A,
     policy_b: &B,
+    rng: &mut StdRng,
 ) -> Drive<u64> {
     let mut active = initial_ranges(a);
     let (mut responder, mut advertiser) = (b, a);
@@ -249,6 +262,7 @@ pub fn drive_pair<A: RefinementPolicy, B: RefinementPolicy>(
                 active,
                 &mut children,
                 &mut enumerations,
+                rng,
             )
         } else {
             protocol_round_with_policy(
@@ -257,6 +271,7 @@ pub fn drive_pair<A: RefinementPolicy, B: RefinementPolicy>(
                 active,
                 &mut children,
                 &mut enumerations,
+                rng,
             )
         };
         comparisons += round_comparisons(

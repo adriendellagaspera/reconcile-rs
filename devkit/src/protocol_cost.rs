@@ -17,6 +17,7 @@ use std::cell::Cell;
 use std::ops::{Add, RangeBounds};
 
 use bincode::Options;
+use rand::rngs::StdRng;
 use rbsr::{
     initial_ranges, protocol_round_with_policy, EnumerationRange, RangeAggregate, RefinementPolicy,
 };
@@ -201,11 +202,16 @@ pub struct Decisions {
 /// entry per payload variant to price side by side. `None` counts enumerated elements without
 /// pricing them, for a timed drive where encoding a real payload would put the caller's own
 /// encoder inside the measurement.
+///
+/// `rng` is `protocol_round_with_policy`'s injected cut-offset seam (rbsr's ARCHITECTURE.md §7,
+/// "Defense against a correlated false SKIP"), reused across every round of this drive — the same
+/// pattern a real deployment's `Replica`/`ReadReplicaMap` follow with their own session RNG.
 pub fn reconcile<S: Rsos<u64>>(
     a: &S,
     b: &S,
     policy: &dyn RefinementPolicy,
     mut price_element: Option<&mut dyn FnMut(u64) -> Vec<usize>>,
+    rng: &mut StdRng,
 ) -> Cost {
     let mut cost = Cost::default();
     let mut active: Vec<RangeAggregate<u64>> = initial_ranges(a);
@@ -239,7 +245,14 @@ pub fn reconcile<S: Rsos<u64>>(
         let mut children = Vec::new();
         let mut enumerations: Vec<EnumerationRange<u64>> = Vec::new();
         let responder = if responder_is_b { b } else { a };
-        protocol_round_with_policy(responder, policy, active, &mut children, &mut enumerations);
+        protocol_round_with_policy(
+            responder,
+            policy,
+            active,
+            &mut children,
+            &mut enumerations,
+            rng,
+        );
         cost.enumerations += enumerations.len();
         // What an IDLIST actually ships. `Enumerate(l, u)` is the paper's own operation, so this is
         // a real cost of the policy, not an artifact of how the caller drives it.

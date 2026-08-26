@@ -45,7 +45,12 @@ fn span_end_bound_included_vs_excluded_at_an_exact_key() {
 fn keys_in_returns_exactly_the_enumerated_keys() {
     let a = NarrowStore::new(16, vec![1, 2, 3, 4, 5]);
     let b = NarrowStore::new(16, vec![1, 2, 3]); // 4 and 5 are the difference
-    let result = drive(&a, &b, &FixedFanOut::default());
+    let result = drive(
+        &a,
+        &b,
+        &FixedFanOut::default(),
+        &mut StdRng::seed_from_u64(0),
+    );
     assert_eq!(result.termination, Termination::Settled);
 
     let found: HashSet<u64> = result
@@ -167,7 +172,12 @@ fn state_recurred_is_exact_equality() {
 fn drive_reports_the_rounds_it_ran() {
     let a = NarrowStore::new(16, vec![1, 2, 3, 4, 5]);
     let b = NarrowStore::new(16, vec![1, 2, 3]);
-    let result = drive(&a, &b, &FixedFanOut::default());
+    let result = drive(
+        &a,
+        &b,
+        &FixedFanOut::default(),
+        &mut StdRng::seed_from_u64(0),
+    );
     assert!(
         result.rounds >= 1,
         "a genuine difference must take at least one round to settle"

@@ -14,6 +14,8 @@
 
 use std::collections::BTreeSet;
 
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use rbsr::{initial_ranges, protocol_round, EnumerationRange, RangeAggregate, RsosView};
 use rsos::{FingerprintTreeMap, Rsos};
 
@@ -26,10 +28,17 @@ fn converge<'a>(
     mut advertiser: &'a FingerprintTreeMap<u32, u32>,
 ) -> Vec<EnumerationRange<u32>> {
     let mut ranges = Vec::new();
+    let mut rng = StdRng::seed_from_u64(42);
     while !active.is_empty() {
         let mut children = Vec::new();
         let mut enumerations = Vec::new();
-        protocol_round(responder, active, &mut children, &mut enumerations);
+        protocol_round(
+            responder,
+            active,
+            &mut children,
+            &mut enumerations,
+            &mut rng,
+        );
         ranges.append(&mut enumerations);
         active = children;
         std::mem::swap(&mut responder, &mut advertiser);

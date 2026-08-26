@@ -239,6 +239,6 @@ pub fn T::rank(&self, &K) -> usize
 pub fn T::select(&self, usize) -> &K
 pub fn T::size(&self) -> usize
 pub fn rbsr::initial_ranges<K, B: rbsr::RsosView<K>>(&B) -> alloc::vec::Vec<rbsr::RangeAggregate<K>>
-pub fn rbsr::protocol_round<K, B: rbsr::RsosView<K>>(&B, alloc::vec::Vec<rbsr::RangeAggregate<K>>, &mut alloc::vec::Vec<rbsr::RangeAggregate<K>>, &mut alloc::vec::Vec<rbsr::EnumerationRange<K>>) -> rbsr::RoundOutcome where K: core::clone::Clone
-pub fn rbsr::protocol_round_with_policy<K, B, P>(&B, &P, alloc::vec::Vec<rbsr::RangeAggregate<K>>, &mut alloc::vec::Vec<rbsr::RangeAggregate<K>>, &mut alloc::vec::Vec<rbsr::EnumerationRange<K>>) -> rbsr::RoundOutcome where K: core::clone::Clone, B: rbsr::RsosView<K>, P: rbsr::RefinementPolicy + ?core::marker::Sized
+pub fn rbsr::protocol_round<K, B: rbsr::RsosView<K>>(&B, alloc::vec::Vec<rbsr::RangeAggregate<K>>, &mut alloc::vec::Vec<rbsr::RangeAggregate<K>>, &mut alloc::vec::Vec<rbsr::EnumerationRange<K>>, &mut rand::rngs::std::StdRng) -> rbsr::RoundOutcome where K: core::clone::Clone
+pub fn rbsr::protocol_round_with_policy<K, B, P>(&B, &P, alloc::vec::Vec<rbsr::RangeAggregate<K>>, &mut alloc::vec::Vec<rbsr::RangeAggregate<K>>, &mut alloc::vec::Vec<rbsr::EnumerationRange<K>>, &mut rand::rngs::std::StdRng) -> rbsr::RoundOutcome where K: core::clone::Clone, B: rbsr::RsosView<K>, P: rbsr::RefinementPolicy + ?core::marker::Sized
 pub type rbsr::EnumerationRange<K> = (core::ops::range::Bound<K>, core::ops::range::Bound<K>)

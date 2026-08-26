@@ -56,6 +56,7 @@ const MAX_ROUNDS: usize = 128;
 fn drive<K: Clone + Ord, B: RsosView<K>>(
     a: &B,
     b: &B,
+    rng: &mut StdRng,
 ) -> (Vec<EnumerationRange<K>>, Vec<EnumerationRange<K>>) {
     let mut active = initial_ranges(a);
     let mut responder = b;
@@ -69,7 +70,7 @@ fn drive<K: Clone + Ord, B: RsosView<K>>(
     while !active.is_empty() && rounds < MAX_ROUNDS {
         let mut children = Vec::new();
         let mut enumerations = Vec::new();
-        protocol_round(responder, active, &mut children, &mut enumerations);
+        protocol_round(responder, active, &mut children, &mut enumerations, rng);
         if responder_is_b {
             b_enumerations.extend(enumerations);
         } else {
@@ -132,7 +133,7 @@ fn f_p_id_never_declares_false_convergence_on_a_pure_deletion_difference() {
             "trial {trial}: a non-empty deletion must unbalance the outer range"
         );
 
-        let (a_enum, b_enum) = drive(&a, &b);
+        let (a_enum, b_enum) = drive(&a, &b, &mut rng);
         let keys_of = |range: &EnumerationRange<u64>| -> Vec<u64> {
             a.range(*range)
                 .chain(b.range(*range))

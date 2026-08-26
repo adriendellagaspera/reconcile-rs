@@ -98,11 +98,13 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             let mut out_comparison = Vec::new();
             {
                 let guard = self.map.load_full();
+                let mut rng = self.rng.write();
                 rbsr::protocol_round(
                     &*guard,
                     in_comparison,
                     &mut out_comparison,
                     &mut differences,
+                    &mut rng,
                 );
             }
             // Refinement comparison items are small and latency-sensitive: send them inline, now.
@@ -239,11 +241,13 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             let mut out_comparison = Vec::new();
             {
                 let guard = self.projection.load_full();
+                let mut rng = self.rng.write();
                 rbsr::protocol_round(
                     &*guard,
                     value_in_comparison,
                     &mut out_comparison,
                     &mut differences,
+                    &mut rng,
                 );
             }
             // Refinement comparison items are small and latency-sensitive: send them inline, now.
