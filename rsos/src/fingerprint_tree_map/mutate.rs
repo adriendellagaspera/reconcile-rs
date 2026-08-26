@@ -14,7 +14,7 @@ use serde::Serialize;
 use tracing::trace;
 
 use crate::aggregate::Aggregate;
-use crate::fingerprint::{lift, Fingerprint};
+use crate::fingerprint::{lift_with, Fingerprint, LiftKey};
 
 use super::node::Node;
 use super::{element, FingerprintTreeMap, InsertionTuple, MIN_CAPACITY};
@@ -28,11 +28,12 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
             node: &mut Node<K, V>,
             key: K,
             value: V,
+            lift_key: Option<&LiftKey>,
         ) -> (InsertionTuple<K, V>, Fingerprint, Option<V>) {
             match node.keys.binary_search(&key) {
                 Ok(index) => {
                     let old_fp = node.fingerprints[index];
-                    let new_fp = lift(&key, &value);
+                    let new_fp = lift_with(lift_key, &key, &value);
                     let diff_fp = new_fp - old_fp;
                     node.fingerprints[index] = new_fp;
                     // A value overwritten in place: the element count is unchanged, so the
@@ -46,7 +47,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                         // Forks this child's subtree via `Arc::make_mut` only if it is still
                         // shared with an older retained version -- unshared, it mutates in place.
                         let (mut to_insert, diff_fp, ret) =
-                            aux(Arc::make_mut(&mut children[index]), key, value);
+                            aux(Arc::make_mut(&mut children[index]), key, value, lift_key);
                         if let Some((key, value, fingerprint, right_child)) = to_insert {
                             to_insert = node.insert(
                                 index,
@@ -62,7 +63,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                         }
                         (to_insert, diff_fp, ret)
                     } else {
-                        let fingerprint = lift(&key, &value);
+                        let fingerprint = lift_with(lift_key, &key, &value);
                         let to_insert =
                             node.insert(index, key, value, fingerprint, None, fingerprint);
                         (to_insert, fingerprint, None)
@@ -70,7 +71,12 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                 }
             }
         }
-        let (to_insert, _, ret) = aux(Arc::make_mut(&mut self.root), key, value);
+        let (to_insert, _, ret) = aux(
+            Arc::make_mut(&mut self.root),
+            key,
+            value,
+            self.lift_key.as_ref(),
+        );
         // if we still have things to insert at the root, we need to create a new root
         if let Some((key, value, fingerprint, right_child)) = to_insert {
             let new_root = Arc::new(Node::new());
@@ -160,9 +166,11 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
         ret
     }
 
-    /// Removes every entry, resetting the tree to the same empty state [`new`](Self::new) produces.
+    /// Removes every entry, resetting the tree to the same empty state [`new`](Self::new) produces
+    /// — except the configured lift key (if any), which `clear` preserves rather than dropping:
+    /// this tree stays keyed exactly as [`with_lift_key`](Self::with_lift_key) set it up.
     pub fn clear(&mut self) {
-        *self = Self::new();
+        self.root = Arc::new(Node::new());
     }
 
     /// Removes every entry for which `keep` returns `false`. `O(n log n)`: collect, then remove.
@@ -208,6 +216,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
             node: &'a Node<K, V>,
             mut min: Option<&'a K>,
             max: Option<&K>,
+            lift_key: Option<&LiftKey>,
         ) -> (Aggregate, usize) {
             let mut cum = Aggregate::ZERO;
             let mut max_height = 1;
@@ -230,7 +239,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                 // child before key
                 if let Some(children) = node.children.as_ref() {
                     let next_max = Some(&node.keys[i]);
-                    let (child, child_height) = aux(&children[i], min, next_max);
+                    let (child, child_height) = aux(&children[i], min, next_max, lift_key);
                     cum += child;
                     if max_height != 1 {
                         assert_eq!(child_height, max_height, "height invariant violated");
@@ -239,7 +248,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                     min = next_max;
                 }
                 // key
-                let fingerprint = lift(&node.keys[i], &node.values[i]);
+                let fingerprint = lift_with(lift_key, &node.keys[i], &node.values[i]);
                 assert_eq!(
                     fingerprint, node.fingerprints[i],
                     "per-element fingerprint cache invalid"
@@ -248,7 +257,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
             }
             // child after last key
             if let Some(children) = node.children.as_ref() {
-                let (child, child_height) = aux(children.last().unwrap(), min, max);
+                let (child, child_height) = aux(children.last().unwrap(), min, max, lift_key);
                 cum += child;
                 if max_height != 1 {
                     assert_eq!(child_height, max_height, "height invariant violated");
@@ -258,7 +267,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
             assert_eq!(cum, node.subtree(), "subtree aggregate invariant violated");
             (cum, max_height + 1)
         }
-        let (_, height) = aux(&self.root, None, None);
+        let (_, height) = aux(&self.root, None, None, self.lift_key.as_ref());
 
         // Height must count actual levels, not just agree between siblings: walk straight down
         // the leftmost path (an independent measurement) and check it agrees with `aux`'s own

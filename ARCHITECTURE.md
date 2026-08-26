@@ -561,19 +561,20 @@ bullets below are that reasoning — this table is the lookup, not a summary tha
   |---|---|---|
   | covers | every range **below** the outer one — the accidental collision and the slice-targeted plant | the **outer** range — the total plant, decided before any boundary is drawn |
   | steady-state cost | none: child bounds travel anyway; wire format, comparison map and policy contract untouched | `~√n/k` extra ranges per round, paid forever (~10/round at `n` = 10⁶, `k` = 100) |
-  | verdict | **taken** — implementation tracked in [#502](https://github.com/Akvize/reconcile-rs/issues/502): injected RNG seam, invariant 10 re-asserted under shifted cuts | **not now** — its threat model changes at #337: before, the proportionate answer to a plant is keying the lift itself; after, the residual adversary is the *insider* a cluster key cannot exclude, and B is re-priced against exactly that (the reopening is recorded in #337's body, not left to memory) |
+  | verdict | **taken** — implementation tracked in [#502](https://github.com/Akvize/reconcile-rs/issues/502): injected RNG seam, invariant 10 re-asserted under shifted cuts | **reopened at #337's landing** (this fork: issue #19) — before, the proportionate answer to a plant was keying the lift itself; now that it is keyed (`rsos::LiftKey`, `ClusterKey::derive_lift_key`), the residual adversary is the *insider* a cluster key cannot exclude (every honest peer derives the identical subkey, so #354's fleet-correlation finding applies to an insider's plant unchanged), and B needs re-pricing against exactly that — not yet done |
 
   Salting `ϕ` itself is **rejected up front**, and is not a third option: it decorrelates sessions
   by destroying the cached subtree summary, which is the `O(log n)` `Aggregate` the RSOS contract
   exists to provide. A's seam is in the driver (cut points), not in `RefinementPolicy`, so §5
   invariant 12 is untouched; invariant 10 is the one a shifted cut can break.
 
-  The interim residual — a total plant is Wagner-craftable without peer credentials while the lift
-  is unkeyed, and permanent per #354 — is recorded in
-  [README "Security model"](README.md#security-model). If B is ever taken it is taken **with** A,
-  never instead: B forces a descent once per `k` rounds, and A is what keeps that forced descent
-  from being cancelled against in advance — deterministic child boundaries would hand the planter
-  the next level's constraints. Collision taxonomy and full pricing: #471.
+  The interim residual — a total plant was Wagner-craftable without peer credentials while the lift
+  was unkeyed, and permanent per #354 — is closed for anyone but a cluster-key holder as of issue
+  #19; see [README "Security model"](README.md#security-model) for exactly what keying does and
+  does not buy, and for the insider residual B would need to re-price. If B is ever taken it is
+  taken **with** A, never instead: B forces a descent once per `k` rounds, and A is what keeps that
+  forced descent from being cancelled against in advance — deterministic child boundaries would hand
+  the planter the next level's constraints. Collision taxonomy and full pricing: #471.
 
 ---
 

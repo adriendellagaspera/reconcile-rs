@@ -110,8 +110,24 @@ impl core::marker::Unpin for rsos::fingerprint::Fingerprint
 impl core::marker::UnsafeUnpin for rsos::fingerprint::Fingerprint
 impl core::panic::unwind_safe::RefUnwindSafe for rsos::fingerprint::Fingerprint
 impl core::panic::unwind_safe::UnwindSafe for rsos::fingerprint::Fingerprint
+pub struct rsos::fingerprint::LiftKey(_)
+impl rsos::fingerprint::LiftKey
+pub fn rsos::fingerprint::LiftKey::new([u8; 32]) -> Self
+impl core::clone::Clone for rsos::fingerprint::LiftKey
+pub fn rsos::fingerprint::LiftKey::clone(&self) -> rsos::fingerprint::LiftKey
+impl core::fmt::Debug for rsos::fingerprint::LiftKey
+pub fn rsos::fingerprint::LiftKey::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for rsos::fingerprint::LiftKey
+impl core::marker::Send for rsos::fingerprint::LiftKey
+impl core::marker::Sync for rsos::fingerprint::LiftKey
+impl core::marker::Unpin for rsos::fingerprint::LiftKey
+impl core::marker::UnsafeUnpin for rsos::fingerprint::LiftKey
+impl core::panic::unwind_safe::RefUnwindSafe for rsos::fingerprint::LiftKey
+impl core::panic::unwind_safe::UnwindSafe for rsos::fingerprint::LiftKey
 pub fn rsos::fingerprint::digest<T: serde::ser::Serialize + ?core::marker::Sized>(&T) -> rsos::fingerprint::Fingerprint
+pub fn rsos::fingerprint::digest_keyed<T: serde::ser::Serialize + ?core::marker::Sized>(&rsos::fingerprint::LiftKey, &T) -> rsos::fingerprint::Fingerprint
 pub fn rsos::fingerprint::lift<K: serde::ser::Serialize + ?core::marker::Sized, V: serde::ser::Serialize + ?core::marker::Sized>(&K, &V) -> rsos::fingerprint::Fingerprint
+pub fn rsos::fingerprint::lift_keyed<K: serde::ser::Serialize + ?core::marker::Sized, V: serde::ser::Serialize + ?core::marker::Sized>(&rsos::fingerprint::LiftKey, &K, &V) -> rsos::fingerprint::Fingerprint
 pub mod rsos::fingerprint_tree_map
 pub struct rsos::fingerprint_tree_map::Entry<'a, K, V>
 impl<'a, K: serde::ser::Serialize + core::cmp::Ord + core::clone::Clone, V: serde::ser::Serialize + core::clone::Clone> rsos::Entry<'a, K, V>
@@ -151,6 +167,7 @@ impl<K: core::cmp::Ord, V> rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::contains_key<Q>(&self, &Q) -> bool where K: core::borrow::Borrow<Q>, Q: core::cmp::Ord + ?core::marker::Sized
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::get<Q>(&self, &Q) -> core::option::Option<&V> where K: core::borrow::Borrow<Q>, Q: core::cmp::Ord + ?core::marker::Sized
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::new() -> Self
+pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::with_lift_key(rsos::fingerprint::LiftKey) -> Self
 impl<K: core::cmp::Ord, V> rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::first_key_value(&self) -> core::option::Option<(&K, &V)>
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::last_key_value(&self) -> core::option::Option<(&K, &V)>
@@ -454,6 +471,7 @@ impl<K: core::cmp::Ord, V> rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::contains_key<Q>(&self, &Q) -> bool where K: core::borrow::Borrow<Q>, Q: core::cmp::Ord + ?core::marker::Sized
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::get<Q>(&self, &Q) -> core::option::Option<&V> where K: core::borrow::Borrow<Q>, Q: core::cmp::Ord + ?core::marker::Sized
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::new() -> Self
+pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::with_lift_key(rsos::fingerprint::LiftKey) -> Self
 impl<K: core::cmp::Ord, V> rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::first_key_value(&self) -> core::option::Option<(&K, &V)>
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::last_key_value(&self) -> core::option::Option<(&K, &V)>
@@ -615,6 +633,20 @@ impl<'a, K, V> core::marker::Unpin for rsos::fingerprint_tree_map_iter::Keys<'a,
 impl<'a, K, V> core::marker::UnsafeUnpin for rsos::fingerprint_tree_map_iter::Keys<'a, K, V> where rsos::fingerprint_tree_map_iter::Iter<'a, K, V>: core::marker::UnsafeUnpin
 impl<'a, K, V> core::panic::unwind_safe::RefUnwindSafe for rsos::fingerprint_tree_map_iter::Keys<'a, K, V> where rsos::fingerprint_tree_map_iter::Iter<'a, K, V>: core::panic::unwind_safe::RefUnwindSafe
 impl<'a, K, V> core::panic::unwind_safe::UnwindSafe for rsos::fingerprint_tree_map_iter::Keys<'a, K, V> where rsos::fingerprint_tree_map_iter::Iter<'a, K, V>: core::panic::unwind_safe::UnwindSafe
+pub struct rsos::LiftKey(_)
+impl rsos::fingerprint::LiftKey
+pub fn rsos::fingerprint::LiftKey::new([u8; 32]) -> Self
+impl core::clone::Clone for rsos::fingerprint::LiftKey
+pub fn rsos::fingerprint::LiftKey::clone(&self) -> rsos::fingerprint::LiftKey
+impl core::fmt::Debug for rsos::fingerprint::LiftKey
+pub fn rsos::fingerprint::LiftKey::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for rsos::fingerprint::LiftKey
+impl core::marker::Send for rsos::fingerprint::LiftKey
+impl core::marker::Sync for rsos::fingerprint::LiftKey
+impl core::marker::Unpin for rsos::fingerprint::LiftKey
+impl core::marker::UnsafeUnpin for rsos::fingerprint::LiftKey
+impl core::panic::unwind_safe::RefUnwindSafe for rsos::fingerprint::LiftKey
+impl core::panic::unwind_safe::UnwindSafe for rsos::fingerprint::LiftKey
 pub struct rsos::Values<'a, K, V>
 impl<'a, K, V> core::iter::traits::iterator::Iterator for rsos::fingerprint_tree_map_iter::Values<'a, K, V>
 pub type rsos::fingerprint_tree_map_iter::Values<'a, K, V>::Item = &'a V
@@ -653,4 +685,6 @@ pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::rank(&self, &K) -> 
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::select(&self, usize) -> &K
 pub fn rsos::fingerprint_tree_map::FingerprintTreeMap<K, V>::size(&self) -> usize
 pub fn rsos::digest<T: serde::ser::Serialize + ?core::marker::Sized>(&T) -> rsos::fingerprint::Fingerprint
+pub fn rsos::digest_keyed<T: serde::ser::Serialize + ?core::marker::Sized>(&rsos::fingerprint::LiftKey, &T) -> rsos::fingerprint::Fingerprint
 pub fn rsos::lift<K: serde::ser::Serialize + ?core::marker::Sized, V: serde::ser::Serialize + ?core::marker::Sized>(&K, &V) -> rsos::fingerprint::Fingerprint
+pub fn rsos::lift_keyed<K: serde::ser::Serialize + ?core::marker::Sized, V: serde::ser::Serialize + ?core::marker::Sized>(&rsos::fingerprint::LiftKey, &K, &V) -> rsos::fingerprint::Fingerprint

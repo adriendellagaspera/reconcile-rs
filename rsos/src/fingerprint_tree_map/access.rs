@@ -13,7 +13,7 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use crate::aggregate::Aggregate;
-use crate::fingerprint::{lift, Fingerprint};
+use crate::fingerprint::{lift_with, Fingerprint, LiftKey};
 
 use super::node::Node;
 use super::FingerprintTreeMap;
@@ -31,6 +31,7 @@ struct Relift<'a, K: Serialize + Clone, V: Serialize + Clone> {
     root: &'a mut Node<K, V>,
     path: KeyPath,
     key: &'a K,
+    lift_key: Option<&'a LiftKey>,
 }
 
 impl<K: Serialize + Clone, V: Serialize + Clone> Relift<'_, K, V> {
@@ -58,11 +59,12 @@ impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
             descent: &[usize],
             key_index: usize,
             key: &K,
+            lift_key: Option<&LiftKey>,
         ) -> Fingerprint {
             let delta = match descent.split_first() {
                 None => {
                     let old_fp = node.fingerprints[key_index];
-                    let new_fp = lift(key, &node.values[key_index]);
+                    let new_fp = lift_with(lift_key, key, &node.values[key_index]);
                     node.fingerprints[key_index] = new_fp;
                     new_fp - old_fp
                 }
@@ -73,6 +75,7 @@ impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
                     rest,
                     key_index,
                     key,
+                    lift_key,
                 ),
             };
             // Same shape as `mutate.rs`'s overwrite: the count is untouched, only the
@@ -80,7 +83,13 @@ impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
             node.compose_into_subtree(Aggregate::new(0, delta));
             delta
         }
-        repair(self.root, &self.path.descent, self.path.key_index, self.key);
+        repair(
+            self.root,
+            &self.path.descent,
+            self.path.key_index,
+            self.key,
+            self.lift_key,
+        );
     }
 }
 
@@ -89,6 +98,27 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
     #[must_use]
     pub fn new() -> Self {
         Default::default()
+    }
+
+    /// An empty tree whose every lift is keyed under `lift_key` — see `crate::fingerprint`'s
+    /// module doc for what keying does and does not defend against.
+    ///
+    /// There is no analogous "rekey an existing tree" method: see this type's `lift_key` field doc
+    /// (crate-private, but its reasoning applies here too) for why.
+    ///
+    /// ```
+    /// use rsos::{FingerprintTreeMap, LiftKey};
+    ///
+    /// let mut map = FingerprintTreeMap::with_lift_key(LiftKey::new([9; 32]));
+    /// map.insert(1, "one");
+    /// assert_eq!(map.get(&1), Some(&"one"));
+    /// ```
+    #[must_use]
+    pub fn with_lift_key(lift_key: LiftKey) -> Self {
+        FingerprintTreeMap {
+            root: Arc::new(Node::new()),
+            lift_key: Some(lift_key),
+        }
     }
 
     /// Returns the value associated with `key`, if present.
@@ -179,6 +209,7 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
             root: Arc::make_mut(&mut self.root),
             path: KeyPath { descent, key_index },
             key,
+            lift_key: self.lift_key.as_ref(),
         };
         let value = guard.value_mut();
         callback(Some(value))

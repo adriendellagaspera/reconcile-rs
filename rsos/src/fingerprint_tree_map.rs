@@ -23,7 +23,7 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 
 use crate::aggregate::Aggregate;
-use crate::fingerprint::Fingerprint;
+use crate::fingerprint::{Fingerprint, LiftKey};
 
 mod access;
 mod mutate;
@@ -94,12 +94,20 @@ fn element(fingerprint: Fingerprint) -> Aggregate {
 #[derive(Clone)]
 pub struct FingerprintTreeMap<K, V> {
     pub(crate) root: Arc<Node<K, V>>,
+    /// `None` lifts unkeyed (honest-model only, `crate::fingerprint`'s module doc); `Some` closes
+    /// the Wagner-grinding gap for holders of the key. Set once, at construction —
+    /// [`FingerprintTreeMap::with_lift_key`] is the only way in, and there is deliberately no
+    /// setter: rekeying an already-populated tree in place would silently invalidate every cached
+    /// fingerprint without a re-lift pass, which is exactly the "re-derive it and reconcile
+    /// silently wrongly" failure `Rsos::aggregate`'s summary law warns against.
+    pub(crate) lift_key: Option<LiftKey>,
 }
 
 impl<K, V> Default for FingerprintTreeMap<K, V> {
     fn default() -> Self {
         FingerprintTreeMap {
             root: Arc::new(Node::new()),
+            lift_key: None,
         }
     }
 }

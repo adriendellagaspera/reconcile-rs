@@ -36,6 +36,7 @@ mod equal_stamp_redelivery;
 mod handle_messages_return_value;
 mod immediate_broadcast;
 mod in_memory_convergence;
+mod keyed_fingerprint;
 mod pacing;
 mod pending_dump_requeue;
 mod reserved_wire_tags;

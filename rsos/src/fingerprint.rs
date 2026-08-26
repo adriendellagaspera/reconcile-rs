@@ -17,10 +17,18 @@
 //! collision resistance against a *chosen-input* (writing) adversary: finding a colliding multiset is
 //! Wagner's balance problem over `ℤ/2²⁵⁶`, which a k-tree solves in subexponential time — reduction
 //! mod `2^j` is a group homomorphism, so merging on low-order bits is exact and carries never disturb
-//! a matched window. **What this type guarantees is therefore honest-model soundness, not
-//! unforgeability**: anyone who can write to a replica can craft a collision. Demonstrated against
-//! the RBSR driver in `rbsr/tests/wagner_false_convergence.rs`. What it would cost an attacker, and
-//! which combiner change would restore resistance, are tracked with the finding rather than here.
+//! a matched window. **What this type guarantees on its own is therefore honest-model soundness, not
+//! unforgeability**: anyone who can write to a replica can grind a collision, demonstrated against
+//! the RBSR driver in `rbsr/tests/wagner_false_convergence.rs`.
+//!
+//! [`LiftKey`] closes that gap for a keyed lift: `BLAKE3_keyed(K, …)` reduces grinding to breaking
+//! the PRF instead of ~2³¹ offline evaluations, since the attacker no longer knows the hash they
+//! must invert (Clarke et al., ASIACRYPT 2003). This closes the gap only for holders of the key —
+//! a cluster running unkeyed (no [`LiftKey`] configured, matching every unauthenticated
+//! deployment, README "Security model") is exactly as Wagner-breakable as before; keying is
+//! `reconcile`'s responsibility, derived from the shared cluster key already required for datagram
+//! authentication (`ClusterKey::derive_lift_key` — `gossip` — is never referenced here: `rsos`
+//! stays domain-pure, AGENTS.md §9, and takes only the derived 32 bytes).
 //!
 //! **The collision bound assumes a set, not a multiset**: every statement above holds only if
 //! each live element is folded in exactly once. `FingerprintTreeMap::insert` on an already-present
@@ -223,12 +231,60 @@ impl std::fmt::Display for Fingerprint {
     }
 }
 
+/// Key material for the keyed BLAKE3 lift: 32 bytes, opaque to `rsos`.
+///
+/// `rsos` never derives this itself — it has no notion of a cluster secret (AGENTS.md §9 domain
+/// purity forbids a dependency on `gossip`, which owns `ClusterKey`). `reconcile` derives it via
+/// `ClusterKey::derive_lift_key` (`gossip/src/auth/key.rs`) — a BLAKE3 `derive_key` subkey, not the
+/// raw cluster key, so a MAC key leak and a lift key leak stay independent — and hands the 32 bytes
+/// here through [`LiftKey::new`].
+///
+/// `Clone` but not `Copy`, matching `ClusterKey`'s own reasoning: cheap to extend with a wiping
+/// `Drop` later without an API break. `Debug` is redacting for the same reason a key's bytes are
+/// never logged.
+///
+/// ```
+/// use rsos::{lift_keyed, LiftKey};
+///
+/// let key_a = LiftKey::new([1; 32]);
+/// let key_b = LiftKey::new([2; 32]);
+///
+/// // A different key lifts the same pair to a different fingerprint -- the whole point: an
+/// // attacker who does not hold the key cannot predict, and therefore cannot grind, the output.
+/// assert_ne!(lift_keyed(&key_a, &1, &"one"), lift_keyed(&key_b, &1, &"one"));
+///
+/// // Debug never prints the key material, even by accident.
+/// assert_eq!(format!("{key_a:?}"), "LiftKey(\"<redacted>\")");
+/// ```
+#[derive(Clone)]
+pub struct LiftKey([u8; 32]);
+
+impl LiftKey {
+    /// Wrap 32 bytes of key material as a lift key.
+    #[must_use]
+    pub fn new(bytes: [u8; 32]) -> Self {
+        LiftKey(bytes)
+    }
+}
+
+impl std::fmt::Debug for LiftKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_tuple("LiftKey").field(&"<redacted>").finish()
+    }
+}
+
 /// A BLAKE3 accumulator fed exclusively through the [canonical encoding](crate::encoding).
 struct Blake3Hasher(blake3::Hasher);
 
 impl Blake3Hasher {
-    fn new() -> Blake3Hasher {
-        Blake3Hasher(blake3::Hasher::new())
+    /// Unkeyed when `lift_key` is `None` — today's honest-model-only behavior; keyed via
+    /// `blake3::Hasher::new_keyed` otherwise, exactly the primitive `gossip`'s `Blake3Mac`
+    /// (`gossip/src/auth/mac.rs`) already uses for the datagram MAC.
+    fn new(lift_key: Option<&LiftKey>) -> Blake3Hasher {
+        Blake3Hasher(match lift_key {
+            Some(key) => blake3::Hasher::new_keyed(&key.0),
+            None => blake3::Hasher::new(),
+        })
     }
 
     /// Absorb `value`'s canonical encoding.
@@ -246,9 +302,25 @@ impl Blake3Hasher {
     }
 }
 
-/// Def. 3.4's lifting function `lift: U → M`: BLAKE3 over the
-/// [canonically encoded](crate::encoding) key followed by the canonically encoded value.
+/// Def. 3.4's lifting function `lift: U → M`, optionally keyed: BLAKE3 (keyed when `lift_key` is
+/// `Some`, per [`Blake3Hasher::new`]) over the [canonically encoded](crate::encoding) key followed
+/// by the canonically encoded value.
 ///
+/// The shared implementation behind [`lift`]/[`lift_keyed`] (`lift_key: None`/`Some` respectively)
+/// and `FingerprintTreeMap`'s internals, which reach it directly to avoid re-deriving `Option`
+/// dispatch at every one of the tree's own lift sites.
+pub(crate) fn lift_with<K: Serialize + ?Sized, V: Serialize + ?Sized>(
+    lift_key: Option<&LiftKey>,
+    key: &K,
+    value: &V,
+) -> Fingerprint {
+    let mut hasher = Blake3Hasher::new(lift_key);
+    hasher.absorb(key);
+    hasher.absorb(value);
+    hasher.fingerprint()
+}
+
+/// `lift_with` with no key — the honest-model-only lift this module's doc explains at length.
 /// Part of the wire protocol — see this module's golden vectors. The [`Serialize`] bound admits
 /// keys and values std implements no [`Hash`](std::hash::Hash) for
 /// ([`HashMap`](std::collections::HashMap), [`HashSet`](std::collections::HashSet)).
@@ -264,10 +336,28 @@ impl Blake3Hasher {
 /// assert_eq!(lift(&1, &"a"), lift(&1, &"a"));
 /// ```
 pub fn lift<K: Serialize + ?Sized, V: Serialize + ?Sized>(key: &K, value: &V) -> Fingerprint {
-    let mut hasher = Blake3Hasher::new();
-    hasher.absorb(key);
-    hasher.absorb(value);
-    hasher.fingerprint()
+    lift_with(None, key, value)
+}
+
+/// [`lift`], keyed under `lift_key`. The same `(key, value)` pair lifts to an unrelated
+/// fingerprint under every distinct key, so a chosen-input adversary without `lift_key` cannot
+/// predict, and therefore cannot grind, a collision — see this module's doc.
+///
+/// ```
+/// use rsos::{lift_keyed, LiftKey};
+///
+/// let key = LiftKey::new([7; 32]);
+///
+/// // Still injective and deterministic within one key, exactly like the unkeyed `lift`.
+/// assert_ne!(lift_keyed(&key, &1, &"a"), lift_keyed(&key, &2, &"a"));
+/// assert_eq!(lift_keyed(&key, &1, &"a"), lift_keyed(&key, &1, &"a"));
+/// ```
+pub fn lift_keyed<K: Serialize + ?Sized, V: Serialize + ?Sized>(
+    lift_key: &LiftKey,
+    key: &K,
+    value: &V,
+) -> Fingerprint {
+    lift_with(Some(lift_key), key, value)
 }
 
 /// The canonical 256-bit digest of a single value — [`lift`] with no key half, same encoding.
@@ -282,9 +372,19 @@ pub fn lift<K: Serialize + ?Sized, V: Serialize + ?Sized>(key: &K, value: &V) ->
 /// assert_ne!(digest(&"Hello"), digest(&"Hell"));
 /// ```
 pub fn digest<T: Serialize + ?Sized>(value: &T) -> Fingerprint {
-    let mut hasher = Blake3Hasher::new();
-    hasher.absorb(value);
-    hasher.fingerprint()
+    lift_with(None, &(), value)
+}
+
+/// [`digest`], keyed under `lift_key` — [`lift_keyed`] with no key half, same encoding.
+///
+/// ```
+/// use rsos::{digest_keyed, lift_keyed, LiftKey};
+///
+/// let key = LiftKey::new([7; 32]);
+/// assert_eq!(digest_keyed(&key, &"Hello"), lift_keyed(&key, &(), &"Hello"));
+/// ```
+pub fn digest_keyed<T: Serialize + ?Sized>(lift_key: &LiftKey, value: &T) -> Fingerprint {
+    lift_with(Some(lift_key), &(), value)
 }
 
 #[cfg(test)]

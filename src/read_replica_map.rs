@@ -246,6 +246,14 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     fn build(config: Config, transport: Arc<dyn Transport>) -> Self {
         config.check_key_or_insecure_opt_in();
         warn_on_ignored_config_fields(&config);
+        // Derived before `config.cluster_key` is moved into the authenticator below — see
+        // `Replica::build`'s identical seam. Must match the dated peer's own cluster key for the
+        // two trees' fingerprints to agree at all, exactly as datagram authentication already
+        // requires.
+        let lift_key = config
+            .cluster_key
+            .as_ref()
+            .map(|key| rsos::LiftKey::new(key.derive_lift_key()));
         let authenticator = auth::Authenticator::new(config.cluster_key, config.encrypt);
         if matches!(authenticator, auth::Authenticator::Disabled) {
             warn!(
@@ -261,10 +269,12 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         let net = net_of(&nets, config.listen_addr)
             .or_else(|| nets.first().copied())
             .unwrap_or_else(|| "127.0.0.1/8".parse().unwrap());
+        let tree = match lift_key {
+            Some(lift_key) => FingerprintTreeMap::<K, State<V>>::with_lift_key(lift_key),
+            None => FingerprintTreeMap::<K, State<V>>::new(),
+        };
         ReadReplicaMap {
-            tree: Arc::new(ArcSwap::new(Arc::new(
-                FingerprintTreeMap::<K, State<V>>::new(),
-            ))),
+            tree: Arc::new(ArcSwap::new(Arc::new(tree))),
             write_lock: Arc::new(Mutex::new(())),
             port: config.port,
             transport,

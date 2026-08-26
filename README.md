@@ -209,16 +209,34 @@ in `ClusterKey::new`/`from_hex`) is the caller's to protect, and the **decrypted
 
 **Fingerprint collisions — the censorship residual.** Reconciliation compares 256-bit additive
 range fingerprints. Against an *accidental* collision that width is ample; against an adversary who
-can influence stored values it is not: the additive combiner is Wagner-breakable (#337), and a
-successful *total plant* — a crafted value set whose fingerprint delta vanishes on every range
-containing it — makes two honest replicas report convergence while genuinely differing,
-permanently and silently (#354): anti-entropy replays that verdict at every meeting rather than
-retrying it. Per-session boundary randomisation (#502, decision recorded in
-[`ARCHITECTURE.md`](ARCHITECTURE.md) §7) defends every range below the outer one; the outer range
-has no boundaries to randomise, so this residual **stands until the fingerprint lift is keyed**
-(#337) — and once it is, crafting narrows to holders of the cluster key. Note the cluster key
-*above* does not close this: the MAC authenticates datagrams in transit, it does not make the
-fingerprint collision-resistant against a writer.
+can influence stored values it is not: the additive combiner is Wagner-breakable, and a successful
+*total plant* — a crafted value set whose fingerprint delta vanishes on every range containing it —
+makes two honest replicas report convergence while genuinely differing, permanently and silently
+(#354): anti-entropy replays that verdict at every meeting rather than retrying it. Per-session
+boundary randomisation (#502, decision recorded in [`ARCHITECTURE.md`](ARCHITECTURE.md) §7) defends
+every range below the outer one; the outer range has no boundaries to randomise.
+
+**Setting a cluster key now also keys the fingerprint lift** (#19, migrated from
+`akvize/reconcile-rs#337`): every `Fingerprint` is computed with `blake3::keyed_hash` under a subkey
+independently derived from the same cluster key (`ClusterKey::derive_lift_key`, BLAKE3
+`derive_key`-separated from the MAC's own use of it), so a plant must be ground against a hash the
+attacker cannot compute without the key — closing the residual above for anyone who does not hold
+it. This is *not* a consequence of the MAC above: the MAC authenticates datagrams in transit, it
+does not by itself touch how a fingerprint is computed. It also does not close the residual for a
+cluster key **holder** — every honest peer derives the identical subkey from the identical cluster
+key, so an insider's plant is exactly as craftable as before (#354's fleet-correlation finding
+applies unchanged); that residual is unaddressed pending `ARCHITECTURE.md` §7's reopened
+periodic-root-refinement question. Running with `Config::with_insecure_no_key()` gets none of this:
+with no cluster key there is nothing to derive a lift key from, so the lift stays unkeyed and this
+residual is exactly as open as the forgery risk above.
+
+**Upgrading an authenticated cluster is a coordinated rollout, not a rolling one, for this reason
+too**: a node computes fingerprints for its own dataset independently, from live data, so a peer on
+old (unkeyed) code and a peer on new (keyed) code compute different fingerprints for identical
+content and never converge — safely (every range reports different, nothing is lost or corrupted)
+but wastefully — until every node in the cluster is upgraded. This is the same posture "Wire
+versioning" below already asks of an authenticated cluster; it is not a new constraint, just a new
+reason for it.
 
 ### Confidentiality (encryption)
 

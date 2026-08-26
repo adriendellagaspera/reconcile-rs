@@ -43,6 +43,35 @@ impl ClusterKey {
     pub(super) fn as_bytes(&self) -> &[u8; KEY_LEN] {
         &self.0
     }
+
+    /// Derive a 32-byte subkey for `rsos`'s keyed range-fingerprint lift, independent of the
+    /// datagram MAC this key also seals — a BLAKE3 `derive_key` context-separated subkey, not
+    /// these raw bytes, so a leak of one purpose's key does not hand over the other's.
+    ///
+    /// Returns raw bytes rather than an `rsos::LiftKey`: `gossip` cannot depend on `rsos` (AGENTS.md
+    /// §9 — no edge between the two adapter/leaf crates in `ARCHITECTURE.md` §2's graph), so
+    /// `reconcile`, which depends on both, is the one that wraps the result with
+    /// `rsos::LiftKey::new`.
+    ///
+    /// ```
+    /// use reconcile_gossip::auth::ClusterKey;
+    ///
+    /// let key = ClusterKey::new([7; 32]);
+    ///
+    /// // Deterministic: the same cluster key always derives the same lift key, which is what lets
+    /// // every node in the cluster compute matching fingerprints independently.
+    /// assert_eq!(key.derive_lift_key(), key.derive_lift_key());
+    ///
+    /// // Independent of the raw cluster key bytes -- not just those bytes echoed back.
+    /// assert_ne!(key.derive_lift_key(), [7; 32]);
+    /// ```
+    #[must_use]
+    pub fn derive_lift_key(&self) -> [u8; KEY_LEN] {
+        blake3::derive_key(
+            "reconcile-rs 2026-08-25 rsos::fingerprint lift key",
+            &self.0,
+        )
+    }
 }
 
 impl fmt::Debug for ClusterKey {
