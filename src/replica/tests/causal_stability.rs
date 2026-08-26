@@ -105,7 +105,7 @@ async fn reconciliation_round_resends_acks_for_held_tombstones() {
     let mut acks: Vec<(i32, u64)> = Vec::new();
     let mut de = Deserializer::from_slice(&buf, DefaultOptions::new());
     while let Ok(msg) = Message::<i32, Tombstoned, State<i32>>::deserialize(&mut de) {
-        if let Message::Ack(ack) = msg {
+        if let Message::TombstoneAck(ack) = msg {
             acks.push(ack);
         }
     }

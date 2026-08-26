@@ -90,7 +90,7 @@ async fn set_pre_insert_replaces_previous_hook() {
 /// authentication gate has been cleared — including the leading wire-version byte every
 /// datagram carries regardless of authentication mode.
 pub(super) fn update_message_bytes(key: i32, value: Entry<Timestamp, u8>) -> Vec<u8> {
-    let message = Message::Update::<i32, Entry<Timestamp, u8>, State<u8>>((key, value));
+    let message = Message::EntryUpdate::<i32, Entry<Timestamp, u8>, State<u8>>((key, value));
     let mut buf = vec![gossip::auth::WIRE_VERSION];
     message
         .serialize(&mut Serializer::new(&mut buf, DefaultOptions::new()))

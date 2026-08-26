@@ -111,14 +111,14 @@ async fn a_maximum_size_datagram_is_received_not_discarded_as_too_small() {
     .expect("bind failed");
     let task = tokio::spawn(read_replica.clone().run());
 
-    // Pad a `ValueUpdate` so the *sealed* datagram (the version-byte-framed wire form
+    // Pad a `StateUpdate` so the *sealed* datagram (the version-byte-framed wire form
     // `Authenticator::seal` produces, matching what the receive loop actually expects) is
     // exactly `BUFFER_SIZE`. bincode's varint length-prefix grows with the string's own length,
     // so probe against a same-order-of-magnitude candidate and correct by the exact observed
     // delta, rather than a single fixed-overhead guess that undercounts the prefix.
     let seal = |value: &str| -> Vec<u8> {
         let message: crate::replica::Message<i32, Entry<Timestamp, String>, State<String>> =
-            crate::replica::Message::ValueUpdate((1, State::Present(value.to_string())));
+            crate::replica::Message::StateUpdate((1, State::Present(value.to_string())));
         let mut buf = Vec::new();
         gossip::bincode::encode(&message, &mut buf).unwrap();
         read_replica

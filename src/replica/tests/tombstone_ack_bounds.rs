@@ -30,7 +30,7 @@ async fn engine(addr: &str) -> Replica<i32, i32> {
 }
 
 fn ack_bytes(key: i32, version: u64) -> Vec<u8> {
-    let msg = Message::Ack::<i32, Tombstoned, State<i32>>((key, version));
+    let msg = Message::TombstoneAck::<i32, Tombstoned, State<i32>>((key, version));
     let mut buf = vec![gossip::auth::WIRE_VERSION];
     msg.serialize(&mut Serializer::new(&mut buf, DefaultOptions::new()))
         .unwrap();

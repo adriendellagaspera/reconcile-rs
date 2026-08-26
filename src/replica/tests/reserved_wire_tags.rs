@@ -6,13 +6,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #463: wire tags 5-6 are reserved, skippable slots. What this file pins:
+//! #463 reserved wire tags 5 and 6 as skippable slots; #23 has since consumed tag 5 for a real
+//! [`Message::ConvergenceAck`](super::super::Message::ConvergenceAck) (own tests:
+//! [`convergence_ack`](super::convergence_ack)), leaving tag 6 as the one still reserved. What this file
+//! pins for that remaining tag:
 //!
-//! 1. The tags' own encoding (golden vector) — a reordering of `Message`'s variants would move
-//!    every tag past whichever moved, silently breaking the reservation.
-//! 2. That a `Reserved5`/`Reserved6` message packed *alongside* a real message in one datagram
-//!    does not stop the real message from being processed — the whole point of reserving these
-//!    tags rather than leaving unknown tags to drop the datagram wholesale.
+//! 1. Its own encoding (golden vector) — a reordering of `Message`'s variants would move it (and
+//!    every tag past it) silently, breaking the reservation.
+//! 2. That a `Reserved6` message packed *alongside* a real message in one datagram does not stop
+//!    the real message from being processed — the whole point of reserving a tag rather than
+//!    leaving an unknown one to drop the datagram wholesale.
 //! 3. That the opaque `Vec<u8>` payload's decode is bounded by the actual bytes available, not by
 //!    whatever length it claims — a lying length prefix must fail cleanly, not allocate on the
 //!    strength of an attacker's say-so (the #463 acceptance item this file exists to discharge).
@@ -65,27 +68,12 @@ async fn feed_datagram(engine: &Replica<i32, u8>, messages: &[Msg]) -> bool {
     engine.handle_messages(payload, peer, &mut send_buf).await
 }
 
-/// Reordering `Message`'s variants moves every wire tag past whichever moved — this pins tags 5
-/// and 6 specifically so that drift is caught here, not discovered by a peer failing to decode a
-/// future addition at one of them.
+/// Reordering `Message`'s variants moves every wire tag past whichever moved — this pins tag 6
+/// specifically so that drift is caught here, not discovered by a peer failing to decode a
+/// future addition at it.
 #[test]
-fn reserved_tags_pin_their_own_encoding() {
-    const RESERVED_5_GOLDEN: &[u8] = &[5, 3, 1, 2, 3];
+fn reserved_tag_6_pins_its_own_encoding() {
     const RESERVED_6_GOLDEN: &[u8] = &[6, 2, 9, 9];
-
-    let five: Msg = Message::Reserved5(vec![1, 2, 3]);
-    let mut buf = Vec::new();
-    five.serialize(&mut Serializer::new(&mut buf, DefaultOptions::new()))
-        .unwrap();
-    assert_eq!(
-        buf, RESERVED_5_GOLDEN,
-        "Message::Reserved5's wire encoding changed — this is a protocol break, not a refactor"
-    );
-    let mut deserializer = Deserializer::from_slice(RESERVED_5_GOLDEN, DefaultOptions::new());
-    match Msg::deserialize(&mut deserializer).unwrap() {
-        Message::Reserved5(payload) => assert_eq!(payload, vec![1, 2, 3]),
-        other => panic!("expected Reserved5, got {other:?}"),
-    }
 
     let six: Msg = Message::Reserved6(vec![9, 9]);
     let mut buf = Vec::new();
@@ -112,14 +100,15 @@ async fn a_reserved_message_does_not_block_the_rest_of_the_datagram() {
         .with_insecure_no_key();
     let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
 
-    let real_update = Message::Update((1, Entry::present(future_stamp(), 7)));
-    let reserved = Message::Reserved5(vec![0xff; 16]);
+    let real_update = Message::EntryUpdate((1, Entry::present(future_stamp(), 7)));
+    let reserved = Message::Reserved6(vec![0xff; 16]);
 
     let spoke_dated = feed_datagram(&engine, &[reserved, real_update]).await;
     assert!(
         spoke_dated,
-        "a Reserved5 message packed ahead of a real Update must not stop the Update from being \
-         processed — the whole datagram must not be dropped for one unrecognised-content tag"
+        "a Reserved6 message packed ahead of a real EntryUpdate must not stop the EntryUpdate \
+         from being processed — the whole datagram must not be dropped for one \
+         unrecognised-content tag"
     );
     assert_eq!(
         engine
@@ -128,7 +117,7 @@ async fn a_reserved_message_does_not_block_the_rest_of_the_datagram() {
             .get(&1)
             .and_then(|v| v.value().copied()),
         Some(7),
-        "the real Update alongside the reserved message must actually be applied, not just \
+        "the real EntryUpdate alongside the reserved message must actually be applied, not just \
          reported as spoke_dated"
     );
 }
@@ -140,9 +129,9 @@ async fn a_reserved_message_does_not_block_the_rest_of_the_datagram() {
 /// allocation from a few real bytes.
 #[test]
 fn reserved_payload_with_a_lying_length_prefix_fails_cleanly() {
-    // Tag 5, then a bincode varint claiming a payload of 10_000_000 bytes, then far fewer actual
+    // Tag 6, then a bincode varint claiming a payload of 10_000_000 bytes, then far fewer actual
     // bytes than that.
-    let mut crafted = vec![5u8];
+    let mut crafted = vec![6u8];
     crafted.extend_from_slice(&bincode::serialize(&10_000_000u64).unwrap());
     crafted.extend_from_slice(&[1, 2, 3]);
 
@@ -150,7 +139,7 @@ fn reserved_payload_with_a_lying_length_prefix_fails_cleanly() {
     let result = Msg::deserialize(&mut deserializer);
     assert!(
         result.is_err(),
-        "a Reserved5 payload claiming far more bytes than are actually present must fail to \
+        "a Reserved6 payload claiming far more bytes than are actually present must fail to \
          decode, not succeed with truncated or garbage data"
     );
 }

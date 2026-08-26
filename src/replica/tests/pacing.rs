@@ -22,7 +22,7 @@ type Msg = Message<u64, Vec<u8>, State<u8>>;
 /// `n` Update messages with `value_len`-byte values — enough to span several 64 KiB datagrams.
 fn bulk_updates(n: u64, value_len: usize) -> Vec<Msg> {
     (0..n)
-        .map(|k| Message::Update((k, vec![0u8; value_len])))
+        .map(|k| Message::EntryUpdate((k, vec![0u8; value_len])))
         .collect()
 }
 
@@ -160,7 +160,7 @@ async fn oversized_message_is_dropped_not_sent_empty_or_oversized() {
     }
 
     // One message far bigger than a single 64 KiB datagram, flanked by two ordinary ones.
-    let oversized = vec![Message::Update((
+    let oversized = vec![Message::EntryUpdate((
         999u64,
         vec![0u8; super::super::BUFFER_SIZE * 2],
     ))];

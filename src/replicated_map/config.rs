@@ -39,6 +39,11 @@ pub(super) const DEFAULT_SOCKET_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 /// [`Config::with_max_peers`].
 pub(super) const DEFAULT_MAX_PEERS: usize = 1024;
 
+/// Default RTT-scale repair timer (see [`Config::repair_interval`]) — comfortably above the
+/// 0-50 ms RTT sweep `benches/README.md`'s injected-RTT lane measures, comfortably below
+/// [`reconcile_interval`](Config::reconcile_interval)'s own 1 s default.
+pub(super) const DEFAULT_REPAIR_INTERVAL: Duration = Duration::from_millis(150);
+
 /// Default cap on concurrent paced bulk dumps (see [`Config::max_concurrent_bulk_dumps`]), which
 /// bounds total in-flight snapshot memory.
 pub(super) const DEFAULT_MAX_CONCURRENT_BULK_DUMPS: usize = 4;
@@ -148,6 +153,11 @@ pub struct Config {
     /// How long the loop waits for inbound activity before initiating a round: the **background**
     /// anti-entropy cadence (default 1 s). Local writes broadcast immediately, independent of it.
     ///
+    /// This is *not* the loss-recovery path (#23): a datagram dropped in flight is retried on
+    /// [`repair_interval`](Self::repair_interval), an RTT-scale timer decoupled from this one —
+    /// see its docs. Lowering `reconcile_interval` buys faster *discovery* of a peer that has
+    /// sent nothing at all (newly joined, or genuinely diverged), not faster loss repair.
+    ///
     /// Floor it at roughly a few × RTT, and at or above the pacing gap between datagrams at the
     /// configured [`bulk_send_rate`](Self::bulk_send_rate) (default 32 MiB/s ⇒ ~2 ms between
     /// full-size datagrams). Below that floor, shortening the interval does **not** converge
@@ -159,6 +169,22 @@ pub struct Config {
     /// local peer. Retunable via
     /// [`set_reconcile_interval`](crate::ReplicatedMap::set_reconcile_interval).
     pub reconcile_interval: Duration,
+    /// How long an outstanding comparison round or a just-completed bulk transfer waits for
+    /// activity from that peer before this node retries it (default 150 ms) — the RTT-scale
+    /// repair timer #23 adds so a single dropped datagram is not left to
+    /// [`reconcile_interval`](Self::reconcile_interval)'s background sweep to rediscover.
+    ///
+    /// An `EntryFingerprint` round that finds a real difference is answered with real content,
+    /// which cancels the pending retry the moment it arrives; a round that resolves to a pure
+    /// SKIP (nothing differs) gets an explicit `ConvergenceAck` instead (see `Message`'s docs),
+    /// clearing the retry just as promptly. What still falls back to this bounded retry is a
+    /// datagram — the round or its ack — actually lost in flight. That bound also keeps a dead
+    /// or partitioned peer from being retried forever; the next background round picks it back
+    /// up. Size it like RTT, not like
+    /// `reconcile_interval`: too small wastes a retry on ordinary jitter, too large gives back the
+    /// latency this exists to remove. Retunable via
+    /// [`set_repair_interval`](crate::ReplicatedMap::set_repair_interval).
+    pub repair_interval: Duration,
     /// Metering rate of a single **bulk** value transfer to one peer (default 32 MiB/s); `None`
     /// bursts back-to-back.
     ///
@@ -230,7 +256,7 @@ pub struct Config {
     /// |---|---|
     /// | latency vs window | peers observe a write up to `coalesce_window` later than with immediate broadcast; a few ms buys far fewer datagrams under a write burst |
     /// | ordering / HLC | same-key writes inside one window collapse to the greatest [`Timestamp`](crate::clock::Timestamp) via [`Entry::merge`](crate::entry::Entry::merge) — the same total order the wire protocol already resolves conflicts with; a value's own stamp is never altered, only when it reaches the wire |
-    /// | anti-entropy | this delays only the **eager** push; the periodic RBSR sweep ([`reconcile_interval`](Self::reconcile_interval)) stays the correctness backstop, so a coalesced batch lost in transit still converges |
+    /// | anti-entropy | this delays only the **eager** push; a coalesced batch lost in transit is retried on [`repair_interval`](Self::repair_interval) (#23), with the periodic RBSR sweep ([`reconcile_interval`](Self::reconcile_interval)) as the final backstop |
     ///
     /// Only the write that finds the pending batch empty spawns the detached flush task, so a
     /// write that joins an already-scheduled window does not itself need an ambient Tokio runtime
@@ -258,6 +284,7 @@ impl fmt::Debug for Config {
             .field("node_id", &self.node_id)
             .field("encrypt", &self.encrypt)
             .field("reconcile_interval", &self.reconcile_interval)
+            .field("repair_interval", &self.repair_interval)
             .field("bulk_send_rate", &self.bulk_send_rate)
             .field("recv_buffer_size", &self.recv_buffer_size)
             .field("send_buffer_size", &self.send_buffer_size)
@@ -284,6 +311,7 @@ impl Default for Config {
             node_id: None,
             encrypt: false,
             reconcile_interval: Duration::from_secs(1),
+            repair_interval: DEFAULT_REPAIR_INTERVAL,
             bulk_send_rate: Some(DEFAULT_BULK_SEND_RATE),
             recv_buffer_size: Some(DEFAULT_SOCKET_BUFFER_SIZE),
             send_buffer_size: Some(DEFAULT_SOCKET_BUFFER_SIZE),

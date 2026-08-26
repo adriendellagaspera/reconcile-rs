@@ -283,14 +283,16 @@ the pairs that disagree until every node is rebuilt against the same wire versio
 as a coordinated rollout, not a rolling one. #309 landed the version byte itself and deliberately
 did not build an accepted-version window; whether one is worth building later is undecided.
 
-Wire tags 5 and 6 are reserved, skippable message slots (#463): a datagram carrying a message at
-one of these tags decodes on this version even though nothing here sends one today, and a future
-version's real message at either tag decodes here too, ignored rather than failing the whole
-datagram. What this buys is narrow and does not extend past the two tags themselves — it is not a
-capability-negotiation mechanism, not a version window, and not a way to add a *third* message type
-without another coordinated rollout: once a tag's real shape ships, that tag's reservation is
-consumed, and the wire version byte above still governs everything the message shape itself
-changes.
+Wire tags 5 and 6 were reserved, skippable message slots (#463): a datagram carrying a message at
+one of these tags decodes on an older version even though nothing there sent one yet, and a future
+version's real message at either tag decodes on an older version too, ignored rather than failing
+the whole datagram. Tag 5 has since been consumed by `ConvergenceAck` (#23, `WIRE_VERSION` bumped
+`2` → `3`) — a comparison round that converges with nothing else to report; tag 6 remains the one
+reservation still open. What the mechanism buys is narrow and does not extend past these two tags —
+it is not a capability-negotiation mechanism, not a version window, and not a way to add a message
+type without a coordinated rollout of its own: once a tag's real shape ships, that tag's
+reservation is consumed, and the wire version byte above still governs everything the message
+shape itself changes.
 
 ### Metrics endpoint exposure
 
@@ -479,7 +481,7 @@ let config = Config::new(8080)
 |---|---|
 | latency vs window | peers observe a write up to `coalesce_window` later than with immediate broadcast — a few ms buys far fewer datagrams under a burst |
 | ordering / HLC | same-key writes inside one window collapse to the greatest `Timestamp` (last-write-wins, the same total order the wire protocol already resolves conflicts with); a value's own stamp is never altered, only when it reaches the wire |
-| anti-entropy | this delays only the **eager** push; the periodic RBSR sweep (`reconcile_interval`) stays the correctness backstop, so a coalesced batch lost in transit still converges |
+| anti-entropy | this delays only the **eager** push; a coalesced batch lost in transit is retried on `repair_interval` (#23), with the periodic RBSR sweep (`reconcile_interval`) as the final backstop |
 
 Only the write that finds the pending batch empty spawns the detached flush task, so it needs an
 ambient Tokio runtime the same way every propagating write does (see `ReplicatedMap::insert`'s `#
@@ -591,6 +593,7 @@ store.set_nets(&nets).unwrap();                 // replace the whole topology at
 store.set_remote_interval(3);                   // retune cross-network cadence
 store.set_remote_fanout(4);                     //   and fan-out
 store.set_reconcile_interval(Duration::from_millis(500)); // retune the gossip cadence
+store.set_repair_interval(Duration::from_millis(50));     //   and the RTT-scale repair timer (#23)
 store.set_tombstone_timeout(Duration::from_secs(120));    // retune tombstone expiry
 store.set_coalesce_window(Duration::from_millis(5));      // retune broadcast coalescing (#187)
 ```
@@ -741,8 +744,9 @@ node in a cluster must use a distinct id. `Timestamp`'s type design (why `Hlc`/`
 **Note:** benchmarked on loopback. A real network adds one round trip on top of the reconcile row and
 half of one on top of the send row — measured, not estimated, by `benches/system.rs`'s injected-RTT
 lane (`benches/README.md`). At 50 ms RTT that dominates: an anti-entropy convergence goes from 1 ms
-to 51 ms. On a *lossy* path the binding cost is neither: there is no retransmission, so a dropped
-datagram waits for the next anti-entropy round — `Config::reconcile_interval`, 1 s by default.
+to 51 ms. On a *lossy* path, a dropped datagram is retried on `Config::repair_interval`, an
+RTT-scale timer (default 150 ms), rather than waiting for the next anti-entropy round
+(`Config::reconcile_interval`, 1 s by default) to rediscover it (#23).
 
 ## Testing and coverage
 

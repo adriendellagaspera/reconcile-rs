@@ -40,6 +40,14 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// counted, never fatal, so a vanished or unreachable peer cannot stop the loops.
     #[instrument(name = "reconcile.run", skip_all, fields(port = self.port))]
     pub async fn run(self) {
+        let repair = self.clone();
+        tokio::join!(self.recv_loop(), repair.repair_periodically());
+    }
+
+    /// The gossip receive loop: authenticate, dispatch, and re-initiate reconciliation on idle.
+    /// Runs forever, alongside [`repair_periodically`](Self::repair_periodically) — see
+    /// [`run`](Self::run).
+    async fn recv_loop(&self) {
         // One byte larger than the largest legal datagram, so a message that fills it exactly
         // is distinguishable from one that was truncated.
         let mut recv_buf = [0; BUFFER_SIZE + 1];
@@ -121,6 +129,15 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                                     observability::record_datagram_dropped("replay");
                                     continue;
                                 };
+                                // #23: hearing anything at all from `sender` -- whatever it
+                                // actually contains -- means our own last send to it very likely
+                                // arrived (or, if it did not, `sender`'s own reciprocal traffic is
+                                // independently carrying the same repair). Clear any pending
+                                // retry for it before dispatch rather than after, so content in
+                                // *this* datagram that itself warrants a fresh repair (a bulk
+                                // update batch, see `dispatch::handle_messages`) is not
+                                // immediately undone by this same clear.
+                                self.pending_repairs.write().remove(&sender);
                                 let spoke_dated =
                                     self.handle_messages(payload, peer, &mut send_buf).await;
                                 // Only accepted datagrams register a sender, so a spoofed host

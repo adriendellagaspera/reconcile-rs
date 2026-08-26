@@ -84,6 +84,13 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let transport = Arc::clone(&self.transport);
         let authenticator = self.authenticator.clone();
         let sender_counter = Arc::clone(&self.sender_counter);
+        // #23: a plain `Update` triggers no reply of its own, so this specific write cannot
+        // itself cancel the pending retry early -- only unrelated traffic from the same peer, or
+        // the bounded timeout in `retry_due_repairs`, resolves it. An accepted, bounded cost (see
+        // `Message`'s docs), not a bug. Cloning the whole engine (an `Arc` bump) rather than more
+        // individual fields, since this is the one thing here that needs `Replica`'s own methods
+        // rather than just the transport/auth.
+        let repair_engine = self.clone();
         tokio::spawn(async move {
             let ports = SendPorts {
                 transport: &*transport,
@@ -94,6 +101,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             for addr in peers {
                 let peer = SocketAddr::new(addr, port);
                 send_messages_to(&messages, &ports, &peer, &mut send_buf).await;
+                // Watch for a reply within `repair_interval`; a lost broadcast would otherwise
+                // only be rediscovered by the next full `reconcile_interval` round (#23).
+                repair_engine.note_pending_repair(addr);
             }
         });
     }

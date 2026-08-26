@@ -89,10 +89,10 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         send_buf.clear();
         for segment in segments {
             gossip::bincode::encode(
-                &Message::ValueComparisonItem::<K, WireDated<V>, State<V>>(segment),
+                &Message::StateFingerprint::<K, WireDated<V>, State<V>>(segment),
                 send_buf,
             )
-            .expect("serializing a ValueComparisonItem into an in-memory buffer cannot fail");
+            .expect("serializing a StateFingerprint into an in-memory buffer cannot fail");
         }
         let mut peers = self.peers();
         // A random address out of the peer network, for discovery — like the dated store, we do not
@@ -146,13 +146,17 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             };
         for message in messages {
             match message {
-                Message::ValueComparisonItem(segment) => value_in_comparison.push(segment),
-                Message::ValueUpdate(update) => value_updates.push(update),
+                Message::StateFingerprint(segment) => value_in_comparison.push(segment),
+                Message::StateUpdate(update) => value_updates.push(update),
                 // The dated channel is meaningless to a read replica (it cannot store dated values
-                // nor participate in causal stability). Ignore it.
-                Message::ComparisonItem(_) | Message::Update(_) | Message::Ack(_) => {}
+                // nor participate in causal stability, so it never sends an `EntryFingerprint`
+                // this could even be an ack for). Ignore it, same as the other dated-only messages.
+                Message::EntryFingerprint(_)
+                | Message::EntryUpdate(_)
+                | Message::TombstoneAck(_)
+                | Message::ConvergenceAck => {}
                 // #463: reserved, never sent by this version.
-                Message::Reserved5(_) | Message::Reserved6(_) => {}
+                Message::Reserved6(_) => {}
             }
         }
 
@@ -182,7 +186,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             if !out_comparison.is_empty() {
                 let messages: Vec<_> = out_comparison
                     .into_iter()
-                    .map(Message::<K, WireDated<V>, State<V>>::ValueComparisonItem)
+                    .map(Message::<K, WireDated<V>, State<V>>::StateFingerprint)
                     .collect();
                 send_messages_to(&messages, &self.send_ports(), &peer, send_buf).await;
             }

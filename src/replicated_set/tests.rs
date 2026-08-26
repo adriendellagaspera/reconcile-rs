@@ -32,6 +32,7 @@ fn ephemeral_config() -> Config {
         node_id: None,
         encrypt: false,
         reconcile_interval: Duration::from_secs(1),
+        repair_interval: Duration::from_millis(150),
         bulk_send_rate: Some(32 * 1024 * 1024),
         recv_buffer_size: Some(8 * 1024 * 1024),
         send_buffer_size: Some(8 * 1024 * 1024),
@@ -90,6 +91,19 @@ async fn set_nets_enforces_max_nets_at_runtime() {
         Err(crate::replicated_map::ConfigError::TooManyNets),
         "MAX_NETS + 1 networks should be rejected"
     );
+}
+
+/// `ReplicatedSet::set_repair_interval` is a thin delegate to
+/// `ReplicatedMap::set_repair_interval` — assert the delegation actually happens, not just
+/// that calling it doesn't panic (same rationale as `set_nets_enforces_max_nets_at_runtime`
+/// above).
+#[tokio::test]
+async fn set_repair_interval_actually_retunes_the_engine() {
+    let set = ReplicatedSet::<i32>::new(ephemeral_config()).await.unwrap();
+    assert_ne!(set.0.repair_interval(), Duration::from_millis(9));
+
+    set.set_repair_interval(Duration::from_millis(9));
+    assert_eq!(set.0.repair_interval(), Duration::from_millis(9));
 }
 
 /// `ReplicatedSet::set_coalesce_window` is a thin delegate to

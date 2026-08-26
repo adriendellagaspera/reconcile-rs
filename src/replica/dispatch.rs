@@ -43,6 +43,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let mut in_comparison = Vec::new();
         let mut updates: Vec<(K, Entry<Timestamp, V>)> = Vec::new();
         let mut acks: Vec<(K, u64)> = Vec::new();
+        let mut got_convergence_ack = false;
         let mut value_in_comparison = Vec::new();
         // Decode the whole datagram through `gossip::bincode`. `MAX_MESSAGES_PER_DATAGRAM` bounds the
         // message count (a datagram can hold no more one-byte messages than its byte length), so a
@@ -59,20 +60,29 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             };
         for message in messages {
             match message {
-                Message::ComparisonItem(segment) => in_comparison.push(segment),
-                Message::Update(update) => updates.push(update),
-                Message::Ack(ack) => acks.push(ack),
-                Message::ValueComparisonItem(segment) => value_in_comparison.push(segment),
-                // A dated store is authoritative and never integrates a value-only update; read replicas
-                // are the only consumers of `ValueUpdate`. Ignore it defensively.
-                Message::ValueUpdate(_) => {}
+                Message::EntryFingerprint(segment) => in_comparison.push(segment),
+                Message::EntryUpdate(update) => updates.push(update),
+                Message::TombstoneAck(ack) => acks.push(ack),
+                Message::StateFingerprint(segment) => value_in_comparison.push(segment),
+                // A dated store is authoritative and never integrates a state-only update; read
+                // replicas are the only consumers of `StateUpdate`. Ignore it defensively.
+                Message::StateUpdate(_) => {}
+                // #23: proof this peer engages with the dated comparison protocol, same as a real
+                // `EntryFingerprint`/`EntryUpdate`/`TombstoneAck` -- counted toward `spoke_dated`
+                // below, nothing else to do with it here (`pending_repairs` already cleared
+                // unconditionally on any datagram from this sender, before `handle_messages` was
+                // ever called; see `run`).
+                Message::ConvergenceAck => got_convergence_ack = true,
                 // #463: reserved, never sent by this version. Ignored rather than matched with a
                 // wildcard, so a future real variant added at a *new* tag cannot silently fall
-                // through this arm unhandled — only these two already-reserved tags do.
-                Message::Reserved5(_) | Message::Reserved6(_) => {}
+                // through this arm unhandled — only this one remaining reserved tag does.
+                Message::Reserved6(_) => {}
             }
         }
-        let spoke_dated = !in_comparison.is_empty() || !updates.is_empty() || !acks.is_empty();
+        let spoke_dated = !in_comparison.is_empty()
+            || !updates.is_empty()
+            || !acks.is_empty()
+            || got_convergence_ack;
         // record tombstone acknowledgments received from the peer
         if !acks.is_empty() {
             let peer_ip = peer.ip();
@@ -107,13 +117,19 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                     &mut rng,
                 );
             }
+            // #23: every active range this peer sent already matched (a pure SKIP) -- `rbsr`
+            // itself has nothing to send back for that, so without this the peer's
+            // `pending_repairs` entry would ride out a bounded retry instead of clearing on the
+            // spot. Checked before either vector below is consumed.
+            let converged_with_nothing_to_send =
+                out_comparison.is_empty() && differences.is_empty();
             // Refinement comparison items are small and latency-sensitive: send them inline, now.
             if !out_comparison.is_empty() {
                 debug!("returning {} segments", out_comparison.len());
                 trace!("segments: {out_comparison:?}");
                 let messages: Vec<_> = out_comparison
                     .into_iter()
-                    .map(Message::ComparisonItem::<K, Entry<Timestamp, V>, State<V>>)
+                    .map(Message::EntryFingerprint::<K, Entry<Timestamp, V>, State<V>>)
                     .collect();
                 send_messages_to(&messages, &self.send_ports(), &peer, send_buf).await;
             }
@@ -133,7 +149,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         let mut updates = Vec::new();
                         for range in differences {
                             for (k, v) in guard.range(range) {
-                                updates.push(Message::Update((k.clone(), v.clone())));
+                                updates.push(Message::EntryUpdate((k.clone(), v.clone())));
                             }
                         }
                         updates
@@ -152,10 +168,26 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                     self.stash_pending_dump(DumpChannel::Dated, peer, differences);
                 }
             }
+            if converged_with_nothing_to_send {
+                trace!("comparison round from {peer} converged with nothing to send back; acking");
+                send_messages_to(
+                    &[Message::ConvergenceAck::<K, Entry<Timestamp, V>, State<V>>],
+                    &self.send_ports(),
+                    &peer,
+                    send_buf,
+                )
+                .await;
+            }
         }
         if !updates.is_empty() {
             debug!("received {} updates", updates.len());
             observability::record_updates_received(updates.len());
+            // #23: a bulk transfer just landed here, batched across possibly many datagrams —
+            // if one of those was dropped in flight, nothing about the ones that *did* arrive
+            // reveals the gap. Schedule an early re-comparison with the sender within
+            // `repair_interval`, well before this node would otherwise wait a full
+            // `reconcile_interval` for its own next round to rediscover the divergence.
+            self.note_pending_repair(peer.ip());
             // Tombstones we now hold as a result of these updates, to be acknowledged back to
             // the peer so it can eventually garbage-collect them once causally stable.
             let mut acks_to_send = Vec::new();
@@ -180,12 +212,14 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                             } else if local_v.is_tombstone() {
                                 // We already hold an equal-or-newer value; still acknowledge it
                                 // if it is the same tombstone, so the peer learns we have it.
-                                acks_to_send.push(
-                                    Message::Ack::<K, Entry<Timestamp, V>, State<V>>((
-                                        k,
-                                        version_hash(local_v),
-                                    )),
-                                );
+                                acks_to_send.push(Message::TombstoneAck::<
+                                    K,
+                                    Entry<Timestamp, V>,
+                                    State<V>,
+                                >((
+                                    k,
+                                    version_hash(local_v),
+                                )));
                             }
                         }
                         None => to_apply.push((k, remote_v)),
@@ -219,9 +253,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                     let version = merged_v.is_tombstone().then(|| version_hash(&merged_v));
                     self.map_insert(&mut map, &mut projection, k.clone(), merged_v);
                     if let Some(version) = version {
-                        acks_to_send.push(Message::Ack::<K, Entry<Timestamp, V>, State<V>>((
-                            k, version,
-                        )));
+                        acks_to_send.push(
+                            Message::TombstoneAck::<K, Entry<Timestamp, V>, State<V>>((k, version)),
+                        );
                     }
                 }
                 self.map.store(Arc::new(map));
@@ -232,7 +266,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             }
         }
         // Value-only channel: answer a dateless read replica by diffing against the value-only
-        // *projection* tree (never the dated map) and replying with `ValueUpdate`s carrying only
+        // *projection* tree (never the dated map) and replying with `StateUpdate`s carrying only
         // the projected payload. This path is entirely independent of the dated channel and of the
         // causal-stability state — no acks, no membership, no GC interaction.
         if !value_in_comparison.is_empty() {
@@ -254,7 +288,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             if !out_comparison.is_empty() {
                 let messages: Vec<_> = out_comparison
                     .into_iter()
-                    .map(Message::ValueComparisonItem::<K, Entry<Timestamp, V>, State<V>>)
+                    .map(Message::StateFingerprint::<K, Entry<Timestamp, V>, State<V>>)
                     .collect();
                 send_messages_to(&messages, &self.send_ports(), &peer, send_buf).await;
             }
@@ -268,7 +302,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         let mut updates = Vec::new();
                         for range in differences {
                             for (k, p) in guard.range(range) {
-                                updates.push(Message::ValueUpdate((k.clone(), p.clone())));
+                                updates.push(Message::StateUpdate((k.clone(), p.clone())));
                             }
                         }
                         updates

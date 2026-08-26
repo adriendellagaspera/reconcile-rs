@@ -35,6 +35,7 @@ fn ephemeral_config() -> Config {
         node_id: None,
         encrypt: false,
         reconcile_interval: Duration::from_secs(1),
+        repair_interval: super::config::DEFAULT_REPAIR_INTERVAL,
         bulk_send_rate: Some(super::config::DEFAULT_BULK_SEND_RATE),
         recv_buffer_size: Some(super::config::DEFAULT_SOCKET_BUFFER_SIZE),
         send_buffer_size: Some(super::config::DEFAULT_SOCKET_BUFFER_SIZE),

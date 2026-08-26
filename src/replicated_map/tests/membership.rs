@@ -488,6 +488,26 @@ async fn set_reconcile_interval_actually_retunes_the_round_cadence() {
     );
 }
 
+/// `set_repair_interval` must actually retune the underlying engine's repair timer, not be a
+/// no-op setter -- `repair_interval()` reads the same value the repair loop reads.
+#[tokio::test]
+async fn set_repair_interval_actually_retunes_the_repair_timer() {
+    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
+        .await
+        .unwrap();
+    assert_ne!(
+        store.repair_interval(),
+        Duration::from_millis(7),
+        "picking a value distinct from the default is what makes the assertion below meaningful"
+    );
+    store.set_repair_interval(Duration::from_millis(7));
+    assert_eq!(
+        store.repair_interval(),
+        Duration::from_millis(7),
+        "set_repair_interval must actually update the value repair_interval() reads back"
+    );
+}
+
 /// `set_coalesce_window` must actually retune the running engine's coalescing window, not be a
 /// no-op setter. Starves the reconciliation fallback (`reconcile_interval` far beyond this
 /// test's deadline, B never told about A) exactly like `set_reconcile_interval`'s own test

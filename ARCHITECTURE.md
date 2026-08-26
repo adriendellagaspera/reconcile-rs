@@ -425,15 +425,23 @@ guarantees whose resolution history §8 tracks.
    `rbsr/src/protocol.rs::non_progressing_split_is_converted_to_enumerate`, the `NeverNarrows`
    policy exercised through the same convergence matrix as every shipped policy, and pinned for the
    shipped policies themselves by `rbsr/tests/shipped_policies_always_progress.rs`.
-14. **A message at a reserved wire tag never blocks the rest of its datagram** (#463) —
-   `Message::Reserved5`/`Reserved6` decode as opaque `Vec<u8>` and are ignored by
-   `handle_messages`, so a peer that does not yet assign real meaning to one of these two tags
-   still processes every other message the same datagram carried, rather than dropping it whole
-   the way an unrecognized tag past 6 does. Narrow by construction: two tags, once each: consuming
-   a reservation with a real message shape, or adding a third message, still needs #309's
-   coordinated wire-version rollout. Guarded by
+14. **A message at a reserved wire tag never blocks the rest of its datagram** (#463) — an unknown
+   message at a reserved tag decodes as opaque `Vec<u8>` and is ignored by `handle_messages`, so a
+   peer that does not yet assign real meaning to that tag still processes every other message the
+   same datagram carried, rather than dropping it whole the way an unrecognized tag past 6 does.
+   Narrow by construction: two tags, once each. Tag 5 has since been consumed by
+   `Message::ConvergenceAck` (#23) — a comparison round that converges with nothing else to
+   report — at the cost of `WIRE_VERSION` 2 → 3, a normal pre-1.0 minor-version release
+   (`CHANGELOG.md`/`MIGRATING.md`; `akvize/reconcile-rs#382` did the same for `Fingerprint`'s
+   encoding), not a live-migration mechanism: `akvize/reconcile-rs#309` is the wire-version byte's
+   own origin (invariant 11), and its consequence — a mismatched peer's whole datagram rejected, no
+   accepted-version window — is what makes *any* bump a full-drain, no-mixed-versions rollout once
+   a real cluster exists, same as every bump before it. `Message::Reserved6` is the one tag still
+   reserved; consuming it, or adding a seventh, needs another such bump. Guarded by
    `src/replica/tests/reserved_wire_tags.rs::a_reserved_message_does_not_block_the_rest_of_the_datagram`
-   and its sibling pinning the tags' own encoding and the opaque payload's bounded decode.
+   (now exercised via tag 6) and its siblings pinning tag 6's own encoding and opaque payload's
+   bounded decode, plus `src/replica/tests/convergence_ack.rs` for tag 5's own encoding and the
+   ack-on-converged-round behavior.
 
 ---
 

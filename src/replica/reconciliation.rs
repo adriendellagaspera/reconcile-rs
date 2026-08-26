@@ -34,10 +34,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         send_buf.clear();
         for segment in segments {
             gossip::bincode::encode(
-                &Message::ComparisonItem::<K, Entry<Timestamp, V>, State<V>>(segment),
+                &Message::EntryFingerprint::<K, Entry<Timestamp, V>, State<V>>(segment),
                 send_buf,
             )
-            .expect("serializing a ComparisonItem into an in-memory buffer cannot fail");
+            .expect("serializing an EntryFingerprint into an in-memory buffer cannot fail");
         }
         // Snapshot the runtime-tunable topology once per round: no torn round, no lock held
         // across the sends below.
@@ -115,6 +115,11 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             {
                 warn!("failed to send reconciliation initiation to {peer}: {err}; continuing");
             }
+            // #23: if this round finds a real difference, `peer`'s reply (a SPLIT child, an
+            // `EntryUpdate` batch) clears this the moment it arrives (`run`'s receive loop). A
+            // round that resolves to a pure SKIP gets an explicit `ConvergenceAck` instead; see
+            // `Message`'s docs.
+            self.note_pending_repair(peer);
         }
         observability::record_round_duration(timer);
     }
@@ -153,13 +158,13 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             // we snapshotted the index, and only the live tombstone's version is a valid ack.
             if let Some(v) = map_guard.get(key).filter(|v| v.is_tombstone()) {
                 gossip::bincode::encode(
-                    &Message::Ack::<K, Entry<Timestamp, V>, State<V>>((
+                    &Message::TombstoneAck::<K, Entry<Timestamp, V>, State<V>>((
                         key.clone(),
                         version_hash(v),
                     )),
                     send_buf,
                 )
-                .expect("serializing an Ack into an in-memory buffer cannot fail");
+                .expect("serializing a TombstoneAck into an in-memory buffer cannot fail");
                 appended += 1;
             }
         }
