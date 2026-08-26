@@ -1056,8 +1056,8 @@ const PROPAGATION_RTT_NODES: usize = 8;
 
 /// `gossip_propagation` across the RTT sweep and a loss lane. A write is broadcast to every peer at
 /// once, so this asks whether propagation is one hop (≈ RTT/2, flat in `N`) or a chain — and, in
-/// the loss lane, what a dropped broadcast costs when only the next anti-entropy round can repair
-/// it.
+/// the loss lane, what a dropped broadcast now costs on [`Config::repair_interval`]'s RTT-scale
+/// timer (#23) rather than on the next `reconcile_interval` anti-entropy round.
 fn gossip_propagation_rtt(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "gossip_propagation_rtt");
