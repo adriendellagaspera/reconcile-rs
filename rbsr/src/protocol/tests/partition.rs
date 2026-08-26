@@ -7,6 +7,7 @@
 // except according to those terms.
 
 use rand::SeedableRng;
+use rsos::Fingerprint;
 
 use super::*;
 
@@ -120,6 +121,68 @@ fn different_seeds_draw_different_cut_positions() {
          more than one — the shift looks hardcoded",
         cuts.len()
     );
+}
+
+/// `actual_span` is `end_index.get() - start_index.get()`, never assumed to start at rank `0` --
+/// every other test in this file segments the *whole* store, where `start_index == 0` makes that
+/// subtraction arithmetically indistinguishable from addition. This segment starts at rank `50`,
+/// where the two diverge sharply (`397 - 50 = 347` vs. `397 + 50 = 447`, past the end of the
+/// store), so a corrupted `actual_span` computation shows up in the wrong place: either a
+/// mis-sized block (`this_stride` computed from the wrong span) or a short-block position drawn
+/// from a range wider than the segment actually has room for.
+#[test]
+fn split_of_a_range_starting_past_rank_zero_still_partitions_correctly() {
+    const START: usize = 50;
+    const REAL_SPAN: usize = 397 - START;
+    const STRIDE: usize = 22; // ceil(347 / 16)
+    const REMAINDER: usize = REAL_SPAN % STRIDE;
+    let store = tree(&(0..397).collect::<Vec<_>>());
+    for seed in 0..16u64 {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let mut child_ranges = Vec::new();
+        let mut enumeration_ranges = Vec::new();
+        let segment = RangeAggregate {
+            range: KeyRange::new(StartBound::Included(START as i32), EndBound::Unbounded),
+            aggregate: Aggregate::new(REAL_SPAN, Fingerprint([7, 0, 0, 0])),
+        };
+        protocol_round(
+            &store,
+            vec![segment],
+            &mut child_ranges,
+            &mut enumeration_ranges,
+            &mut rng,
+        );
+        assert!(
+            !child_ranges.is_empty(),
+            "seed {seed}: must produce children"
+        );
+        assert_eq!(
+            child_ranges[0].range.0,
+            StartBound::Included(START as i32),
+            "seed {seed}: partition must start where the segment did"
+        );
+        let last = &child_ranges[child_ranges.len() - 1];
+        assert_eq!(
+            last.range.1,
+            EndBound::Unbounded,
+            "seed {seed}: partition must end where the segment did"
+        );
+        let sizes: Vec<usize> = child_ranges
+            .iter()
+            .map(|child| store.aggregate(child.range.clone()).size())
+            .collect();
+        assert!(
+            sizes
+                .iter()
+                .all(|&size| size == STRIDE || size == REMAINDER),
+            "seed {seed}: every child must be stride- or remainder-sized, sizes were {sizes:?}"
+        );
+        assert_eq!(
+            sizes.iter().sum::<usize>(),
+            REAL_SPAN,
+            "seed {seed}: sizes must sum to the segment's real span, sizes were {sizes:?}"
+        );
+    }
 }
 
 /// `block_count`'s exact arithmetic, pinned directly rather than only exercised through the
