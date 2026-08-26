@@ -130,6 +130,17 @@ pub(crate) struct Inner<K, V> {
     /// on after that bound, leaving it to the next full
     /// [`reconcile_interval`](Self::reconcile_interval) round.
     pending_repairs: Arc<RwLock<HashMap<IpAddr, repair::PendingRepair>>>,
+    /// Per-peer instant of the most recently received dated [`Message::EntryUpdate`] batch — the
+    /// receiver-side signal that a paced cold-sync bulk transfer from that peer might still be in
+    /// progress (#85, akvize/reconcile-rs#178).
+    /// [`start_reconciliation`](Self::start_reconciliation) excludes a peer from a round's targets
+    /// while it is within [`repair_interval`](Self::repair_interval) of this instant: re-initiating
+    /// a full comparison mid-transfer only re-diffs and re-sends ranges the peer is already
+    /// (legitimately) sending, doubling traffic rather than converging any faster — see
+    /// `reconciliation::still_receiving_bulk`. Nothing is lost by skipping that round meanwhile:
+    /// receiving the batch that set this entry already scheduled its own narrower, single-peer
+    /// recheck via [`pending_repairs`](Self::pending_repairs) on the same cadence.
+    receiving_bulk_from: Arc<RwLock<HashMap<IpAddr, Instant>>>,
     /// Rate (bytes/sec) at which a single bulk anti-entropy value transfer to one peer is paced, or
     /// `None` to send back-to-back. Mirrors [`Config::bulk_send_rate`](crate::replicated_map::Config::bulk_send_rate)
     /// and is read by [`spawn_paced_send`](Self::spawn_paced_send).

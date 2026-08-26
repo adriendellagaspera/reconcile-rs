@@ -456,10 +456,12 @@ Set either field to `None` to leave the inherited OS default untouched.
 
 ### Reconciliation interval floor
 
-`Config::reconcile_interval` (default 1 s) has a floor — roughly a few × RTT, and at or above the
-pacing gap between datagrams at the configured `Config::bulk_send_rate`. Shortening it below that
-floor does not converge faster: the mechanism, and why cold sync ends up both slower and
-re-amplified while idle chatter balloons, is documented on `Config::reconcile_interval` itself.
+`Config::reconcile_interval` (default 1 s) has a floor — roughly a few × RTT. A receiver-side guard
+(#85) suppresses the mid-bulk-transfer re-amplification a too-low interval used to cause for any
+peer heard from recently, making `Config::repair_interval` (default 150 ms) the practical floor
+below which it can still occur; steady-state idle chatter to any peer outside that window still
+balloons regardless. The full mechanism is documented on `Config::reconcile_interval` and
+`Config::bulk_send_rate` themselves.
 
 ### Broadcast coalescing
 

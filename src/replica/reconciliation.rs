@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 
 use ipnet::IpNet;
 use rand::seq::SliceRandom;
@@ -46,7 +47,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let remote_interval = self.remote_interval.load(Ordering::Relaxed).max(1);
         let remote_fanout = self.remote_fanout.load(Ordering::Relaxed);
         let round = self.round.fetch_add(1, Ordering::Relaxed);
-        *self.last_round_at.write() = Some(std::time::Instant::now());
+        *self.last_round_at.write() = Some(Instant::now());
         // Treat an interval of 0 as "every round" to avoid a modulo-by-zero.
         let do_remote = round % remote_interval == 0;
         let known = self.get_peers();
@@ -100,6 +101,19 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
         // Piggyback causal-stability ack resends for the tombstones we hold.
         self.resend_held_tombstone_acks(send_buf, round);
+
+        // #85: drop any target whose paced bulk transfer to us might still legitimately be in
+        // progress -- re-initiating a full comparison mid-transfer only re-diffs and re-sends
+        // ranges it is already sending, doubling traffic (akvize/reconcile-rs#178) instead of
+        // converging any faster. See `receiving_bulk_from`'s docs.
+        let repair_interval = *self.repair_interval.read();
+        let now = Instant::now();
+        {
+            let receiving = self.receiving_bulk_from.read();
+            targets.retain(|addr| {
+                !still_receiving_bulk(receiving.get(addr).copied(), now, repair_interval)
+            });
+        }
 
         // initiate the reconciliation protocol with the selected peers and discovery probes
         for peer in targets {
@@ -177,6 +191,14 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         observability::record_tombstone_acks_resent(appended);
         appended
     }
+
+    /// Record that a dated bulk-update batch just arrived from `peer` — see
+    /// [`receiving_bulk_from`](super::Inner::receiving_bulk_from).
+    pub(super) fn note_bulk_update_received(&self, peer: IpAddr) {
+        self.receiving_bulk_from
+            .write()
+            .insert(peer, Instant::now());
+    }
 }
 
 /// Live (non-tombstone) entry count for [`observability::record_state_gauges`]'s
@@ -190,9 +212,24 @@ fn live_entry_count(total_entries: usize, tombstones: usize) -> usize {
     total_entries.saturating_sub(tombstones)
 }
 
+/// Whether a peer's most recently received dated bulk-update batch is recent enough that
+/// [`start_reconciliation`](Replica::start_reconciliation) should leave it out of this round's
+/// targets — the receiver-side guard against re-initiating a full diff mid-transfer (#85,
+/// akvize/reconcile-rs#178). `None` (never received one, or its entry was never set) is never
+/// "still receiving".
+fn still_receiving_bulk(
+    last_received: Option<Instant>,
+    now: Instant,
+    repair_interval: Duration,
+) -> bool {
+    last_received.is_some_and(|last| now.saturating_duration_since(last) < repair_interval)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::live_entry_count;
+    use std::time::{Duration, Instant};
+
+    use super::{live_entry_count, still_receiving_bulk};
 
     #[test]
     fn live_entry_count_subtracts_tombstones_from_the_total() {
@@ -207,5 +244,47 @@ mod tests {
             "tombstones observed as exceeding the total (a transient race between the two \
              unsynchronized reads) must saturate to 0, never underflow"
         );
+    }
+
+    #[test]
+    fn no_bulk_update_ever_received_is_never_still_receiving() {
+        assert!(!still_receiving_bulk(
+            None,
+            Instant::now(),
+            Duration::from_millis(150)
+        ));
+    }
+
+    #[test]
+    fn a_bulk_update_received_well_within_repair_interval_is_still_receiving() {
+        let now = Instant::now();
+        let last = now.checked_sub(Duration::from_millis(10)).unwrap();
+        assert!(still_receiving_bulk(
+            Some(last),
+            now,
+            Duration::from_millis(150)
+        ));
+    }
+
+    #[test]
+    fn a_bulk_update_received_at_exactly_repair_interval_ago_is_no_longer_still_receiving() {
+        let now = Instant::now();
+        let last = now.checked_sub(Duration::from_millis(150)).unwrap();
+        assert!(
+            !still_receiving_bulk(Some(last), now, Duration::from_millis(150)),
+            "the boundary itself must count as expired -- a strict `<`, not `<=`, so a grace \
+             window can never be extended by re-arriving exactly on its own deadline"
+        );
+    }
+
+    #[test]
+    fn a_bulk_update_received_past_repair_interval_ago_is_no_longer_still_receiving() {
+        let now = Instant::now();
+        let last = now.checked_sub(Duration::from_millis(200)).unwrap();
+        assert!(!still_receiving_bulk(
+            Some(last),
+            now,
+            Duration::from_millis(150)
+        ));
     }
 }

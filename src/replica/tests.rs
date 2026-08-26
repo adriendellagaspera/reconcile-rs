@@ -40,6 +40,7 @@ mod in_memory_convergence;
 mod keyed_fingerprint;
 mod pacing;
 mod pending_dump_requeue;
+mod receiver_bulk_guard;
 mod repair;
 mod reserved_wire_tags;
 mod socket_buffers;
