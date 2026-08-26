@@ -40,8 +40,8 @@ fn matches_serial_insert_at_every_size_through_several_tree_heights() {
     }
 }
 
-/// Spot-checks well past the small-size sweep above, at scales the `#51` benchmarks actually
-/// measure (`benches/README.md`'s "Re-measuring #47/#51/#52").
+/// Spot-checks well past the small-size sweep above, at the bulk-build benchmark scales
+/// (`benches/README.md`'s "Re-measuring #47/#51/#52").
 #[test]
 fn matches_serial_insert_at_benchmark_scale() {
     for &n in &[50_000u32, 200_000] {
