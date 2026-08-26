@@ -1,5 +1,7 @@
 use std::ops::Bound;
 
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use serde::Serialize;
 
 use rbsr::{initial_ranges, protocol_round, EnumerationRange};
@@ -21,18 +23,21 @@ where
     let mut remote_diff_ranges = Vec::new();
     let mut local_segments = initial_ranges(local);
     let mut remote_segments = Vec::new();
+    let mut rng = StdRng::seed_from_u64(42);
     while !local_segments.is_empty() {
         protocol_round(
             remote,
             std::mem::take(&mut local_segments),
             &mut remote_segments,
             &mut remote_diff_ranges,
+            &mut rng,
         );
         protocol_round(
             local,
             std::mem::take(&mut remote_segments),
             &mut local_segments,
             &mut local_diff_ranges,
+            &mut rng,
         );
     }
     (local_diff_ranges, remote_diff_ranges)

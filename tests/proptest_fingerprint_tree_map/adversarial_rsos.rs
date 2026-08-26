@@ -18,6 +18,8 @@
 #![cfg(reconcile_internal_testing)]
 
 use proptest::prelude::*;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use rbsr::{protocol_round, RangeAggregate};
 use rsos::Fingerprint;
 
@@ -64,6 +66,7 @@ proptest! {
         rank_answers in prop::collection::vec(0usize..4096, 1..16),
         start in prop::option::of(0u64..64),
         end in prop::option::of(0u64..64),
+        shift_seed: u64,
     ) {
         let mut keys = keys;
         keys.sort_unstable();
@@ -78,11 +81,13 @@ proptest! {
 
         let mut child_ranges = Vec::new();
         let mut enumeration_ranges = Vec::new();
+        let mut rng = StdRng::seed_from_u64(shift_seed);
         let outcome = protocol_round(
             &store,
             vec![segment],
             &mut child_ranges,
             &mut enumeration_ranges,
+            &mut rng,
         );
 
         prop_assert_eq!(child_ranges.len(), outcome.children());

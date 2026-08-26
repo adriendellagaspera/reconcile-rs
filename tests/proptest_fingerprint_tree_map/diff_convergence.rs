@@ -31,6 +31,7 @@ fn run_diff(
     a: &Tree,
     b: &Tree,
     perturb: &mut dyn FnMut(&mut Vec<RangeAggregate<u64>>),
+    rng: &mut StdRng,
 ) -> (Vec<EnumerationRange<u64>>, Vec<EnumerationRange<u64>>) {
     let mut a_diffs = Vec::new();
     let mut b_diffs = Vec::new();
@@ -40,9 +41,9 @@ fn run_diff(
     let mut guard = 0;
     while !a_seg.is_empty() {
         perturb(&mut a_seg);
-        protocol_round(b, std::mem::take(&mut a_seg), &mut b_seg, &mut b_diffs);
+        protocol_round(b, std::mem::take(&mut a_seg), &mut b_seg, &mut b_diffs, rng);
         perturb(&mut b_seg);
-        protocol_round(a, std::mem::take(&mut b_seg), &mut a_seg, &mut a_diffs);
+        protocol_round(a, std::mem::take(&mut b_seg), &mut a_seg, &mut a_diffs, rng);
 
         guard += 1;
         // Bounded number of refinement rounds: the protocol fans out by 16 per
@@ -59,6 +60,7 @@ fn run_diff_with_policies(
     b: &Tree,
     a_policy: &dyn RefinementPolicy,
     b_policy: &dyn RefinementPolicy,
+    rng: &mut StdRng,
 ) -> (Vec<EnumerationRange<u64>>, Vec<EnumerationRange<u64>>) {
     let mut a_diffs = Vec::new();
     let mut b_diffs = Vec::new();
@@ -73,6 +75,7 @@ fn run_diff_with_policies(
             std::mem::take(&mut a_seg),
             &mut b_seg,
             &mut b_diffs,
+            rng,
         );
         protocol_round_with_policy(
             a,
@@ -80,6 +83,7 @@ fn run_diff_with_policies(
             std::mem::take(&mut b_seg),
             &mut a_seg,
             &mut a_diffs,
+            rng,
         );
 
         guard += 1;
@@ -186,11 +190,15 @@ proptest! {
     /// Clean channel: a single diff exchange must discover exactly the symmetric
     /// difference of the key sets and reconcile the two trees to the union.
     #[test]
-    fn two_trees_converge_and_diff_is_symmetric_difference(universe in universe_strategy()) {
+    fn two_trees_converge_and_diff_is_symmetric_difference(
+        universe in universe_strategy(),
+        cut_seed in any::<u64>(),
+    ) {
         let (mut a, mut b, only_a, only_b, union) = build_pair(&universe);
 
         let mut noop = |_: &mut Vec<RangeAggregate<u64>>| {};
-        let (a_diffs, b_diffs) = run_diff(&a, &b, &mut noop);
+        let mut rng = StdRng::seed_from_u64(cut_seed);
+        let (a_diffs, b_diffs) = run_diff(&a, &b, &mut noop, &mut rng);
 
         // The discovered diff ranges cover exactly the symmetric difference.
         prop_assert_eq!(keys_in(&a, &a_diffs), only_a);
@@ -214,6 +222,7 @@ proptest! {
     fn convergence_survives_reordered_and_duplicated_messages(
         universe in universe_strategy(),
         seed in any::<u64>(),
+        cut_seed in any::<u64>(),
     ) {
         let (mut a, mut b, only_a, only_b, union) = build_pair(&universe);
 
@@ -229,7 +238,11 @@ proptest! {
             segs.shuffle(&mut rng);
         };
 
-        let (a_diffs, b_diffs) = run_diff(&a, &b, &mut perturb);
+        // Independent from `rng` above (which `perturb` already borrows): the cut-offset seam and
+        // the transport-perturbation seam are two different randomness sources in a real
+        // deployment too, and `perturb`'s borrow would conflict with reusing the same `StdRng`.
+        let mut cut_rng = StdRng::seed_from_u64(cut_seed);
+        let (a_diffs, b_diffs) = run_diff(&a, &b, &mut perturb, &mut cut_rng);
 
         prop_assert_eq!(keys_in(&a, &a_diffs), only_a);
         prop_assert_eq!(keys_in(&b, &b_diffs), only_b);
@@ -250,12 +263,14 @@ proptest! {
     fn convergence_is_eventual_despite_dropped_messages(
         universe in universe_strategy(),
         schedule in prop::collection::vec(any::<bool>(), 0..16),
+        cut_seed in any::<u64>(),
     ) {
         let (mut a, mut b, _only_a, _only_b, union) = build_pair(&universe);
 
         let mut noop = |_: &mut Vec<RangeAggregate<u64>>| {};
+        let mut rng = StdRng::seed_from_u64(cut_seed);
         for deliver_a_to_b in schedule {
-            let (a_diffs, b_diffs) = run_diff(&a, &b, &mut noop);
+            let (a_diffs, b_diffs) = run_diff(&a, &b, &mut noop, &mut rng);
             // Drop one whole direction this cycle.
             if deliver_a_to_b {
                 apply_full(&mut a, &mut b, &a_diffs, &[]);
@@ -268,7 +283,7 @@ proptest! {
         }
 
         // A final, complete exchange (guaranteed retransmission) converges.
-        let (a_diffs, b_diffs) = run_diff(&a, &b, &mut noop);
+        let (a_diffs, b_diffs) = run_diff(&a, &b, &mut noop, &mut rng);
         apply_full(&mut a, &mut b, &a_diffs, &b_diffs);
         a.check_invariants();
         b.check_invariants();
@@ -290,12 +305,14 @@ proptest! {
         universe in universe_strategy(),
         a_index in 0usize..4,
         b_index in 0usize..4,
+        cut_seed in any::<u64>(),
     ) {
         let (mut a, mut b, only_a, only_b, union) = build_pair(&universe);
         let (a_policy, b_policy) = (policy(a_index), policy(b_index));
 
+        let mut rng = StdRng::seed_from_u64(cut_seed);
         let (a_diffs, b_diffs) =
-            run_diff_with_policies(&a, &b, a_policy.as_ref(), b_policy.as_ref());
+            run_diff_with_policies(&a, &b, a_policy.as_ref(), b_policy.as_ref(), &mut rng);
 
         // Cover, not equal: everything only one side holds must be inside some enumerated range.
         let a_found = keys_in(&a, &a_diffs);

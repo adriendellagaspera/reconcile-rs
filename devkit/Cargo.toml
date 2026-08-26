@@ -17,7 +17,7 @@ publish = false
 # --workspace` verifies every workspace member's manifest, this one included, and a path
 # dependency on a real, published crate needs a resolvable version for that (AGENTS.md §11) —
 # `devkit`'s own `publish = false` has no bearing on what *its* dependencies must declare.
-rbsr = { version = "0.1.1", path = "../rbsr" }
+rbsr = { version = "0.2.0", path = "../rbsr" }
 rsos = { version = "0.4.0", path = "../rsos" }
 # `protocol_cost.rs` only ever needs a `RangeAggregate`'s *serialized length*, via
 # `bincode::Options::serialized_size` (`DefaultOptions`, matching `gossip::bincode`'s own encoder

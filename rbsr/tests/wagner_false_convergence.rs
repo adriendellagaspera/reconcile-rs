@@ -35,6 +35,8 @@
 use std::collections::HashMap;
 use std::ops::{Bound, RangeBounds};
 
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use rbsr::{initial_ranges, protocol_round, RangeAggregate, RsosView};
 use rsos::{digest, digest_keyed, Aggregate, Fingerprint, LiftKey};
 
@@ -279,11 +281,17 @@ fn honest() -> Vec<u64> {
 /// One round of the real driver: peer A advertises its whole store, peer B answers.
 ///
 /// Returns `true` when B SKIPped the outer range — the protocol declaring convergence.
+///
+/// This drives only the **outer** range, which the session-random cut offset does not touch by
+/// construction (`ARCHITECTURE.md` §7, "Defense against a correlated false SKIP" — option A covers
+/// every range below it, never the first comparison), so a fixed seed here is representative, not
+/// a simplification.
 fn declares_convergence(a: &NarrowStore, b: &NarrowStore) -> bool {
     let active: Vec<RangeAggregate<u64>> = initial_ranges(a);
     let mut children = Vec::new();
     let mut enumerations = Vec::new();
-    let outcome = protocol_round(b, active, &mut children, &mut enumerations);
+    let mut rng = StdRng::seed_from_u64(0);
+    let outcome = protocol_round(b, active, &mut children, &mut enumerations, &mut rng);
     children.is_empty() && enumerations.is_empty() && outcome.skipped() == 1
 }
 

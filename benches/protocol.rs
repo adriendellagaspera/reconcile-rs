@@ -49,6 +49,8 @@ use std::hint::black_box;
 use criterion::{
     criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion, PlotConfiguration,
 };
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use serde::Serialize;
 
 use devkit::protocol_cost::{reconcile, Cost, Counting};
@@ -285,13 +287,40 @@ fn breakdown(cost: &Cost) -> String {
 }
 
 /// One priced reconciliation, with both peers' local query counts folded in: the table path.
+///
+/// `rng` seeds fresh here rather than being threaded from the caller: every call in this file
+/// prices one independent drive, and a fixed seed keeps a printed/asserted report reproducible
+/// across runs (`benches/README.md`), which a shared, monotonically-advancing stream would not.
 fn counted_reconcile<S: Rsos<u64>>(a: &S, b: &S, policy: &dyn RefinementPolicy) -> Cost {
     let (counted_a, counted_b) = (Counting::new(a), Counting::new(b));
     let mut scratch = Vec::new();
     let mut price = |key: u64| element_bytes(key, &mut scratch).to_vec();
-    let mut cost = reconcile(&counted_a, &counted_b, policy, Some(&mut price));
+    let mut rng = StdRng::seed_from_u64(42);
+    let mut cost = reconcile(&counted_a, &counted_b, policy, Some(&mut price), &mut rng);
     cost.queries = counted_a.queries() + counted_b.queries();
     cost
+}
+
+/// The session-random cut offset (`rbsr`'s ARCHITECTURE.md §7, "Defense against a correlated false
+/// SKIP") only moves which block of a fixed-stride split is undersized — it changes no split's
+/// child *count*, so it must move the round count by no more than the constant slack alternating
+/// responders and one IDLIST bounce-back already cost the unshifted driver. Checked here rather
+/// than asserted from first principles: this is Meyer §5.1's own claim about the mechanism, priced
+/// against the real driver instead of taken on faith.
+///
+/// Generous on purpose — this exists to catch a regression that makes the descent no longer
+/// logarithmic (a stride that stops narrowing, an off-by-one that revisits a level), not to pin an
+/// exact round count the shipped policy's own tuning is free to move.
+fn assert_round_bound(n: usize, d: usize, clustering: Clustering, cost: &Cost, fan_out: usize) {
+    let depth = (n as f64).log(fan_out as f64).ceil().max(1.0) as usize;
+    let bound = 2 * depth + 4;
+    assert!(
+        cost.messages <= bound,
+        "n={n} d={d} {}: {} rounds exceeds the O(log_{fan_out} n) bound of {bound} \
+         (log_{fan_out} {n} ~= {depth}) -- the descent no longer looks logarithmic",
+        clustering.label(),
+        cost.messages,
+    );
 }
 
 /// Exchanged volume under the shipped default policy, printed rather than timed — exact and
@@ -314,6 +343,7 @@ fn reconciliation_cost(c: &mut Criterion) {
             let cost = counted_reconcile(&full, &holed, &policy);
             println!("[protocol]   {}", totals(&cost));
             println!("[protocol]   {}", breakdown(&cost));
+            assert_round_bound(n, d, clustering, &cost, FanOut::NEGENTROPY.get());
         }
     }
 
@@ -324,8 +354,10 @@ fn reconciliation_cost(c: &mut Criterion) {
         let full = store(n, &[]);
         let holed = store(n, &missing_keys(n, 1, Clustering::Scattered));
         group.sample_size(10.max(1_000_000 / n).min(100));
+        let mut rng = StdRng::seed_from_u64(42);
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |bencher, _| {
-            bencher.iter(|| reconcile(black_box(&full), black_box(&holed), &policy, None));
+            bencher
+                .iter(|| reconcile(black_box(&full), black_box(&holed), &policy, None, &mut rng));
         });
     }
     group.finish();

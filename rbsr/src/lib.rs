@@ -36,6 +36,11 @@
 //! conditional on the value size and the link, both crossovers measured on
 //! [`EnumerateBelowThreshold`] (#468).
 //!
+//! **Cut offsets are randomized per session** (Meyer §5.1): [`protocol_round`]'s injected `rng`
+//! shifts which of a split's children absorbs the one block a fixed stride does not divide evenly,
+//! so two sessions over identical stores draw different boundaries below the outer range. Defense
+//! this buys and does not: `ARCHITECTURE.md` §7, "Defense against a correlated false SKIP".
+//!
 //! **The refinement policy is local and never negotiated** (`ARCHITECTURE.md` §3.1): peers running
 //! different policies converge, so swapping one is a behaviour change, never a wire break.
 //! [`protocol_round_with_policy`] takes the seam; [`FixedFanOut`] (default), [`SqrtFanOut`]
@@ -47,6 +52,7 @@
 //! every [`rsos::Rsos`], so any backend works with no per-type code here.
 //!
 //! ```
+//! use rand::SeedableRng;
 //! use rsos::FingerprintTreeMap;
 //! use rbsr::{initial_ranges, protocol_round};
 //!
@@ -60,13 +66,16 @@
 //!
 //! // Alternate rounds between the two sides until nothing is left to resolve -- this is the
 //! // driving loop a transport layer (like `reconcile`'s gossip adapter) runs over the wire.
+//! // `rng` is this session's injected cut-offset randomness -- one seam, reused every round.
 //! let mut active = initial_ranges(&a);
 //! let (mut responder, mut advertiser) = (&b, &a);
+//! let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 //! let mut enumerated = 0;
 //! while !active.is_empty() {
 //!     let mut children = Vec::new();
 //!     let mut enumerations = Vec::new();
-//!     let outcome = protocol_round(responder, active, &mut children, &mut enumerations);
+//!     let outcome =
+//!         protocol_round(responder, active, &mut children, &mut enumerations, &mut rng);
 //!     enumerated += outcome.enumerated();
 //!     active = children;
 //!     std::mem::swap(&mut responder, &mut advertiser);
