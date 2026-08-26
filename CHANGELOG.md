@@ -34,6 +34,12 @@ All notable changes to this project are documented here. Format follows
   third party driving `rsos`/`rbsr` without the `reconcile` facade.
 - `gossip::auth::ClusterKey::derive_lift_key` (#19): the BLAKE3 `derive_key` subkey `reconcile` now
   feeds to `rsos::LiftKey`, independent of the datagram MAC's own use of the same cluster key.
+- `ReadReplicaMap::local_addr()`/`sync_state()`/`peers()`/`seed_peer()`/`set_reconcile_interval()`
+  (#30): the introspection/lifecycle accessors `ReplicatedMap` already had (#292), closing the gap
+  a caller hit trying to build a readiness probe for a read-replica deployment the same way it
+  would for a dated one. `sync_state()` returns a `ReadSyncState` (no `last_snapshot_at`: a read
+  replica deliberately never persists). No `node_id()`/`members()` counterpart — a read replica
+  mints no timestamps and holds no causal-stability membership, so neither concept applies.
 
 ## [0.4.0] - 2026-08-22
 

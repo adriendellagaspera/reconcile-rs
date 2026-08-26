@@ -7,8 +7,9 @@
 // except according to those terms.
 
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tokio::time::timeout;
 use tracing::{debug, trace, warn};
@@ -26,7 +27,6 @@ use gossip::gen_ip::gen_ip;
 use super::ReadReplicaMap;
 
 const BUFFER_SIZE: usize = 65507;
-const ACTIVITY_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// The wire value type, named only so the shared [`Message`] enum has a concrete `Update` payload
 /// — which a read replica ignores, storing no dated value.
@@ -83,6 +83,8 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// kicking off / continuing a value-only reconciliation round. `send_buf` is caller-owned so
     /// [`run`](Self::run)'s hot loop can reuse one allocation across rounds.
     async fn start_reconciliation_inner(&self, send_buf: &mut Vec<u8>) {
+        self.round.fetch_add(1, Ordering::Relaxed);
+        *self.last_round_at.write() = Some(Instant::now());
         let segments = rbsr::initial_ranges(&*self.tree.load_full());
         send_buf.clear();
         for segment in segments {
@@ -92,7 +94,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             )
             .unwrap();
         }
-        let mut peers = self.get_peers();
+        let mut peers = self.peers();
         // A random address out of the peer network, for discovery — like the dated store, we do not
         // add it to the known peers; a real peer there will answer and be recorded then.
         let net = *self.net.read();
@@ -201,7 +203,8 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         let mut send_buf = Vec::new();
         self.start_reconciliation_inner(&mut send_buf).await;
         loop {
-            match timeout(ACTIVITY_TIMEOUT, self.transport.recv_from(&mut recv_buf)).await {
+            let activity_timeout = *self.reconcile_interval.read();
+            match timeout(activity_timeout, self.transport.recv_from(&mut recv_buf)).await {
                 Err(_) => {
                     debug!("read replica: no recent activity; initiating value-only diff");
                     self.start_reconciliation_inner(&mut send_buf).await;

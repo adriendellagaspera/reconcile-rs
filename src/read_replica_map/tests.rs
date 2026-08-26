@@ -10,6 +10,7 @@ use crate::replicated_map::Config;
 
 mod discovery;
 mod keyed_fingerprint;
+mod lifecycle;
 mod membership;
 mod read;
 mod write;
