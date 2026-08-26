@@ -337,6 +337,20 @@ tokio::spawn(store.clone().run(CancellationToken::new())); // periodically snaps
 The backend is pluggable: implement the `Persistence` trait to store snapshots in `redb`, `sled`,
 S3, or any other medium.
 
+A failed snapshot write (periodic or `snapshot_now()`) never panics or stops the node — it is
+durability breaking silently while the process otherwise looks healthy, so it is surfaced three
+ways: a `warn!` log, the `reconcile_persistence_failures_total`/`reconcile_persistence_failures_current`
+metrics (see [Observability](#observability)), and `on_persistence_error`, a callback for an
+operator's own alerting:
+
+```rust
+let store = ReplicatedMap::new(Config::new(8080).with_insecure_no_key())
+    .await
+    .unwrap()
+    .with_persistence(Arc::new(FileSnapshot::new("/var/lib/myapp/reconcile.snapshot")))
+    .on_persistence_error(|err| eprintln!("snapshot write failed: {err}"));
+```
+
 ## Lifecycle and readiness
 
 `run` takes a [`tokio_util::sync::CancellationToken`](https://docs.rs/tokio-util) and returns once
@@ -358,8 +372,8 @@ A few more accessors answer questions a production deployment needs that `/metri
 notably telling apart "the process is up" from "this node is actually synchronizing" (a
 Kubernetes readiness probe should check the latter; see `examples/k8s/`):
 
-- `sync_state()` — rounds completed, when the last round/snapshot happened, and the current peer
-  count, bundled as one `SyncState` snapshot.
+- `sync_state()` — rounds completed, when the last round/snapshot/successful discovery resolution
+  happened, and the current peer count, bundled as one `SyncState` snapshot.
 - `peers()` / `members()` — the gossip-routing peer set and the causal-stability membership set.
 - `local_addr()` — the transport's actual bound address (useful when `Config::port` is `0`).
 - `snapshot_now()` — force an out-of-band snapshot instead of waiting for
@@ -372,14 +386,25 @@ reconciliation rounds, and the message send/receive paths emit spans and events.
 library, `reconcile-rs` does **not** install a subscriber itself — your application does, e.g.
 `tracing_subscriber::fmt().init()` (see `examples/demo.rs`).
 
-Runtime metrics (throughput, latency, and failure counts) are emitted through the
-[`metrics`](https://docs.rs/metrics) facade, gated behind opt-in features so the default build
+Runtime metrics (throughput, latency, failure counts, and point-in-time state) are emitted through
+the [`metrics`](https://docs.rs/metrics) facade, gated behind opt-in features so the default build
 stays lean:
 
-- `metrics` — emit counters and histograms (`reconcile_inserts_total`,
+- `metrics` — emit counters, histograms, and gauges. Every name is a public, stable constant in
+  `reconcile::metrics` (e.g. `reconcile::metrics::INSERTS_TOTAL`) — no other name set to depend on
+  for a dashboard or alert. When this feature is off, every metric call site compiles to a no-op.
+  Counters/histograms answer "how much has happened" (`reconcile_inserts_total`,
   `reconcile_updates_received_total`, `reconcile_bytes_sent_total`, `reconcile_send_failures_total`,
-  `reconcile_datagrams_dropped_total`, `reconcile_round_duration_seconds`, …). When this feature is
-  off, every metric call site compiles to a no-op.
+  `reconcile_datagrams_dropped_total`, `reconcile_persistence_failures_total`,
+  `reconcile_discovery_failures_total`, `reconcile_round_duration_seconds`, …); gauges answer "what
+  is the state right now" — the six an operator pages on:
+  - `reconcile_peers_current` — size of the gossip-routing peer set.
+  - `reconcile_members_current` — size of the causal-stability membership set.
+  - `reconcile_entries_current` — live (non-tombstone) entries.
+  - `reconcile_tombstones_current` — outstanding tombstones not yet garbage-collected.
+  - `reconcile_bulk_dumps_in_flight` — bulk anti-entropy dumps in flight.
+  - `reconcile_persistence_failures_current` — consecutive snapshot failures since the last
+    success; `0` while healthy (see [Persistence](#persistence)).
 - `metrics-prometheus` — additionally provides `reconcile::prometheus` to install a Prometheus
   recorder and either serve a `/metrics` endpoint or render the exposition text yourself. Binding
   it to `0.0.0.0` (as in the example below, and in the `examples/k8s/` manifests) exposes it on

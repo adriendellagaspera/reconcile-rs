@@ -12,6 +12,7 @@
 use std::hash::Hash;
 use std::io;
 use std::net::IpAddr;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -87,6 +88,18 @@ where
     /// successfully. Shared across clones — the background snapshot task runs on a clone of the
     /// handle a caller queries [`sync_state`](Self::sync_state) through.
     last_snapshot_at: Arc<RwLock<Option<Instant>>>,
+    /// Consecutive snapshot-write failures since the last success; `0` while healthy. Backs the
+    /// `reconcile_persistence_failures_current` gauge (behind the `metrics` feature), but tracked
+    /// unconditionally since [`on_persistence_error`] callers want it too.
+    ///
+    /// [`on_persistence_error`]: Self::on_persistence_error
+    persistence_consecutive_failures: Arc<AtomicUsize>,
+    /// Invoked with the [`io::Error`] whenever a snapshot write fails — see
+    /// [`on_persistence_error`](Self::on_persistence_error). Defaults to a no-op.
+    persistence_error_hook: Arc<dyn Fn(&io::Error) + Send + Sync>,
+    /// When [`discover_periodically`](Self::discover_periodically) last resolved the discovery
+    /// source successfully, or `None` if it never has (including when no source is configured).
+    last_successful_discovery_at: Arc<RwLock<Option<Instant>>>,
 }
 
 impl<K, V> Clone for ReplicatedMap<K, V>
@@ -105,6 +118,9 @@ where
             discovery_decommission_floor: self.discovery_decommission_floor,
             snapshot_interval: self.snapshot_interval,
             last_snapshot_at: self.last_snapshot_at.clone(),
+            persistence_consecutive_failures: self.persistence_consecutive_failures.clone(),
+            persistence_error_hook: self.persistence_error_hook.clone(),
+            last_successful_discovery_at: self.last_successful_discovery_at.clone(),
         }
     }
 }
@@ -239,6 +255,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             discovery_decommission_floor: DEFAULT_DISCOVERY_DECOMMISSION_FLOOR,
             snapshot_interval,
             last_snapshot_at: Arc::new(RwLock::new(None)),
+            persistence_consecutive_failures: Arc::new(AtomicUsize::new(0)),
+            persistence_error_hook: Arc::new(|_: &io::Error| {}),
+            last_successful_discovery_at: Arc::new(RwLock::new(None)),
         };
         svc.set_pre_insert(|_, _| {});
         svc

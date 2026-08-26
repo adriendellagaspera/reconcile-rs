@@ -443,6 +443,71 @@ async fn snapshot_periodically_actually_persists() {
     );
 }
 
+/// A [`Persistence`] backend whose `save` always fails — exercises the failure path
+/// (`on_persistence_error`, the failure counter/gauge) without touching a real filesystem.
+struct FailingSave;
+
+impl<K: Send + Sync + 'static, V: Send + Sync + 'static> Persistence<K, V> for FailingSave {
+    fn load(&self) -> std::io::Result<Option<PersistedState<K, V>>> {
+        Ok(None)
+    }
+    fn save(&self, _state: &PersistedState<K, V>) -> std::io::Result<()> {
+        Err(std::io::Error::other("simulated persistence failure"))
+    }
+}
+
+/// #27: `on_persistence_error` fires with the failure on every failed `snapshot_now`, not just
+/// the first — it is an alerting hook, not a one-shot.
+#[tokio::test]
+async fn on_persistence_error_fires_on_every_failure() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_in_hook = calls.clone();
+    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
+        .await
+        .expect("bind failed")
+        .with_persistence(Arc::new(FailingSave))
+        .on_persistence_error(move |err| {
+            assert_eq!(err.to_string(), "simulated persistence failure");
+            calls_in_hook.fetch_add(1, Ordering::Relaxed);
+        });
+
+    assert!(
+        store.snapshot_now().is_err(),
+        "FailingSave must fail snapshot_now"
+    );
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+
+    assert!(store.snapshot_now().is_err());
+    assert_eq!(
+        calls.load(Ordering::Relaxed),
+        2,
+        "the hook must fire again on a second failure, not just once"
+    );
+}
+
+/// The converse: a successful snapshot must never invoke `on_persistence_error`.
+#[tokio::test]
+async fn on_persistence_error_does_not_fire_on_success() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("snapshot.bin");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_in_hook = calls.clone();
+    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
+        .await
+        .expect("bind failed")
+        .with_persistence(Arc::new(FileSnapshot::new(&path)))
+        .on_persistence_error(move |_err| {
+            calls_in_hook.fetch_add(1, Ordering::Relaxed);
+        });
+
+    assert!(store.snapshot_now().is_ok());
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+}
+
 /// `Config::with_snapshot_interval` (#292) must actually reach
 /// [`snapshot_periodically`](ReplicatedMap::snapshot_periodically), not just the hardcoded
 /// [`SNAPSHOT_INTERVAL`](super::super::persistence::SNAPSHOT_INTERVAL) default — a interval far

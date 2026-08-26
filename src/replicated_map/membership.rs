@@ -35,6 +35,10 @@ pub struct SyncState {
     /// [`snapshot_now`](ReplicatedMap::snapshot_now)) completed successfully, or `None` if none
     /// has happened yet.
     pub last_snapshot_at: Option<Instant>,
+    /// When the discovery source ([`with_discovery`](ReplicatedMap::with_discovery)) was last
+    /// resolved successfully, or `None` if it never has been (including when no source is
+    /// configured).
+    pub last_successful_discovery_at: Option<Instant>,
 }
 
 /// How [`ReplicatedMap::run`] ended.
@@ -205,6 +209,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             last_round_at: self.engine.last_round_at(),
             peers: self.engine.peers_vec().len(),
             last_snapshot_at: *self.last_snapshot_at.read(),
+            last_successful_discovery_at: *self.last_successful_discovery_at.read(),
         }
     }
 

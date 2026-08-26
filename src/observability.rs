@@ -9,48 +9,19 @@
 //! Centralized observability helpers: the one place the `#[cfg(feature = "metrics")]` gate lives.
 //! Each helper is an `#[inline]` no-op when the feature is off.
 //!
-//! Metric names use a flat `reconcile_` prefix:
-//!
-//! | Metric | Type | Meaning |
-//! |---|---|---|
-//! | `reconcile_inserts_total` | counter | local key insertions |
-//! | `reconcile_removes_total` | counter | local removals (tombstones created) |
-//! | `reconcile_updates_received_total` | counter | updates merged from peers |
-//! | `reconcile_messages_sent_total` | counter | datagrams sent |
-//! | `reconcile_bytes_sent_total` | counter | wire bytes sent |
-//! | `reconcile_messages_received_total` | counter | datagrams accepted |
-//! | `reconcile_bytes_received_total` | counter | wire bytes received |
-//! | `reconcile_send_failures_total` | counter | sends that exhausted all retries |
-//! | `reconcile_values_oversized_total` | counter | single encoded messages exceeding the datagram budget, dropped on the send path — the key never converges |
-//! | `reconcile_datagrams_dropped_total` | counter (`reason` label) | dropped datagrams |
-//! | `reconcile_rounds_total` | counter | reconciliation rounds initiated |
-//! | `reconcile_tombstone_acks_resent_total` | counter | tombstone acks resent on reconciliation rounds |
-//! | `reconcile_tombstone_stamp_bounded_total` | counter (`outcome` label) | tombstones whose expiry instant had to be bounded because the stored stamp led local time by more than the drift budget |
-//! | `reconcile_round_duration_seconds` | histogram | `start_reconciliation` wall time |
-//! | `reconcile_handle_messages_duration_seconds` | histogram | `handle_messages` wall time |
+//! Metric names are public, stable constants in [`crate::metrics`] (#27) — this module only
+//! records against them.
 
 #[cfg(feature = "metrics")]
 mod imp {
     use std::time::Instant;
 
-    use metrics::{counter, histogram};
+    // `::` prefix: this crate also declares a local `metrics` module (`crate::metrics`, the
+    // public metric-name constants below pull in), which would otherwise shadow the `metrics`
+    // dependency crate for every unqualified `metrics::` path in the crate.
+    use ::metrics::{counter, gauge, histogram};
 
-    pub(crate) const INSERTS_TOTAL: &str = "reconcile_inserts_total";
-    pub(crate) const REMOVES_TOTAL: &str = "reconcile_removes_total";
-    pub(crate) const UPDATES_RECEIVED_TOTAL: &str = "reconcile_updates_received_total";
-    pub(crate) const MESSAGES_SENT_TOTAL: &str = "reconcile_messages_sent_total";
-    pub(crate) const BYTES_SENT_TOTAL: &str = "reconcile_bytes_sent_total";
-    pub(crate) const MESSAGES_RECEIVED_TOTAL: &str = "reconcile_messages_received_total";
-    pub(crate) const BYTES_RECEIVED_TOTAL: &str = "reconcile_bytes_received_total";
-    pub(crate) const SEND_FAILURES_TOTAL: &str = "reconcile_send_failures_total";
-    pub(crate) const VALUES_OVERSIZED_TOTAL: &str = "reconcile_values_oversized_total";
-    pub(crate) const DATAGRAMS_DROPPED_TOTAL: &str = "reconcile_datagrams_dropped_total";
-    pub(crate) const ROUNDS_TOTAL: &str = "reconcile_rounds_total";
-    pub(crate) const TOMBSTONE_ACKS_RESENT_TOTAL: &str = "reconcile_tombstone_acks_resent_total";
-    pub(crate) const TOMBSTONE_STAMP_BOUNDED_TOTAL: &str =
-        "reconcile_tombstone_stamp_bounded_total";
-    pub(crate) const ROUND_DURATION_SECONDS: &str = "reconcile_round_duration_seconds";
-    pub(crate) const HANDLE_DURATION_SECONDS: &str = "reconcile_handle_messages_duration_seconds";
+    use crate::metrics::*;
 
     /// Start a latency-histogram timer; `None` when the `metrics` feature is off.
     #[inline]
@@ -134,11 +105,53 @@ mod imp {
         }
     }
 
+    /// A snapshot write to the persistence backend failed. `consecutive` is the count of
+    /// consecutive failures since the last success (this one included), driving
+    /// [`PERSISTENCE_FAILURES_CURRENT`] — a sustained non-zero gauge is durability broken for the
+    /// process lifetime while the node otherwise looks healthy.
+    #[inline]
+    pub(crate) fn record_persistence_failure(consecutive: usize) {
+        counter!(PERSISTENCE_FAILURES_TOTAL).increment(1);
+        gauge!(PERSISTENCE_FAILURES_CURRENT).set(consecutive as f64);
+    }
+
+    /// A snapshot write to the persistence backend succeeded, resetting the consecutive-failure
+    /// gauge.
+    #[inline]
+    pub(crate) fn record_persistence_success() {
+        gauge!(PERSISTENCE_FAILURES_CURRENT).set(0.0);
+    }
+
+    /// A discovery-source resolution failed; the round is skipped, membership untouched.
+    #[inline]
+    pub(crate) fn record_discovery_failure() {
+        counter!(DISCOVERY_FAILURES_TOTAL).increment(1);
+    }
+
+    /// Refresh the "what is the state now" gauges, once per reconciliation round
+    /// ([`Replica::start_reconciliation`](crate::replica::Replica::start_reconciliation)) rather
+    /// than at every mutation — cheap enough at that cadence, and a gauge scraped periodically
+    /// gains nothing from being updated more often than that.
+    #[inline]
+    pub(crate) fn record_state_gauges(
+        peers: usize,
+        members: usize,
+        entries: usize,
+        tombstones: usize,
+        bulk_dumps_in_flight: usize,
+    ) {
+        gauge!(PEERS_CURRENT).set(peers as f64);
+        gauge!(MEMBERS_CURRENT).set(members as f64);
+        gauge!(ENTRIES_CURRENT).set(entries as f64);
+        gauge!(TOMBSTONES_CURRENT).set(tombstones as f64);
+        gauge!(BULK_DUMPS_IN_FLIGHT).set(bulk_dumps_in_flight as f64);
+    }
+
     /// Register descriptions and units for all metrics. Idempotent; call after installing a
     /// recorder.
     #[cfg(feature = "metrics-prometheus")]
     pub(crate) fn describe() {
-        use metrics::{describe_counter, describe_histogram, Unit};
+        use ::metrics::{describe_counter, describe_gauge, describe_histogram, Unit};
 
         describe_counter!(INSERTS_TOTAL, Unit::Count, "Local key insertions");
         describe_counter!(
@@ -191,6 +204,46 @@ mod imp {
             Unit::Seconds,
             "Duration of handle_messages"
         );
+        describe_counter!(
+            PERSISTENCE_FAILURES_TOTAL,
+            Unit::Count,
+            "Snapshot writes to the persistence backend that failed"
+        );
+        describe_counter!(
+            DISCOVERY_FAILURES_TOTAL,
+            Unit::Count,
+            "Discovery-source resolutions that failed"
+        );
+        describe_gauge!(
+            PEERS_CURRENT,
+            Unit::Count,
+            "Current size of the gossip-routing peer set"
+        );
+        describe_gauge!(
+            MEMBERS_CURRENT,
+            Unit::Count,
+            "Current size of the causal-stability membership set"
+        );
+        describe_gauge!(
+            ENTRIES_CURRENT,
+            Unit::Count,
+            "Current count of live (non-tombstone) entries"
+        );
+        describe_gauge!(
+            TOMBSTONES_CURRENT,
+            Unit::Count,
+            "Current count of outstanding tombstones"
+        );
+        describe_gauge!(
+            BULK_DUMPS_IN_FLIGHT,
+            Unit::Count,
+            "Current count of bulk anti-entropy dumps in flight"
+        );
+        describe_gauge!(
+            PERSISTENCE_FAILURES_CURRENT,
+            Unit::Count,
+            "Consecutive persistence-backend snapshot failures since the last success"
+        );
     }
 }
 
@@ -241,6 +294,25 @@ mod imp {
 
     #[inline(always)]
     pub(crate) fn record_handle_duration(_start: Option<Instant>) {}
+
+    #[inline(always)]
+    pub(crate) fn record_persistence_failure(_consecutive: usize) {}
+
+    #[inline(always)]
+    pub(crate) fn record_persistence_success() {}
+
+    #[inline(always)]
+    pub(crate) fn record_discovery_failure() {}
+
+    #[inline(always)]
+    pub(crate) fn record_state_gauges(
+        _peers: usize,
+        _members: usize,
+        _entries: usize,
+        _tombstones: usize,
+        _bulk_dumps_in_flight: usize,
+    ) {
+    }
 }
 
 pub(crate) use imp::*;

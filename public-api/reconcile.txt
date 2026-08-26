@@ -311,6 +311,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::node_id(&self) -> lww_reg
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::on_persistence_error<F: core::ops::function::Fn(&core::io::error::Error) + core::marker::Send + core::marker::Sync + 'static>(self, F) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot_now(&self) -> core::io::error::Result<()>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> Self
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
@@ -342,6 +343,7 @@ impl !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::RunOut
 #[non_exhaustive] pub struct reconcile::replicated_map::SyncState
 pub reconcile::replicated_map::SyncState::last_round_at: core::option::Option<std::time::Instant>
 pub reconcile::replicated_map::SyncState::last_snapshot_at: core::option::Option<std::time::Instant>
+pub reconcile::replicated_map::SyncState::last_successful_discovery_at: core::option::Option<std::time::Instant>
 pub reconcile::replicated_map::SyncState::peers: usize
 pub reconcile::replicated_map::SyncState::rounds: u64
 impl core::clone::Clone for reconcile::replicated_map::SyncState
@@ -575,6 +577,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::node_id(&self) -> lww_reg
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::on_persistence_error<F: core::ops::function::Fn(&core::io::error::Error) + core::marker::Send + core::marker::Sync + 'static>(self, F) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot_now(&self) -> core::io::error::Result<()>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> Self
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
