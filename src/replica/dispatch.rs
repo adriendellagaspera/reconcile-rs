@@ -188,6 +188,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             // `repair_interval`, well before this node would otherwise wait a full
             // `reconcile_interval` for its own next round to rediscover the divergence.
             self.note_pending_repair(peer.ip());
+            // #85: record that we're (still) receiving from this peer, so a fresh idle-timeout
+            // round does not re-initiate a full comparison with it while its paced transfer might
+            // legitimately still be in progress — see `receiving_bulk_from`'s docs.
+            self.note_bulk_update_received(peer.ip());
             // Tombstones we now hold as a result of these updates, to be acknowledged back to
             // the peer so it can eventually garbage-collect them once causally stable.
             let mut acks_to_send = Vec::new();

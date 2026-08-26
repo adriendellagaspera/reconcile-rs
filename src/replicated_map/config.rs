@@ -158,15 +158,20 @@ pub struct Config {
     /// see its docs. Lowering `reconcile_interval` buys faster *discovery* of a peer that has
     /// sent nothing at all (newly joined, or genuinely diverged), not faster loss repair.
     ///
-    /// Floor it at roughly a few × RTT, and at or above the pacing gap between datagrams at the
-    /// configured [`bulk_send_rate`](Self::bulk_send_rate) (default 32 MiB/s ⇒ ~2 ms between
-    /// full-size datagrams). Below that floor, shortening the interval does **not** converge
-    /// faster: the diff is multi-round-trip, so this node's own idle timer fires between a
-    /// holder's paced datagrams mid-transfer and re-issues a full diff over ranges still in
-    /// flight. Cold sync then gets both slower and re-amplified — well past the byte cost a
-    /// single paced dump keeps it near, see [`bulk_send_rate`](Self::bulk_send_rate) — while
-    /// steady-state idle chatter balloons, since background traffic grows as `1/interval` per
-    /// local peer. Retunable via
+    /// Floor it at roughly a few × RTT. Shortening it further does not converge faster on its
+    /// own: the diff is multi-round-trip regardless, and this node's own idle timer would
+    /// otherwise fire between a holder's paced datagrams mid-transfer and re-issue a full diff
+    /// over ranges still in flight. A receiver-side guard (#85, `akvize/reconcile-rs#178`) now
+    /// suppresses exactly that: a peer this node has heard a dated `EntryUpdate` batch from
+    /// within [`repair_interval`](Self::repair_interval) is left out of this round's targets, on
+    /// the working assumption that a recent sender is still legitimately sending. That makes
+    /// `repair_interval` the practical floor below which re-amplification can still occur — set
+    /// far under it (well under the pacing gap at [`bulk_send_rate`](Self::bulk_send_rate),
+    /// default 32 MiB/s ⇒ ~2 ms between full-size datagrams), the gap between two datagrams of
+    /// the same transfer can exceed `repair_interval` too, and the guard's window lapses
+    /// mid-transfer. Independent of any of that, steady-state idle chatter to every peer this
+    /// guard does *not* currently cover still balloons as this interval shortens, since that
+    /// traffic grows as `1/interval` per local peer. Retunable via
     /// [`set_reconcile_interval`](crate::ReplicatedMap::set_reconcile_interval).
     pub reconcile_interval: Duration,
     /// How long an outstanding comparison round or a just-completed bulk transfer waits for
@@ -191,11 +196,13 @@ pub struct Config {
     /// An unpaced burst overruns the receiver's socket buffer, and the resulting lull makes this
     /// node's own [`reconcile_interval`](Self::reconcile_interval) re-issue a diff over ranges
     /// still in flight — byte amplification far past the dataset size. Pacing on a background task,
-    /// plus at most one bulk transfer per peer, keeps a cold sync ≈ the dataset size — but only
-    /// down to [`reconcile_interval`](Self::reconcile_interval)'s floor: below the resulting
-    /// inter-datagram gap, the *receiver's* idle timer reopens the same re-initiation, since
-    /// pacing only guards the sender against a *concurrent* dump. Only the bulk dump is paced;
-    /// comparisons, acks and broadcasts go immediately.
+    /// plus at most one bulk transfer per peer, keeps a cold sync ≈ the dataset size. Below this
+    /// rate's own [`repair_interval`](Self::repair_interval) (rate low enough that consecutive
+    /// datagrams of the same transfer are spaced further apart than that), the *receiver's*
+    /// idle-timeout guard (#85, see [`reconcile_interval`](Self::reconcile_interval)'s docs) can
+    /// lapse mid-transfer and reopen the same re-initiation, since pacing only guards the sender
+    /// against a *concurrent* dump to the same peer. Only the bulk dump is paced; comparisons,
+    /// acks and broadcasts go immediately.
     ///
     /// A nonzero value below 1 MiB/s is clamped up to it, with a warning: below that floor, the
     /// per-peer in-flight mark is held across an effectively unbounded sleep, silently wedging

@@ -62,6 +62,16 @@ All notable changes to this project are documented here. Format follows
   replica deliberately never persists). No `node_id()`/`members()` counterpart — a read replica
   mints no timestamps and holds no causal-stability membership, so neither concept applies.
 
+### Fixed
+
+- A receiver-side guard now suppresses re-initiating a full comparison round with a peer whose
+  paced bulk transfer might still legitimately be in progress (#85, `akvize/reconcile-rs#178`):
+  `start_reconciliation` leaves that peer out of a round's targets while its most recently received
+  `EntryUpdate` batch is within `repair_interval` old. Below this fix, a `reconcile_interval` set
+  near or under the pacing gap between a holder's datagrams re-issued a full diff mid-transfer on
+  every idle-timeout lull, doubling cold-sync traffic — see README "Reconciliation interval floor"
+  and `Config::reconcile_interval`/`bulk_send_rate`'s docs, updated to match. No wire-format change.
+
 ## [0.4.0] - 2026-08-22
 
 Publishes the two decisions found auditing pre-freeze wire gaps (#382, #463) — both

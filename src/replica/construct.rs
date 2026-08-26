@@ -250,6 +250,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 reconcile_interval: Arc::new(RwLock::new(config.reconcile_interval)),
                 repair_interval: Arc::new(RwLock::new(config.repair_interval)),
                 pending_repairs: Arc::new(RwLock::new(HashMap::new())),
+                receiving_bulk_from: Arc::new(RwLock::new(HashMap::new())),
                 bulk_send_rate,
                 bulk_in_flight: Arc::new(RwLock::new(HashSet::new())),
                 bulk_dumps_in_flight: Arc::new(AtomicUsize::new(0)),
