@@ -181,6 +181,134 @@ async fn local_mutations_increment_metric_counters() {
     assert_eq!(removes, 1, "expected one removal to be counted");
 }
 
+/// #27: a failed snapshot write increments `reconcile_persistence_failures_total` and raises
+/// `reconcile_persistence_failures_current`; a subsequent success resets the gauge to `0`.
+#[cfg(feature = "metrics")]
+#[tokio::test(flavor = "current_thread")]
+async fn persistence_failures_recorded_as_counter_and_gauge_resets_on_success() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use metrics::with_local_recorder;
+    use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+    use reconcile::persistence::{PersistedState, Persistence};
+
+    struct FailUntilFlagged(AtomicBool);
+    impl Persistence<i32, i32> for FailUntilFlagged {
+        fn load(&self) -> std::io::Result<Option<PersistedState<i32, i32>>> {
+            Ok(None)
+        }
+        fn save(&self, _state: &PersistedState<i32, i32>) -> std::io::Result<()> {
+            if self.0.load(Ordering::Relaxed) {
+                Ok(())
+            } else {
+                Err(std::io::Error::other("simulated persistence failure"))
+            }
+        }
+    }
+
+    keep_callsites_hot();
+    let backend = Arc::new(FailUntilFlagged(AtomicBool::new(false)));
+    let store = ReplicatedMap::<i32, i32>::new(local_config())
+        .await
+        .expect("bind failed")
+        .with_persistence(backend.clone());
+
+    fn read_gauge(snapshotter: &metrics_util::debugging::Snapshotter, name: &str) -> Option<f64> {
+        snapshotter
+            .snapshot()
+            .into_vec()
+            .into_iter()
+            .find_map(|(composite, _unit, _desc, value)| {
+                (composite.key().name() == name).then_some(value)
+            })
+            .and_then(|value| match value {
+                DebugValue::Gauge(v) => Some(*v),
+                _ => None,
+            })
+    }
+
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+    let mut failures_current_after_first_failure = None;
+    with_local_recorder(&recorder, || {
+        assert!(store.snapshot_now().is_err(), "backend starts failing");
+        failures_current_after_first_failure =
+            read_gauge(&snapshotter, "reconcile_persistence_failures_current");
+        backend.0.store(true, Ordering::Relaxed);
+        assert!(store.snapshot_now().is_ok(), "backend now succeeds");
+    });
+
+    let mut failures_total = 0u64;
+    for (composite, _unit, _desc, value) in snapshotter.snapshot().into_vec() {
+        if let ("reconcile_persistence_failures_total", DebugValue::Counter(v)) =
+            (composite.key().name(), value)
+        {
+            failures_total = v;
+        }
+    }
+
+    assert_eq!(failures_total, 1, "expected exactly one recorded failure");
+    // Checked before the success below, or the reset there would mask a wrong (but still
+    // eventually-zeroed) intermediate value.
+    assert_eq!(
+        failures_current_after_first_failure,
+        Some(1.0),
+        "the gauge must read 1 after exactly one consecutive failure"
+    );
+    assert_eq!(
+        read_gauge(&snapshotter, "reconcile_persistence_failures_current"),
+        Some(0.0),
+        "the gauge must reset to 0 after the subsequent success"
+    );
+}
+
+/// #27: a reconciliation round refreshes the "state right now" gauges — `reconcile_entries_current`
+/// (live only) and `reconcile_tombstones_current` here, since local `insert`/`remove` calls give
+/// direct control over both without needing a peer.
+///
+/// Uses `metrics::set_default_local_recorder` (an RAII guard), not `with_local_recorder` (a
+/// synchronous closure) as the other tests in this file do: `start_reconciliation` is `async`, and
+/// only the guard form can stay set across its `.await` points.
+#[cfg(feature = "metrics")]
+#[tokio::test(flavor = "current_thread")]
+async fn reconciliation_round_refreshes_the_state_gauges() {
+    use metrics::set_default_local_recorder;
+    use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+
+    keep_callsites_hot();
+    let store = ReplicatedMap::<i32, i32>::new(local_config())
+        .await
+        .expect("bind failed");
+    store.insert(1, 10); // stays live
+    store.insert(2, 20);
+    store.remove(&2); // becomes a tombstone
+
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+    let guard = set_default_local_recorder(&recorder);
+    store.start_reconciliation().await;
+    drop(guard);
+
+    let mut entries_current = None;
+    let mut tombstones_current = None;
+    for (composite, _unit, _desc, value) in snapshotter.snapshot().into_vec() {
+        match (composite.key().name(), value) {
+            ("reconcile_entries_current", DebugValue::Gauge(v)) => entries_current = Some(*v),
+            ("reconcile_tombstones_current", DebugValue::Gauge(v)) => {
+                tombstones_current = Some(*v);
+            }
+            _ => {}
+        }
+    }
+
+    assert_eq!(
+        entries_current,
+        Some(1.0),
+        "one live entry (key 1) after tombstoning key 2"
+    );
+    assert_eq!(tombstones_current, Some(1.0), "one tombstone (key 2)");
+}
+
 /// #294: a `Config` field a `ReadReplicaMap` cannot act on (it mints no timestamps and runs no
 /// bulk-transfer machinery) must not silently do nothing — a WARN naming the field is the only
 /// observable trace `warn_on_ignored_config_fields` leaves, so assert on it directly rather than

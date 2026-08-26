@@ -179,6 +179,77 @@ async fn discovery_blip_does_not_decommission() {
     handle.abort();
 }
 
+/// #27: each discovery blip increments `reconcile_discovery_failures_total`.
+///
+/// `#[tokio::test]` (default flavor: `current_thread`), driving `discover_periodically` directly
+/// via `timeout` rather than `tokio::spawn`ing it onto another worker thread — `metrics`' local
+/// recorder is thread-local, so a spawned task on a `multi_thread` runtime would record
+/// invisibly to this scope (see `tests/observability.rs`'s file-level doc comment on the same
+/// constraint). `set_default_local_recorder` (an RAII guard), not `with_local_recorder` (a
+/// synchronous closure): `discover_periodically` is `async`, and only the guard form can stay set
+/// across its `.await` points.
+#[cfg(feature = "metrics")]
+#[tokio::test]
+async fn discovery_failure_increments_the_failure_counter() {
+    use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+
+    let fake = FakeDiscovery::new(FakeResp::Blip);
+    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
+        .await
+        .expect("bind failed")
+        .with_discovery(Arc::new(fake))
+        .with_discovery_interval(Duration::from_millis(5));
+
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+    let guard = ::metrics::set_default_local_recorder(&recorder);
+    let _ = tokio::time::timeout(Duration::from_millis(40), store.discover_periodically()).await;
+    drop(guard);
+
+    let mut failures = 0u64;
+    for (composite, _unit, _desc, value) in snapshotter.snapshot().into_vec() {
+        if let ("reconcile_discovery_failures_total", DebugValue::Counter(v)) =
+            (composite.key().name(), value)
+        {
+            failures = v;
+        }
+    }
+    assert!(
+        failures >= 1,
+        "expected at least one recorded discovery failure, got {failures}"
+    );
+}
+
+/// #27: a run of transient discovery failures must never advance `last_successful_discovery_at`
+/// (`SyncState`'s field for a caller's own readiness/alerting), and a subsequent success must.
+#[tokio::test(flavor = "multi_thread")]
+async fn last_successful_discovery_at_advances_only_on_success() {
+    let fake = FakeDiscovery::new(FakeResp::Blip);
+    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
+        .await
+        .expect("bind failed")
+        .with_discovery(Arc::new(fake.clone()))
+        .with_discovery_interval(Duration::from_millis(20));
+
+    let loop_store = store.clone();
+    let handle = tokio::spawn(async move { loop_store.discover_periodically().await });
+
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    assert!(
+        store.sync_state().last_successful_discovery_at.is_none(),
+        "a run of blips must never set last_successful_discovery_at"
+    );
+
+    fake.set(FakeResp::Present(vec![]));
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    assert!(
+        store.sync_state().last_successful_discovery_at.is_some(),
+        "a successful resolution must set last_successful_discovery_at"
+    );
+
+    handle.abort();
+}
+
 #[test]
 fn member_presence_starts_present_and_requires_the_miss_threshold() {
     let mut state = MemberPresence::default();

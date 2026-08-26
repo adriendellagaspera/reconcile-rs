@@ -92,7 +92,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                 &Message::ValueComparisonItem::<K, WireDated<V>, State<V>>(segment),
                 send_buf,
             )
-            .unwrap();
+            .expect("serializing a ValueComparisonItem into an in-memory buffer cannot fail");
         }
         let mut peers = self.peers();
         // A random address out of the peer network, for discovery — like the dated store, we do not

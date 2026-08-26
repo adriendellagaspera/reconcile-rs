@@ -51,6 +51,19 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let do_remote = round % remote_interval == 0;
         let known = self.get_peers();
 
+        // "What is the state now" gauges (#27): refreshed once per round rather than at every
+        // mutation — cheap at this cadence, and a gauge scraped periodically gains nothing from a
+        // finer-grained update.
+        let live_tombstones_len = self.live_tombstones.read().len();
+        let total_entries = self.map.load_full().len();
+        observability::record_state_gauges(
+            known.len(),
+            self.members.read().len(),
+            live_entry_count(total_entries, live_tombstones_len),
+            live_tombstones_len,
+            self.bulk_dumps_in_flight.load(Ordering::Relaxed),
+        );
+
         // De-duplicate so a discovery probe that happens to hit a known peer is not sent twice.
         let mut targets: HashSet<IpAddr> = HashSet::new();
 
@@ -158,5 +171,36 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         }
         observability::record_tombstone_acks_resent(appended);
         appended
+    }
+}
+
+/// Live (non-tombstone) entry count for [`observability::record_state_gauges`]'s
+/// `reconcile_entries_current` gauge, from the map's total size and the tombstone-index length.
+///
+/// `saturating_sub`, not `-`: the two counts come from separate, unsynchronized reads (`map`'s
+/// `ArcSwap` and `live_tombstones`' `RwLock`), so a write landing between them can transiently
+/// make `tombstones` outrun `total` — this must degrade to `0`, never underflow into a
+/// near-`usize::MAX` gauge value or panic.
+fn live_entry_count(total_entries: usize, tombstones: usize) -> usize {
+    total_entries.saturating_sub(tombstones)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::live_entry_count;
+
+    #[test]
+    fn live_entry_count_subtracts_tombstones_from_the_total() {
+        assert_eq!(live_entry_count(10, 3), 7);
+    }
+
+    #[test]
+    fn live_entry_count_saturates_instead_of_underflowing() {
+        assert_eq!(
+            live_entry_count(3, 10),
+            0,
+            "tombstones observed as exceeding the total (a transient race between the two \
+             unsynchronized reads) must saturate to 0, never underflow"
+        );
     }
 }

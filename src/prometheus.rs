@@ -118,11 +118,25 @@ mod tests {
     #[test]
     fn render_reports_recorded_metrics_and_a_second_install_errors_with_a_source() {
         let handle = install_recorder().expect("first install should succeed");
-        metrics::counter!("reconcile_prometheus_test_total").increment(1);
+        ::metrics::counter!("reconcile_prometheus_test_total").increment(1);
         let body = handle.render();
         assert!(
             body.contains("reconcile_prometheus_test_total"),
             "expected the recorded metric's name in the rendered body: {body}"
+        );
+        // `install_recorder` calls `observability::describe()` (#27): a mutant collapsing that
+        // call to a no-op would still pass the assertion above (a bare, undescribed counter
+        // renders fine) but drop every `# HELP` line — assert on one directly. The exporter only
+        // emits a `# HELP` line for a metric that also has a recorded sample, hence the increment.
+        ::metrics::counter!(crate::metrics::PERSISTENCE_FAILURES_TOTAL).increment(1);
+        let body = handle.render();
+        assert!(
+            body.contains(
+                "# HELP reconcile_persistence_failures_total Snapshot writes to the \
+                 persistence backend that failed"
+            ),
+            "expected describe() to have registered a HELP line for \
+             reconcile_persistence_failures_total: {body}"
         );
 
         let err = match install_recorder() {

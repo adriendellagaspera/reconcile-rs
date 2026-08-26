@@ -12,10 +12,11 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tracing::{debug, info};
+use tracing::{info, warn};
 
 use crate::bounds::{Key, Value};
 use crate::discovery::{Discovery, DiscoveryKind, DnsDiscovery};
+use crate::observability;
 
 use super::ReplicatedMap;
 
@@ -175,10 +176,14 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         loop {
             tokio::time::sleep(self.discovery_interval).await;
             let resolved = match discovery.discover().await {
-                Ok(addrs) => addrs,
+                Ok(addrs) => {
+                    *self.last_successful_discovery_at.write() = Some(Instant::now());
+                    addrs
+                }
                 Err(err) => {
                     // Transient failure: do not touch presence state, do not decommission anyone.
-                    debug!("discovery round failed, skipping: {err}");
+                    observability::record_discovery_failure();
+                    warn!("discovery round failed, skipping: {err}");
                     continue;
                 }
             };
