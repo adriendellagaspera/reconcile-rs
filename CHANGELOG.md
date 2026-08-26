@@ -16,7 +16,8 @@ All notable changes to this project are documented here. Format follows
   SKIP"). Injected, not ambient: `Replica`/`ReadReplicaMap` pass their existing session RNG
   (`src/replica/dispatch.rs`, `src/read_replica_map/write.rs`), unchanged for callers of the
   `reconcile` facade. Split *count* is unaffected by the shift, so wire volume and round count are
-  unchanged; only a direct `rbsr` caller's call sites need the new argument.
+  unchanged; only a direct `rbsr` caller's call sites need the new argument. `rbsr` bumped to
+  `0.2.0` for it, per AGENTS.md §11's pre-1.0 minor-for-breaking convention.
 - **BREAKING**: `ValueRef<'a, V>` is now `ValueRef<K, V>` (#34) — it owns an immutable `Arc`
   snapshot of the backing tree plus the looked-up key instead of a lock guard, so holding one no
   longer risks a deadlock against a concurrent write on the same handle. See
