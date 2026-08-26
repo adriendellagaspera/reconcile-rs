@@ -284,11 +284,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Count `n` more changes toward [`Config::snapshot_change_threshold`](crate::replicated_map::Config::snapshot_change_threshold)
     /// — see [`Inner::changes_since_snapshot`](super::Inner::changes_since_snapshot) for which
-    /// mutation sinks call this and why.
+    /// mutation sinks call this and why. `n == 0` is a harmless no-op (`fetch_add(0, ..)` leaves
+    /// the counter unchanged), so callers never need to guard the call themselves.
     pub(crate) fn record_changes(&self, n: usize) {
-        if n > 0 {
-            self.changes_since_snapshot.fetch_add(n, Ordering::Relaxed);
-        }
+        self.changes_since_snapshot.fetch_add(n, Ordering::Relaxed);
     }
 
     /// Changes counted since the last successful snapshot (or since construction, if none yet).
