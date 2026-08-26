@@ -753,6 +753,25 @@ of the extra invariants a fingerprint-carrying tree must maintain:
 All axes are logarithmic. Room for improvement remains, but network delays dominate in practice by
 orders of magnitude.
 
+### Point-read latency
+
+`FingerprintTreeMap::get` walks the tree, so a point read is `O(log n)` against a flat `HashMap`'s
+`O(1)` — a gap that widens, not flattens, as the tree grows (#52):
+
+| n | `ReplicatedMap<u32, u32>` vs `HashMap` | `ReplicatedMap<String, Vec<u8>>` vs `HashMap` |
+|---:|---:|---:|
+| 100,000 | 9.4× | 13.5× |
+| 1,000,000 | 11.6× | 17.4× |
+
+Full sizes, the `BTreeMap` column and methodology: [`benches/README.md`](benches/README.md)
+"Re-measuring #47/#51/#52" (#28). A feature-gated secondary hash index for `O(1)` point reads was
+considered and parked rather than built: it would roughly double per-key memory, in direct tension
+with the memory-reduction work in #47, to win a ratio that only matters at hash-map-bound read
+rates none of this crate's stated use cases (["When to use this"](#when-to-use-this)) reach — the
+bar `FingerprintTreeMap` is built to beat is a network round trip to an external store, not an
+in-process hash map. Even the widest measured point above (814 ns at 1M, heap-indirected) is two to
+three orders of magnitude under that bar, loopback included.
+
 ## ReplicatedMap
 
 `ReplicatedMap` exploits `FingerprintTreeMap`'s range aggregates to conduct a binary-search-like

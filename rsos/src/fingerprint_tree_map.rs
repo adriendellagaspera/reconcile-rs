@@ -14,10 +14,11 @@
 //! crate root docs.
 //!
 //! Split across siblings by concern: `node` owns the `Node<K, V>` storage and rebalancing;
-//! `access`/`mutate`/`query`/`range` each own one `impl FingerprintTreeMap` group (point access,
-//! insert/remove, order-statistics, range iteration); this file keeps the public type definitions
-//! (their module location is their `cargo public-api`-visible path — see AGENTS.md §11) plus the
-//! shared support (`Side`/`without`/`element`) every sibling draws on.
+//! `access`/`mutate`/`query`/`range`/`bulk` each own one `impl FingerprintTreeMap` group (point
+//! access, insert/remove, order-statistics, range iteration, bottom-up bulk build); this file
+//! keeps the public type definitions (their module location is their `cargo public-api`-visible
+//! path — see AGENTS.md §11) plus the shared support (`Side`/`without`/`element`) every sibling
+//! draws on.
 
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -26,6 +27,7 @@ use crate::aggregate::Aggregate;
 use crate::fingerprint::{Fingerprint, LiftKey};
 
 mod access;
+mod bulk;
 mod mutate;
 mod node;
 mod query;

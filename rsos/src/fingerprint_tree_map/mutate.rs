@@ -88,7 +88,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
             root.keys.push(key);
             root.values.push(value);
             root.fingerprints.push(fingerprint);
-            root.children = Some(children);
+            root.children = Some(Box::new(children));
             root.refresh_aggregate();
         }
         trace!(

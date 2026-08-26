@@ -15,15 +15,27 @@ use crate::fingerprint::Fingerprint;
 
 use super::{element, without, InsertionTuple, Side, MAX_CAPACITY, MIN_CAPACITY};
 
+/// A node's child pointers, indexed exactly like `keys`/`values`/`fingerprints` (one more entry
+/// than either, since `children[i]` sits between separator `i - 1` and separator `i`). Named
+/// mainly to keep [`Node::children`]'s type out of `clippy::type_complexity`'s way -- see that
+/// field's own doc for why it is additionally `Box`-indirected there.
+pub(crate) type Children<K, V> = ArrayVec<Arc<Node<K, V>>, { MAX_CAPACITY + 1 }>;
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Node<K, V> {
     pub(crate) keys: ArrayVec<K, MAX_CAPACITY>,
     pub(crate) values: ArrayVec<V, MAX_CAPACITY>,
     pub(super) fingerprints: ArrayVec<Fingerprint, MAX_CAPACITY>,
-    /// `Arc`, not `Box`: every child is potentially shared with an older retained version of the
-    /// tree. A mutating descent forks a child via [`Arc::make_mut`] only when it is actually
-    /// shared (refcount > 1); an unshared child is mutated in place, no clone.
-    pub(crate) children: Option<ArrayVec<Arc<Node<K, V>>, { MAX_CAPACITY + 1 }>>,
+    /// `Arc`, not `Box`, for each *element*: every child is potentially shared with an older
+    /// retained version of the tree. A mutating descent forks a child via [`Arc::make_mut`] only
+    /// when it is actually shared (refcount > 1); an unshared child is mutated in place, no
+    /// clone.
+    ///
+    /// The outer `Option` is itself `Box`-indirected (#47): an inline `ArrayVec` here would cost
+    /// every leaf — the large majority of nodes — a full `MAX_CAPACITY + 1`-element array's worth
+    /// of stack space it never uses just to represent "no children". Boxed, `None` is a null
+    /// pointer and a leaf carries no more than that.
+    pub(crate) children: Option<Box<Children<K, V>>>,
     /// `A(S)` over this node's whole subtree: its own separators plus everything under
     /// `children`.
     ///
@@ -88,7 +100,7 @@ impl<K, V> Node<K, V> {
             aggregate += element(*fingerprint);
         }
         if let Some(children) = self.children.as_ref() {
-            for child in children {
+            for child in children.iter() {
                 aggregate += child.subtree();
             }
         }
@@ -120,7 +132,7 @@ impl<K, V> Node<K, V> {
                 children: self
                     .children
                     .as_mut()
-                    .map(|children| ArrayVec::from_iter(children.drain(mid + 1..))),
+                    .map(|children| Box::new(ArrayVec::from_iter(children.drain(mid + 1..)))),
                 subtree: Aggregate::ZERO,
             };
             let mid_key = self.keys.pop().unwrap();
@@ -280,7 +292,7 @@ impl<K, V> Node<K, V> {
                 current.fingerprints.push(h);
             }
             if let Some(child_children) = current.children.as_mut() {
-                for c in right_sibling.children.unwrap() {
+                for c in *right_sibling.children.unwrap() {
                     child_children.push(c);
                 }
             }
