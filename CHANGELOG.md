@@ -8,6 +8,16 @@ All notable changes to this project are documented here. Format follows
 
 ### Changed
 
+- **BREAKING**: `Config::snapshot_interval` is now `Option<Duration>` (#46, re-landing the
+  configurability half of `akvize/reconcile-rs#218`, which never merged) — `None` disables
+  `ReplicatedMap::run`'s periodic background snapshot task entirely, leaving only an explicit
+  `snapshot_now()` call to persist. `Config::with_snapshot_interval` takes the new `Option`
+  directly. A new `Config::snapshot_change_threshold` (default `1`) additionally gates *every*
+  periodic wakeup, `Some` interval or not: it only writes once that many changes (local writes,
+  gossip-applied remote updates, and tombstone GC removals) have landed since the last snapshot,
+  so a fully idle node between wakeups does zero snapshot IO — set via
+  `Config::with_snapshot_change_threshold`. `snapshot_now()` is unaffected by the threshold; it
+  always writes when called. See [MIGRATING.md](MIGRATING.md).
 - **BREAKING**: `rbsr::protocol_round`/`protocol_round_with_policy` take a new final `&mut
   rand::rngs::StdRng` argument (#7, migrated from `akvize/reconcile-rs#502`): a session-random
   shift on which block of a SPLIT's fixed-stride cut is undersized, so two sessions over identical

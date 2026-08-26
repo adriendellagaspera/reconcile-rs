@@ -55,6 +55,11 @@ pub(super) const DEFAULT_MAX_CONCURRENT_BULK_DUMPS: usize = 4;
 /// bounding unbounded task growth under sustained overload.
 pub(super) const DEFAULT_MAX_CONCURRENT_BROADCASTS: usize = 1024;
 
+/// Default [`Config::snapshot_change_threshold`] (#46): a periodic snapshot tick writes as soon
+/// as at least one change has landed since the last snapshot, matching the historical
+/// unconditional-write behavior for any node that isn't fully idle.
+pub(super) const DEFAULT_SNAPSHOT_CHANGE_THRESHOLD: usize = 1;
+
 /// Maximum number of geographical networks (CIDRs) a [`Config`] can declare, or a running node
 /// can hold via [`ReplicatedMap::set_nets`](super::ReplicatedMap::set_nets)/
 /// [`add_net`](super::ReplicatedMap::add_net) — one behavior for the cap everywhere it is
@@ -263,15 +268,34 @@ pub struct Config {
     /// than rely on the backstop.
     pub max_concurrent_broadcasts: usize,
     /// How often the background task started by [`ReplicatedMap::run`](super::ReplicatedMap::run)
-    /// writes a full snapshot to the persistence backend (default 5 s). Only meaningful once
-    /// [`with_persistence`](super::ReplicatedMap::with_persistence) has been called — with the
-    /// default in-memory backend the snapshot is taken and immediately discarded.
+    /// wakes to consider writing a snapshot to the persistence backend (default `Some(5 s)`).
+    /// Only meaningful once [`with_persistence`](super::ReplicatedMap::with_persistence) has been
+    /// called — with the default in-memory backend the snapshot is taken and immediately
+    /// discarded.
+    ///
+    /// `None` disables the periodic background task entirely — no wakeup, no snapshot IO, ever,
+    /// until an explicit [`snapshot_now`](super::ReplicatedMap::snapshot_now) call (#46).
+    ///
+    /// Each wakeup still only writes if at least
+    /// [`snapshot_change_threshold`](Self::snapshot_change_threshold) changes (local writes,
+    /// gossip applies, and tombstone GC removals) have landed since the last snapshot — so a node
+    /// with no activity between wakeups skips the write, and steady-state snapshot IO tracks
+    /// change volume rather than firing unconditionally on the clock.
     ///
     /// Up to this much of the most recent writes are lost on an ungraceful restart (one that skips
     /// [`run`](super::ReplicatedMap::run)'s shutdown flush — see
     /// [`snapshot_now`](super::ReplicatedMap::snapshot_now) for a caller-triggered flush at any
     /// other time).
-    pub snapshot_interval: Duration,
+    pub snapshot_interval: Option<Duration>,
+    /// Minimum number of changes (local writes, gossip-applied remote updates, and tombstone GC
+    /// removals, each counted once) since the last snapshot before a periodic
+    /// [`snapshot_interval`](Self::snapshot_interval) wakeup actually writes one (default `1`,
+    /// #46). At the default, any single change is enough — a fully idle node between wakeups does
+    /// zero snapshot IO, matching the historical always-write behavior for any node that isn't
+    /// idle. Raising it trades a larger post-restart replay window for fewer writes under bursty
+    /// traffic. Never consulted by [`snapshot_now`](super::ReplicatedMap::snapshot_now), which
+    /// always writes when called regardless of how many changes have accumulated.
+    pub snapshot_change_threshold: usize,
     /// How far a remote timestamp may lead this node's own physical clock before
     /// [`observe`](crate::Clock::observe) clamps it (default [`MAX_CLOCK_DRIFT`], one hour). A
     /// clock-conformance concern, not a store one — see [`Clock`](crate::Clock)'s docs for what a
@@ -324,6 +348,7 @@ impl fmt::Debug for Config {
             .field("max_concurrent_bulk_dumps", &self.max_concurrent_bulk_dumps)
             .field("max_concurrent_broadcasts", &self.max_concurrent_broadcasts)
             .field("snapshot_interval", &self.snapshot_interval)
+            .field("snapshot_change_threshold", &self.snapshot_change_threshold)
             .field("max_clock_drift", &self.max_clock_drift)
             .field("coalesce_window", &self.coalesce_window)
             .finish()
@@ -351,7 +376,8 @@ impl Default for Config {
             max_peers: DEFAULT_MAX_PEERS,
             max_concurrent_bulk_dumps: DEFAULT_MAX_CONCURRENT_BULK_DUMPS,
             max_concurrent_broadcasts: DEFAULT_MAX_CONCURRENT_BROADCASTS,
-            snapshot_interval: SNAPSHOT_INTERVAL,
+            snapshot_interval: Some(SNAPSHOT_INTERVAL),
+            snapshot_change_threshold: DEFAULT_SNAPSHOT_CHANGE_THRESHOLD,
             max_clock_drift: MAX_CLOCK_DRIFT,
             coalesce_window: Duration::ZERO,
         }

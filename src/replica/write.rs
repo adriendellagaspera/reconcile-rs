@@ -91,6 +91,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         } else {
             observability::record_insert();
         }
+        self.record_changes(1);
 
         let _guard = self.write_lock.lock();
         let mut map = (*self.map.load_full()).clone();
@@ -265,6 +266,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 observability::record_insert();
             }
         }
+        self.record_changes(key_values.len());
         let _guard = self.write_lock.lock();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
@@ -278,5 +280,25 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     pub fn insert_bulk(&self, key_values: &[(K, Entry<Timestamp, V>)]) {
         self.just_insert_bulk(key_values);
         self.queue_broadcast(key_values.to_vec());
+    }
+
+    /// Count `n` more changes toward [`Config::snapshot_change_threshold`](crate::replicated_map::Config::snapshot_change_threshold)
+    /// — see [`Inner::changes_since_snapshot`](super::Inner::changes_since_snapshot) for which
+    /// mutation sinks call this and why.
+    pub(crate) fn record_changes(&self, n: usize) {
+        if n > 0 {
+            self.changes_since_snapshot.fetch_add(n, Ordering::Relaxed);
+        }
+    }
+
+    /// Changes counted since the last successful snapshot (or since construction, if none yet).
+    pub(crate) fn change_count(&self) -> usize {
+        self.changes_since_snapshot.load(Ordering::Relaxed)
+    }
+
+    /// Zero the change counter — called only after a successful snapshot write
+    /// (`replicated_map/persistence.rs`).
+    pub(crate) fn reset_change_count(&self) {
+        self.changes_since_snapshot.store(0, Ordering::Relaxed);
     }
 }

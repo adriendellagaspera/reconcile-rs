@@ -224,10 +224,20 @@ impl Config {
         self
     }
 
-    /// Set [`snapshot_interval`](Config::snapshot_interval) (default 5 s).
+    /// Set [`snapshot_interval`](Config::snapshot_interval) (default `Some(5 s)`). `None`
+    /// disables the periodic background snapshot task entirely (#46) — only an explicit
+    /// [`ReplicatedMap::snapshot_now`](super::super::ReplicatedMap::snapshot_now) call writes a
+    /// snapshot from then on.
     #[must_use]
-    pub fn with_snapshot_interval(mut self, interval: Duration) -> Self {
+    pub fn with_snapshot_interval(mut self, interval: Option<Duration>) -> Self {
         self.snapshot_interval = interval;
+        self
+    }
+
+    /// Set [`snapshot_change_threshold`](Config::snapshot_change_threshold) (default `1`, #46).
+    #[must_use]
+    pub fn with_snapshot_change_threshold(mut self, threshold: usize) -> Self {
+        self.snapshot_change_threshold = threshold;
         self
     }
 
