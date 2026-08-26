@@ -6,9 +6,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `FingerprintTreeMap::with_lift_key` (issue #19): every lift site the tree owns
-//! (`insert`'s two branches, `with_mut`'s re-lift, `check_invariants`) must consult the configured
-//! key, not just the ones exercised by `basic.rs`'s unkeyed tests.
+//! `FingerprintTreeMap::with_lift_key`: every lift site the tree owns (`insert`'s two branches,
+//! `with_mut`'s re-lift, `check_invariants`) must consult the configured key, not just the ones
+//! exercised by `basic.rs`'s unkeyed tests.
 
 use crate::fingerprint::LiftKey;
 

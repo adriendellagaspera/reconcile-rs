@@ -62,8 +62,8 @@ fn derive_lift_key_is_deterministic_and_key_dependent() {
 
 #[test]
 fn derive_lift_key_is_not_the_raw_cluster_key() {
-    // Domain separation (issue #19): a leak of the derived lift key must not hand over the raw
-    // cluster key the datagram MAC also depends on, and vice versa.
+    // Domain separation: a leak of the derived lift key must not hand over the raw cluster key
+    // the datagram MAC also depends on, and vice versa.
     let k = key(7);
     assert_ne!(&k.derive_lift_key(), k.as_bytes());
 }

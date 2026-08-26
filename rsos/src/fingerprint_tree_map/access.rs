@@ -100,8 +100,8 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
         Default::default()
     }
 
-    /// An empty tree whose every lift is keyed under `lift_key` (issue #19) — see
-    /// `crate::fingerprint`'s module doc for what keying does and does not defend against.
+    /// An empty tree whose every lift is keyed under `lift_key` — see `crate::fingerprint`'s
+    /// module doc for what keying does and does not defend against.
     ///
     /// There is no analogous "rekey an existing tree" method: see this type's `lift_key` field doc
     /// (crate-private, but its reasoning applies here too) for why.

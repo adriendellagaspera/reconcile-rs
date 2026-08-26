@@ -6,8 +6,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `ReadReplicaMap::build`'s `Config::cluster_key` -> `rsos::LiftKey` seam (issue #19) -- the same
-//! property `src/replica/tests/keyed_fingerprint.rs` covers for `Replica`, exercised here because
+//! `ReadReplicaMap::build`'s `Config::cluster_key` -> `rsos::LiftKey` seam -- the same property
+//! `src/replica/tests/keyed_fingerprint.rs` covers for `Replica`, exercised here because
 //! `ReadReplicaMap` builds its own tree independently (its own `build`, not a shared helper).
 //! `integrate` (not a real network round) is enough: this is about the seam wiring a configured
 //! key into `FingerprintTreeMap::with_lift_key`, not about reconciliation itself.

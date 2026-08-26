@@ -44,9 +44,9 @@ impl ClusterKey {
         &self.0
     }
 
-    /// Derive a 32-byte subkey for `rsos`'s keyed range-fingerprint lift (issue #19), independent
-    /// of the datagram MAC this key also seals — a BLAKE3 `derive_key` context-separated subkey,
-    /// not these raw bytes, so a leak of one purpose's key does not hand over the other's.
+    /// Derive a 32-byte subkey for `rsos`'s keyed range-fingerprint lift, independent of the
+    /// datagram MAC this key also seals — a BLAKE3 `derive_key` context-separated subkey, not
+    /// these raw bytes, so a leak of one purpose's key does not hand over the other's.
     ///
     /// Returns raw bytes rather than an `rsos::LiftKey`: `gossip` cannot depend on `rsos` (AGENTS.md
     /// §9 — no edge between the two adapter/leaf crates in `ARCHITECTURE.md` §2's graph), so

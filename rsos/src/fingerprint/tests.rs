@@ -171,7 +171,7 @@ fn digest_is_lift_without_a_key_half() {
     assert_ne!(digest(&"Hello"), digest(&"Hell"));
 }
 
-// Keyed lift (issue #19): closes the Wagner-grinding gap for holders of the key.
+// Keyed lift: closes the Wagner-grinding gap for holders of the key.
 
 #[test]
 fn lift_keyed_is_deterministic_and_injective() {

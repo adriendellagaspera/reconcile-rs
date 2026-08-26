@@ -28,7 +28,7 @@
 //! deliberately-broken one above) through the unmodified driver twice: once with both peers
 //! unkeyed, demonstrating the false SKIP this module's doc describes in prose; once with both
 //! peers keyed under a secret the attacker (who ground the plant against the unkeyed lift, having
-//! no key) does not hold, demonstrating issue #19's fix defeats exactly that plant.
+//! no key) does not hold, demonstrating that keying defeats exactly that plant.
 
 #![forbid(unsafe_code)]
 
@@ -52,7 +52,7 @@ fn mask(width: u32) -> u64 {
 }
 
 /// The shipped lift, reduced mod `2^width` — unkeyed when `lift_key` is `None` (what an attacker
-/// grinding offline, with no cluster key, computes), keyed otherwise (issue #19's fix).
+/// grinding offline, with no cluster key, computes), keyed otherwise.
 ///
 /// Reduction is the homomorphism `ℤ/2^256 → ℤ/2^width`, so this is the *same* algebra at a width
 /// where the attack is reproducible in a test — not a different construction.
@@ -71,7 +71,7 @@ fn lift(key: u64, width: u32, lift_key: Option<&LiftKey>) -> u64 {
 struct NarrowStore {
     width: u32,
     keys: Vec<u64>,
-    /// `None` matches the vulnerability this module demonstrates; `Some` is issue #19's fix,
+    /// `None` matches the vulnerability this module demonstrates; `Some` is the keyed fix,
     /// exercised by the two tests below that name it directly.
     lift_key: Option<LiftKey>,
 }
@@ -349,15 +349,15 @@ fn a_balanced_wagner_plant_causes_a_false_skip_under_the_unkeyed_lift() {
         assert!(
             declares_convergence(&a, &b),
             "w={width}: an unkeyed lift must be fooled by a balanced Wagner plant -- this is \
-             exactly the gap issue #19 closes for holders of a lift key"
+             exactly the gap keying the lift closes for holders of a lift key"
         );
     }
 }
 
 /// The identical plant, ground by an attacker with no key against the unkeyed lift above, no
 /// longer fools the driver once both peers key their lift under a secret the attacker does not
-/// hold (issue #19's fix) — the sums the attacker balanced to zero are, under a different keyed
-/// hash, unrelated values that no longer cancel.
+/// hold — the sums the attacker balanced to zero are, under a different keyed hash, unrelated
+/// values that no longer cancel.
 #[test]
 fn the_same_plant_is_detected_once_the_lift_is_keyed() {
     let lift_key = LiftKey::new([0x42; 32]);

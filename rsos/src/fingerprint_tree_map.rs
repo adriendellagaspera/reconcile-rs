@@ -95,7 +95,7 @@ fn element(fingerprint: Fingerprint) -> Aggregate {
 pub struct FingerprintTreeMap<K, V> {
     pub(crate) root: Arc<Node<K, V>>,
     /// `None` lifts unkeyed (honest-model only, `crate::fingerprint`'s module doc); `Some` closes
-    /// the Wagner-grinding gap for holders of the key (issue #19). Set once, at construction —
+    /// the Wagner-grinding gap for holders of the key. Set once, at construction —
     /// [`FingerprintTreeMap::with_lift_key`] is the only way in, and there is deliberately no
     /// setter: rekeying an already-populated tree in place would silently invalidate every cached
     /// fingerprint without a re-lift pass, which is exactly the "re-derive it and reconcile

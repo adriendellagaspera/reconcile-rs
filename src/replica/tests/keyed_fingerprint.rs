@@ -6,8 +6,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `Replica::build`'s `Config::cluster_key` -> `rsos::LiftKey` seam (issue #19): a `Replica`
-//! constructed with a cluster key must actually key its `map`/`projection` trees, matching what
+//! `Replica::build`'s `Config::cluster_key` -> `rsos::LiftKey` seam: a `Replica` constructed with
+//! a cluster key must actually key its `map`/`projection` trees, matching what
 //! another node with the identical key would compute, and never a node with a different one --
 //! the property `rbsr::protocol_round`'s divergence detection depends on end to end.
 

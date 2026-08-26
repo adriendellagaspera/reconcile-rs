@@ -246,9 +246,9 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     fn build(config: Config, transport: Arc<dyn Transport>) -> Self {
         config.check_key_or_insecure_opt_in();
         warn_on_ignored_config_fields(&config);
-        // Derived before `config.cluster_key` is moved into the authenticator below (issue #19) —
-        // see `Replica::build`'s identical seam. Must match the dated peer's own cluster key for
-        // the two trees' fingerprints to agree at all, exactly as datagram authentication already
+        // Derived before `config.cluster_key` is moved into the authenticator below — see
+        // `Replica::build`'s identical seam. Must match the dated peer's own cluster key for the
+        // two trees' fingerprints to agree at all, exactly as datagram authentication already
         // requires.
         let lift_key = config
             .cluster_key

@@ -170,10 +170,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         node_id_is_random: bool,
     ) -> Self {
         config.check_key_or_insecure_opt_in();
-        // Derived before `config.cluster_key` is moved into the authenticator below (issue #19):
-        // a cluster key closes the Wagner-grinding gap on the range fingerprint too, not just the
-        // datagram MAC, via an independent BLAKE3-derived subkey — see `ClusterKey::derive_lift_key`
-        // and `rsos::fingerprint`'s module doc. `None` (no cluster key) keeps today's unkeyed lift.
+        // Derived before `config.cluster_key` is moved into the authenticator below: a cluster
+        // key closes the Wagner-grinding gap on the range fingerprint too, not just the datagram
+        // MAC, via an independent BLAKE3-derived subkey — see `ClusterKey::derive_lift_key` and
+        // `rsos::fingerprint`'s module doc. `None` (no cluster key) keeps today's unkeyed lift.
         let lift_key = config
             .cluster_key
             .as_ref()

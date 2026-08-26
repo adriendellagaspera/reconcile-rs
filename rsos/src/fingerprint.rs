@@ -21,15 +21,14 @@
 //! unforgeability**: anyone who can write to a replica can grind a collision, demonstrated against
 //! the RBSR driver in `rbsr/tests/wagner_false_convergence.rs`.
 //!
-//! [`LiftKey`] closes that gap for a keyed lift (issue #19, migrated from
-//! `akvize/reconcile-rs#337`): `BLAKE3_keyed(K, …)` reduces grinding to breaking the PRF instead of
-//! ~2³¹ offline evaluations, since the attacker no longer knows the hash they must invert (Clarke et
-//! al., ASIACRYPT 2003). This closes the gap only for holders of the key — a cluster running
-//! unkeyed (no [`LiftKey`] configured, matching every unauthenticated deployment, README "Security
-//! model") is exactly as Wagner-breakable as before; keying is `reconcile`'s responsibility, derived
-//! from the shared cluster key already required for datagram authentication
-//! (`ClusterKey::derive_lift_key` — `gossip` — is never referenced here: `rsos` stays domain-pure,
-//! AGENTS.md §9, and takes only the derived 32 bytes).
+//! [`LiftKey`] closes that gap for a keyed lift: `BLAKE3_keyed(K, …)` reduces grinding to breaking
+//! the PRF instead of ~2³¹ offline evaluations, since the attacker no longer knows the hash they
+//! must invert (Clarke et al., ASIACRYPT 2003). This closes the gap only for holders of the key —
+//! a cluster running unkeyed (no [`LiftKey`] configured, matching every unauthenticated
+//! deployment, README "Security model") is exactly as Wagner-breakable as before; keying is
+//! `reconcile`'s responsibility, derived from the shared cluster key already required for datagram
+//! authentication (`ClusterKey::derive_lift_key` — `gossip` — is never referenced here: `rsos`
+//! stays domain-pure, AGENTS.md §9, and takes only the derived 32 bytes).
 //!
 //! **The collision bound assumes a set, not a multiset**: every statement above holds only if
 //! each live element is folded in exactly once. `FingerprintTreeMap::insert` on an already-present
@@ -232,7 +231,7 @@ impl std::fmt::Display for Fingerprint {
     }
 }
 
-/// Key material for the keyed BLAKE3 lift (issue #19): 32 bytes, opaque to `rsos`.
+/// Key material for the keyed BLAKE3 lift: 32 bytes, opaque to `rsos`.
 ///
 /// `rsos` never derives this itself — it has no notion of a cluster secret (AGENTS.md §9 domain
 /// purity forbids a dependency on `gossip`, which owns `ClusterKey`). `reconcile` derives it via
@@ -340,7 +339,7 @@ pub fn lift<K: Serialize + ?Sized, V: Serialize + ?Sized>(key: &K, value: &V) ->
     lift_with(None, key, value)
 }
 
-/// [`lift`], keyed under `lift_key` (issue #19). The same `(key, value)` pair lifts to an unrelated
+/// [`lift`], keyed under `lift_key`. The same `(key, value)` pair lifts to an unrelated
 /// fingerprint under every distinct key, so a chosen-input adversary without `lift_key` cannot
 /// predict, and therefore cannot grind, a collision — see this module's doc.
 ///
