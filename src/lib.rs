@@ -40,6 +40,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod clock;
+/// Public, stable metric names — see the module's own docs.
+#[cfg(feature = "metrics")]
+pub mod metrics;
 pub mod persistence;
 pub mod read_replica_map;
 pub mod read_replica_set;

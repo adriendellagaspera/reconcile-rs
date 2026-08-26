@@ -9,6 +9,7 @@
 use std::hash::Hash;
 use std::io;
 use std::ops::Bound;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -17,6 +18,7 @@ use tracing::warn;
 use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::Entry;
+use crate::observability;
 use crate::persistence::{DatedEntries, PersistedState, Persistence};
 
 use super::ReplicatedMap;
@@ -147,11 +149,31 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self
     }
 
+    /// Register a callback invoked with the [`io::Error`] whenever a snapshot write to the
+    /// persistence backend fails — both the periodic background snapshot and a caller-triggered
+    /// [`snapshot_now`](Self::snapshot_now).
+    ///
+    /// Runs in addition to, never instead of, the `reconcile_persistence_failures_total` counter
+    /// (behind the `metrics` feature) and the `warn!` already logged on the periodic path — this
+    /// is for an operator's own alerting (e.g. paging on the *first* failure rather than waiting
+    /// on a counter to cross a threshold), not a replacement for either. A second call replaces
+    /// the first, it does not add to it.
+    pub fn on_persistence_error<F: Fn(&io::Error) + Send + Sync + 'static>(
+        mut self,
+        hook: F,
+    ) -> Self {
+        self.persistence_error_hook = Arc::new(hook);
+        self
+    }
+
     /// Capture the full store state and hand it to the persistence backend.
     ///
     /// Clones the map in [`SNAPSHOT_CHUNK_SIZE`]-entry chunks — see that constant's doc for why a
     /// non-instantaneous snapshot is an acceptable trade-off here. Records
-    /// [`last_snapshot_at`](super::ReplicatedMap::sync_state) on success.
+    /// [`last_snapshot_at`](super::ReplicatedMap::sync_state) on success, and the
+    /// `reconcile_persistence_failures_total`/`reconcile_persistence_failures_current` metrics
+    /// (behind the `metrics` feature) plus [`on_persistence_error`](Self::on_persistence_error) on
+    /// failure.
     fn snapshot_inner(&self) -> io::Result<()> {
         let mut entries: DatedEntries<K, V> = Vec::new();
         let mut cursor: Option<K> = None;
@@ -181,9 +203,24 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             self.engine.members.read().clone(),
             self.engine.tombstone_acks.read().clone(),
         );
-        self.persistence.save(&state)?;
-        *self.last_snapshot_at.write() = Some(Instant::now());
-        Ok(())
+        match self.persistence.save(&state) {
+            Ok(()) => {
+                *self.last_snapshot_at.write() = Some(Instant::now());
+                self.persistence_consecutive_failures
+                    .store(0, Ordering::Relaxed);
+                observability::record_persistence_success();
+                Ok(())
+            }
+            Err(err) => {
+                let consecutive = self
+                    .persistence_consecutive_failures
+                    .fetch_add(1, Ordering::Relaxed)
+                    + 1;
+                observability::record_persistence_failure(consecutive);
+                (self.persistence_error_hook)(&err);
+                Err(err)
+            }
+        }
     }
 
     /// As [`snapshot_inner`](Self::snapshot_inner), logging rather than propagating a failure —
