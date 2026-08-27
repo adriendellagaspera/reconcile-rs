@@ -49,26 +49,6 @@ impl core::marker::Unpin for reconcile_gossip::auth::ClusterKeyError
 impl core::marker::UnsafeUnpin for reconcile_gossip::auth::ClusterKeyError
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::auth::ClusterKeyError
 impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::auth::ClusterKeyError
-#[non_exhaustive] pub struct reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::clone::Clone for reconcile_gossip::auth::EncryptionFeatureDisabled
-pub fn reconcile_gossip::auth::EncryptionFeatureDisabled::clone(&self) -> reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::cmp::Eq for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::cmp::PartialEq for reconcile_gossip::auth::EncryptionFeatureDisabled
-pub fn reconcile_gossip::auth::EncryptionFeatureDisabled::eq(&self, &reconcile_gossip::auth::EncryptionFeatureDisabled) -> bool
-impl core::error::Error for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::fmt::Debug for reconcile_gossip::auth::EncryptionFeatureDisabled
-pub fn reconcile_gossip::auth::EncryptionFeatureDisabled::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for reconcile_gossip::auth::EncryptionFeatureDisabled
-pub fn reconcile_gossip::auth::EncryptionFeatureDisabled::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::marker::StructuralPartialEq for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::marker::Freeze for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::marker::Send for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::marker::Sync for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::marker::Unpin for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::marker::UnsafeUnpin for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::auth::EncryptionFeatureDisabled
-impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::auth::EncryptionFeatureDisabled
 pub struct reconcile_gossip::auth::Authenticated
 impl core::marker::Freeze for reconcile_gossip::auth::Authenticated
 impl core::marker::Send for reconcile_gossip::auth::Authenticated
@@ -96,6 +76,26 @@ impl core::marker::Unpin for reconcile_gossip::auth::ClusterKey
 impl core::marker::UnsafeUnpin for reconcile_gossip::auth::ClusterKey
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::auth::ClusterKey
 impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::auth::ClusterKey
+#[non_exhaustive] pub struct reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::clone::Clone for reconcile_gossip::auth::EncryptionFeatureDisabled
+pub fn reconcile_gossip::auth::EncryptionFeatureDisabled::clone(&self) -> reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::cmp::Eq for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::cmp::PartialEq for reconcile_gossip::auth::EncryptionFeatureDisabled
+pub fn reconcile_gossip::auth::EncryptionFeatureDisabled::eq(&self, &reconcile_gossip::auth::EncryptionFeatureDisabled) -> bool
+impl core::error::Error for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::fmt::Debug for reconcile_gossip::auth::EncryptionFeatureDisabled
+pub fn reconcile_gossip::auth::EncryptionFeatureDisabled::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for reconcile_gossip::auth::EncryptionFeatureDisabled
+pub fn reconcile_gossip::auth::EncryptionFeatureDisabled::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::marker::StructuralPartialEq for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::marker::Freeze for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::marker::Send for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::marker::Sync for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::marker::Unpin for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::marker::UnsafeUnpin for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::auth::EncryptionFeatureDisabled
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::auth::EncryptionFeatureDisabled
 pub struct reconcile_gossip::auth::Keys
 pub reconcile_gossip::auth::Keys::also_accept: alloc::vec::Vec<reconcile_gossip::auth::ClusterKey>
 pub reconcile_gossip::auth::Keys::primary: reconcile_gossip::auth::ClusterKey

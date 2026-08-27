@@ -84,6 +84,16 @@ fn cluster_key_error_display_messages() {
     );
 }
 
+/// #100: `EncryptionFeatureDisabled`'s `Display` text is user-facing (it's what `with_rotation`
+/// panics with) — assert its actual content, not merely that formatting it doesn't panic.
+#[test]
+fn encryption_feature_disabled_display_message() {
+    assert_eq!(
+        EncryptionFeatureDisabled.to_string(),
+        "reconcile: encryption requested but the crate was built without the `encryption` feature"
+    );
+}
+
 /// The full receive-side pipeline (`ARCHITECTURE.md` §5 invariant 5, module doc): check the
 /// wire version, then replay-check with a throwaway wide-open filter — these tests seal fixed
 /// near-epoch stamps, so the window must span the gap to real wall-clock time.
