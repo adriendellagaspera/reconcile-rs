@@ -6,11 +6,22 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use crate::read_replica_set::ReadReplicaSet;
 use crate::replicated_map::{Config, MAX_NETS};
 use rsos::Fingerprint;
+
+async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
+    for _ in 0..300 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        if f() {
+            return true;
+        }
+    }
+    false
+}
 
 fn ephemeral_config() -> Config {
     Config {
@@ -272,4 +283,88 @@ async fn with_dns_discovery_converges_via_localhost_resolution() {
         converged,
         "replica never converged via DNS discovery resolving localhost"
     );
+}
+
+/// #8: `local_addr` forwards to the wrapped `ReadReplicaMap` and reports the transport's real
+/// bound address, matching what was configured — mirrors #292's own `ReplicatedMap` test and
+/// `ReadReplicaMap`'s own `local_addr_matches_the_configured_bind_address`.
+#[tokio::test]
+async fn local_addr_matches_the_configured_bind_address() {
+    let config = ephemeral_config();
+    let expected = SocketAddr::new(config.listen_addr, config.port);
+    let replica = ReadReplicaSet::<i32>::new(config)
+        .await
+        .expect("bind failed");
+    assert_eq!(
+        replica
+            .local_addr()
+            .expect("transport must report its address"),
+        expected
+    );
+}
+
+/// #8: `sync_state` forwards to the wrapped `ReadReplicaMap` — it starts with no rounds
+/// initiated and advances once `run()` is actually driving the replica, rather than returning a
+/// default.
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_state_advances_as_the_replica_runs() {
+    let replica = ReadReplicaSet::<i32>::new(ephemeral_config())
+        .await
+        .expect("bind failed");
+    let initial = replica.sync_state();
+    assert_eq!(initial.rounds, 0);
+    assert!(initial.last_round_at.is_none());
+
+    let task = tokio::spawn(replica.clone().run());
+    assert!(
+        wait_until(|| {
+            let state = replica.sync_state();
+            state.rounds > 0 && state.last_round_at.is_some()
+        })
+        .await,
+        "sync_state never observed an initiated reconciliation round"
+    );
+    task.abort();
+}
+
+/// #8: `seed_peer` forwards to the wrapped `ReadReplicaMap` — the `&self` counterpart of
+/// `with_seed`, it registers a brand-new peer so it is immediately visible via `peers`.
+#[tokio::test]
+async fn seed_peer_registers_a_peer_visible_via_peers() {
+    let replica = ReadReplicaSet::<i32>::new(ephemeral_config())
+        .await
+        .expect("bind failed");
+    let peer: IpAddr = "127.0.0.213".parse().unwrap();
+
+    assert!(
+        !replica.peers().contains(&peer),
+        "test setup: peer must start unknown"
+    );
+    replica.seed_peer(peer);
+    assert!(
+        replica.peers().contains(&peer),
+        "seed_peer must register a brand-new peer, visible via peers()"
+    );
+}
+
+/// #8: `set_reconcile_interval` forwards to the wrapped `ReadReplicaMap` and actually retunes
+/// `run`'s idle re-initiation cadence at runtime — a 3600s configured interval that is never
+/// retuned would leave `rounds` at `1` (the unconditional round fired at `run()` entry) for the
+/// entire test window.
+#[tokio::test(flavor = "multi_thread")]
+async fn set_reconcile_interval_actually_retunes_the_idle_timeout() {
+    let replica = ReadReplicaSet::<i32>::new(
+        ephemeral_config().with_reconcile_interval(Duration::from_secs(3600)),
+    )
+    .await
+    .expect("bind failed");
+    replica.set_reconcile_interval(Duration::from_millis(20));
+
+    let task = tokio::spawn(replica.clone().run());
+    assert!(
+        wait_until(|| replica.sync_state().rounds >= 5).await,
+        "retuning reconcile_interval must speed up the idle re-init cadence, not wait out the \
+         original 3600s interval"
+    );
+    task.abort();
 }

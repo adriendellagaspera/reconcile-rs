@@ -81,6 +81,9 @@ All notable changes to this project are documented here. Format follows
   would for a dated one. `sync_state()` returns a `ReadSyncState` (no `last_snapshot_at`: a read
   replica deliberately never persists). No `node_id()`/`members()` counterpart — a read replica
   mints no timestamps and holds no causal-stability membership, so neither concept applies.
+- `ReadReplicaSet::local_addr()`/`sync_state()`/`peers()`/`seed_peer()`/`set_reconcile_interval()`
+  (#8): forwards what #30 landed on `ReadReplicaMap`, the same way `ReadReplicaSet` mirrors the rest
+  of `ReadReplicaMap`'s API — closing #8's last open acceptance box.
 - `FingerprintTreeMap::from_sorted_iter`/`from_sorted_iter_keyed` (#51): a bottom-up bulk build
   from already-sorted, duplicate-free input, for a caller that knows its dataset up front (initial
   load, snapshot recovery) and wants to skip both the `O(n log n)` sort `FromIterator::collect()`
