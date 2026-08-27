@@ -153,12 +153,17 @@ pub fn reconcile::read_replica_set::ReadReplicaSet<K>::fingerprint<R: core::ops:
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::is_empty(&self) -> bool
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::len(&self) -> usize
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::net(&self) -> ipnet::ipnet::IpNet
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::run(self)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_net(&self, ipnet::ipnet::IpNet)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<()>) + 'static>(&self, F)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_reconcile_interval(&self, core::time::Duration)
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::start_reconciliation(&self)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
@@ -576,12 +581,17 @@ pub fn reconcile::read_replica_set::ReadReplicaSet<K>::fingerprint<R: core::ops:
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::is_empty(&self) -> bool
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::len(&self) -> usize
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::net(&self) -> ipnet::ipnet::IpNet
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::run(self)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_net(&self, ipnet::ipnet::IpNet)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<()>) + 'static>(&self, F)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_reconcile_interval(&self, core::time::Duration)
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::start_reconciliation(&self)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery_interval(self, core::time::Duration) -> Self

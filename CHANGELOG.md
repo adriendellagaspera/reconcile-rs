@@ -81,6 +81,9 @@ All notable changes to this project are documented here. Format follows
   would for a dated one. `sync_state()` returns a `ReadSyncState` (no `last_snapshot_at`: a read
   replica deliberately never persists). No `node_id()`/`members()` counterpart — a read replica
   mints no timestamps and holds no causal-stability membership, so neither concept applies.
+- `ReadReplicaSet::local_addr()`/`sync_state()`/`peers()`/`seed_peer()`/`set_reconcile_interval()`
+  (#8): forwards what #30 landed on `ReadReplicaMap`, the same way `ReadReplicaSet` mirrors the rest
+  of `ReadReplicaMap`'s API — closing #8's last open acceptance box.
 - `Config::max_value_size`/`with_max_value_size` and `replicated_map::ValueTooLarge` (#82): a write
   whose encoded value exceeds the configured ceiling is now rejected synchronously, before any
   local state changes, instead of only being logged and counted later on the send path
