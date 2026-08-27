@@ -81,6 +81,19 @@ All notable changes to this project are documented here. Format follows
   would for a dated one. `sync_state()` returns a `ReadSyncState` (no `last_snapshot_at`: a read
   replica deliberately never persists). No `node_id()`/`members()` counterpart — a read replica
   mints no timestamps and holds no causal-stability membership, so neither concept applies.
+- `FingerprintTreeMap::from_sorted_iter`/`from_sorted_iter_keyed` (#51): a bottom-up bulk build
+  from already-sorted, duplicate-free input, for a caller that knows its dataset up front (initial
+  load, snapshot recovery) and wants to skip both the `O(n log n)` sort `FromIterator::collect()`
+  does and the incremental split/rebalance cost of `n` individual `insert` calls. Same resulting
+  `aggregate()` as the equivalent serial inserts regardless of the two builds' internal tree shape
+  — `Aggregate` is a commutative monoid over the element set.
+
+### Changed
+
+- `rsos::fingerprint_tree_map::Node`'s `children` field is now `Box`-indirected (#47): a leaf —
+  the large majority of nodes — no longer carries a full `MAX_CAPACITY + 1`-element array's worth
+  of unused inline space just to represent "no children". `Node` is crate-private, so this is not
+  a public-API or wire change.
 
 ### Fixed
 

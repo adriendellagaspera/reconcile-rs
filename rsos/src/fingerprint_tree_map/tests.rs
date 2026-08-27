@@ -8,6 +8,7 @@
 
 mod aggregate;
 mod basic;
+mod bulk;
 mod invariants;
 mod keyed_lift;
 mod query;
