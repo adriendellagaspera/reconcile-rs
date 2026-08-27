@@ -206,6 +206,10 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         match self.persistence.save(&state) {
             Ok(()) => {
                 *self.last_snapshot_at.write() = Some(Instant::now());
+                // Only a *successful* write clears the pending count (#46): a failed write must
+                // keep its changes counted, or a threshold-gated periodic wakeup could go quiet
+                // on a backend that is failing every attempt.
+                self.engine.reset_change_count();
                 self.persistence_consecutive_failures
                     .store(0, Ordering::Relaxed);
                 observability::record_persistence_success();
@@ -249,11 +253,20 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.snapshot_inner()
     }
 
-    /// Periodically snapshot the full store state to the persistence backend.
+    /// Periodically snapshot the full store state to the persistence backend, waking every
+    /// [`Config::snapshot_interval`](super::Config::snapshot_interval) — or never, if that is
+    /// `None` (#46) — and, on each wakeup, actually writing only once
+    /// [`Config::snapshot_change_threshold`](super::Config::snapshot_change_threshold) changes
+    /// have landed since the last snapshot, so an idle node does zero snapshot IO.
     pub(super) async fn snapshot_periodically(&self) {
+        let Some(interval) = self.snapshot_interval else {
+            return;
+        };
         loop {
-            tokio::time::sleep(self.snapshot_interval).await;
-            self.persist_snapshot();
+            tokio::time::sleep(interval).await;
+            if self.engine.change_count() >= self.snapshot_change_threshold {
+                self.persist_snapshot();
+            }
         }
     }
 }

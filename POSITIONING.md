@@ -357,7 +357,14 @@ status, so this section never needs an edit when that status changes.
    only the *honest* model: modular addition at 256 bits stays Wagner-breakable against a writer with
    no cluster key. The keyed-lift fix (`rsos::LiftKey`) landed in
    [#337](https://github.com/Akvize/reconcile-rs/issues/337) (this fork: issue #19) for holders of
-   the key; the insider residual it leaves is `ARCHITECTURE.md` §7's reopened question.
+   the key; the insider residual it leaves is `ARCHITECTURE.md` §7's reopened question. The
+   ECMH alternative (Fix B, no key required) was benchmarked end-to-end against it in
+   [#80](https://github.com/adriendellagaspera/reconcile-rs/issues/80): on `benches/protocol.rs`'s
+   harness, an off-the-shelf-Ristretto combiner leaves `reconciliation_cost` (bytes, messages,
+   convergence decisions) byte-for-byte unchanged — both fingerprints are 32 bytes and agree
+   wherever the multisets do — but drives `reconciliation_drive`'s wall-clock `T_loc` to
+   **~1.2–1.6 × 10³× slower**, an order of magnitude past #19's own 67×–126× *primitive* figure,
+   let alone the ~2.4× literature figure for an optimized binary curve. Fix A stands.
 2. **Decouple "empty" from "hash==0"** (`size==0`) — otherwise the structure can claim "converged"
    while having lost data. (cf. F1, [#106](https://github.com/Akvize/reconcile-rs/issues/106))
 3. **Stable, versioned hash as a wire contract** (pinned SipHash/xxHash/BLAKE3 + golden-vector).

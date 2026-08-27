@@ -39,6 +39,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let ret = map.remove(key);
         self.map.store(Arc::new(map));
         self.projection.store(Arc::new(projection));
+        if ret.is_some() {
+            self.record_changes(1);
+        }
         ret
     }
 

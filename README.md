@@ -379,7 +379,10 @@ Kubernetes readiness probe should check the latter; see `examples/k8s/`):
 - `peers()` / `members()` — the gossip-routing peer set and the causal-stability membership set.
 - `local_addr()` — the transport's actual bound address (useful when `Config::port` is `0`).
 - `snapshot_now()` — force an out-of-band snapshot instead of waiting for
-  `Config::with_snapshot_interval` (default 5 s) to elapse.
+  `Config::with_snapshot_interval` (default `Some(5 s)`; `None` disables the periodic task
+  entirely) to elapse and `Config::with_snapshot_change_threshold` (default `1`) to be met — a
+  periodic wakeup only writes once that many changes have landed since the last snapshot, so an
+  idle node does zero snapshot IO.
 
 ## Observability
 
