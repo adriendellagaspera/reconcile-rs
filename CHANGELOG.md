@@ -52,6 +52,10 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `ReplicatedMap::try_with_discovery` and `replicated_map::NotAuthoritative` (#98): a non-panicking
+  twin of `with_discovery`, which keeps its panicking signature (ARCHITECTURE.md §5 invariant 15) —
+  a `Speculative` `Discovery::kind()` is a caught-at-startup bug in the impl the developer chose,
+  not runtime data a peer or attacker ever influences.
 - `Config::max_concurrent_broadcasts`/`with_max_concurrent_broadcasts` (default 1024, #83): bounds
   the number of concurrently in-flight write-broadcast tasks, the egress-side counterpart of
   `Config::max_concurrent_bulk_dumps`; the `reconcile_broadcasts_in_flight` gauge and

@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use crate::discovery::{DiscoverFuture, Discovery, DiscoveryKind};
 use crate::{
-    replicated_map::{Config, MemberPresence},
+    replicated_map::{Config, MemberPresence, NotAuthoritative},
     ReplicatedMap,
 };
 
@@ -85,6 +85,23 @@ async fn with_discovery_rejects_a_speculative_source() {
         .await
         .expect("bind failed");
     let _ = store.with_discovery(Arc::new(SpeculativeDiscovery));
+}
+
+/// #98: `try_with_discovery` is `with_discovery`'s non-panicking twin — same rejection, returned
+/// as a `NotAuthoritative` error instead of a panic.
+#[tokio::test]
+async fn try_with_discovery_rejects_a_speculative_source_without_panicking() {
+    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
+        .await
+        .expect("bind failed");
+    assert_eq!(
+        store
+            .try_with_discovery(Arc::new(SpeculativeDiscovery))
+            .err(),
+        Some(NotAuthoritative {
+            kind: DiscoveryKind::Speculative
+        })
+    );
 }
 
 fn discovery_config() -> Config {

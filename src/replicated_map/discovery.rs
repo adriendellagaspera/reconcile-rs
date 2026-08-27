@@ -7,6 +7,7 @@
 // except according to those terms.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -19,6 +20,29 @@ use crate::discovery::{Discovery, DiscoveryKind, DnsDiscovery};
 use crate::observability;
 
 use super::ReplicatedMap;
+
+/// Returned by [`try_with_discovery`](ReplicatedMap::try_with_discovery) when the supplied
+/// [`Discovery`] source is not [`Authoritative`](DiscoveryKind::Authoritative).
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct NotAuthoritative {
+    /// The discovery source's actual [`DiscoveryKind`].
+    pub kind: DiscoveryKind,
+}
+
+impl fmt::Display for NotAuthoritative {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "with_discovery expects an authoritative source, got {:?}: a speculative prober \
+             would be seeded as permanent known peers and its absences would wrongly decommission \
+             members",
+            self.kind
+        )
+    }
+}
+
+impl std::error::Error for NotAuthoritative {}
 
 /// Per-member discovery-absence tracking for [`ReplicatedMap::discover_periodically`].
 ///
@@ -92,7 +116,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Panics — in release builds too, not only under `debug_assertions` — if `discovery.kind()`
     /// is [`Speculative`](crate::DiscoveryKind::Speculative). A speculative source's absences must
     /// never decommission a live member: that would release the causal-stability GC gate
-    /// (`ARCHITECTURE.md` §5 invariant 6) on a member that never actually left.
+    /// (`ARCHITECTURE.md` §5 invariant 6) on a member that never actually left. See
+    /// [`try_with_discovery`](Self::try_with_discovery) for a non-panicking alternative.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -108,14 +133,29 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_discovery(mut self, discovery: Arc<dyn Discovery>) -> Self {
-        assert!(
-            matches!(discovery.kind(), DiscoveryKind::Authoritative),
-            "with_discovery expects an authoritative source; a speculative prober would be seeded \
-             as permanent known peers and its absences would wrongly decommission members"
-        );
+    pub fn with_discovery(self, discovery: Arc<dyn Discovery>) -> Self {
+        match self.try_with_discovery(discovery) {
+            Ok(store) => store,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    /// As [`with_discovery`](Self::with_discovery), but returns a [`NotAuthoritative`] instead of
+    /// panicking on a [`Speculative`](DiscoveryKind::Speculative) source.
+    ///
+    /// # Errors
+    ///
+    /// If `discovery.kind()` is not [`Authoritative`](DiscoveryKind::Authoritative).
+    pub fn try_with_discovery(
+        mut self,
+        discovery: Arc<dyn Discovery>,
+    ) -> Result<Self, NotAuthoritative> {
+        let kind = discovery.kind();
+        if !matches!(kind, DiscoveryKind::Authoritative) {
+            return Err(NotAuthoritative { kind });
+        }
         self.discovery = Some(discovery);
-        self
+        Ok(self)
     }
 
     /// Discover peers by resolving a DNS name — [`with_discovery`](Self::with_discovery) with a

@@ -457,9 +457,12 @@ guarantees whose resolution history §8 tracks.
      delegates to a fallible `try_with_net`; `with_nets` has no fallible bulk form. Converting
      either to the sole entry point is a signature break, tracked as
      [#97](https://github.com/adriendellagaspera/reconcile-rs/issues/97) (`M-breaking`).
-   - `ReplicatedMap::with_discovery` (`src/replicated_map/discovery.rs`) — panics, even in release
-     builds, on a `Speculative` `Discovery::kind()`; converting to `try_with_discovery` is tracked
-     as [#98](https://github.com/adriendellagaspera/reconcile-rs/issues/98) (`M-breaking`).
+   - `ReplicatedMap::with_discovery` (`src/replicated_map/discovery.rs`) — resolved by #98: added
+     `try_with_discovery`, returning a `NotAuthoritative` error instead of panicking on a
+     `Speculative` `Discovery::kind()`. `with_discovery` itself keeps its panicking signature and
+     now delegates to the fallible form, same shape as `Config::with_net`/`try_with_net` above: the
+     kind mismatch is a caught-at-startup bug in the `Discovery` impl the developer chose, not
+     runtime data a peer or attacker ever influences.
    - `with_persistence`'s load path (`src/replicated_map/persistence.rs`) — panics on corrupted
      (`InvalidData`) or retry-exhausted persisted state; `snapshot_now` in the same file already
      returns `io::Result`, the pattern to extend. Tracked as

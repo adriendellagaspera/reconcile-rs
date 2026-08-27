@@ -217,6 +217,27 @@ impl core::marker::Unpin for reconcile::replicated_map::Backpressure
 impl core::marker::UnsafeUnpin for reconcile::replicated_map::Backpressure
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::Backpressure
 impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::Backpressure
+#[non_exhaustive] pub struct reconcile::replicated_map::NotAuthoritative
+pub reconcile::replicated_map::NotAuthoritative::kind: reconcile_gossip::discovery::DiscoveryKind
+impl core::clone::Clone for reconcile::replicated_map::NotAuthoritative
+pub fn reconcile::replicated_map::NotAuthoritative::clone(&self) -> reconcile::replicated_map::NotAuthoritative
+impl core::cmp::Eq for reconcile::replicated_map::NotAuthoritative
+impl core::cmp::PartialEq for reconcile::replicated_map::NotAuthoritative
+pub fn reconcile::replicated_map::NotAuthoritative::eq(&self, &reconcile::replicated_map::NotAuthoritative) -> bool
+impl core::error::Error for reconcile::replicated_map::NotAuthoritative
+impl core::fmt::Debug for reconcile::replicated_map::NotAuthoritative
+pub fn reconcile::replicated_map::NotAuthoritative::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for reconcile::replicated_map::NotAuthoritative
+pub fn reconcile::replicated_map::NotAuthoritative::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile::replicated_map::NotAuthoritative
+impl core::marker::StructuralPartialEq for reconcile::replicated_map::NotAuthoritative
+impl core::marker::Freeze for reconcile::replicated_map::NotAuthoritative
+impl core::marker::Send for reconcile::replicated_map::NotAuthoritative
+impl core::marker::Sync for reconcile::replicated_map::NotAuthoritative
+impl core::marker::Unpin for reconcile::replicated_map::NotAuthoritative
+impl core::marker::UnsafeUnpin for reconcile::replicated_map::NotAuthoritative
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::NotAuthoritative
+impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::NotAuthoritative
 #[non_exhaustive] pub struct reconcile::replicated_map::Config
 pub reconcile::replicated_map::Config::bulk_send_rate: core::option::Option<usize>
 pub reconcile::replicated_map::Config::cluster_key: core::option::Option<reconcile_gossip::auth::ClusterKey>
@@ -348,6 +369,7 @@ impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::V
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::Backpressure>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_miss_threshold(self, u32) -> Self
@@ -619,6 +641,7 @@ impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::V
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::Backpressure>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_miss_threshold(self, u32) -> Self
