@@ -491,6 +491,7 @@ bullets below are that reasoning — this table is the lookup, not a summary tha
 | A leaf sketch (IBLT) beside the RBSR chain | **decided: out of scope for this crate** | untested algorithm — research, not engineering this crate ships |
 | Partial replication / sharding | **the only surviving answer to capacity pressure** | below |
 | Defense against a correlated false SKIP | **decided: option A ships, B re-priced at #337** | below |
+| An alternative/side-channel transport past the datagram ceiling | **decided: stay UDP-only, no trigger fired** | below |
 
 - **A public `Encoding` port** is deliberately absent: `Transport` earns its port because it has two
   real implementations and `InMemoryTransport` is load-bearing for tests without real sockets; wire
@@ -583,6 +584,33 @@ bullets below are that reasoning — this table is the lookup, not a summary tha
   taken **with** A, never instead: B forces a descent once per `k` rounds, and A is what keeps that
   forced descent from being cancelled against in advance — deterministic child boundaries would hand
   the planter the next level's constraints. Collision taxonomy and full pricing: #471.
+- **An alternative/side-channel transport past the datagram ceiling** — whether the value-size
+  ceiling (`65507 -` authentication overhead, README "Value-size ceiling") is worth relaxing by
+  adding a second `Transport` adapter or a fragmentation/side-channel scheme
+  ([#94](https://github.com/adriendellagaspera/reconcile-rs/issues/94)). **Decided: stay UDP-only,
+  no trigger fired.** Three candidates, priced against this crate's own niche
+  (`POSITIONING.md` §1.2/§1.4 — small, frequently-changing values: flags, routing tables, presence,
+  config) rather than against a large-blob workload this crate does not target:
+
+  | | Stream (TCP/QUIC) `Transport` | Fragmentation over UDP | Side-channel / pointer |
+  |---|---|---|---|
+  | keeps | nothing of invariant 5/11's shape | invariants 5 and 11 verbatim, per fragment | invariants 5/11 for the pointer; the value itself leaves their scope |
+  | costs | a connection lifecycle layered on `Discovery`'s unauthenticated-until-datagram peer set (§5 invariant 6) — the masterless, connectionless fan-out `POSITIONING.md` §1.4 is built on | a fragment-count adversarial-bounding equivalent to `MAX_MESSAGES_PER_DATAGRAM`, and multiplies one value's per-attempt loss probability by its fragment count, in exactly the large-*n* regime `POSITIONING.md` §1.3/[#336](https://github.com/Akvize/reconcile-rs/issues/336) already flags as dominating RTT | a second channel or external store — the Redis-shaped dependency this crate exists to avoid (`POSITIONING.md` §1.1/§1.4), and it duplicates #186's already-accepted answer to capacity pressure without touching the same memory ceiling |
+  | verdict | rejected — breaks §5 invariant 6's membership model, not merely invariants 5/11's framing | rejected — the least invasive candidate, but the ceiling it lifts (large single values) sits outside the niche `POSITIONING.md` frames the whole crate around, and raising it works against the memory/write-amplification ceiling §1.2 already names as the crate's weak spot | rejected — contradicts the "no external store" pitch this crate is *for* |
+
+  Invariants 5 and 11 are therefore **unchanged**: authentication still runs on one raw datagram
+  before any decode, and the version byte still lives inside that same datagram — no fragment
+  header, connection frame, or pointer indirection is introduced. The existing, additive mitigation
+  stays the recommended path: `Config::max_value_size` + `try_insert`/`try_update` (#82) gives a
+  synchronous rejection instead of a silent one, and README "Modelling sets" already documents
+  splitting a large composite across many small keys, which removes the ceiling structurally for
+  exactly the workloads (sets, maps, lists) most likely to grow past it. Revisiting this decision
+  needs a trigger, the same discipline the CRDT seam above uses:
+
+  | Trigger | Would mean |
+  |---|---|
+  | a demonstrated workload whose values cannot be key-split (an atomic binary blob, not a decomposable composite) | the strongest case for fragmentation specifically, still priced against the loss-multiplication cost above |
+  | a deployment that already terminates TLS/mTLS per peer and wants gossip to ride the same connections | revisits the stream candidate under a materially different cost (no new connection-lifecycle machinery to build) |
 
 ---
 
