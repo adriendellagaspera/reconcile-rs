@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
 
-use reconcile::replicated_map::{Backpressure, Config};
+use reconcile::replicated_map::{Config, WriteRejected};
 use reconcile::ReplicatedMap;
 
 fn config(port: u16, addr: &str) -> Config {
@@ -34,8 +34,14 @@ async fn isolated(port: u16, addr: &str) -> ReplicatedMap<i32, i32> {
 
 /// `Backpressure` is `#[non_exhaustive]`, so this crate cannot build one via struct-literal
 /// syntax to compare against — assert on its public fields and `Display` output instead (the
-/// latter also proves the `Display` impl actually formats the real fields, not a stub).
-fn assert_zero_budget_backpressure(err: Backpressure) {
+/// latter also proves the `Display` impl actually formats the real fields, not a stub). Also
+/// asserts the rejection is actually `WriteRejected::Backpressure`, not `TooLarge` (#82) — these
+/// tests use plain `i32` values, so a `TooLarge` rejection here would mean the zero-budget claim
+/// never even ran.
+fn assert_zero_budget_backpressure(err: WriteRejected) {
+    let WriteRejected::Backpressure(err) = err else {
+        panic!("expected WriteRejected::Backpressure, got {err:?}");
+    };
     assert_eq!(err.in_flight, 0);
     assert_eq!(err.max_in_flight, 0);
     assert_eq!(

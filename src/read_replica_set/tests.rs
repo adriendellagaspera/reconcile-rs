@@ -47,6 +47,7 @@ fn ephemeral_config() -> Config {
         snapshot_change_threshold: 1,
         max_clock_drift: crate::clock::MAX_CLOCK_DRIFT,
         coalesce_window: Duration::ZERO,
+        max_value_size: None,
     }
 }
 
