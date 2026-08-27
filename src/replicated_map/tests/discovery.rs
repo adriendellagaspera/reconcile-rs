@@ -104,6 +104,21 @@ async fn try_with_discovery_rejects_a_speculative_source_without_panicking() {
     );
 }
 
+/// `NotAuthoritative`'s `Display` text is user-facing (it's what `with_discovery` panics with) —
+/// assert its actual content, not merely that formatting it doesn't panic.
+#[test]
+fn not_authoritative_display_names_the_actual_kind() {
+    assert_eq!(
+        NotAuthoritative {
+            kind: DiscoveryKind::Speculative
+        }
+        .to_string(),
+        "with_discovery expects an authoritative source, got Speculative: a speculative prober \
+         would be seeded as permanent known peers and its absences would wrongly decommission \
+         members"
+    );
+}
+
 fn discovery_config() -> Config {
     // A real, bindable loopback address (the engine binds a socket in `new`) on an ephemeral
     // port. No `with_net`, mirroring the Kubernetes setup where discovery is purely DNS-driven.
