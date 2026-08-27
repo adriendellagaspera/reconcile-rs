@@ -442,6 +442,35 @@ guarantees whose resolution history §8 tracks.
    (now exercised via tag 6) and its siblings pinning tag 6's own encoding and opaque payload's
    bounded decode, plus `src/replica/tests/convergence_ack.rs` for tag 5's own encoding and the
    ack-on-converged-round behavior.
+15. **A failure triggered by caller-supplied data returns `Result`; it does not panic** (#95) —
+   decided as Option B of #95: this crate is a networked, embeddable library that does not fully
+   control the shape or size of the data reaching it (config, discovery-supplied peer info,
+   persisted state, a caller-chosen key), so panicking on it is a self-inflicted DoS surface, not a
+   caller bug — the same reasoning #82 gave for `try_insert`/`try_update` (F13), generalized instead
+   of repeated ad hoc per method. New public API must return `Result` from the start; no new `try_`
+   twin should ever be needed again. This does not extend to a missing ambient Tokio runtime (an
+   environment precondition, documented as `# Panics`), an internal "provably impossible" assertion
+   (HLC monotonicity, mutex poisoning), or an index-style panic (`Rsos::select`,
+   `FingerprintTreeMap::select`) — those mirror `Vec`'s own `[]` vs `.get()` split, Rust's own
+   convention, not this crate's to relitigate. Disposition of #95's audit:
+   - `Config::with_net`/`with_nets` (`src/replicated_map/config/builders.rs`) — `with_net` already
+     delegates to a fallible `try_with_net`; `with_nets` has no fallible bulk form. Converting
+     either to the sole entry point is a signature break, tracked as
+     [#97](https://github.com/adriendellagaspera/reconcile-rs/issues/97) (`M-breaking`).
+   - `ReplicatedMap::with_discovery` (`src/replicated_map/discovery.rs`) — panics, even in release
+     builds, on a `Speculative` `Discovery::kind()`; converting to `try_with_discovery` is tracked
+     as [#98](https://github.com/adriendellagaspera/reconcile-rs/issues/98) (`M-breaking`).
+   - `with_persistence`'s load path (`src/replicated_map/persistence.rs`) — panics on corrupted
+     (`InvalidData`) or retry-exhausted persisted state; `snapshot_now` in the same file already
+     returns `io::Result`, the pattern to extend. Tracked as
+     [#99](https://github.com/adriendellagaspera/reconcile-rs/issues/99) (`M-breaking`).
+   - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — panics when `encrypt = true`
+     without the `encryption` feature. Tracked as
+     [#100](https://github.com/adriendellagaspera/reconcile-rs/issues/100) (`M-breaking`).
+   - `check_key_or_insecure_opt_in` — kept as-is: it is the loud, deliberate security guard #325
+     chose specifically so a cluster cannot start unauthenticated by silent default; a `Result` a
+     caller can inspect-and-ignore is exactly the footgun #325 was written to close, not a
+     data-shape failure this decision is about.
 
 ---
 
