@@ -74,13 +74,27 @@ impl Config {
     ///
     /// # Panics
     ///
-    /// If the total exceeds [`MAX_NETS`](super::MAX_NETS).
+    /// If the total exceeds [`MAX_NETS`](super::MAX_NETS). See
+    /// [`try_with_nets`](Self::try_with_nets) for a non-panicking alternative.
     #[must_use]
     pub fn with_nets(mut self, nets: &[IpNet]) -> Self {
         for &net in nets {
             self = self.with_net(net);
         }
         self
+    }
+
+    /// As [`with_nets`](Self::with_nets), but returns a [`ConfigError`] instead of panicking past
+    /// [`MAX_NETS`](super::MAX_NETS).
+    ///
+    /// # Errors
+    ///
+    /// If the total exceeds [`MAX_NETS`](super::MAX_NETS).
+    pub fn try_with_nets(mut self, nets: &[IpNet]) -> Result<Self, ConfigError> {
+        for &net in nets {
+            self = self.try_with_net(net)?;
+        }
+        Ok(self)
     }
 
     /// Set how often (in reconciliation rounds) the full anti-entropy comparison is sent to
