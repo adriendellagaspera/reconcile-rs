@@ -51,4 +51,11 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     pub(crate) fn node_id(&self) -> NodeId {
         self.clock.node_id()
     }
+
+    /// Mirrors [`Config::max_value_size`](crate::replicated_map::Config::max_value_size) — the
+    /// ceiling `ReplicatedMap::try_insert`/`try_update` check an encoded value against before any
+    /// local state changes (#82).
+    pub(crate) fn max_value_size(&self) -> Option<usize> {
+        self.max_value_size
+    }
 }
