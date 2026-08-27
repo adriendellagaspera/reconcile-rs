@@ -464,9 +464,12 @@ guarantees whose resolution history §8 tracks.
      (`InvalidData`) or retry-exhausted persisted state; `snapshot_now` in the same file already
      returns `io::Result`, the pattern to extend. Tracked as
      [#99](https://github.com/adriendellagaspera/reconcile-rs/issues/99) (`M-breaking`).
-   - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — panics when `encrypt = true`
-     without the `encryption` feature. Tracked as
-     [#100](https://github.com/adriendellagaspera/reconcile-rs/issues/100) (`M-breaking`).
+   - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — resolved by #100: added
+     `try_new`/`try_with_rotation`, returning a new `EncryptionFeatureDisabled` error instead of
+     panicking when `encrypt = true` without the `encryption` feature. `new`/`with_rotation` keep
+     their panicking signatures and now delegate to the fallible form: the mismatch is a
+     build-configuration fact checked once at startup (which Cargo features this binary was
+     compiled with), not runtime data a peer or attacker ever influences.
    - `check_key_or_insecure_opt_in` — kept as-is: it is the loud, deliberate security guard #325
      chose specifically so a cluster cannot start unauthenticated by silent default; a `Result` a
      caller can inspect-and-ignore is exactly the footgun #325 was written to close, not a

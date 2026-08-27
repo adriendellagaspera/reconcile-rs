@@ -256,6 +256,32 @@ fn enabled_overhead_is_the_sum_of_tag_version_and_replay_header() {
     assert_eq!(auth.overhead(), TAG_LEN + VERSION_LEN + REPLAY_HEADER_LEN);
 }
 
+/// #100: without the `encryption` feature, `try_new`/`try_with_rotation` report
+/// `EncryptionFeatureDisabled` instead of panicking, mirroring `new`/`with_rotation`'s panic.
+#[test]
+#[cfg(not(feature = "encryption"))]
+fn try_new_reports_encryption_feature_disabled_without_panicking() {
+    assert_eq!(
+        Authenticator::try_new(Some(ClusterKey::new([0x11; KEY_LEN])), true).err(),
+        Some(EncryptionFeatureDisabled)
+    );
+    assert_eq!(
+        Authenticator::try_with_rotation(
+            Some(Keys::single(ClusterKey::new([0x11; KEY_LEN]))),
+            true
+        )
+        .err(),
+        Some(EncryptionFeatureDisabled)
+    );
+}
+
+/// The non-encrypting paths never fail, feature or not.
+#[test]
+fn try_new_succeeds_when_not_requesting_encryption() {
+    assert!(Authenticator::try_new(Some(ClusterKey::new([0x11; KEY_LEN])), false).is_ok());
+    assert!(Authenticator::try_new(None, false).is_ok());
+}
+
 /// Disabled still frames — the wire-version byte is present regardless of
 /// authentication mode, since unauthenticated is the default.
 #[test]

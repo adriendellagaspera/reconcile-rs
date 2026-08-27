@@ -52,6 +52,12 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `gossip::auth::Authenticator::try_new`/`try_with_rotation` and
+  `gossip::auth::EncryptionFeatureDisabled` (#100): non-panicking twins of `new`/`with_rotation`,
+  which panicked when `encrypt = true` was requested without the `encryption` feature. `new`/
+  `with_rotation` keep their panicking signatures (ARCHITECTURE.md §5 invariant 15) — the mismatch
+  is a build-configuration fact checked once at startup, not runtime data a peer or attacker ever
+  influences.
 - `Config::max_concurrent_broadcasts`/`with_max_concurrent_broadcasts` (default 1024, #83): bounds
   the number of concurrently in-flight write-broadcast tasks, the egress-side counterpart of
   `Config::max_concurrent_bulk_dumps`; the `reconcile_broadcasts_in_flight` gauge and

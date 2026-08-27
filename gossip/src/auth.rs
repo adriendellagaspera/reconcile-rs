@@ -144,6 +144,12 @@ pub enum ClusterKeyError {
     WrongByteLength(usize),
 }
 
+/// Returned by [`Authenticator::try_new`]/[`try_with_rotation`](Authenticator::try_with_rotation)
+/// when `encrypt` is requested but the crate was built without the `encryption` feature.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct EncryptionFeatureDisabled;
+
 /// [`Payload`] state: cleared the MAC/AEAD gate, but not yet checked against the per-peer replay
 /// filter. The only state [`Authenticator::open`] can produce.
 pub struct Authenticated;
