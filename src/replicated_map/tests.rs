@@ -18,6 +18,7 @@ mod membership;
 mod peer_cap;
 mod persistence;
 mod read;
+mod snapshot_cadence;
 mod write;
 
 /// A config bound to a fresh port on loopback — port `0` is refused, so
@@ -43,7 +44,8 @@ fn ephemeral_config() -> Config {
         max_peers: super::config::DEFAULT_MAX_PEERS,
         max_concurrent_bulk_dumps: super::config::DEFAULT_MAX_CONCURRENT_BULK_DUMPS,
         max_concurrent_broadcasts: super::config::DEFAULT_MAX_CONCURRENT_BROADCASTS,
-        snapshot_interval: super::persistence::SNAPSHOT_INTERVAL,
+        snapshot_interval: Some(super::persistence::SNAPSHOT_INTERVAL),
+        snapshot_change_threshold: super::config::DEFAULT_SNAPSHOT_CHANGE_THRESHOLD,
         max_clock_drift: crate::clock::MAX_CLOCK_DRIFT,
         coalesce_window: Duration::ZERO,
     }

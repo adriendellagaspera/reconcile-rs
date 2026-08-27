@@ -32,7 +32,8 @@ fn ephemeral_config() -> Config {
         max_peers: 1024,
         max_concurrent_bulk_dumps: 4,
         max_concurrent_broadcasts: 1024,
-        snapshot_interval: Duration::from_secs(5),
+        snapshot_interval: Some(Duration::from_secs(5)),
+        snapshot_change_threshold: 1,
         max_clock_drift: crate::clock::MAX_CLOCK_DRIFT,
         coalesce_window: Duration::ZERO,
     }

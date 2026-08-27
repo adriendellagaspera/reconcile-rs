@@ -237,6 +237,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             // 3) Re-acquire and re-reconcile: the lock was released, so a concurrent write may
             //    have landed. `reconcile` is idempotent `max`, so re-applying is safe either way.
             if !to_apply.is_empty() {
+                self.record_changes(to_apply.len());
                 let _guard = self.write_lock.lock();
                 let mut map = (*self.map.load_full()).clone();
                 let mut projection = (*self.projection.load_full()).clone();

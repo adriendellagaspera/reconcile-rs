@@ -518,11 +518,12 @@ async fn config_snapshot_interval_actually_changes_the_periodic_cadence() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fast_cadence.bin");
     let short_interval = Duration::from_millis(20);
-    let store =
-        ReplicatedMap::<i32, i32>::new(ephemeral_config().with_snapshot_interval(short_interval))
-            .await
-            .expect("bind failed")
-            .with_persistence(Arc::new(FileSnapshot::new(&path)));
+    let store = ReplicatedMap::<i32, i32>::new(
+        ephemeral_config().with_snapshot_interval(Some(short_interval)),
+    )
+    .await
+    .expect("bind failed")
+    .with_persistence(Arc::new(FileSnapshot::new(&path)));
     store.just_insert(1, 10);
 
     let store2 = store.clone();

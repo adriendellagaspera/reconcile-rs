@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### `Config::snapshot_interval` is now `Option<Duration>`
+
+`Config::snapshot_interval` (and `Config::with_snapshot_interval`) changed from `Duration` to
+`Option<Duration>` (#46). Action needed if you set it explicitly:
+
+```rust
+// Before
+Config::new(8080).with_snapshot_interval(Duration::from_secs(30));
+// After: `Some` wraps the same value, for the same periodic cadence.
+Config::new(8080).with_snapshot_interval(Some(Duration::from_secs(30)));
+```
+
+`None` is new: it disables `ReplicatedMap::run`'s periodic background snapshot task entirely —
+no wakeup, no snapshot IO, until an explicit `snapshot_now()` call. The default is
+`Some(Duration::from_secs(5))`, matching the historical always-on 5 s cadence.
+
+A new `Config::snapshot_change_threshold` (default `1`, set via
+`with_snapshot_change_threshold`) additionally gates every periodic wakeup: it only writes once
+that many changes (local writes, gossip-applied remote updates, tombstone GC removals) have
+landed since the last snapshot. At the default, no action is needed — any single change is
+enough to trigger a write, the same as the unconditional-write behavior before this change; only
+a fully idle node between wakeups now skips the write. `snapshot_now()` always writes regardless
+of this threshold.
+
 ### Wire format: a converged comparison round is now acked
 
 `rsos::protocol_round`'s pure-SKIP outcome — every active range a peer sent already matched, so
