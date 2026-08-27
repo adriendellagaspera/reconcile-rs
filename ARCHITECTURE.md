@@ -447,19 +447,20 @@ guarantees whose resolution history §8 tracks.
    control the shape or size of the data reaching it (config, discovery-supplied peer info,
    persisted state, a caller-chosen key), so panicking on it is a self-inflicted DoS surface, not a
    caller bug — the same reasoning #82 gave for `try_insert`/`try_update` (F13), generalized instead
-   of repeated ad hoc per method. New public API must return `Result` from the start; no new `try_`
-   twin should ever be needed again. This does not extend to a missing ambient Tokio runtime (an
-   environment precondition, documented as `# Panics`), an internal "provably impossible" assertion
-   (HLC monotonicity, mutex poisoning), or an index-style panic (`Rsos::select`,
-   `FingerprintTreeMap::select`) — those mirror `Vec`'s own `[]` vs `.get()` split, Rust's own
-   convention, not this crate's to relitigate. Disposition of #95's audit:
-   - `Config::with_net`/`with_nets` (`src/replicated_map/config/builders.rs`) — resolved by #97:
-     `with_net` already delegated to a fallible `try_with_net`; `try_with_nets` (the missing
-     fallible bulk form) was added alongside it. The panicking `with_net`/`with_nets` convenience
-     wrappers are kept, not deprecated: `MAX_NETS` is a static, developer-visible constant checked
-     once at startup construction, not data an attacker or a live peer ever influences — closer to
-     the index-style panics this invariant already carves out than to `insert`/`update`'s live DoS
-     surface.
+   of repeated ad hoc per method. New public API must return `Result` from the start, as the sole
+   entry point — a panicking convenience plus a `try_` twin is exactly the halfway state this
+   decision retires, not a legitimate resting point, so an existing pair converts to one
+   `Result`-returning method rather than gaining a permanent twin. This does not extend to a missing
+   ambient Tokio runtime (an environment precondition, documented as `# Panics`), an internal
+   "provably impossible" assertion (HLC monotonicity, mutex poisoning), or an index-style panic
+   (`Rsos::select`, `FingerprintTreeMap::select`) — those mirror `Vec`'s own `[]` vs `.get()` split,
+   Rust's own convention, not this crate's to relitigate. Disposition of #95's audit:
+   - `Config::with_net`/`with_nets` (`src/replicated_map/config/builders.rs`) — converted by #97:
+     both now return `Result<Self, ConfigError>` directly; the panicking wrappers and the
+     `try_with_net` twin are gone, one entry point each, matching this invariant's "no new `try_`
+     twin should ever be needed again" — extended here to existing API too, since a twin pair is
+     exactly the halfway state this decision exists to retire. `M-breaking`; every call site in
+     this workspace (~70, all test/bench/example code) updated to `?`/`.unwrap()`.
    - `ReplicatedMap::with_discovery` (`src/replicated_map/discovery.rs`) — panics, even in release
      builds, on a `Speculative` `Discovery::kind()`; converting to `try_with_discovery` is tracked
      as [#98](https://github.com/adriendellagaspera/reconcile-rs/issues/98) (`M-breaking`).

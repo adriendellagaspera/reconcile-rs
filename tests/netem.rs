@@ -319,6 +319,7 @@ async fn a_replicated_map_converges_over_a_lossy_delayed_link() {
                 .with_port(addr.port())
                 .with_listen_addr(addr.ip())
                 .with_net("127.0.0.1/8".parse().unwrap())
+                .unwrap()
                 // A lost datagram is repaired by the next anti-entropy round, so this cadence is
                 // the test's runtime. The 1 s default would make it a minute-long test.
                 .with_reconcile_interval(Duration::from_millis(20))

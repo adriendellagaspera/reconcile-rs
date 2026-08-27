@@ -38,6 +38,9 @@ All notable changes to this project are documented here. Format follows
   snapshot of the backing tree plus the looked-up key instead of a lock guard, so holding one no
   longer risks a deadlock against a concurrent write on the same handle. See
   [MIGRATING.md](MIGRATING.md).
+- **BREAKING**: `Config::with_net`/`with_nets` now return `Result<Self, ConfigError>` instead of
+  panicking past `MAX_NETS` (#97, ARCHITECTURE.md §5 invariant 15) — the `try_with_net` twin is
+  gone; `with_net` is the sole, fallible entry point. See [MIGRATING.md](MIGRATING.md).
 - A configured cluster key now also keys the range-fingerprint lift (#19, migrated from
   `akvize/reconcile-rs#337`): `Replica`/`ReadReplicaMap` derive an independent BLAKE3 subkey from
   `Config::cluster_key` (`ClusterKey::derive_lift_key`) and pass it to `rsos::FingerprintTreeMap`,
@@ -52,11 +55,6 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
-- `Config::try_with_nets` (#97): a fallible bulk form of `try_with_net`, closing the gap `with_nets`
-  left — it could only panic past `MAX_NETS`, with no non-panicking bulk alternative. `with_net`/
-  `with_nets` keep their panicking signatures (ARCHITECTURE.md §5 invariant 15): the cap they check
-  is a static, developer-visible constant enforced once at startup, not data an attacker or a live
-  peer ever influences.
 - `Config::max_concurrent_broadcasts`/`with_max_concurrent_broadcasts` (default 1024, #83): bounds
   the number of concurrently in-flight write-broadcast tasks, the egress-side counterpart of
   `Config::max_concurrent_bulk_dumps`; the `reconcile_broadcasts_in_flight` gauge and

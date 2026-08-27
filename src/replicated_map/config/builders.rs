@@ -40,27 +40,13 @@ impl Config {
     /// Declare a geographical network by its CIDR — once per network, **including this node's
     /// own** (see [`nets`](Config::nets)).
     ///
-    /// # Panics
-    ///
-    /// If more than [`MAX_NETS`](super::MAX_NETS) networks are declared. See [`try_with_net`](Self::try_with_net)
-    /// for a non-panicking alternative — the same [`MAX_NETS`](super::MAX_NETS) cap
-    /// [`ReplicatedMap::set_nets`](super::super::ReplicatedMap::set_nets)/
-    /// [`add_net`](super::super::ReplicatedMap::add_net) enforce at runtime.
-    #[must_use]
-    pub fn with_net(self, net: IpNet) -> Self {
-        match self.try_with_net(net) {
-            Ok(config) => config,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// As [`with_net`](Self::with_net), but returns a [`ConfigError`] instead of panicking past
-    /// [`MAX_NETS`](super::MAX_NETS).
-    ///
     /// # Errors
     ///
-    /// If more than [`MAX_NETS`](super::MAX_NETS) networks are declared.
-    pub fn try_with_net(mut self, net: IpNet) -> Result<Self, ConfigError> {
+    /// If more than [`MAX_NETS`](super::MAX_NETS) networks are declared — the same
+    /// [`MAX_NETS`](super::MAX_NETS) cap
+    /// [`ReplicatedMap::set_nets`](super::super::ReplicatedMap::set_nets)/
+    /// [`add_net`](super::super::ReplicatedMap::add_net) enforce at runtime.
+    pub fn with_net(mut self, net: IpNet) -> Result<Self, ConfigError> {
         let slot = self
             .nets
             .iter_mut()
@@ -72,27 +58,12 @@ impl Config {
 
     /// Declare several networks at once (see [`with_net`](Config::with_net)).
     ///
-    /// # Panics
-    ///
-    /// If the total exceeds [`MAX_NETS`](super::MAX_NETS). See
-    /// [`try_with_nets`](Self::try_with_nets) for a non-panicking alternative.
-    #[must_use]
-    pub fn with_nets(mut self, nets: &[IpNet]) -> Self {
-        for &net in nets {
-            self = self.with_net(net);
-        }
-        self
-    }
-
-    /// As [`with_nets`](Self::with_nets), but returns a [`ConfigError`] instead of panicking past
-    /// [`MAX_NETS`](super::MAX_NETS).
-    ///
     /// # Errors
     ///
     /// If the total exceeds [`MAX_NETS`](super::MAX_NETS).
-    pub fn try_with_nets(mut self, nets: &[IpNet]) -> Result<Self, ConfigError> {
+    pub fn with_nets(mut self, nets: &[IpNet]) -> Result<Self, ConfigError> {
         for &net in nets {
-            self = self.try_with_net(net)?;
+            self = self.with_net(net)?;
         }
         Ok(self)
     }

@@ -30,11 +30,13 @@ async fn test() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
     let cfg2 = Config::default()
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -142,11 +144,13 @@ async fn get_mut_edit_propagates_to_peers() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
     let cfg2 = Config::default()
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
 
     let store1 = ReplicatedMap::new(cfg1)
@@ -198,12 +202,14 @@ async fn concurrent_writes_converge() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net)
+        .unwrap()
         .with_node_id(NodeId::new(1))
         .with_insecure_no_key();
     let cfg2 = Config::default()
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net)
+        .unwrap()
         .with_node_id(NodeId::new(2))
         .with_insecure_no_key();
 
