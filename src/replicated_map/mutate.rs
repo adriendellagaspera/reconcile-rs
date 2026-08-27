@@ -13,7 +13,8 @@ use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::Entry;
 
-use super::{Backpressure, ReplicatedMap};
+use super::value_size::{check_value_size, ValueTooLarge};
+use super::{Backpressure, ReplicatedMap, WriteRejected};
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Mutate the value for `k` in place, then propagate like [`insert`](ReplicatedMap::insert).
@@ -69,11 +70,16 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// claimed *before* this runs (#83), unlike [`mutate_live`](Self::mutate_live)'s callers.
     ///
     /// The shared core of [`mutate_live`](Self::mutate_live) and [`try_update`](Self::try_update).
-    fn mutate_live_no_broadcast<F: FnOnce(&mut V)>(
+    /// `validate` sees the mutated value — while the write lock is still held, before it is stored
+    /// — and can reject it (#82): a rejection leaves the map/projection exactly as they were,
+    /// since the clones the mutation ran against are simply dropped, never stored.
+    /// [`mutate_live`](Self::mutate_live) passes a `validate` that never rejects.
+    pub(super) fn mutate_live_checked<F: FnOnce(&mut V)>(
         &self,
         k: &K,
         callback: F,
-    ) -> Option<Entry<Timestamp, V>> {
+        validate: impl FnOnce(&V) -> Result<(), ValueTooLarge>,
+    ) -> Result<Option<Entry<Timestamp, V>>, ValueTooLarge> {
         // Mint the timestamp before taking the write lock, matching the lock order of `insert`.
         let now = self.engine.clock_now();
         let mut updated: Option<Entry<Timestamp, V>> = None;
@@ -88,6 +94,11 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
                 }
             }
         });
+        if let Some(entry) = &updated {
+            // `value()` is `Some` here: `updated` is only ever set inside the `value_mut()` branch
+            // above, which only runs for a live entry.
+            validate(entry.value().expect("just-mutated live entry has a value"))?;
+        }
         if updated.is_some() {
             if let Some(entry) = map.get(k) {
                 let projected = entry.project();
@@ -97,15 +108,20 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             }
         }
         self.engine.map.store(Arc::new(map));
-        updated
+        Ok(updated)
     }
 
     /// Mutate `k` in place **only when live**, re-stamping and broadcasting; returns whether it
     /// was. Atomic against the reconciliation loop.
     ///
-    /// The shared core of [`update`](Self::update) and [`upsert`](Self::upsert).
+    /// The shared core of [`update`](Self::update) and [`upsert`](Self::upsert). `validate` never
+    /// rejects here — [`try_update`](Self::try_update) is what makes
+    /// [`mutate_live_checked`](Self::mutate_live_checked)'s rejection path reachable.
     fn mutate_live<F: FnOnce(&mut V)>(&self, k: &K, callback: F) -> bool {
-        match self.mutate_live_no_broadcast(k, callback) {
+        match self
+            .mutate_live_checked(k, callback, |_| Ok(()))
+            .expect("validate is `|_| Ok(())`: never rejects")
+        {
             Some(value) => {
                 self.engine.broadcast_update(k.clone(), value);
                 true
@@ -157,14 +173,17 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// [`max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts) egress slot
     /// **before** even checking whether `k` is live, so a call is all-or-nothing the way
     /// [`ReplicatedMap::try_insert`](super::ReplicatedMap::try_insert) is — never a mutation that
-    /// then silently fails to broadcast. Always sends immediately, bypassing coalescing, for the
-    /// same reason `try_insert` does.
+    /// then silently fails to broadcast. Also checks the mutated value's encoded size against
+    /// [`Config::max_value_size`](super::Config::max_value_size) (#82), before it is stored.
+    /// Always sends immediately, bypassing coalescing, for the same reason `try_insert` does.
     ///
     /// # Errors
     ///
-    /// [`Backpressure`] when the egress budget is already at capacity. Nothing is mutated —
-    /// including when `k` turns out to be absent/tombstoned, which `update` would otherwise treat
-    /// as a safe, budget-free no-op; that asymmetry is the cost of the all-or-nothing guarantee.
+    /// [`WriteRejected::Backpressure`] when the egress budget is already at capacity, or
+    /// [`WriteRejected::TooLarge`] when the mutated value's encoded size exceeds
+    /// `max_value_size`. Nothing is mutated either way — including when `k` turns out to be
+    /// absent/tombstoned, which `update` would otherwise treat as a safe, budget-free no-op;
+    /// that asymmetry is the cost of the all-or-nothing guarantee.
     ///
     /// # Deadlock
     ///
@@ -196,24 +215,30 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// assert_eq!(store.get_cloned(&"a".to_string()), Some(2));
     /// # }
     /// ```
-    pub fn try_update<F: FnOnce(&mut V)>(&self, k: &K, f: F) -> Result<bool, Backpressure> {
+    pub fn try_update<F: FnOnce(&mut V)>(&self, k: &K, f: F) -> Result<bool, WriteRejected> {
         let Some(guard) = self.engine.try_claim_broadcast_slot() else {
-            return Err(Backpressure {
+            return Err(WriteRejected::Backpressure(Backpressure {
                 in_flight: self.engine.broadcasts_in_flight(),
                 max_in_flight: self.engine.max_concurrent_broadcasts(),
-            });
+            }));
         };
-        match self.mutate_live_no_broadcast(k, f) {
-            Some(value) => {
+        let max_value_size = self.engine.max_value_size();
+        match self.mutate_live_checked(k, f, |value| check_value_size(value, max_value_size)) {
+            Ok(Some(value)) => {
                 self.engine
                     .broadcast_update_with_claimed_slot(k.clone(), value, guard);
                 Ok(true)
             }
-            None => {
+            Ok(None) => {
                 // No live entry to update: release the claimed slot immediately rather than hold
                 // it for a broadcast that will never happen.
                 drop(guard);
                 Ok(false)
+            }
+            Err(err) => {
+                // Rejected on size: same as the absent-key case, nothing to broadcast.
+                drop(guard);
+                Err(WriteRejected::TooLarge(err))
             }
         }
     }

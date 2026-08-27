@@ -111,8 +111,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     ///
     /// A single encoded `(key, entry)` must fit `65507 - authentication overhead` bytes: the send
     /// path packs messages into datagrams but never fragments one. Above that the key **never
-    /// converges on any peer**, visible only as a `warn!` on the send path. Stay well clear of the
-    /// ceiling, and of the MTU.
+    /// converges on any peer**, visible only as a `warn!` and `VALUES_OVERSIZED_TOTAL` on the send
+    /// path — this method itself never rejects it (#82); [`try_insert`](Self::try_insert) does.
     ///
     /// # Panics
     ///

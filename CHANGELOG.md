@@ -59,9 +59,9 @@ All notable changes to this project are documented here. Format follows
   rejection/skip. `ReplicatedMap::insert`/`update`/`insert_bulk` keep their infallible signatures —
   at the budget they skip only that call's eager broadcast, recovered by the next anti-entropy
   round or repair retry (#23). `ReplicatedMap::try_insert`/`try_update` are new, additive,
-  all-or-nothing counterparts that instead reject with `replicated_map::Backpressure` when the
-  budget is exhausted, for a caller that wants to know rather than rely on that backstop — see
-  README "Write backpressure".
+  all-or-nothing counterparts that instead reject with `replicated_map::WriteRejected::Backpressure`
+  when the budget is exhausted, for a caller that wants to know rather than rely on that backstop —
+  see README "Write backpressure".
 - `Config::repair_interval`/`with_repair_interval`, and
   `ReplicatedMap`/`ReplicatedSet::set_repair_interval` (#23): an RTT-scale timer (default 150 ms)
   that repairs a comparison round or bulk-transfer datagram lost in flight, decoupled from
@@ -81,6 +81,15 @@ All notable changes to this project are documented here. Format follows
   would for a dated one. `sync_state()` returns a `ReadSyncState` (no `last_snapshot_at`: a read
   replica deliberately never persists). No `node_id()`/`members()` counterpart — a read replica
   mints no timestamps and holds no causal-stability membership, so neither concept applies.
+- `Config::max_value_size`/`with_max_value_size` and `replicated_map::ValueTooLarge` (#82): a write
+  whose encoded value exceeds the configured ceiling is now rejected synchronously, before any
+  local state changes, instead of only being logged and counted later on the send path
+  (`VALUES_OVERSIZED_TOTAL`) once the key can never converge on any peer. Checked by the same
+  `ReplicatedMap::try_insert`/`try_update` #83 added, which is why their error type is
+  `replicated_map::WriteRejected` (`TooLarge`/`Backpressure`) rather than bare `Backpressure` —
+  the two issues' fallible-write asks turned out to be one pair of methods, not two.
+  `insert`/`update`/`get_mut`/`upsert` are unaffected either way, and `max_value_size` is `None`
+  (no ceiling) by default. See README "Value-size ceiling".
 - `FingerprintTreeMap::from_sorted_iter`/`from_sorted_iter_keyed` (#51): a bottom-up bulk build
   from already-sorted, duplicate-free input, for a caller that knows its dataset up front (initial
   load, snapshot recovery) and wants to skip both the `O(n log n)` sort `FromIterator::collect()`
