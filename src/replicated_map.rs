@@ -41,6 +41,7 @@ pub use config::{Config, ConfigError, MAX_NETS};
 #[cfg(test)]
 pub(crate) use discovery::MemberPresence;
 pub use membership::{RunOutcome, SyncState};
+pub use persistence::PersistenceLoadError;
 
 /// Default cadence of the dynamic-discovery task (see [`ReplicatedMap::with_discovery_interval`]).
 const DEFAULT_DISCOVERY_INTERVAL: Duration = Duration::from_secs(5);

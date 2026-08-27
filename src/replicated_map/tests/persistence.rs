@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use crate::persistence::{PersistedState, Persistence};
 use crate::replica::version_hash;
+use crate::replicated_map::PersistenceLoadError;
 use crate::{FileSnapshot, ReplicatedMap};
 
 use super::ephemeral_config;
@@ -154,6 +155,44 @@ async fn invalid_data_panics_without_retrying() {
     // Unreachable on panic, but documents intent: this must not have gone through even one
     // retry backoff.
     assert!(start.elapsed() < super::super::persistence::LOAD_RETRY_BASE_DELAY);
+}
+
+/// #99: `try_with_persistence` is `with_persistence`'s non-panicking twin — same two failure
+/// modes, returned as a `PersistenceLoadError` instead of a panic.
+#[tokio::test]
+async fn try_with_persistence_reports_retries_exhausted_without_panicking() {
+    let backend = Arc::new(FlakyLoad {
+        kind: std::io::ErrorKind::PermissionDenied,
+        failures_remaining: std::sync::atomic::AtomicU32::new(
+            super::super::persistence::LOAD_RETRY_ATTEMPTS,
+        ),
+    });
+    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
+        .await
+        .expect("bind failed");
+    match store.try_with_persistence(backend) {
+        Ok(_) => panic!("expected RetriesExhausted, got Ok"),
+        Err(PersistenceLoadError::RetriesExhausted(_)) => {}
+        Err(other) => panic!("expected RetriesExhausted, got {other:?}"),
+    }
+}
+
+/// #99: the `InvalidData` (corrupt/incompatible) path is likewise reported, not panicked, via
+/// `try_with_persistence`.
+#[tokio::test]
+async fn try_with_persistence_reports_corrupt_data_without_panicking() {
+    let backend = Arc::new(FlakyLoad {
+        kind: std::io::ErrorKind::InvalidData,
+        failures_remaining: std::sync::atomic::AtomicU32::new(1),
+    });
+    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
+        .await
+        .expect("bind failed");
+    match store.try_with_persistence(backend) {
+        Ok(_) => panic!("expected Corrupt, got Ok"),
+        Err(PersistenceLoadError::Corrupt(_)) => {}
+        Err(other) => panic!("expected Corrupt, got {other:?}"),
+    }
 }
 
 /// `persist_snapshot` clones the map in `SNAPSHOT_CHUNK_SIZE`-entry chunks, re-loading the `Arc`

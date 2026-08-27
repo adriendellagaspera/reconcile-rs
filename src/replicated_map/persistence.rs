@@ -6,6 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::fmt;
 use std::hash::Hash;
 use std::io;
 use std::ops::Bound;
@@ -25,6 +26,45 @@ use super::ReplicatedMap;
 
 /// How often the background task writes a full snapshot to the persistence backend.
 pub(super) const SNAPSHOT_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Returned by [`try_with_persistence`](ReplicatedMap::try_with_persistence) when loading
+/// previously persisted state fails.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum PersistenceLoadError {
+    /// The backend's [`load`](Persistence::load) failed with
+    /// [`InvalidData`](io::ErrorKind::InvalidData): persisted state is corrupt or from an
+    /// incompatible format. Never retried.
+    Corrupt(io::Error),
+    /// The backend's [`load`](Persistence::load) failed
+    /// [`LOAD_RETRY_ATTEMPTS`] times in a row with a transient error.
+    RetriesExhausted(io::Error),
+}
+
+impl fmt::Display for PersistenceLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PersistenceLoadError::Corrupt(err) => write!(
+                f,
+                "persisted state is corrupt or from an incompatible format, refusing to silently start fresh: {err}"
+            ),
+            PersistenceLoadError::RetriesExhausted(err) => write!(
+                f,
+                "failed to load persisted state after {LOAD_RETRY_ATTEMPTS} attempts: {err}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for PersistenceLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            PersistenceLoadError::Corrupt(err) | PersistenceLoadError::RetriesExhausted(err) => {
+                Some(err)
+            }
+        }
+    }
+}
 
 /// Attempts [`with_persistence`](ReplicatedMap::with_persistence) makes to load persisted state
 /// before giving up.
@@ -68,7 +108,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// permission or I/O hiccup) is retried up to `LOAD_RETRY_ATTEMPTS` (5) times with exponential
     /// backoff before this panics, so a slow-starting environment does not crash-loop on every
     /// restart attempt; a decode/format error ([`InvalidData`](io::ErrorKind::InvalidData)) is
-    /// never transient and panics immediately, unretried.
+    /// never transient and panics immediately, unretried. See
+    /// [`try_with_persistence`](Self::try_with_persistence) for a non-panicking alternative.
     ///
     /// ```
     /// use reconcile::{
@@ -95,7 +136,30 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_persistence(mut self, backend: Arc<dyn Persistence<K, V>>) -> Self {
+    pub fn with_persistence(self, backend: Arc<dyn Persistence<K, V>>) -> Self {
+        match self.try_with_persistence(backend) {
+            Ok(store) => store,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    /// As [`with_persistence`](Self::with_persistence), but returns a [`PersistenceLoadError`]
+    /// instead of panicking when the backend fails to load.
+    ///
+    /// # Errors
+    ///
+    /// If the backend fails to load: a damaged durable state must be an explicit decision, never a
+    /// silent fresh start. A *transient* failure (anything other than
+    /// [`InvalidData`](io::ErrorKind::InvalidData) — a not-yet-mounted volume, a momentary
+    /// permission or I/O hiccup) is retried up to `LOAD_RETRY_ATTEMPTS` (5) times with exponential
+    /// backoff before this returns [`RetriesExhausted`](PersistenceLoadError::RetriesExhausted), so
+    /// a slow-starting environment does not crash-loop on every restart attempt; a decode/format
+    /// error ([`InvalidData`](io::ErrorKind::InvalidData)) is never transient and returns
+    /// [`Corrupt`](PersistenceLoadError::Corrupt) immediately, unretried.
+    pub fn try_with_persistence(
+        mut self,
+        backend: Arc<dyn Persistence<K, V>>,
+    ) -> Result<Self, PersistenceLoadError> {
         // A random node id changes every restart, so the LWW tie-break is stable only within one
         // process lifetime — durable state wants an explicit `Config::with_node_id`.
         if self.engine.node_id_is_random() {
@@ -114,7 +178,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
                 match backend.load() {
                     Ok(state) => break state,
                     Err(err) if err.kind() == io::ErrorKind::InvalidData => {
-                        panic!("persisted state is corrupt or from an incompatible format, refusing to silently start fresh: {err}");
+                        return Err(PersistenceLoadError::Corrupt(err));
                     }
                     Err(err) if attempt + 1 < LOAD_RETRY_ATTEMPTS => {
                         attempt += 1;
@@ -126,9 +190,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
                         std::thread::sleep(delay);
                     }
                     Err(err) => {
-                        panic!(
-                            "failed to load persisted state after {LOAD_RETRY_ATTEMPTS} attempts: {err}"
-                        );
+                        return Err(PersistenceLoadError::RetriesExhausted(err));
                     }
                 }
             }
@@ -146,7 +208,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             self.engine.just_insert_bulk(&state.entries);
         }
         self.persistence = backend;
-        self
+        Ok(self)
     }
 
     /// Register a callback invoked with the [`io::Error`] whenever a snapshot write to the
