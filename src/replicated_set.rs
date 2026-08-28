@@ -81,9 +81,15 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     }
 
     /// Plug in a durable persistence backend. See [`ReplicatedMap::with_persistence`].
-    #[must_use]
-    pub fn with_persistence(self, backend: Arc<dyn Persistence<K, ()>>) -> Self {
-        ReplicatedSet(self.0.with_persistence(backend))
+    ///
+    /// # Errors
+    ///
+    /// If the backend fails to load — see [`ReplicatedMap::with_persistence`].
+    pub fn with_persistence(
+        self,
+        backend: Arc<dyn Persistence<K, ()>>,
+    ) -> Result<Self, crate::replicated_map::PersistenceLoadError> {
+        self.0.with_persistence(backend).map(ReplicatedSet)
     }
 
     /// Seed an initial peer. See [`ReplicatedMap::with_seed`].

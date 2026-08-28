@@ -57,6 +57,11 @@ All notable changes to this project are documented here. Format follows
   `Discovery::kind()` (#98, ARCHITECTURE.md §5 invariant 15) — no `try_with_discovery` twin
   remains. `with_dns_discovery` is unaffected: `DnsDiscovery::kind()` is unconditionally
   `Authoritative`. See [MIGRATING.md](MIGRATING.md).
+- **BREAKING**: `ReplicatedMap::with_persistence`/`ReplicatedSet::with_persistence` now return
+  `Result<Self, replicated_map::PersistenceLoadError>` instead of panicking on corrupted
+  (`InvalidData`) or retry-exhausted persisted state (#99, `ARCHITECTURE.md` §5 invariant 15). No
+  `try_with_persistence` twin: the panicking form is gone, replaced outright rather than kept
+  alongside a fallible one. See [MIGRATING.md](MIGRATING.md).
 
 ### Added
 

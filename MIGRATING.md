@@ -83,6 +83,26 @@ One behavioral improvement falls out of this: holding a `ValueRef` no longer ris
 against a concurrent write on the same handle — the write installs a fresh tree behind a new
 `Arc`, and the `ValueRef` still points at whichever tree was live when `get` returned it.
 
+### `with_persistence` now returns `Result` instead of panicking
+
+`ReplicatedMap::with_persistence`/`ReplicatedSet::with_persistence` changed from `Self` to
+`Result<Self, replicated_map::PersistenceLoadError>` (#99): loading corrupted (`InvalidData`) or
+retry-exhausted persisted state used to panic, now reports it instead. Action needed at every call
+site:
+
+```rust
+// Before
+let store = ReplicatedMap::<K, V>::new(config).await?.with_persistence(backend);
+// After
+let store = ReplicatedMap::<K, V>::new(config).await?.with_persistence(backend)?;
+```
+
+`PersistenceLoadError::Corrupt` wraps the original `io::Error` for an `InvalidData` failure (the
+disk state is corrupt or from an incompatible format); `PersistenceLoadError::RetriesExhausted`
+wraps it for any other error kind that persisted across every retry. There is no
+`try_with_persistence` — this is the one method now, not a fallible twin alongside the old
+panicking signature.
+
 ## 0.3.0 to 0.4.0
 
 Both changes below are additive-only-until-the-1.0-wire-freeze decisions (#382, #463) — the last

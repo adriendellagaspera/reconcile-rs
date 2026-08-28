@@ -475,10 +475,16 @@ guarantees whose resolution history §8 tracks.
      `ReplicatedSet::with_discovery` (a thin wrapper) converted the same way, and
      `with_dns_discovery` stays infallible since `DnsDiscovery::kind()` is unconditionally
      `Authoritative` by construction.
-   - `with_persistence`'s load path (`src/replicated_map/persistence.rs`) — panics on corrupted
-     (`InvalidData`) or retry-exhausted persisted state; `snapshot_now` in the same file already
-     returns `io::Result`, the pattern to extend. Tracked as
-     [#99](https://github.com/adriendellagaspera/reconcile-rs/issues/99) (`M-breaking`).
+   - `with_persistence`'s load path (`src/replicated_map/persistence.rs`,
+     `src/replicated_set.rs`) — resolved by #99: converted outright to
+     `Result<Self, PersistenceLoadError>`, replacing `PersistenceLoadError::{Corrupt,RetriesExhausted}`
+     panics; no `try_with_persistence` twin was added, and none remains. This one *is* genuine
+     runtime data: a corrupted or retry-exhausted disk state is an environmental fact discovered at
+     startup, not a static developer mistake — closer to `insert`/`update`'s DoS surface than to
+     `Config::with_net`'s static cap. The load loop's synchronous `std::thread::sleep` backoff was
+     reconsidered alongside this change and kept: making it async would require an `async fn`
+     `with_persistence`, a load-bearing signature change to every builder-chain caller, entangling
+     an orthogonal concern with this one — tracked separately if ever taken on.
    - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — panics when `encrypt = true`
      without the `encryption` feature. Tracked as
      [#100](https://github.com/adriendellagaspera/reconcile-rs/issues/100) (`M-breaking`).
