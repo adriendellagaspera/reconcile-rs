@@ -12,9 +12,10 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
-use crate::replicated_map::{Config, MAX_NETS};
+use crate::persistence::{PersistedState, Persistence};
+use crate::replicated_map::{Config, PersistenceLoadError, MAX_NETS};
 use crate::transport::InMemoryNetwork;
-use crate::ReplicatedMap;
+use crate::{FileSnapshot, ReplicatedMap};
 
 // The tuple-struct constructor is private to this module's parent (the wrapped map is a private
 // field), so it is reachable through `super`, not through the crate-root re-export.
@@ -211,4 +212,61 @@ async fn peers_and_members_reflect_a_converged_pair() {
 
     ta.abort();
     tb.abort();
+}
+
+/// `ReplicatedSet::with_persistence` is a thin delegate to `ReplicatedMap::with_persistence` —
+/// assert the delegation actually happens on the success path: membership recovers across a
+/// restart against the same backend, not just that calling it doesn't panic (same rationale as
+/// `set_nets_enforces_max_nets_at_runtime` above).
+#[tokio::test]
+async fn with_persistence_recovers_membership_on_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("snapshot.bin");
+
+    let set = ReplicatedSet::<i32>::new(ephemeral_config())
+        .await
+        .expect("bind failed")
+        .with_persistence(Arc::new(FileSnapshot::new(&path)))
+        .unwrap();
+    let _ = set.insert(1);
+    let _ = set.insert(2);
+    let _ = set.remove(&2);
+    set.0.snapshot_now().expect("snapshot write failed");
+
+    let restarted = ReplicatedSet::<i32>::new(ephemeral_config())
+        .await
+        .expect("bind failed")
+        .with_persistence(Arc::new(FileSnapshot::new(&path)))
+        .unwrap();
+    assert!(restarted.contains(&1));
+    assert!(!restarted.contains(&2), "tombstone was not recovered");
+}
+
+/// A [`Persistence`] backend whose `load` always fails with a given `io::ErrorKind`.
+struct FailingLoad(std::io::ErrorKind);
+
+impl<K: Send + Sync + 'static, V: Send + Sync + 'static> Persistence<K, V> for FailingLoad {
+    fn load(&self) -> std::io::Result<Option<PersistedState<K, V>>> {
+        Err(std::io::Error::new(self.0, "boom"))
+    }
+
+    fn save(&self, _state: &PersistedState<K, V>) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// `ReplicatedSet::with_persistence` is a thin delegate to `ReplicatedMap::with_persistence` —
+/// assert the delegation actually happens on the error path too: a backend load failure surfaces
+/// as `Err`, not swallowed or turned into a panic (same rationale as
+/// `with_persistence_recovers_membership_on_restart` above).
+#[tokio::test]
+async fn with_persistence_surfaces_load_errors() {
+    let set = ReplicatedSet::<i32>::new(ephemeral_config())
+        .await
+        .expect("bind failed");
+    match set.with_persistence(Arc::new(FailingLoad(std::io::ErrorKind::InvalidData))) {
+        Ok(_) => panic!("expected Corrupt, got Ok"),
+        Err(PersistenceLoadError::Corrupt(_)) => {}
+        Err(other) => panic!("expected Corrupt, got {other:?}"),
+    }
 }
