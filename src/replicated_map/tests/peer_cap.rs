@@ -56,6 +56,7 @@ async fn peer_cap_blocks_unknown_sender_at_capacity() {
         .with_port(port)
         .with_listen_addr(target_addr)
         .with_net("127.0.0.180/30".parse().unwrap())
+        .unwrap()
         .with_max_peers(2)
         .with_insecure_no_key();
 
@@ -114,6 +115,7 @@ async fn peer_cap_allows_known_member_at_capacity() {
         .with_port(port)
         .with_listen_addr(target_addr)
         .with_net("127.0.0.184/30".parse().unwrap())
+        .unwrap()
         .with_max_peers(2)
         .with_insecure_no_key();
 
@@ -236,6 +238,7 @@ async fn peer_cap_no_replay_entry_for_capped_sender() {
         .with_port(port)
         .with_listen_addr(target_addr)
         .with_net("127.0.0.192/30".parse().unwrap())
+        .unwrap()
         .with_cluster_key(gossip::auth::ClusterKey::new(cluster_key))
         .with_max_peers(2);
 

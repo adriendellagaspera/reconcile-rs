@@ -22,6 +22,7 @@ async fn tombstones_expiration() {
         .with_port(8090)
         .with_listen_addr("127.0.0.45".parse().unwrap())
         .with_net("127.0.0.45/32".parse().unwrap())
+        .unwrap()
         .with_insecure_no_key();
     let store = ReplicatedMap::<i32, i32>::new(config)
         .await

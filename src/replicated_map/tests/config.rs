@@ -55,6 +55,25 @@ fn config_error_too_many_nets_display_names_the_limit() {
     );
 }
 
+/// `with_nets` (#97) rejects a batch that would exceed [`MAX_NETS`] with a `Result`, the bulk-form
+/// counterpart `with_net` already returns per-net.
+#[test]
+fn with_nets_rejects_a_batch_past_max_nets() {
+    use ipnet::IpNet;
+
+    let net: IpNet = "10.0.0.0/8".parse().unwrap();
+    let nets = vec![net; MAX_NETS + 1];
+    assert_eq!(
+        Config::default().with_nets(&nets).err(),
+        Some(ConfigError::TooManyNets)
+    );
+
+    // Exactly at the cap still succeeds, and sets every slot in order.
+    let nets = vec![net; MAX_NETS];
+    let cfg = Config::default().with_nets(&nets).unwrap();
+    assert!(cfg.nets.iter().all(|slot| *slot == Some(net)));
+}
+
 /// `Config`'s hand-written `Debug` impl exists to redact `cluster_key` — assert it actually
 /// hides the key material and still reports `Some`/`None` correctly either way.
 #[test]
@@ -87,7 +106,7 @@ fn config_builders_actually_set_their_field() {
 
     let net_a: IpNet = "10.0.0.0/8".parse().unwrap();
     let net_b: IpNet = "10.1.0.0/16".parse().unwrap();
-    let cfg = Config::default().with_nets(&[net_a, net_b]);
+    let cfg = Config::default().with_nets(&[net_a, net_b]).unwrap();
     assert_eq!(cfg.nets[0], Some(net_a));
     assert_eq!(cfg.nets[1], Some(net_b));
 
