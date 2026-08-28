@@ -18,6 +18,21 @@ let config = Config::new(8080).with_net(net)?;
 
 If you were already calling `try_with_net`, drop the `try_` prefix; the signature is unchanged.
 
+### `ReplicatedMap::with_discovery`/`ReplicatedSet::with_discovery` now return `Result`
+
+Both used to panic on a `Speculative` `Discovery::kind()` (#98, ARCHITECTURE.md §5 invariant 15).
+There is no `try_with_discovery` twin — `with_discovery` is now the sole, fallible entry point:
+
+```rust
+// Before
+let store = ReplicatedMap::new(config).await?.with_discovery(discovery);
+// After
+let store = ReplicatedMap::new(config).await?.with_discovery(discovery)?;
+```
+
+`with_dns_discovery` is unaffected (still `-> Self`): `DnsDiscovery::kind()` is unconditionally
+`Authoritative`, so it can never hit this error.
+
 ### `Config::snapshot_interval` is now `Option<Duration>`
 
 `Config::snapshot_interval` (and `Config::with_snapshot_interval`) changed from `Duration` to
