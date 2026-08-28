@@ -6,9 +6,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `Backpressure` and `ReplicatedMap::try_insert` (#83) — split out of `write.rs` to keep it
-//! under the file-size budget (AGENTS.md §3); `try_update`'s counterpart lives in `mutate.rs`
-//! next to the `update`/`upsert` core it shares (`mutate_live_no_broadcast`).
+//! `Backpressure`, `WriteRejected`, and `ReplicatedMap::try_insert` (#83) — split out of
+//! `write.rs` to keep it under the file-size budget (AGENTS.md §3); `try_update`'s counterpart
+//! lives in `mutate.rs` next to the `update`/`upsert` core it shares (`mutate_live_checked`).
+//! `WriteRejected` also wraps `value_size::ValueTooLarge` (#82): both `try_insert` and
+//! `try_update` reject on either cause before touching the map.
 
 use std::fmt;
 use std::hash::Hash;
@@ -16,7 +18,42 @@ use std::hash::Hash;
 use crate::bounds::{Key, Value};
 use crate::entry::Entry;
 
+use super::value_size::{check_value_size, ValueTooLarge};
 use super::ReplicatedMap;
+
+/// Why [`try_insert`](ReplicatedMap::try_insert)/[`try_update`](ReplicatedMap::try_update)
+/// rejected a write — either cause leaves the write **not applied**: map and broadcast are
+/// all-or-nothing for these two calls (see [`Backpressure`]'s docs), the same guarantee whichever
+/// reason triggers it.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum WriteRejected {
+    /// The value's encoded size exceeds
+    /// [`Config::max_value_size`](super::Config::max_value_size) (#82).
+    TooLarge(ValueTooLarge),
+    /// The write-broadcast egress budget
+    /// ([`Config::max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts)) is
+    /// exhausted (#83).
+    Backpressure(Backpressure),
+}
+
+impl fmt::Display for WriteRejected {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WriteRejected::TooLarge(err) => write!(f, "{err}"),
+            WriteRejected::Backpressure(err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl std::error::Error for WriteRejected {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            WriteRejected::TooLarge(err) => Some(err),
+            WriteRejected::Backpressure(err) => Some(err),
+        }
+    }
+}
 
 /// Returned by [`try_insert`](ReplicatedMap::try_insert)/[`try_update`](ReplicatedMap::try_update)
 /// when the write-broadcast egress budget
@@ -55,19 +92,24 @@ impl fmt::Display for Backpressure {
 impl std::error::Error for Backpressure {}
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
-    /// Fallible counterpart of [`insert`](Self::insert) (#83): claims a
-    /// [`max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts) egress slot
-    /// **before** touching the map, so a call either fully applies — locally and broadcast — or
-    /// not at all. Always sends immediately, bypassing [`coalesce_window`](super::Config::coalesce_window)
-    /// batching: a caller reaching for backpressure feedback wants to know now.
+    /// Fallible counterpart of [`insert`](Self::insert) (#83): checks `value`'s encoded size
+    /// against [`Config::max_value_size`](super::Config::max_value_size) (#82) before touching
+    /// anything, then claims a [`max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts)
+    /// egress slot **before** touching the map, so a call either fully applies — locally and
+    /// broadcast — or not at all. Always sends immediately, bypassing
+    /// [`coalesce_window`](super::Config::coalesce_window) batching: a caller reaching for this
+    /// feedback wants to know now.
     ///
     /// # Errors
     ///
-    /// [`Backpressure`] when the egress budget is already at capacity. The map is untouched.
+    /// [`WriteRejected::TooLarge`] when `value`'s encoded size exceeds `max_value_size`, or
+    /// [`WriteRejected::Backpressure`] when the egress budget is already at capacity. The map is
+    /// untouched either way.
     ///
     /// # Panics
     ///
-    /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime.
+    /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime, on the
+    /// success path only.
     ///
     /// ```
     /// # use std::sync::Arc;
@@ -87,16 +129,17 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// assert_eq!(store.get_cloned(&"a".to_string()), Some(2));
     /// # }
     /// ```
-    pub fn try_insert(&self, key: K, value: V) -> Result<Option<V>, Backpressure> {
+    pub fn try_insert(&self, key: K, value: V) -> Result<Option<V>, WriteRejected> {
+        check_value_size(&value, self.engine.max_value_size()).map_err(WriteRejected::TooLarge)?;
         match self
             .engine
             .try_insert(key, Entry::present(self.engine.clock_now(), value))
         {
             Ok(ret) => Ok(ret.and_then(|t| t.state.into())),
-            Err(_) => Err(Backpressure {
+            Err(_) => Err(WriteRejected::Backpressure(Backpressure {
                 in_flight: self.engine.broadcasts_in_flight(),
                 max_in_flight: self.engine.max_concurrent_broadcasts(),
-            }),
+            })),
         }
     }
 }

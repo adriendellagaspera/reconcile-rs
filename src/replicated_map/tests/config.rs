@@ -118,6 +118,16 @@ fn config_builders_actually_set_their_field() {
 
     let cfg = Config::default().with_coalesce_window(Duration::from_millis(7));
     assert_eq!(cfg.coalesce_window, Duration::from_millis(7));
+
+    let cfg = Config::default().with_max_value_size(4096);
+    assert_eq!(cfg.max_value_size, Some(4096));
+}
+
+/// [`Config::max_value_size`] is `None` (no ceiling) unless a caller opts in — #82's write-time
+/// rejection must never engage for a `Config` nobody configured it on.
+#[test]
+fn max_value_size_defaults_to_none() {
+    assert_eq!(Config::default().max_value_size, None);
 }
 
 /// The new #292 fields default to the documented values: [`SNAPSHOT_INTERVAL`] (5 s) and
