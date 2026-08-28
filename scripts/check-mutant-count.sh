@@ -32,6 +32,11 @@
 # (measured: ~0.4s on this workspace). `skip_calls` is not checked here: it suppresses mutating
 # call *arguments*, which doesn't leave a distinguishable trace in `--list` output the way a whole
 # excluded mutant site does -- verify it by hand if `.cargo/mutants.toml` ever changes it.
+#
+# `--colors=never` is load-bearing, not cosmetic: main.yml's `CARGO_TERM_COLOR=always` makes
+# cargo-mutants inject ANSI escape codes into `--list` output (`replace \e[33m<\e[0m with
+# \e[38;5;11m<=\e[0m`, not the plain `replace < with <=` every exclude_re entry is written
+# against), which broke every single-operator entry's literal-text match below.
 set -Eeuo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -39,7 +44,7 @@ cd "$SCRIPT_DIR/.."
 
 command -v cargo-mutants >/dev/null || { echo "check-mutant-count: cargo-mutants is required" >&2; exit 1; }
 
-unconfigured=$(cargo mutants --list --workspace --all-features --no-config)
+unconfigured=$(cargo mutants --list --workspace --all-features --no-config --colors=never)
 unconfigured_count=$(wc -l <<<"$unconfigured")
 
 result=$(python3 -c '
@@ -71,7 +76,7 @@ while IFS= read -r line; do
     status=1
 done <<<"$result"
 
-configured_count=$(cargo mutants --list --workspace --all-features | wc -l)
+configured_count=$(cargo mutants --list --workspace --all-features --colors=never | wc -l)
 
 if [ "$status" -ne 0 ]; then
     echo >&2
