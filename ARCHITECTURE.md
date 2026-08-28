@@ -447,8 +447,10 @@ guarantees whose resolution history §8 tracks.
    control the shape or size of the data reaching it (config, discovery-supplied peer info,
    persisted state, a caller-chosen key), so panicking on it is a self-inflicted DoS surface, not a
    caller bug — the same reasoning #82 gave for `try_insert`/`try_update` (F13), generalized instead
-   of repeated ad hoc per method. New public API must return `Result` from the start; no new `try_`
-   twin should ever be needed again. This does not extend to a missing ambient Tokio runtime (an
+   of repeated ad hoc per method. New public API must return `Result` from the start, as the sole
+   entry point — a panicking convenience plus a `try_` twin is exactly the halfway state this
+   decision retires, not a legitimate resting point, so an existing pair converts to one
+   `Result`-returning method rather than gaining a permanent twin. This does not extend to a missing ambient Tokio runtime (an
    environment precondition, documented as `# Panics`), an internal "provably impossible" assertion
    (HLC monotonicity, mutex poisoning), or an index-style panic (`Rsos::select`,
    `FingerprintTreeMap::select`) — those mirror `Vec`'s own `[]` vs `.get()` split, Rust's own
@@ -464,12 +466,13 @@ guarantees whose resolution history §8 tracks.
      (`InvalidData`) or retry-exhausted persisted state; `snapshot_now` in the same file already
      returns `io::Result`, the pattern to extend. Tracked as
      [#99](https://github.com/adriendellagaspera/reconcile-rs/issues/99) (`M-breaking`).
-   - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — resolved by #100: added
-     `try_new`/`try_with_rotation`, returning a new `EncryptionFeatureDisabled` error instead of
-     panicking when `encrypt = true` without the `encryption` feature. `new`/`with_rotation` keep
-     their panicking signatures and now delegate to the fallible form: the mismatch is a
-     build-configuration fact checked once at startup (which Cargo features this binary was
-     compiled with), not runtime data a peer or attacker ever influences.
+   - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — resolved by #100: converted
+     outright to return `Result<Self, EncryptionFeatureDisabled>` instead of panicking when
+     `encrypt = true` without the `encryption` feature. No `try_new`/`try_with_rotation` twin was
+     added, and none remains — even though the mismatch is a build-configuration fact checked once
+     at startup (which Cargo features this binary was compiled with), not runtime data a peer or
+     attacker ever influences, the resting point this invariant settled on is one fallible method,
+     not a panicking one kept alongside a fallible twin.
    - `check_key_or_insecure_opt_in` — kept as-is: it is the loud, deliberate security guard #325
      chose specifically so a cluster cannot start unauthenticated by silent default; a `Result` a
      caller can inspect-and-ignore is exactly the footgun #325 was written to close, not a

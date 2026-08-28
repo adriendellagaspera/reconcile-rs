@@ -101,7 +101,10 @@ fn envelope_pins_the_wire_version_byte() {
     let payload = b"payload";
 
     // Disabled: `version || payload`, no header, no tag.
-    let disabled = Authenticator::new(None, false).seal(Seq::new(1), Stamp::new(1), payload);
+    let disabled =
+        Authenticator::new(None, false)
+            .unwrap()
+            .seal(Seq::new(1), Stamp::new(1), payload);
     let mut expected_disabled = vec![gossip::auth::WIRE_VERSION];
     expected_disabled.extend_from_slice(payload);
     assert_eq!(
@@ -115,11 +118,13 @@ fn envelope_pins_the_wire_version_byte() {
     // different tag over the identical protected region, which is exactly what this vector does
     // NOT need to pin: only the plaintext framing (position of seq/stamp/version/payload) is the
     // wire contract; the tag is opaque by design.
-    let sealed = Authenticator::new(Some(ClusterKey::new([0x42; KEY_LEN])), false).seal(
-        Seq::new(0x0102030405060708),
-        Stamp::new(0x1112131415161718),
-        payload,
-    );
+    let sealed = Authenticator::new(Some(ClusterKey::new([0x42; KEY_LEN])), false)
+        .unwrap()
+        .seal(
+            Seq::new(0x0102030405060708),
+            Stamp::new(0x1112131415161718),
+            payload,
+        );
     assert_eq!(
         sealed.len(),
         TAG_LEN + REPLAY_HEADER_LEN + 1 + payload.len()

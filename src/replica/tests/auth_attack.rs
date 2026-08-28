@@ -63,11 +63,13 @@ async fn forged_datagram_is_ignored() {
     attacker.send_to(&forged, &target).await.unwrap();
     // (b) forged update sealed with the WRONG key
     let wrong_key_sealed =
-        auth::Authenticator::new(Some(auth::ClusterKey::new([0x99u8; auth::KEY_LEN])), false).seal(
-            gossip::replay::Seq::new(1),
-            gossip::replay::Stamp::new(Utc::now().timestamp_millis().max(0) as u64),
-            &forged,
-        );
+        auth::Authenticator::new(Some(auth::ClusterKey::new([0x99u8; auth::KEY_LEN])), false)
+            .unwrap()
+            .seal(
+                gossip::replay::Seq::new(1),
+                gossip::replay::Stamp::new(Utc::now().timestamp_millis().max(0) as u64),
+                &forged,
+            );
     attacker.send_to(&wrong_key_sealed, &target).await.unwrap();
 
     // give the victim time to (not) process the forged datagrams

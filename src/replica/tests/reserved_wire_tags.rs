@@ -56,6 +56,7 @@ fn datagram_bytes(messages: &[Msg]) -> Vec<u8> {
 async fn feed_datagram(engine: &Replica<i32, u8>, messages: &[Msg]) -> bool {
     let bytes = datagram_bytes(messages);
     let payload = auth::Authenticator::new(None, false)
+        .unwrap()
         .open(&bytes)
         .expect("unauthenticated mode clears any datagram")
         .check_version()

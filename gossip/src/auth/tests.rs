@@ -137,7 +137,7 @@ fn wrong_key_rejected() {
 
 #[test]
 fn seal_open_roundtrip() {
-    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false);
+    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false).unwrap();
     let payload = b"some serialized message";
     let sealed = auth.seal(Seq::new(1), Stamp::new(12345), payload);
     assert_eq!(
@@ -158,14 +158,15 @@ fn also_accept_verifies_a_sender_still_on_the_old_key() {
     let old_key = key(0x11);
     let new_key = key(0x22);
 
-    let old_sender = Authenticator::new(Some(old_key.clone()), false);
+    let old_sender = Authenticator::new(Some(old_key.clone()), false).unwrap();
     let rotating_receiver = Authenticator::with_rotation(
         Some(Keys {
             primary: new_key.clone(),
             also_accept: vec![old_key.clone()],
         }),
         false,
-    );
+    )
+    .unwrap();
 
     let payload = b"mid-rotation message";
     let sealed_with_old_key = old_sender.seal(Seq::new(1), Stamp::new(1), payload);
@@ -193,13 +194,13 @@ fn also_accept_verifies_a_sender_still_on_the_old_key() {
     ));
 
     // Rotation complete: the old key is no longer accepted.
-    let settled_receiver = Authenticator::new(Some(new_key), false);
+    let settled_receiver = Authenticator::new(Some(new_key), false).unwrap();
     assert!(settled_receiver.open(&sealed_with_old_key).is_none());
 }
 
 #[test]
 fn open_too_short() {
-    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false);
+    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false).unwrap();
     assert!(auth.open(&[0u8; TAG_LEN + REPLAY_HEADER_LEN - 1]).is_none());
     assert!(auth.open(&[0u8; 10]).is_none());
     assert!(auth.open(&[]).is_none());
@@ -213,7 +214,7 @@ fn open_too_short() {
 /// `datagram.split_at(TAG_LEN)` and panic on the out-of-bounds split instead of returning `None`.
 #[test]
 fn open_rejects_a_datagram_between_the_two_length_thresholds() {
-    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false);
+    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false).unwrap();
     assert!(auth.open(&[0u8; 20]).is_none());
 }
 
@@ -235,7 +236,7 @@ fn open_accepts_the_exact_minimum_length_datagram() {
     datagram.extend_from_slice(&protected);
     assert_eq!(datagram.len(), TAG_LEN + REPLAY_HEADER_LEN);
 
-    let auth = Authenticator::new(Some(k), false);
+    let auth = Authenticator::new(Some(k), false).unwrap();
     let opened = auth
         .open(&datagram)
         .expect("exactly TAG_LEN + REPLAY_HEADER_LEN bytes with a valid tag must open");
@@ -246,13 +247,12 @@ fn open_accepts_the_exact_minimum_length_datagram() {
 
 #[test]
 fn open_wrong_key() {
-    let sealed = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false).seal(
-        Seq::new(1),
-        Stamp::new(99),
-        b"payload",
-    );
+    let sealed = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false)
+        .unwrap()
+        .seal(Seq::new(1), Stamp::new(99), b"payload");
     assert!(
         Authenticator::new(Some(ClusterKey::new([0x22; KEY_LEN])), false)
+            .unwrap()
             .open(&sealed)
             .is_none()
     );
@@ -262,41 +262,38 @@ fn open_wrong_key() {
 /// value (not just that it is `> 0`) so a `+`/`-` slip in any one term is caught.
 #[test]
 fn enabled_overhead_is_the_sum_of_tag_version_and_replay_header() {
-    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false);
+    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false).unwrap();
     assert_eq!(auth.overhead(), TAG_LEN + VERSION_LEN + REPLAY_HEADER_LEN);
 }
 
-/// #100: without the `encryption` feature, `try_new`/`try_with_rotation` report
-/// `EncryptionFeatureDisabled` instead of panicking, mirroring `new`/`with_rotation`'s panic.
+/// #100: without the `encryption` feature, `new`/`with_rotation` report
+/// `EncryptionFeatureDisabled` as a `Result::Err`, never a panic.
 #[test]
 #[cfg(not(feature = "encryption"))]
-fn try_new_reports_encryption_feature_disabled_without_panicking() {
+fn new_reports_encryption_feature_disabled_without_panicking() {
     assert_eq!(
-        Authenticator::try_new(Some(ClusterKey::new([0x11; KEY_LEN])), true).err(),
+        Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), true).err(),
         Some(EncryptionFeatureDisabled)
     );
     assert_eq!(
-        Authenticator::try_with_rotation(
-            Some(Keys::single(ClusterKey::new([0x11; KEY_LEN]))),
-            true
-        )
-        .err(),
+        Authenticator::with_rotation(Some(Keys::single(ClusterKey::new([0x11; KEY_LEN]))), true)
+            .err(),
         Some(EncryptionFeatureDisabled)
     );
 }
 
 /// The non-encrypting paths never fail, feature or not.
 #[test]
-fn try_new_succeeds_when_not_requesting_encryption() {
-    assert!(Authenticator::try_new(Some(ClusterKey::new([0x11; KEY_LEN])), false).is_ok());
-    assert!(Authenticator::try_new(None, false).is_ok());
+fn new_succeeds_when_not_requesting_encryption() {
+    assert!(Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false).is_ok());
+    assert!(Authenticator::new(None, false).is_ok());
 }
 
 /// Disabled still frames — the wire-version byte is present regardless of
 /// authentication mode, since unauthenticated is the default.
 #[test]
 fn disabled_still_stamps_the_wire_version() {
-    let auth = Authenticator::new(None, false);
+    let auth = Authenticator::new(None, false).unwrap();
     assert!(matches!(auth, Authenticator::Disabled));
     assert_eq!(auth.overhead(), VERSION_LEN);
     let sealed = auth.seal(Seq::new(0), Stamp::new(0), b"payload");
@@ -310,7 +307,7 @@ fn disabled_still_stamps_the_wire_version() {
 /// The auth gate does not replay-check: a resealed datagram opens, carrying seq/stamp.
 #[test]
 fn replay_header_round_trips_seq_and_stamp() {
-    let auth = Authenticator::new(Some(ClusterKey::new([0xAB; KEY_LEN])), false);
+    let auth = Authenticator::new(Some(ClusterKey::new([0xAB; KEY_LEN])), false).unwrap();
     let payload = b"hello";
     let sealed = auth.seal(Seq::new(42), Stamp::new(9999), payload);
     let p = verify(auth.open(&sealed).expect("valid tag"));
@@ -324,7 +321,7 @@ fn replay_header_round_trips_seq_and_stamp() {
 /// `check_version` fails, and it reports the version actually received.
 #[test]
 fn version_mismatch_is_distinguishable_from_auth_failure() {
-    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false);
+    let auth = Authenticator::new(Some(ClusterKey::new([0x11; KEY_LEN])), false).unwrap();
     let sealed = auth.seal(Seq::new(1), Stamp::new(0), b"payload");
     // Flip the version byte in place: it sits right after the replay header, ahead of the
     // payload (module doc's wire-layout table).
@@ -358,7 +355,7 @@ fn version_mismatch_is_distinguishable_from_auth_failure() {
 /// byte — still a clean, distinguishable rejection, not a crash.
 #[test]
 fn empty_payload_reports_version_zero() {
-    let auth = Authenticator::new(None, false);
+    let auth = Authenticator::new(None, false).unwrap();
     let opened = auth.open(b"").expect("unauthenticated always clears");
     match opened.check_version() {
         Err(version) => assert_eq!(version, 0),
@@ -371,7 +368,7 @@ mod encryption {
     use super::*;
 
     fn encryptor(byte: u8) -> Authenticator {
-        Authenticator::new(Some(ClusterKey::new([byte; KEY_LEN])), true)
+        Authenticator::new(Some(ClusterKey::new([byte; KEY_LEN])), true).unwrap()
     }
 
     #[test]
@@ -483,14 +480,15 @@ mod encryption {
         let old_key = key(0x11);
         let new_key = key(0x22);
 
-        let old_sender = Authenticator::new(Some(old_key.clone()), true);
+        let old_sender = Authenticator::new(Some(old_key.clone()), true).unwrap();
         let rotating_receiver = Authenticator::with_rotation(
             Some(Keys {
                 primary: new_key,
                 also_accept: vec![old_key],
             }),
             true,
-        );
+        )
+        .unwrap();
 
         let payload = b"mid-rotation encrypted message";
         let sealed = old_sender.seal(Seq::new(1), Stamp::new(1), payload);

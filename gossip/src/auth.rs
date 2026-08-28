@@ -144,8 +144,8 @@ pub enum ClusterKeyError {
     WrongByteLength(usize),
 }
 
-/// Returned by [`Authenticator::try_new`]/[`try_with_rotation`](Authenticator::try_with_rotation)
-/// when `encrypt` is requested but the crate was built without the `encryption` feature.
+/// Returned by [`Authenticator::new`]/[`with_rotation`](Authenticator::with_rotation) when
+/// `encrypt` is requested but the crate was built without the `encryption` feature.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct EncryptionFeatureDisabled;

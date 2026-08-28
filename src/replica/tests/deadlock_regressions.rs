@@ -151,6 +151,7 @@ fn pre_insert_hook_can_call_insert_again_from_network_path_without_deadlock() {
                 ),
             );
             let payload = auth::Authenticator::new(None, false)
+                .unwrap()
                 .open(&bytes)
                 .expect("unauthenticated mode clears any datagram")
                 .check_version()

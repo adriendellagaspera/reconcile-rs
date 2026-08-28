@@ -9,11 +9,9 @@ pub enum reconcile_gossip::auth::Authenticator
 pub reconcile_gossip::auth::Authenticator::Disabled
 pub reconcile_gossip::auth::Authenticator::Enabled(reconcile_gossip::auth::Keys)
 impl reconcile_gossip::auth::Authenticator
-pub fn reconcile_gossip::auth::Authenticator::new(core::option::Option<reconcile_gossip::auth::ClusterKey>, bool) -> Self
+pub fn reconcile_gossip::auth::Authenticator::new(core::option::Option<reconcile_gossip::auth::ClusterKey>, bool) -> core::result::Result<Self, reconcile_gossip::auth::EncryptionFeatureDisabled>
 pub fn reconcile_gossip::auth::Authenticator::overhead(&self) -> usize
-pub fn reconcile_gossip::auth::Authenticator::try_new(core::option::Option<reconcile_gossip::auth::ClusterKey>, bool) -> core::result::Result<Self, reconcile_gossip::auth::EncryptionFeatureDisabled>
-pub fn reconcile_gossip::auth::Authenticator::try_with_rotation(core::option::Option<reconcile_gossip::auth::Keys>, bool) -> core::result::Result<Self, reconcile_gossip::auth::EncryptionFeatureDisabled>
-pub fn reconcile_gossip::auth::Authenticator::with_rotation(core::option::Option<reconcile_gossip::auth::Keys>, bool) -> Self
+pub fn reconcile_gossip::auth::Authenticator::with_rotation(core::option::Option<reconcile_gossip::auth::Keys>, bool) -> core::result::Result<Self, reconcile_gossip::auth::EncryptionFeatureDisabled>
 impl reconcile_gossip::auth::Authenticator
 pub fn reconcile_gossip::auth::Authenticator::open<'a>(&self, &'a [u8]) -> core::option::Option<reconcile_gossip::auth::Payload<'a, reconcile_gossip::auth::Authenticated>>
 impl reconcile_gossip::auth::Authenticator

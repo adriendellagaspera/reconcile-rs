@@ -253,6 +253,7 @@ async fn peer_cap_no_replay_entry_for_capped_sender() {
     let counter = gossip::replay::SenderCounter::new();
     let sealed =
         gossip::auth::Authenticator::new(Some(gossip::auth::ClusterKey::new(cluster_key)), false)
+            .unwrap()
             .seal(counter.next_seq(), counter.next_stamp(), &payload);
 
     let sender = tokio::net::UdpSocket::bind(std::net::SocketAddr::new(newcomer, 0))

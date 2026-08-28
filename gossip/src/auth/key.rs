@@ -148,51 +148,20 @@ impl Authenticator {
     /// Build an authenticator from an optional cluster key and whether to encrypt. No rotation:
     /// see [`with_rotation`](Self::with_rotation) to also accept prior keys on the verify path.
     ///
-    /// # Panics
-    ///
-    /// If `encrypt` is `true` and the crate was built without the `encryption` feature — a loud
-    /// failure rather than a silent downgrade. See [`try_new`](Self::try_new) for a non-panicking
-    /// alternative.
-    pub fn new(key: Option<ClusterKey>, encrypt: bool) -> Self {
-        Self::with_rotation(key.map(Keys::single), encrypt)
-    }
-
-    /// As [`new`](Self::new), but returns an [`EncryptionFeatureDisabled`] instead of panicking
-    /// when `encrypt` is `true` and the crate was built without the `encryption` feature.
-    ///
     /// # Errors
     ///
     /// If `encrypt` is `true` and the crate was built without the `encryption` feature.
-    pub fn try_new(
-        key: Option<ClusterKey>,
-        encrypt: bool,
-    ) -> Result<Self, EncryptionFeatureDisabled> {
-        Self::try_with_rotation(key.map(Keys::single), encrypt)
+    pub fn new(key: Option<ClusterKey>, encrypt: bool) -> Result<Self, EncryptionFeatureDisabled> {
+        Self::with_rotation(key.map(Keys::single), encrypt)
     }
 
     /// Build an authenticator from an optional [`Keys`] (a primary key to seal with, plus
     /// prior keys still accepted on the verify path — #285/#137) and whether to encrypt.
     ///
-    /// # Panics
-    ///
-    /// If `encrypt` is `true` and the crate was built without the `encryption` feature — a loud
-    /// failure rather than a silent downgrade. See [`try_with_rotation`](Self::try_with_rotation)
-    /// for a non-panicking alternative.
-    pub fn with_rotation(keys: Option<Keys>, encrypt: bool) -> Self {
-        match Self::try_with_rotation(keys, encrypt) {
-            Ok(auth) => auth,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// As [`with_rotation`](Self::with_rotation), but returns an [`EncryptionFeatureDisabled`]
-    /// instead of panicking when `encrypt` is `true` and the crate was built without the
-    /// `encryption` feature.
-    ///
     /// # Errors
     ///
     /// If `encrypt` is `true` and the crate was built without the `encryption` feature.
-    pub fn try_with_rotation(
+    pub fn with_rotation(
         keys: Option<Keys>,
         encrypt: bool,
     ) -> Result<Self, EncryptionFeatureDisabled> {
