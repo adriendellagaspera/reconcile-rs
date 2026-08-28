@@ -1,51 +1,36 @@
 #!/usr/bin/env bash
-# .cargo/mutants.toml's header comment claims two counts for `cargo mutants --list --workspace
-# --all-features`: the mutant count as configured, and the count with the file's own
-# exclude_globs/exclude_re/skip_calls ignored (via --no-config). The delta between them is what
-# proves the exclusions still do what their comments claim; the baseline itself moves with every
-# commit that adds or removes mutable code and is not otherwise checked.
+# .cargo/mutants.toml's exclude_globs/exclude_re/skip_calls exist to skip mutants this repo has
+# decided not to test (test-only seams, provably-equivalent mutants, mutants that hang rather than
+# fail -- see that file's own comments for the per-pattern reasoning). This script proves those
+# exclusions still exclude *something real*: it re-lists mutants with and without this file's
+# config and asserts the unconfigured count is strictly greater than the configured one -- if it
+# isn't, some exclude_globs/exclude_re/skip_calls pattern has gone stale (a moved or renamed file,
+# a refactored call site) and no longer matches any real mutation site.
+#
+# It does not track or assert either count's absolute value. That total moves with every commit
+# that adds or removes mutable code anywhere in the workspace, unrelated to whether the exclusions
+# themselves are still live -- pinning it in a comment would fail (and merge-conflict across every
+# branch touching mutable code in parallel) on every such commit, not only when an exclusion
+# actually goes stale.
+#
+# Test quality itself -- whether a mutant is missed by the test suite -- is a different question,
+# checked by `mutants.yml`'s diff-scoped `pr-diff` job (`check-mutation-gate.sh`), not this script.
 #
 # `--list` is pure mutant-site discovery -- syntactic, no build -- so both invocations are
-# sub-second even cold (measured: ~0.4s each on this workspace). AGENTS.md §10: a number a human
-# must re-measure and paste in by hand belongs in a script instead, once re-measuring it is this
-# cheap.
+# sub-second even cold (measured: ~0.4s each on this workspace).
 set -Eeuo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR/.."
 
-TOML=.cargo/mutants.toml
-
 command -v cargo-mutants >/dev/null || { echo "check-mutant-count: cargo-mutants is required" >&2; exit 1; }
 
-claimed_configured=$(grep -oE 'yields [0-9]+' "$TOML" | grep -oE '[0-9]+')
-claimed_unconfigured=$(grep -oE '\([0-9]+ without the exclusions' "$TOML" | grep -oE '[0-9]+')
+configured=$(cargo mutants --list --workspace --all-features | wc -l)
+unconfigured=$(cargo mutants --list --workspace --all-features --no-config | wc -l)
 
-if [ -z "$claimed_configured" ] || [ -z "$claimed_unconfigured" ]; then
-    echo "check-mutant-count: could not parse the claimed counts out of $TOML" >&2
+if [ "$unconfigured" -le "$configured" ]; then
+    echo "check-mutant-count: .cargo/mutants.toml's exclusions no longer exclude anything ($configured mutants with the config, $unconfigured without) -- check for a stale exclude_globs/exclude_re/skip_calls pattern (a moved or renamed file, a refactored call site)." >&2
     exit 1
 fi
 
-actual_configured=$(cargo mutants --list --workspace --all-features | wc -l)
-actual_unconfigured=$(cargo mutants --list --workspace --all-features --no-config | wc -l)
-
-status=0
-
-if [ "$actual_configured" -ne "$claimed_configured" ]; then
-    echo "check-mutant-count: $TOML claims $claimed_configured mutants, cargo-mutants finds $actual_configured" >&2
-    status=1
-fi
-
-if [ "$actual_unconfigured" -ne "$claimed_unconfigured" ]; then
-    echo "check-mutant-count: $TOML claims $claimed_unconfigured mutants without exclusions, cargo-mutants finds $actual_unconfigured" >&2
-    status=1
-fi
-
-if [ "$status" -eq 0 ]; then
-    echo "check-mutant-count: $TOML's counts ($claimed_configured / $claimed_unconfigured) match cargo-mutants"
-else
-    echo >&2
-    echo "Update the two numbers (and the delta, if it changed) in $TOML's header comment to match." >&2
-fi
-
-exit "$status"
+echo "check-mutant-count: exclusions still exclude $((unconfigured - configured)) mutant(s) ($configured configured, $unconfigured unconfigured)"
