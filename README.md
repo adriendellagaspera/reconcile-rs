@@ -520,6 +520,11 @@ let config = Config::new(8080)
 `insert`/`update`/`get_mut`/`upsert` never consult `max_value_size` — setting it changes nothing
 for a caller that keeps using them; only `try_insert`/`try_update` check it.
 
+Whether the ceiling itself is worth relaxing (a stream transport, UDP fragmentation, or a
+side-channel for oversized values) was priced and decided against for this crate's niche: see
+[`ARCHITECTURE.md`](ARCHITECTURE.md) §7 "An alternative/side-channel transport past the datagram
+ceiling" (issue #94).
+
 ### Write backpressure
 
 Every propagating write spawns a detached task that fans the message out to every known peer
