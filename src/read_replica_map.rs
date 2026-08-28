@@ -260,7 +260,11 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             .cluster_key
             .as_ref()
             .map(|key| rsos::LiftKey::new(key.derive_lift_key()));
-        let authenticator = auth::Authenticator::new(config.cluster_key, config.encrypt);
+        // `config.encrypt` can only be `true` via `Config::with_encryption`, itself gated on
+        // `reconcile`'s `encryption` feature, which unifies to `gossip/encryption` (Cargo.toml) —
+        // so this can never actually hit `EncryptionFeatureDisabled`.
+        let authenticator = auth::Authenticator::new(config.cluster_key, config.encrypt)
+            .expect("reconcile's encryption feature unifies to gossip/encryption");
         if matches!(authenticator, auth::Authenticator::Disabled) {
             warn!(
                 "SECURITY: running with Config::with_insecure_no_key() — the lightweight read \

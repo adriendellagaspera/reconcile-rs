@@ -39,6 +39,7 @@ async fn feed(
 ) -> bool {
     let bytes = message_bytes(message);
     let payload = auth::Authenticator::new(None, false)
+        .unwrap()
         .open(&bytes)
         .expect("unauthenticated mode clears any datagram")
         .check_version()

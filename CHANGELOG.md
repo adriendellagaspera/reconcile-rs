@@ -62,6 +62,11 @@ All notable changes to this project are documented here. Format follows
   (`InvalidData`) or retry-exhausted persisted state (#99, `ARCHITECTURE.md` §5 invariant 15). No
   `try_with_persistence` twin: the panicking form is gone, replaced outright rather than kept
   alongside a fallible one. See [MIGRATING.md](MIGRATING.md).
+- **BREAKING**: `gossip::auth::Authenticator::new`/`with_rotation` now return
+  `Result<Self, gossip::auth::EncryptionFeatureDisabled>` instead of panicking when `encrypt = true`
+  is requested without the `encryption` feature (#100, `ARCHITECTURE.md` §5 invariant 15). No
+  `try_new`/`try_with_rotation` twin: the panicking form is gone, replaced outright rather than kept
+  alongside a fallible one. See [MIGRATING.md](MIGRATING.md).
 
 ### Added
 

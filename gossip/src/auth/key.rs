@@ -12,7 +12,10 @@
 
 use std::fmt;
 
-use super::{Authenticator, ClusterKey, ClusterKeyError, Keys, KEY_LEN, TAG_LEN, VERSION_LEN};
+use super::{
+    Authenticator, ClusterKey, ClusterKeyError, EncryptionFeatureDisabled, Keys, KEY_LEN, TAG_LEN,
+    VERSION_LEN,
+};
 #[cfg(feature = "encryption")]
 use super::{AEAD_NONCE_LEN, AEAD_TAG_LEN};
 use crate::replay::REPLAY_HEADER_LEN;
@@ -115,6 +118,17 @@ impl fmt::Display for ClusterKeyError {
 
 impl std::error::Error for ClusterKeyError {}
 
+impl fmt::Display for EncryptionFeatureDisabled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "reconcile: encryption requested but the crate was built without the `encryption` feature"
+        )
+    }
+}
+
+impl std::error::Error for EncryptionFeatureDisabled {}
+
 impl Keys {
     /// A single key, accepting nothing else — the common, non-rotating case.
     pub fn single(key: ClusterKey) -> Keys {
@@ -134,33 +148,31 @@ impl Authenticator {
     /// Build an authenticator from an optional cluster key and whether to encrypt. No rotation:
     /// see [`with_rotation`](Self::with_rotation) to also accept prior keys on the verify path.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If `encrypt` is `true` and the crate was built without the `encryption` feature — a loud
-    /// failure rather than a silent downgrade.
-    pub fn new(key: Option<ClusterKey>, encrypt: bool) -> Self {
+    /// If `encrypt` is `true` and the crate was built without the `encryption` feature.
+    pub fn new(key: Option<ClusterKey>, encrypt: bool) -> Result<Self, EncryptionFeatureDisabled> {
         Self::with_rotation(key.map(Keys::single), encrypt)
     }
 
     /// Build an authenticator from an optional [`Keys`] (a primary key to seal with, plus
     /// prior keys still accepted on the verify path — #285/#137) and whether to encrypt.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If `encrypt` is `true` and the crate was built without the `encryption` feature — a loud
-    /// failure rather than a silent downgrade.
-    pub fn with_rotation(keys: Option<Keys>, encrypt: bool) -> Self {
-        match (keys, encrypt) {
+    /// If `encrypt` is `true` and the crate was built without the `encryption` feature.
+    pub fn with_rotation(
+        keys: Option<Keys>,
+        encrypt: bool,
+    ) -> Result<Self, EncryptionFeatureDisabled> {
+        Ok(match (keys, encrypt) {
             (None, _) => Authenticator::Disabled,
             (Some(keys), false) => Authenticator::Enabled(keys),
             #[cfg(feature = "encryption")]
             (Some(keys), true) => Authenticator::Encrypted(keys),
             #[cfg(not(feature = "encryption"))]
-            (Some(_), true) => panic!(
-                "reconcile: encryption requested but the crate was built without the \
-                 `encryption` feature"
-            ),
-        }
+            (Some(_), true) => return Err(EncryptionFeatureDisabled),
+        })
     }
 
     /// Extra bytes a sealed datagram adds over the raw messages, for MTU accounting: crypto

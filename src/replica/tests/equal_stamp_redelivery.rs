@@ -49,6 +49,7 @@ async fn equal_stamp_update_is_not_reapplied() {
     // is re-applied, so the value must not matter.
     let bytes = update_message_bytes(key, Entry::present(stamp, 2));
     let payload = auth::Authenticator::new(None, false)
+        .unwrap()
         .open(&bytes)
         .expect("unauthenticated mode clears any datagram")
         .check_version()

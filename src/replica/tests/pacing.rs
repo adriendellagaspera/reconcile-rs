@@ -37,7 +37,7 @@ fn bulk_updates(n: u64, value_len: usize) -> Vec<Msg> {
 async fn time_send(messages: &[Msg], rate: Option<usize>) -> Duration {
     let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
     let transport = UdpTransport::new(socket);
-    let authenticator = Authenticator::new(None, false);
+    let authenticator = Authenticator::new(None, false).unwrap();
     let sender_counter = gossip::replay::SenderCounter::new();
     let ports = SendPorts {
         transport: &transport,
@@ -136,7 +136,7 @@ async fn oversized_message_is_dropped_not_sent_empty_or_oversized() {
         let sender_transport = net.bind(sender_addr);
         let receiver_transport = net.bind(receiver_addr);
 
-        let authenticator = Authenticator::new(None, false);
+        let authenticator = Authenticator::new(None, false).unwrap();
         let sender_counter = gossip::replay::SenderCounter::new();
         let ports = SendPorts {
             transport: &sender_transport,

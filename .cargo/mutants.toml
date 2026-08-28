@@ -149,7 +149,7 @@ exclude_globs = ["benches/**", "examples/**"]
 # falls. No test capturing log output exists in this codebase, and none should be added just to
 # pin an operator that gates nothing but which log line fires.
 #
-# `replica/construct.rs:204:33` (`replace < with <=` in `build`'s bulk-send-rate clamp,
+# `replica/construct.rs:208:33` (`replace < with <=` in `build`'s bulk-send-rate clamp,
 # `if rate > 0 && rate < MIN_BULK_SEND_RATE { warn!(...); MIN_BULK_SEND_RATE } else { rate }`)
 # is equivalent at exactly this one operator: `<` and `<=` disagree only when `rate ==
 # MIN_BULK_SEND_RATE`, and at that point clamping to the floor and leaving `rate` unclamped
@@ -203,7 +203,7 @@ exclude_re = [
     "protocol/rank\\.rs:117:43: replace \\|\\| with &&",
     "protocol/rank\\.rs:117:62: replace != with ==",
     "protocol/rank\\.rs:118:49: replace != with ==",
-    "replica/construct\\.rs:204:33: replace < with <=",
+    "replica/construct\\.rs:208:33: replace < with <=",
     "replica/repair\\.rs:118:36: replace > with >=",
 ]
 

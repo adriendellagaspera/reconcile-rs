@@ -103,6 +103,26 @@ wraps it for any other error kind that persisted across every retry. There is no
 `try_with_persistence` — this is the one method now, not a fallible twin alongside the old
 panicking signature.
 
+### `Authenticator::new`/`with_rotation` now return `Result` instead of panicking
+
+`gossip::auth::Authenticator::new`/`with_rotation` changed from `Self` to
+`Result<Self, gossip::auth::EncryptionFeatureDisabled>` (#100): requesting `encrypt = true` without
+the crate's `encryption` feature enabled used to panic, now reports it instead. Action needed at
+every call site:
+
+```rust
+// Before
+let auth = Authenticator::new(key, encrypt);
+// After
+let auth = Authenticator::new(key, encrypt)?;
+```
+
+Reached through `reconcile` only via `Config::with_encryption`, which is itself gated on the
+`encryption` feature — so a `reconcile` caller can never actually observe this error; it matters
+only to a direct `gossip`/`reconcile-gossip` caller choosing `encrypt` at runtime independent of
+that feature gate. There is no `try_new`/`try_with_rotation` — this is the one pair of methods now,
+not a fallible twin alongside the old panicking signature.
+
 ## 0.3.0 to 0.4.0
 
 Both changes below are additive-only-until-the-1.0-wire-freeze decisions (#382, #463) — the last

@@ -64,6 +64,7 @@ async fn feed_and_capture_reply(
 ) -> Vec<u8> {
     let bytes = message_bytes(message);
     let payload = auth::Authenticator::new(None, false)
+        .unwrap()
         .open(&bytes)
         .expect("unauthenticated mode clears any datagram")
         .check_version()
@@ -177,6 +178,7 @@ async fn a_convergence_ack_reports_spoke_dated() {
 
     let bytes = message_bytes(&Message::ConvergenceAck);
     let payload = auth::Authenticator::new(None, false)
+        .unwrap()
         .open(&bytes)
         .expect("unauthenticated mode clears any datagram")
         .check_version()

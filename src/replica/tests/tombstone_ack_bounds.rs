@@ -47,6 +47,7 @@ async fn ack_for_unknown_key_does_not_grow_tombstone_acks() {
 
     let bytes = ack_bytes(42, 999);
     let payload = auth::Authenticator::new(None, false)
+        .unwrap()
         .open(&bytes)
         .expect("unauthenticated open")
         .check_version()
@@ -84,6 +85,7 @@ async fn ack_for_live_key_does_not_grow_tombstone_acks() {
     let peer: SocketAddr = "127.0.0.96:9000".parse().unwrap();
     let bytes = ack_bytes(key, 123);
     let payload = auth::Authenticator::new(None, false)
+        .unwrap()
         .open(&bytes)
         .expect("unauthenticated open")
         .check_version()
@@ -117,6 +119,7 @@ async fn ack_for_local_tombstone_is_recorded() {
     let peer: SocketAddr = "127.0.0.98:9000".parse().unwrap();
     let bytes = ack_bytes(key, version);
     let payload = auth::Authenticator::new(None, false)
+        .unwrap()
         .open(&bytes)
         .expect("unauthenticated open")
         .check_version()

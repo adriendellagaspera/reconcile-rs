@@ -485,9 +485,13 @@ guarantees whose resolution history §8 tracks.
      reconsidered alongside this change and kept: making it async would require an `async fn`
      `with_persistence`, a load-bearing signature change to every builder-chain caller, entangling
      an orthogonal concern with this one — tracked separately if ever taken on.
-   - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — panics when `encrypt = true`
-     without the `encryption` feature. Tracked as
-     [#100](https://github.com/adriendellagaspera/reconcile-rs/issues/100) (`M-breaking`).
+   - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — resolved by #100: converted
+     outright to return `Result<Self, EncryptionFeatureDisabled>` instead of panicking when
+     `encrypt = true` without the `encryption` feature. No `try_new`/`try_with_rotation` twin was
+     added, and none remains — even though the mismatch is a build-configuration fact checked once
+     at startup (which Cargo features this binary was compiled with), not runtime data a peer or
+     attacker ever influences, the resting point this invariant settled on is one fallible method,
+     not a panicking one kept alongside a fallible twin.
    - `check_key_or_insecure_opt_in` — kept as-is: it is the loud, deliberate security guard #325
      chose specifically so a cluster cannot start unauthenticated by silent default; a `Result` a
      caller can inspect-and-ignore is exactly the footgun #325 was written to close, not a
