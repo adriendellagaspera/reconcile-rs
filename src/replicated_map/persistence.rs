@@ -27,8 +27,8 @@ use super::ReplicatedMap;
 /// How often the background task writes a full snapshot to the persistence backend.
 pub(super) const SNAPSHOT_INTERVAL: Duration = Duration::from_secs(5);
 
-/// Returned by [`try_with_persistence`](ReplicatedMap::try_with_persistence) when loading
-/// previously persisted state fails.
+/// Returned by [`with_persistence`](ReplicatedMap::with_persistence) when loading previously
+/// persisted state fails.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum PersistenceLoadError {
@@ -100,16 +100,16 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Loaded entries replay through the pre-insert hook, preserving each tombstone's deletion
     /// timestamp and rebuilding the expiry wheel.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If the backend fails to load: a damaged durable state must be an explicit decision, never a
     /// silent fresh start. A *transient* failure (anything other than
     /// [`InvalidData`](io::ErrorKind::InvalidData) — a not-yet-mounted volume, a momentary
     /// permission or I/O hiccup) is retried up to `LOAD_RETRY_ATTEMPTS` (5) times with exponential
-    /// backoff before this panics, so a slow-starting environment does not crash-loop on every
-    /// restart attempt; a decode/format error ([`InvalidData`](io::ErrorKind::InvalidData)) is
-    /// never transient and panics immediately, unretried. See
-    /// [`try_with_persistence`](Self::try_with_persistence) for a non-panicking alternative.
+    /// backoff before this returns [`RetriesExhausted`](PersistenceLoadError::RetriesExhausted), so
+    /// a slow-starting environment does not crash-loop on every restart attempt; a decode/format
+    /// error ([`InvalidData`](io::ErrorKind::InvalidData)) is never transient and returns
+    /// [`Corrupt`](PersistenceLoadError::Corrupt) immediately, unretried.
     ///
     /// ```
     /// use reconcile::{
@@ -119,7 +119,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// use std::sync::Arc;
     ///
     /// # #[tokio::main]
-    /// # async fn main() -> std::io::Result<()> {
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let dir = tempfile::tempdir()?;
     /// let backend = FileSnapshot::new(dir.path().join("snapshot"));
     ///
@@ -131,32 +131,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// // happens synchronously in `with_persistence` itself, not on the periodic save timer.
     /// let store = ReplicatedMap::<String, i32>::new(Config::new(8085).with_insecure_no_key())
     ///     .await?
-    ///     .with_persistence(Arc::new(backend));
+    ///     .with_persistence(Arc::new(backend))?;
     /// assert_eq!(store.get_cloned(&"a".to_string()), Some(1));
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_persistence(self, backend: Arc<dyn Persistence<K, V>>) -> Self {
-        match self.try_with_persistence(backend) {
-            Ok(store) => store,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// As [`with_persistence`](Self::with_persistence), but returns a [`PersistenceLoadError`]
-    /// instead of panicking when the backend fails to load.
-    ///
-    /// # Errors
-    ///
-    /// If the backend fails to load: a damaged durable state must be an explicit decision, never a
-    /// silent fresh start. A *transient* failure (anything other than
-    /// [`InvalidData`](io::ErrorKind::InvalidData) — a not-yet-mounted volume, a momentary
-    /// permission or I/O hiccup) is retried up to `LOAD_RETRY_ATTEMPTS` (5) times with exponential
-    /// backoff before this returns [`RetriesExhausted`](PersistenceLoadError::RetriesExhausted), so
-    /// a slow-starting environment does not crash-loop on every restart attempt; a decode/format
-    /// error ([`InvalidData`](io::ErrorKind::InvalidData)) is never transient and returns
-    /// [`Corrupt`](PersistenceLoadError::Corrupt) immediately, unretried.
-    pub fn try_with_persistence(
+    pub fn with_persistence(
         mut self,
         backend: Arc<dyn Persistence<K, V>>,
     ) -> Result<Self, PersistenceLoadError> {

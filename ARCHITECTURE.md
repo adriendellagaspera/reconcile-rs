@@ -447,8 +447,10 @@ guarantees whose resolution history §8 tracks.
    control the shape or size of the data reaching it (config, discovery-supplied peer info,
    persisted state, a caller-chosen key), so panicking on it is a self-inflicted DoS surface, not a
    caller bug — the same reasoning #82 gave for `try_insert`/`try_update` (F13), generalized instead
-   of repeated ad hoc per method. New public API must return `Result` from the start; no new `try_`
-   twin should ever be needed again. This does not extend to a missing ambient Tokio runtime (an
+   of repeated ad hoc per method. New public API must return `Result` from the start, as the sole
+   entry point — a panicking convenience plus a `try_` twin is exactly the halfway state this
+   decision retires, not a legitimate resting point, so an existing pair converts to one
+   `Result`-returning method rather than gaining a permanent twin. This does not extend to a missing ambient Tokio runtime (an
    environment precondition, documented as `# Panics`), an internal "provably impossible" assertion
    (HLC monotonicity, mutex poisoning), or an index-style panic (`Rsos::select`,
    `FingerprintTreeMap::select`) — those mirror `Vec`'s own `[]` vs `.get()` split, Rust's own
@@ -460,15 +462,14 @@ guarantees whose resolution history §8 tracks.
    - `ReplicatedMap::with_discovery` (`src/replicated_map/discovery.rs`) — panics, even in release
      builds, on a `Speculative` `Discovery::kind()`; converting to `try_with_discovery` is tracked
      as [#98](https://github.com/adriendellagaspera/reconcile-rs/issues/98) (`M-breaking`).
-   - `with_persistence`'s load path (`src/replicated_map/persistence.rs`) — resolved by #99: added
-     `try_with_persistence`, returning the new `PersistenceLoadError::{Corrupt,RetriesExhausted}`
-     instead of panicking; `with_persistence` keeps its panicking signature (same wording, since
-     tests already pin the panic text) and delegates to the fallible form. Unlike the other three
-     methods this invariant covers, this one *is* genuine runtime data: a corrupted or
-     retry-exhausted disk state is an environmental fact discovered at startup, not a static
-     developer mistake — closer to `insert`/`update`'s DoS surface than to `Config::with_net`'s
-     static cap. The load loop's synchronous `std::thread::sleep` backoff was reconsidered
-     alongside this change and kept: making it async would require an `async fn`
+   - `with_persistence`'s load path (`src/replicated_map/persistence.rs`,
+     `src/replicated_set.rs`) — resolved by #99: converted outright to
+     `Result<Self, PersistenceLoadError>`, replacing `PersistenceLoadError::{Corrupt,RetriesExhausted}`
+     panics; no `try_with_persistence` twin was added, and none remains. This one *is* genuine
+     runtime data: a corrupted or retry-exhausted disk state is an environmental fact discovered at
+     startup, not a static developer mistake — closer to `insert`/`update`'s DoS surface than to
+     `Config::with_net`'s static cap. The load loop's synchronous `std::thread::sleep` backoff was
+     reconsidered alongside this change and kept: making it async would require an `async fn`
      `with_persistence`, a load-bearing signature change to every builder-chain caller, entangling
      an orthogonal concern with this one — tracked separately if ever taken on.
    - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — panics when `encrypt = true`

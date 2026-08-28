@@ -1263,7 +1263,9 @@ async fn rejoin_once(
     let snapshot_path = snapshot_dir.as_ref().map(|dir| dir.path().join("snapshot"));
 
     if let Some(path) = &snapshot_path {
-        a = a.with_persistence(Arc::new(FileSnapshot::new(path)));
+        a = a
+            .with_persistence(Arc::new(FileSnapshot::new(path)))
+            .unwrap();
     }
     // A is loaded before it has any peer, so nothing is broadcast eagerly (as in `cold_sync`).
     a.insert_bulk(prefix);
@@ -1275,7 +1277,9 @@ async fn rejoin_once(
 
     let start = Instant::now();
     let b = match &snapshot_path {
-        Some(path) => b.with_persistence(Arc::new(FileSnapshot::new(path))),
+        Some(path) => b
+            .with_persistence(Arc::new(FileSnapshot::new(path)))
+            .unwrap(),
         None => b,
     };
     // Only the restarting node seeds — the survivor initiating too would dump the dataset twice.

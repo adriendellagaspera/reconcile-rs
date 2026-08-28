@@ -252,7 +252,8 @@ async fn persistence_failures_recorded_as_counter_and_gauge_resets_on_success() 
     let store = ReplicatedMap::<i32, i32>::new(local_config())
         .await
         .expect("bind failed")
-        .with_persistence(backend.clone());
+        .with_persistence(backend.clone())
+        .unwrap();
 
     fn read_gauge(snapshotter: &metrics_util::debugging::Snapshotter, name: &str) -> Option<f64> {
         snapshotter

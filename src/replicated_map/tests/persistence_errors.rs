@@ -12,7 +12,7 @@
 use crate::replicated_map::PersistenceLoadError;
 
 /// #99: `PersistenceLoadError`'s `Display` text is user-facing (it's what `with_persistence`
-/// panics with) — assert its actual content for both variants, not merely that formatting them
+/// returns as an error) — assert its actual content for both variants, not merely that formatting them
 /// doesn't panic.
 #[test]
 fn persistence_load_error_display_messages() {

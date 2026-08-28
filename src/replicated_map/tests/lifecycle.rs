@@ -122,7 +122,8 @@ async fn run_observes_cancellation_and_flushes_a_durable_final_snapshot() {
     let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
         .await
         .expect("bind failed")
-        .with_persistence(Arc::new(FileSnapshot::new(&path)));
+        .with_persistence(Arc::new(FileSnapshot::new(&path)))
+        .unwrap();
     store.insert(7, 70);
 
     let shutdown = CancellationToken::new();
@@ -144,7 +145,8 @@ async fn run_observes_cancellation_and_flushes_a_durable_final_snapshot() {
     let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
         .await
         .expect("bind failed")
-        .with_persistence(Arc::new(FileSnapshot::new(&path)));
+        .with_persistence(Arc::new(FileSnapshot::new(&path)))
+        .unwrap();
     assert_eq!(
         restarted.get(&7).as_deref(),
         Some(&70),
@@ -161,7 +163,8 @@ async fn snapshot_now_flushes_without_the_periodic_task() {
     let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
         .await
         .expect("bind failed")
-        .with_persistence(Arc::new(FileSnapshot::new(&path)));
+        .with_persistence(Arc::new(FileSnapshot::new(&path)))
+        .unwrap();
     store.just_insert(3, 30);
 
     assert!(store.sync_state().last_snapshot_at.is_none());
@@ -176,7 +179,8 @@ async fn snapshot_now_flushes_without_the_periodic_task() {
     let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
         .await
         .expect("bind failed")
-        .with_persistence(Arc::new(FileSnapshot::new(&path)));
+        .with_persistence(Arc::new(FileSnapshot::new(&path)))
+        .unwrap();
     assert_eq!(
         restarted.get(&3).as_deref(),
         Some(&30),

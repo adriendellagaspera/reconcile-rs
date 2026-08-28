@@ -49,15 +49,14 @@ All notable changes to this project are documented here. Format follows
   different meanwhile, nothing is lost — but wasteful). A cluster running
   `Config::with_insecure_no_key()` is unaffected either way; the lift stays unkeyed exactly as
   before.
+- **BREAKING**: `ReplicatedMap::with_persistence`/`ReplicatedSet::with_persistence` now return
+  `Result<Self, replicated_map::PersistenceLoadError>` instead of panicking on corrupted
+  (`InvalidData`) or retry-exhausted persisted state (#99, `ARCHITECTURE.md` §5 invariant 15). No
+  `try_with_persistence` twin: the panicking form is gone, replaced outright rather than kept
+  alongside a fallible one. See [MIGRATING.md](MIGRATING.md).
 
 ### Added
 
-- `ReplicatedMap::try_with_persistence` and `replicated_map::PersistenceLoadError` (#99): a
-  non-panicking twin of `with_persistence`, whose load path panicked on corrupted (`InvalidData`)
-  or retry-exhausted persisted state. `with_persistence` keeps its panicking signature (same
-  wording; existing tests pin it) and now delegates to the fallible form — unlike the other three
-  `ARCHITECTURE.md` §5 invariant 15 methods, this one is genuine runtime data (a corrupted or
-  retry-exhausted disk state discovered at startup), not a static developer mistake.
 - `Config::max_concurrent_broadcasts`/`with_max_concurrent_broadcasts` (default 1024, #83): bounds
   the number of concurrently in-flight write-broadcast tasks, the egress-side counterpart of
   `Config::max_concurrent_bulk_dumps`; the `reconcile_broadcasts_in_flight` gauge and

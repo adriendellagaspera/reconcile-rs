@@ -50,7 +50,8 @@ async fn snapshot_periodically_skips_below_change_threshold() {
     .expect("bind failed")
     .with_persistence(Arc::new(CountingSave {
         saves: saves.clone(),
-    }));
+    }))
+    .unwrap();
 
     // Two changes: below the configured threshold of three.
     store.just_insert(1, 10);
@@ -83,7 +84,8 @@ async fn snapshot_periodically_writes_once_threshold_reached() {
     .expect("bind failed")
     .with_persistence(Arc::new(CountingSave {
         saves: saves.clone(),
-    }));
+    }))
+    .unwrap();
 
     store.just_insert(1, 10);
     store.just_insert(2, 20);
@@ -114,7 +116,8 @@ async fn snapshot_periodically_does_not_rewrite_when_idle_after_a_snapshot() {
     .expect("bind failed")
     .with_persistence(Arc::new(CountingSave {
         saves: saves.clone(),
-    }));
+    }))
+    .unwrap();
 
     store.just_insert(1, 10);
 
