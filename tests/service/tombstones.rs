@@ -34,11 +34,13 @@ async fn tombstone_is_retained_until_peer_acknowledges() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
     let cfg2 = Config::default()
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
 
     // Aggressive wall-clock expiry so that, without causal-stability gating, the tombstone
@@ -105,11 +107,13 @@ async fn deleted_value_is_not_resurrected_by_returning_peer() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
     let cfg2 = Config::default()
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
 
     let store1 = ReplicatedMap::<i32, i32>::new(cfg1)
@@ -180,6 +184,7 @@ async fn tombstone_gc_converges_in_3_node_cluster_mesh() {
             .with_port(port)
             .with_listen_addr(addr)
             .with_net(net)
+            .unwrap()
             .with_reconcile_interval(Duration::from_millis(100))
             .with_insecure_no_key()
     };
@@ -255,6 +260,7 @@ async fn tombstone_gc_converges_in_3_node_cluster_line() {
             .with_port(port)
             .with_listen_addr(addr)
             .with_net(net)
+            .unwrap()
             .with_reconcile_interval(Duration::from_millis(100))
             .with_insecure_no_key()
     };

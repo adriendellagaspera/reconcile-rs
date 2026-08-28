@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### `Config::with_net`/`with_nets` now return `Result`
+
+`Config::with_net`/`with_nets` (#97, ARCHITECTURE.md §5 invariant 15) used to panic past
+`MAX_NETS` declared networks, with a separate fallible `try_with_net` twin for a caller that
+wanted to avoid that. The twin is gone; `with_net`/`with_nets` are now the sole, fallible entry
+points:
+
+```rust
+// Before
+let config = Config::new(8080).with_net(net);
+// After
+let config = Config::new(8080).with_net(net)?;
+```
+
+If you were already calling `try_with_net`, drop the `try_` prefix; the signature is unchanged.
+
 ### `Config::snapshot_interval` is now `Option<Duration>`
 
 `Config::snapshot_interval` (and `Config::with_snapshot_interval`) changed from `Duration` to

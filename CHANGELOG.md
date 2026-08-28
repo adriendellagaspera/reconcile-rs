@@ -38,6 +38,9 @@ All notable changes to this project are documented here. Format follows
   snapshot of the backing tree plus the looked-up key instead of a lock guard, so holding one no
   longer risks a deadlock against a concurrent write on the same handle. See
   [MIGRATING.md](MIGRATING.md).
+- **BREAKING**: `Config::with_net`/`with_nets` now return `Result<Self, ConfigError>` instead of
+  panicking past `MAX_NETS` (#97, ARCHITECTURE.md §5 invariant 15) — the `try_with_net` twin is
+  gone; `with_net` is the sole, fallible entry point. See [MIGRATING.md](MIGRATING.md).
 - A configured cluster key now also keys the range-fingerprint lift (#19, migrated from
   `akvize/reconcile-rs#337`): `Replica`/`ReadReplicaMap` derive an independent BLAKE3 subkey from
   `Config::cluster_key` (`ClusterKey::derive_lift_key`) and pass it to `rsos::FingerprintTreeMap`,

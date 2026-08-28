@@ -171,6 +171,7 @@ fn loaded_store(rt: &Runtime, kvs: &[(u32, u32)]) -> ReplicatedMap<u32, u32> {
                 .with_port(next_bench_port())
                 .with_listen_addr("127.0.0.1".parse().unwrap())
                 .with_net("127.0.0.1/8".parse().unwrap())
+                .unwrap()
                 .with_insecure_no_key(),
         )
         .await
@@ -188,6 +189,7 @@ fn loaded_store_heap(rt: &Runtime, kvs: &[(String, Vec<u8>)]) -> ReplicatedMap<S
                 .with_port(next_bench_port())
                 .with_listen_addr("127.0.0.1".parse().unwrap())
                 .with_net("127.0.0.1/8".parse().unwrap())
+                .unwrap()
                 .with_insecure_no_key(),
         )
         .await
@@ -433,6 +435,7 @@ fn cold_sync(c: &mut Criterion) {
                                 .with_port(port)
                                 .with_listen_addr(addr)
                                 .with_net("127.0.0.1/8".parse().unwrap())
+                                .unwrap()
                                 .with_insecure_no_key()
                         };
                         // A is loaded with no peer declared, so `insert_bulk` broadcasts to nobody.
@@ -534,6 +537,7 @@ fn mesh_with<T: Transport>(
                 .with_port(port)
                 .with_listen_addr(addr)
                 .with_net("127.0.0.1/8".parse().unwrap())
+                .unwrap()
                 .with_insecure_no_key();
             ReplicatedMap::<u32, u32>::new_with_transport(config, Arc::new(transport))
         })
@@ -611,6 +615,7 @@ fn build_mesh_coalescing(
                 .with_port(port)
                 .with_listen_addr(addr)
                 .with_net("127.0.0.1/8".parse().unwrap())
+                .unwrap()
                 .with_insecure_no_key()
                 .with_coalesce_window(window);
             ReplicatedMap::<u32, u32>::new_with_transport(config, Arc::new(transport))

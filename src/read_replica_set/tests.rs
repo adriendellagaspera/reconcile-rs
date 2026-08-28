@@ -85,6 +85,7 @@ async fn value_fingerprint_and_its_deprecated_alias_reflect_converged_content() 
             .with_port(port)
             .with_listen_addr(dated_addr)
             .with_net(net)
+            .unwrap()
             .with_insecure_no_key(),
     )
     .await
@@ -96,6 +97,7 @@ async fn value_fingerprint_and_its_deprecated_alias_reflect_converged_content() 
             .with_port(port)
             .with_listen_addr(replica_addr)
             .with_net(net)
+            .unwrap()
             .with_insecure_no_key(),
     )
     .await
@@ -146,6 +148,7 @@ async fn start_reconciliation_wrapper_actually_transmits() {
             .with_port(port)
             .with_listen_addr(replica_addr)
             .with_net(net)
+            .unwrap()
             .with_insecure_no_key(),
     )
     .await
@@ -197,6 +200,7 @@ async fn with_discovery_converges_without_with_seed() {
             .with_port(port)
             .with_listen_addr(dated_addr)
             .with_net(net)
+            .unwrap()
             .with_insecure_no_key(),
     )
     .await
@@ -208,6 +212,7 @@ async fn with_discovery_converges_without_with_seed() {
             .with_port(port)
             .with_listen_addr(replica_addr)
             .with_net(net)
+            .unwrap()
             .with_insecure_no_key(),
     )
     .await

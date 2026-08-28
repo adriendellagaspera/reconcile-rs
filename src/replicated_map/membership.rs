@@ -125,7 +125,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// # Errors
     ///
     /// If `nets` exceeds [`MAX_NETS`](super::MAX_NETS) — the same cap
-    /// `Config::with_net`/`try_with_net` enforce at construction time.
+    /// `Config::with_net` enforce at construction time.
     ///
     /// Safe live otherwise: topology is per-node and carries no wire tag, and repair of known
     /// peers is not gated on net membership, so the worst case is suboptimal WAN traffic, never
