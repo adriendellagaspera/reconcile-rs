@@ -32,7 +32,9 @@ async fn cross_net_reconciliation() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net_a)
+        .unwrap()
         .with_net(net_b)
+        .unwrap()
         .with_remote_interval(1)
         .with_remote_fanout(1)
         .with_insecure_no_key();
@@ -40,7 +42,9 @@ async fn cross_net_reconciliation() {
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net_b)
+        .unwrap()
         .with_net(net_a)
+        .unwrap()
         .with_remote_interval(1)
         .with_remote_fanout(1)
         .with_insecure_no_key();
@@ -85,7 +89,9 @@ async fn cross_net_discovery_without_seed() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net_a)
+        .unwrap()
         .with_net(peer2_host)
+        .unwrap()
         .with_remote_interval(1)
         .with_remote_fanout(1)
         .with_insecure_no_key();
@@ -93,7 +99,9 @@ async fn cross_net_discovery_without_seed() {
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net_b)
+        .unwrap()
         .with_net(peer1_host)
+        .unwrap()
         .with_remote_interval(1)
         .with_remote_fanout(1)
         .with_insecure_no_key();
@@ -131,6 +139,7 @@ async fn runtime_add_net_enables_discovery_and_convergence() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net_a)
+        .unwrap()
         .with_remote_interval(1)
         .with_remote_fanout(1)
         .with_insecure_no_key();
@@ -138,6 +147,7 @@ async fn runtime_add_net_enables_discovery_and_convergence() {
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net_b)
+        .unwrap()
         .with_remote_interval(1)
         .with_remote_fanout(1)
         .with_insecure_no_key();
@@ -180,6 +190,7 @@ async fn unclassified_peer_is_still_reconciled() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(foreign_net)
+        .unwrap()
         .with_remote_interval(1)
         .with_remote_fanout(1)
         .with_insecure_no_key();
@@ -187,6 +198,7 @@ async fn unclassified_peer_is_still_reconciled() {
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(foreign_net)
+        .unwrap()
         .with_remote_interval(1)
         .with_remote_fanout(1)
         .with_insecure_no_key();
@@ -230,6 +242,7 @@ async fn runtime_config_setters() {
             .with_port(8090)
             .with_listen_addr(addr)
             .with_net(net_c)
+            .unwrap()
             .with_insecure_no_key(),
     )
     .await

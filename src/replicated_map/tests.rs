@@ -19,6 +19,7 @@ mod peer_cap;
 mod persistence;
 mod read;
 mod snapshot_cadence;
+mod value_size;
 mod write;
 
 /// A config bound to a fresh port on loopback — port `0` is refused, so
@@ -48,5 +49,6 @@ fn ephemeral_config() -> Config {
         snapshot_change_threshold: super::config::DEFAULT_SNAPSHOT_CHANGE_THRESHOLD,
         max_clock_drift: crate::clock::MAX_CLOCK_DRIFT,
         coalesce_window: Duration::ZERO,
+        max_value_size: None,
     }
 }

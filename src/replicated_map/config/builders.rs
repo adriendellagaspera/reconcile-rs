@@ -40,27 +40,13 @@ impl Config {
     /// Declare a geographical network by its CIDR — once per network, **including this node's
     /// own** (see [`nets`](Config::nets)).
     ///
-    /// # Panics
-    ///
-    /// If more than [`MAX_NETS`](super::MAX_NETS) networks are declared. See [`try_with_net`](Self::try_with_net)
-    /// for a non-panicking alternative — the same [`MAX_NETS`](super::MAX_NETS) cap
-    /// [`ReplicatedMap::set_nets`](super::super::ReplicatedMap::set_nets)/
-    /// [`add_net`](super::super::ReplicatedMap::add_net) enforce at runtime.
-    #[must_use]
-    pub fn with_net(self, net: IpNet) -> Self {
-        match self.try_with_net(net) {
-            Ok(config) => config,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// As [`with_net`](Self::with_net), but returns a [`ConfigError`] instead of panicking past
-    /// [`MAX_NETS`](super::MAX_NETS).
-    ///
     /// # Errors
     ///
-    /// If more than [`MAX_NETS`](super::MAX_NETS) networks are declared.
-    pub fn try_with_net(mut self, net: IpNet) -> Result<Self, ConfigError> {
+    /// If more than [`MAX_NETS`](super::MAX_NETS) networks are declared — the same
+    /// [`MAX_NETS`](super::MAX_NETS) cap
+    /// [`ReplicatedMap::set_nets`](super::super::ReplicatedMap::set_nets)/
+    /// [`add_net`](super::super::ReplicatedMap::add_net) enforce at runtime.
+    pub fn with_net(mut self, net: IpNet) -> Result<Self, ConfigError> {
         let slot = self
             .nets
             .iter_mut()
@@ -72,15 +58,14 @@ impl Config {
 
     /// Declare several networks at once (see [`with_net`](Config::with_net)).
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If the total exceeds [`MAX_NETS`](super::MAX_NETS).
-    #[must_use]
-    pub fn with_nets(mut self, nets: &[IpNet]) -> Self {
+    pub fn with_nets(mut self, nets: &[IpNet]) -> Result<Self, ConfigError> {
         for &net in nets {
-            self = self.with_net(net);
+            self = self.with_net(net)?;
         }
-        self
+        Ok(self)
     }
 
     /// Set how often (in reconciliation rounds) the full anti-entropy comparison is sent to
@@ -255,6 +240,17 @@ impl Config {
     #[must_use]
     pub fn with_coalesce_window(mut self, window: Duration) -> Self {
         self.coalesce_window = window;
+        self
+    }
+
+    /// Set [`max_value_size`](Config::max_value_size) (default `None`, no ceiling). Checked only
+    /// by [`ReplicatedMap::try_insert`](crate::ReplicatedMap::try_insert)/
+    /// [`try_update`](crate::ReplicatedMap::try_update) (#82) —
+    /// [`insert`](crate::ReplicatedMap::insert)/[`update`](crate::ReplicatedMap::update) are
+    /// unaffected either way.
+    #[must_use]
+    pub fn with_max_value_size(mut self, max: usize) -> Self {
+        self.max_value_size = Some(max);
         self
     }
 

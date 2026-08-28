@@ -18,7 +18,7 @@
 //! needed.
 
 use std::io;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,7 +28,7 @@ use ipnet::IpNet;
 use crate::bounds::Key;
 use crate::discovery::Discovery;
 use crate::entry::State;
-use crate::read_replica_map::ReadReplicaMap;
+use crate::read_replica_map::{ReadReplicaMap, ReadSyncState};
 use crate::replicated_map::Config;
 use rsos::Fingerprint;
 
@@ -70,6 +70,11 @@ impl<K: Key> ReadReplicaSet<K> {
     #[must_use]
     pub fn with_seed(self, peer: IpAddr) -> Self {
         ReadReplicaSet(self.0.with_seed(peer))
+    }
+
+    /// Register or refresh a known dated peer at runtime. See [`ReadReplicaMap::seed_peer`].
+    pub fn seed_peer(&self, peer: IpAddr) {
+        self.0.seed_peer(peer);
     }
 
     /// (runtime) Retune the probed network. See [`ReadReplicaMap::set_net`].
@@ -149,6 +154,34 @@ impl<K: Key> ReadReplicaSet<K> {
     /// [`ReadReplicaMap::start_reconciliation`].
     pub async fn start_reconciliation(&self) {
         self.0.start_reconciliation().await;
+    }
+
+    /// A snapshot of liveness for a caller building its own readiness signal. See
+    /// [`ReadReplicaMap::sync_state`].
+    #[must_use]
+    pub fn sync_state(&self) -> ReadSyncState {
+        self.0.sync_state()
+    }
+
+    /// The current gossip-routing peer set. See [`ReadReplicaMap::peers`].
+    #[must_use]
+    pub fn peers(&self) -> Vec<IpAddr> {
+        self.0.peers()
+    }
+
+    /// The transport's actual bound local address. See [`ReadReplicaMap::local_addr`].
+    ///
+    /// # Errors
+    ///
+    /// If the underlying transport fails to report its local address.
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.0.local_addr()
+    }
+
+    /// (runtime) Retune the reconciliation cadence. See
+    /// [`ReadReplicaMap::set_reconcile_interval`].
+    pub fn set_reconcile_interval(&self, interval: Duration) {
+        self.0.set_reconcile_interval(interval);
     }
 
     /// Run the reconciliation loop. See [`ReadReplicaMap::run`].

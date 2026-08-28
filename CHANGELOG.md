@@ -38,6 +38,9 @@ All notable changes to this project are documented here. Format follows
   snapshot of the backing tree plus the looked-up key instead of a lock guard, so holding one no
   longer risks a deadlock against a concurrent write on the same handle. See
   [MIGRATING.md](MIGRATING.md).
+- **BREAKING**: `Config::with_net`/`with_nets` now return `Result<Self, ConfigError>` instead of
+  panicking past `MAX_NETS` (#97, ARCHITECTURE.md §5 invariant 15) — the `try_with_net` twin is
+  gone; `with_net` is the sole, fallible entry point. See [MIGRATING.md](MIGRATING.md).
 - A configured cluster key now also keys the range-fingerprint lift (#19, migrated from
   `akvize/reconcile-rs#337`): `Replica`/`ReadReplicaMap` derive an independent BLAKE3 subkey from
   `Config::cluster_key` (`ClusterKey::derive_lift_key`) and pass it to `rsos::FingerprintTreeMap`,
@@ -64,9 +67,9 @@ All notable changes to this project are documented here. Format follows
   rejection/skip. `ReplicatedMap::insert`/`update`/`insert_bulk` keep their infallible signatures —
   at the budget they skip only that call's eager broadcast, recovered by the next anti-entropy
   round or repair retry (#23). `ReplicatedMap::try_insert`/`try_update` are new, additive,
-  all-or-nothing counterparts that instead reject with `replicated_map::Backpressure` when the
-  budget is exhausted, for a caller that wants to know rather than rely on that backstop — see
-  README "Write backpressure".
+  all-or-nothing counterparts that instead reject with `replicated_map::WriteRejected::Backpressure`
+  when the budget is exhausted, for a caller that wants to know rather than rely on that backstop —
+  see README "Write backpressure".
 - `Config::repair_interval`/`with_repair_interval`, and
   `ReplicatedMap`/`ReplicatedSet::set_repair_interval` (#23): an RTT-scale timer (default 150 ms)
   that repairs a comparison round or bulk-transfer datagram lost in flight, decoupled from
@@ -86,6 +89,18 @@ All notable changes to this project are documented here. Format follows
   would for a dated one. `sync_state()` returns a `ReadSyncState` (no `last_snapshot_at`: a read
   replica deliberately never persists). No `node_id()`/`members()` counterpart — a read replica
   mints no timestamps and holds no causal-stability membership, so neither concept applies.
+- `ReadReplicaSet::local_addr()`/`sync_state()`/`peers()`/`seed_peer()`/`set_reconcile_interval()`
+  (#8): forwards what #30 landed on `ReadReplicaMap`, the same way `ReadReplicaSet` mirrors the rest
+  of `ReadReplicaMap`'s API — closing #8's last open acceptance box.
+- `Config::max_value_size`/`with_max_value_size` and `replicated_map::ValueTooLarge` (#82): a write
+  whose encoded value exceeds the configured ceiling is now rejected synchronously, before any
+  local state changes, instead of only being logged and counted later on the send path
+  (`VALUES_OVERSIZED_TOTAL`) once the key can never converge on any peer. Checked by the same
+  `ReplicatedMap::try_insert`/`try_update` #83 added, which is why their error type is
+  `replicated_map::WriteRejected` (`TooLarge`/`Backpressure`) rather than bare `Backpressure` —
+  the two issues' fallible-write asks turned out to be one pair of methods, not two.
+  `insert`/`update`/`get_mut`/`upsert` are unaffected either way, and `max_value_size` is `None`
+  (no ceiling) by default. See README "Value-size ceiling".
 - `FingerprintTreeMap::from_sorted_iter`/`from_sorted_iter_keyed` (#51): a bottom-up bulk build
   from already-sorted, duplicate-free input, for a caller that knows its dataset up front (initial
   load, snapshot recovery) and wants to skip both the `O(n log n)` sort `FromIterator::collect()`

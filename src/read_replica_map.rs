@@ -170,6 +170,9 @@ fn warn_on_ignored_config_fields(config: &Config) {
     if config.max_concurrent_bulk_dumps != default.max_concurrent_bulk_dumps {
         ignored.push("max_concurrent_bulk_dumps");
     }
+    if config.max_value_size != default.max_value_size {
+        ignored.push("max_value_size");
+    }
     if config.max_concurrent_broadcasts != default.max_concurrent_broadcasts {
         ignored.push("max_concurrent_broadcasts");
     }
