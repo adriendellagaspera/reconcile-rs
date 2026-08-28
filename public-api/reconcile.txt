@@ -214,8 +214,8 @@ impl core::marker::Send for reconcile::replicated_map::PersistenceLoadError
 impl core::marker::Sync for reconcile::replicated_map::PersistenceLoadError
 impl core::marker::Unpin for reconcile::replicated_map::PersistenceLoadError
 impl core::marker::UnsafeUnpin for reconcile::replicated_map::PersistenceLoadError
-impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::PersistenceLoadError
-impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::PersistenceLoadError
+impl !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::PersistenceLoadError
+impl !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::PersistenceLoadError
 #[non_exhaustive] pub enum reconcile::replicated_map::WriteRejected
 pub reconcile::replicated_map::WriteRejected::Backpressure(reconcile::replicated_map::Backpressure)
 pub reconcile::replicated_map::WriteRejected::TooLarge(reconcile::replicated_map::ValueTooLarge)

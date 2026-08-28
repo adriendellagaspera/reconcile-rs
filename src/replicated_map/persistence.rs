@@ -36,8 +36,8 @@ pub enum PersistenceLoadError {
     /// [`InvalidData`](io::ErrorKind::InvalidData): persisted state is corrupt or from an
     /// incompatible format. Never retried.
     Corrupt(io::Error),
-    /// The backend's [`load`](Persistence::load) failed
-    /// [`LOAD_RETRY_ATTEMPTS`] times in a row with a transient error.
+    /// The backend's [`load`](Persistence::load) failed a fixed number of times in a row with a
+    /// transient error.
     RetriesExhausted(io::Error),
 }
 
