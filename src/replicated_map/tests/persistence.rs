@@ -137,8 +137,13 @@ async fn load_failure_beyond_retry_budget_reports_retries_exhausted() {
         .expect("bind failed");
     match store.with_persistence(backend) {
         Ok(_) => panic!("expected RetriesExhausted, got Ok"),
-        Err(PersistenceLoadError::RetriesExhausted(_)) => {}
-        Err(other) => panic!("expected RetriesExhausted, got {other:?}"),
+        Err(err) => match &err {
+            PersistenceLoadError::RetriesExhausted(inner) => {
+                let source = std::error::Error::source(&err).expect("source must be the io::Error");
+                assert_eq!(source.to_string(), inner.to_string());
+            }
+            other => panic!("expected RetriesExhausted, got {other:?}"),
+        },
     }
 }
 
@@ -157,8 +162,13 @@ async fn invalid_data_reports_corrupt_without_retrying() {
         .expect("bind failed");
     match store.with_persistence(backend) {
         Ok(_) => panic!("expected Corrupt, got Ok"),
-        Err(PersistenceLoadError::Corrupt(_)) => {}
-        Err(other) => panic!("expected Corrupt, got {other:?}"),
+        Err(err) => match &err {
+            PersistenceLoadError::Corrupt(inner) => {
+                let source = std::error::Error::source(&err).expect("source must be the io::Error");
+                assert_eq!(source.to_string(), inner.to_string());
+            }
+            other => panic!("expected Corrupt, got {other:?}"),
+        },
     }
     // This must not have gone through even one retry backoff.
     assert!(start.elapsed() < super::super::persistence::LOAD_RETRY_BASE_DELAY);
