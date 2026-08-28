@@ -153,12 +153,17 @@ pub fn reconcile::read_replica_set::ReadReplicaSet<K>::fingerprint<R: core::ops:
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::is_empty(&self) -> bool
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::len(&self) -> usize
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::net(&self) -> ipnet::ipnet::IpNet
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::run(self)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_net(&self, ipnet::ipnet::IpNet)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<()>) + 'static>(&self, F)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_reconcile_interval(&self, core::time::Duration)
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::start_reconciliation(&self)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
@@ -211,6 +216,29 @@ impl core::marker::Unpin for reconcile::replicated_map::PersistenceLoadError
 impl core::marker::UnsafeUnpin for reconcile::replicated_map::PersistenceLoadError
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::PersistenceLoadError
 impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::PersistenceLoadError
+#[non_exhaustive] pub enum reconcile::replicated_map::WriteRejected
+pub reconcile::replicated_map::WriteRejected::Backpressure(reconcile::replicated_map::Backpressure)
+pub reconcile::replicated_map::WriteRejected::TooLarge(reconcile::replicated_map::ValueTooLarge)
+impl core::clone::Clone for reconcile::replicated_map::WriteRejected
+pub fn reconcile::replicated_map::WriteRejected::clone(&self) -> reconcile::replicated_map::WriteRejected
+impl core::cmp::Eq for reconcile::replicated_map::WriteRejected
+impl core::cmp::PartialEq for reconcile::replicated_map::WriteRejected
+pub fn reconcile::replicated_map::WriteRejected::eq(&self, &reconcile::replicated_map::WriteRejected) -> bool
+impl core::error::Error for reconcile::replicated_map::WriteRejected
+pub fn reconcile::replicated_map::WriteRejected::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for reconcile::replicated_map::WriteRejected
+pub fn reconcile::replicated_map::WriteRejected::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for reconcile::replicated_map::WriteRejected
+pub fn reconcile::replicated_map::WriteRejected::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile::replicated_map::WriteRejected
+impl core::marker::StructuralPartialEq for reconcile::replicated_map::WriteRejected
+impl core::marker::Freeze for reconcile::replicated_map::WriteRejected
+impl core::marker::Send for reconcile::replicated_map::WriteRejected
+impl core::marker::Sync for reconcile::replicated_map::WriteRejected
+impl core::marker::Unpin for reconcile::replicated_map::WriteRejected
+impl core::marker::UnsafeUnpin for reconcile::replicated_map::WriteRejected
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::WriteRejected
+impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::WriteRejected
 #[non_exhaustive] pub struct reconcile::replicated_map::Backpressure
 pub reconcile::replicated_map::Backpressure::in_flight: usize
 pub reconcile::replicated_map::Backpressure::max_in_flight: usize
@@ -245,6 +273,7 @@ pub reconcile::replicated_map::Config::max_clock_drift: lww_register::clock::Clo
 pub reconcile::replicated_map::Config::max_concurrent_broadcasts: usize
 pub reconcile::replicated_map::Config::max_concurrent_bulk_dumps: usize
 pub reconcile::replicated_map::Config::max_peers: usize
+pub reconcile::replicated_map::Config::max_value_size: core::option::Option<usize>
 pub reconcile::replicated_map::Config::nets: [core::option::Option<ipnet::ipnet::IpNet>; 8]
 pub reconcile::replicated_map::Config::node_id: core::option::Option<lww_register::clock::NodeId>
 pub reconcile::replicated_map::Config::port: u16
@@ -269,6 +298,7 @@ pub fn reconcile::replicated_map::Config::with_max_clock_drift(self, lww_registe
 pub fn reconcile::replicated_map::Config::with_max_concurrent_broadcasts(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_max_concurrent_bulk_dumps(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_max_peers(self, usize) -> Self
+pub fn reconcile::replicated_map::Config::with_max_value_size(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_net(self, ipnet::ipnet::IpNet) -> Self
 pub fn reconcile::replicated_map::Config::with_nets(self, &[ipnet::ipnet::IpNet]) -> Self
 pub fn reconcile::replicated_map::Config::with_node_id(self, lww_register::clock::NodeId) -> Self
@@ -346,7 +376,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::values(&self) -> alloc::v
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_mut<F: core::ops::function::FnOnce(core::option::Option<&mut V>)>(&self, &K, F)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_or_insert_with<F: core::ops::function::FnOnce() -> V>(&self, &K, F) -> V
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> core::result::Result<bool, reconcile::replicated_map::Backpressure>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> core::result::Result<bool, reconcile::replicated_map::WriteRejected>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::upsert<F: core::ops::function::FnOnce(&mut V)>(&self, K, V, F)
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
@@ -361,7 +391,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::on_persistence_error<F: c
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot_now(&self) -> core::io::error::Result<()>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::Backpressure>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::WriteRejected>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
@@ -406,6 +436,28 @@ impl core::marker::Unpin for reconcile::replicated_map::SyncState
 impl core::marker::UnsafeUnpin for reconcile::replicated_map::SyncState
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::SyncState
 impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::SyncState
+#[non_exhaustive] pub struct reconcile::replicated_map::ValueTooLarge
+pub reconcile::replicated_map::ValueTooLarge::encoded_size: usize
+pub reconcile::replicated_map::ValueTooLarge::max_value_size: usize
+impl core::clone::Clone for reconcile::replicated_map::ValueTooLarge
+pub fn reconcile::replicated_map::ValueTooLarge::clone(&self) -> reconcile::replicated_map::ValueTooLarge
+impl core::cmp::Eq for reconcile::replicated_map::ValueTooLarge
+impl core::cmp::PartialEq for reconcile::replicated_map::ValueTooLarge
+pub fn reconcile::replicated_map::ValueTooLarge::eq(&self, &reconcile::replicated_map::ValueTooLarge) -> bool
+impl core::error::Error for reconcile::replicated_map::ValueTooLarge
+impl core::fmt::Debug for reconcile::replicated_map::ValueTooLarge
+pub fn reconcile::replicated_map::ValueTooLarge::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for reconcile::replicated_map::ValueTooLarge
+pub fn reconcile::replicated_map::ValueTooLarge::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile::replicated_map::ValueTooLarge
+impl core::marker::StructuralPartialEq for reconcile::replicated_map::ValueTooLarge
+impl core::marker::Freeze for reconcile::replicated_map::ValueTooLarge
+impl core::marker::Send for reconcile::replicated_map::ValueTooLarge
+impl core::marker::Sync for reconcile::replicated_map::ValueTooLarge
+impl core::marker::Unpin for reconcile::replicated_map::ValueTooLarge
+impl core::marker::UnsafeUnpin for reconcile::replicated_map::ValueTooLarge
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::ValueTooLarge
+impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::ValueTooLarge
 pub const reconcile::replicated_map::MAX_NETS: usize
 pub mod reconcile::replicated_set
 pub struct reconcile::replicated_set::ReplicatedSet<K> where K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync(_)
@@ -545,12 +597,17 @@ pub fn reconcile::read_replica_set::ReadReplicaSet<K>::fingerprint<R: core::ops:
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::is_empty(&self) -> bool
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::keys(&self) -> alloc::vec::Vec<K>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::len(&self) -> usize
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::net(&self) -> ipnet::ipnet::IpNet
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::run(self)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_net(&self, ipnet::ipnet::IpNet)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<()>) + 'static>(&self, F)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::set_reconcile_interval(&self, core::time::Duration)
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::start_reconciliation(&self)
+pub fn reconcile::read_replica_set::ReadReplicaSet<K>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
@@ -617,7 +674,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::values(&self) -> alloc::v
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_mut<F: core::ops::function::FnOnce(core::option::Option<&mut V>)>(&self, &K, F)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_or_insert_with<F: core::ops::function::FnOnce() -> V>(&self, &K, F) -> V
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> core::result::Result<bool, reconcile::replicated_map::Backpressure>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> core::result::Result<bool, reconcile::replicated_map::WriteRejected>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::upsert<F: core::ops::function::FnOnce(&mut V)>(&self, K, V, F)
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
@@ -632,7 +689,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::on_persistence_error<F: c
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot_now(&self) -> core::io::error::Result<()>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::Backpressure>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::WriteRejected>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self

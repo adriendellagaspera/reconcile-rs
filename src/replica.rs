@@ -154,6 +154,12 @@ pub(crate) struct Inner<K, V> {
     bulk_dumps_in_flight: Arc<AtomicUsize>,
     /// Global cap on the number of concurrently active paced bulk dumps.
     max_concurrent_bulk_dumps: usize,
+    /// Ceiling on a single value's encoded size, in bytes, checked by
+    /// [`ReplicatedMap::try_insert`](crate::replicated_map::ReplicatedMap::try_insert)/`try_update`
+    /// before any local state changes (#82). Mirrors
+    /// [`Config::max_value_size`](crate::replicated_map::Config::max_value_size); `None` (the
+    /// default) checks nothing, matching `insert`/`update`'s unchanged behavior.
+    max_value_size: Option<usize>,
     /// Write-broadcast tasks currently in flight, across every propagating local write (#83) —
     /// the egress-side counterpart of [`bulk_dumps_in_flight`](Self::bulk_dumps_in_flight). At
     /// [`max_concurrent_broadcasts`](Self::max_concurrent_broadcasts) a new eager broadcast is
