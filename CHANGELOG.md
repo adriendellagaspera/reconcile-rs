@@ -52,6 +52,11 @@ All notable changes to this project are documented here. Format follows
   different meanwhile, nothing is lost — but wasteful). A cluster running
   `Config::with_insecure_no_key()` is unaffected either way; the lift stays unkeyed exactly as
   before.
+- **BREAKING**: `ReplicatedMap::with_discovery`/`ReplicatedSet::with_discovery` now return
+  `Result<Self, replicated_map::NotAuthoritative>` instead of panicking on a `Speculative`
+  `Discovery::kind()` (#98, ARCHITECTURE.md §5 invariant 15) — no `try_with_discovery` twin
+  remains. `with_dns_discovery` is unaffected: `DnsDiscovery::kind()` is unconditionally
+  `Authoritative`. See [MIGRATING.md](MIGRATING.md).
 
 ### Added
 
