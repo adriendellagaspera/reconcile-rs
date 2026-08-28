@@ -46,7 +46,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     ///
     /// # Errors
     ///
-    /// If `nets` exceeds [`MAX_NETS`] — the same cap `Config::with_net`/`try_with_net` enforce at
+    /// If `nets` exceeds [`MAX_NETS`] — the same cap `Config::with_net` enforce at
     /// construction time and [`add_net`](Self::add_net) enforces at runtime.
     pub(crate) fn set_nets(&self, nets: &[IpNet]) -> Result<(), ConfigError> {
         if nets.len() > MAX_NETS {

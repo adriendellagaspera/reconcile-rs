@@ -271,7 +271,6 @@ pub reconcile::replicated_map::Config::snapshot_change_threshold: usize
 pub reconcile::replicated_map::Config::snapshot_interval: core::option::Option<core::time::Duration>
 impl reconcile::replicated_map::Config
 pub fn reconcile::replicated_map::Config::new(u16) -> Self
-pub fn reconcile::replicated_map::Config::try_with_net(self, ipnet::ipnet::IpNet) -> core::result::Result<Self, reconcile::replicated_map::ConfigError>
 pub fn reconcile::replicated_map::Config::with_bulk_send_rate(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_cluster_key(self, reconcile_gossip::auth::ClusterKey) -> Self
 pub fn reconcile::replicated_map::Config::with_coalesce_window(self, core::time::Duration) -> Self
@@ -283,8 +282,8 @@ pub fn reconcile::replicated_map::Config::with_max_concurrent_broadcasts(self, u
 pub fn reconcile::replicated_map::Config::with_max_concurrent_bulk_dumps(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_max_peers(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_max_value_size(self, usize) -> Self
-pub fn reconcile::replicated_map::Config::with_net(self, ipnet::ipnet::IpNet) -> Self
-pub fn reconcile::replicated_map::Config::with_nets(self, &[ipnet::ipnet::IpNet]) -> Self
+pub fn reconcile::replicated_map::Config::with_net(self, ipnet::ipnet::IpNet) -> core::result::Result<Self, reconcile::replicated_map::ConfigError>
+pub fn reconcile::replicated_map::Config::with_nets(self, &[ipnet::ipnet::IpNet]) -> core::result::Result<Self, reconcile::replicated_map::ConfigError>
 pub fn reconcile::replicated_map::Config::with_node_id(self, lww_register::clock::NodeId) -> Self
 pub fn reconcile::replicated_map::Config::with_port(self, u16) -> Self
 pub fn reconcile::replicated_map::Config::with_reconcile_interval(self, core::time::Duration) -> Self
