@@ -81,9 +81,15 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     }
 
     /// Plug in a durable persistence backend. See [`ReplicatedMap::with_persistence`].
-    #[must_use]
-    pub fn with_persistence(self, backend: Arc<dyn Persistence<K, ()>>) -> Self {
-        ReplicatedSet(self.0.with_persistence(backend))
+    ///
+    /// # Errors
+    ///
+    /// If the backend fails to load — see [`ReplicatedMap::with_persistence`].
+    pub fn with_persistence(
+        self,
+        backend: Arc<dyn Persistence<K, ()>>,
+    ) -> Result<Self, crate::replicated_map::PersistenceLoadError> {
+        self.0.with_persistence(backend).map(ReplicatedSet)
     }
 
     /// Seed an initial peer. See [`ReplicatedMap::with_seed`].
@@ -98,9 +104,15 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     }
 
     /// Attach an authoritative peer-discovery source. See [`ReplicatedMap::with_discovery`].
-    #[must_use]
-    pub fn with_discovery(self, discovery: Arc<dyn Discovery>) -> Self {
-        ReplicatedSet(self.0.with_discovery(discovery))
+    ///
+    /// # Errors
+    ///
+    /// If `discovery.kind()` is not [`Authoritative`](crate::DiscoveryKind::Authoritative).
+    pub fn with_discovery(
+        self,
+        discovery: Arc<dyn Discovery>,
+    ) -> Result<Self, crate::replicated_map::NotAuthoritative> {
+        self.0.with_discovery(discovery).map(ReplicatedSet)
     }
 
     /// Discover peers by resolving a DNS name. See [`ReplicatedMap::with_dns_discovery`].

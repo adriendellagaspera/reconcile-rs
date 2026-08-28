@@ -38,6 +38,9 @@ All notable changes to this project are documented here. Format follows
   snapshot of the backing tree plus the looked-up key instead of a lock guard, so holding one no
   longer risks a deadlock against a concurrent write on the same handle. See
   [MIGRATING.md](MIGRATING.md).
+- **BREAKING**: `Config::with_net`/`with_nets` now return `Result<Self, ConfigError>` instead of
+  panicking past `MAX_NETS` (#97, ARCHITECTURE.md §5 invariant 15) — the `try_with_net` twin is
+  gone; `with_net` is the sole, fallible entry point. See [MIGRATING.md](MIGRATING.md).
 - A configured cluster key now also keys the range-fingerprint lift (#19, migrated from
   `akvize/reconcile-rs#337`): `Replica`/`ReadReplicaMap` derive an independent BLAKE3 subkey from
   `Config::cluster_key` (`ClusterKey::derive_lift_key`) and pass it to `rsos::FingerprintTreeMap`,
@@ -49,6 +52,16 @@ All notable changes to this project are documented here. Format follows
   different meanwhile, nothing is lost — but wasteful). A cluster running
   `Config::with_insecure_no_key()` is unaffected either way; the lift stays unkeyed exactly as
   before.
+- **BREAKING**: `ReplicatedMap::with_discovery`/`ReplicatedSet::with_discovery` now return
+  `Result<Self, replicated_map::NotAuthoritative>` instead of panicking on a `Speculative`
+  `Discovery::kind()` (#98, ARCHITECTURE.md §5 invariant 15) — no `try_with_discovery` twin
+  remains. `with_dns_discovery` is unaffected: `DnsDiscovery::kind()` is unconditionally
+  `Authoritative`. See [MIGRATING.md](MIGRATING.md).
+- **BREAKING**: `ReplicatedMap::with_persistence`/`ReplicatedSet::with_persistence` now return
+  `Result<Self, replicated_map::PersistenceLoadError>` instead of panicking on corrupted
+  (`InvalidData`) or retry-exhausted persisted state (#99, `ARCHITECTURE.md` §5 invariant 15). No
+  `try_with_persistence` twin: the panicking form is gone, replaced outright rather than kept
+  alongside a fallible one. See [MIGRATING.md](MIGRATING.md).
 
 ### Added
 

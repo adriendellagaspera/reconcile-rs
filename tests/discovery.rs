@@ -75,11 +75,13 @@ async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
     let cfg2 = Config::default()
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net)
+        .unwrap()
         .with_insecure_no_key();
 
     // store1 finds peers through discovery (which initially reports store2 present).
@@ -90,6 +92,7 @@ async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
         .with_seed(addr2)
         .with_tombstone_timeout(Duration::from_millis(50))
         .with_discovery(Arc::new(discovery.clone()))
+        .unwrap()
         .with_discovery_interval(Duration::from_millis(20))
         .with_discovery_miss_threshold(3)
         // store2's tombstone ack is pending (it was partitioned before it could send one), so

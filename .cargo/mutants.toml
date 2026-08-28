@@ -1,12 +1,11 @@
 # cargo-mutants configuration for reconcile-rs.
 #
-# Verified against this workspace: `cargo mutants --list --workspace --all-features` yields 2096
-# mutants with this config (2127 without the exclusions below) -- the delta between them (currently
-# 31) is what proves the exclusions still do what the comments below claim. The baseline itself
-# moves with every commit that adds or removes mutable code; `scripts/check-mutant-count.sh` (wired
-# into `repo-gates` in main.yml) re-measures both numbers on every push instead of asking a human to
-# notice and update them by hand (AGENTS.md §10) -- if it fails, update the two numbers above to
-# match its output.
+# `scripts/check-mutant-count.sh` (wired into `repo-gates` in main.yml) proves the exclusions below
+# still exclude something real -- not a stale exclude_globs/exclude_re/skip_calls pattern left
+# behind by a file move or rename -- by asserting `cargo mutants --list` finds strictly more
+# mutants without this config than with it. It does not track or assert either count's absolute
+# value: that total moves with every commit that adds or removes mutable code anywhere in the
+# workspace, unrelated to whether these exclusions are still live.
 #
 # Two settings are NOT optional here:
 #
@@ -39,6 +38,16 @@ exclude_globs = ["benches/**", "examples/**"]
 # `testing::` accessors exist only under `--cfg reconcile_internal_testing` (#330): they are test
 # seams, not behaviour. Mutating them yields MISSED results that are noise, not gaps.
 #
+# There is no blanket `impl Debug`/`impl Display` exclusion here — one used to exist, matching
+# almost nothing (this codebase writes `impl fmt::Debug for X`, not the bare `impl Debug for X`
+# the regex needed) and hiding, in the one site it did match
+# (`rsos::encoding::error::Error::fmt`), a mutant already caught by
+# `a_refusing_serialize_impl_surfaces_as_an_error`'s `.to_string().contains(...)` assertion —
+# verified directly (`cargo mutants ... --no-config --re "19:9: replace.*Display.*fmt"` reports
+# `caught`). Removed rather than kept: `check-mutant-count.sh`'s aggregate delta cannot catch a
+# near-useless exclusion pattern on its own, only total exclusion death, so this needed reading
+# each pattern's actual match count directly.
+#
 # `aggregate::aux`'s two fence checks (`key < lower_bound`, `key > upper_bound`) decide whether
 # a subtree's cached Aggregate can answer a query without walking it. Their exact comparison
 # operator is provably unobservable: `lower_bound`/`upper_bound`, whenever `Some`, can only ever
@@ -50,13 +59,20 @@ exclude_globs = ["benches/**", "examples/**"]
 # zero cases where a flipped/loosened/tightened operator changed which subtree got returned.
 # #427.
 #
-# The six patterns below each mutate a loop counter that starts at 0 (`i += 1` -> `i *= 1`, or
+# The patterns below each mutate a loop counter that starts at 0 (`i += 1` -> `i *= 1`, or
 # the `<=`/`+` a length-bounded index/count comparison is built from) into an update that never
 # advances it -- a genuine infinite loop, not a coverage gap: check-mutation-gate.sh already scores
 # a TIMEOUT the same as caught (matching the "hang rather than fail" policy above), so cargo-mutants
 # spending its full 300s proving what's true by construction is pure wall-clock cost for the same
-# verdict it would reach in 0s if it never generated the mutant at all. #427/#452 measured this
-# directly: these six alone cost 6*300s = 30 of a ~120-min in-diff run on a large file-move split.
+# verdict it would reach in 0s if it never generated the mutant at all. #427/#452 measured six such
+# sites directly: these six alone cost 6*300s = 30 of a ~120-min in-diff run on a large file-move
+# split. One of the original six -- `aggregate::aux`'s sibling `rank::aux` (then a `while`-loop
+# counter, `query.rs:100:38`) -- was restructured into a bounded `for i in 0..node.keys.len()` loop
+# and no longer has this defect shape at all: verified directly (`cargo mutants ... --re
+# "108:27: replace \+= with \*="`, the accumulator this became) reports `caught`, not `TIMEOUT`, so
+# its exclude_re entry is gone -- a stale exclusion silently doing nothing, the exact failure mode
+# check-mutant-count.sh's aggregate delta cannot catch on its own (it only proves *some* exclusion
+# is still live, not that *every* one is).
 #
 # `replay/bitmap.rs:75:32` (`SlidingBitmap::advance`'s cross-word-boundary shift, `self.0[i] = lo |
 # hi`): `lo = old[i-word_shift] << bit_shift` occupies exactly bit positions `[bit_shift, 63]`
@@ -125,7 +141,7 @@ exclude_globs = ["benches/**", "examples/**"]
 # peers are dropped, fresh ones kept -- with margins wide enough to survive scheduling jitter; it
 # cannot and is not meant to distinguish this single-instant mutant.
 #
-# `read_replica_map/write.rs:214:36` (`replace != with ==` in the receive loop's
+# `read_replica_map/write.rs:220:36` (`replace != with ==` in the receive loop's
 # `if peer.port() != self.port { warn!(...) }`) genuinely is equivalent, unlike the two entries
 # above: the branch's only effect, either way, is which side of the `if` calls `warn!` -- there
 # is no `continue`/`return`/state write on either arm, so message processing (size check,
@@ -133,7 +149,7 @@ exclude_globs = ["benches/**", "examples/**"]
 # falls. No test capturing log output exists in this codebase, and none should be added just to
 # pin an operator that gates nothing but which log line fires.
 #
-# `replica/construct.rs:194:33` (`replace < with <=` in `build`'s bulk-send-rate clamp,
+# `replica/construct.rs:204:33` (`replace < with <=` in `build`'s bulk-send-rate clamp,
 # `if rate > 0 && rate < MIN_BULK_SEND_RATE { warn!(...); MIN_BULK_SEND_RATE } else { rate }`)
 # is equivalent at exactly this one operator: `<` and `<=` disagree only when `rate ==
 # MIN_BULK_SEND_RATE`, and at that point clamping to the floor and leaving `rate` unclamped
@@ -162,8 +178,6 @@ exclude_globs = ["benches/**", "examples/**"]
 # that assertion's `attempts == 0` catches. #23.
 exclude_re = [
     "testing::",
-    "impl Debug",
-    "impl Display",
     # `HmacSha256Mac` (`gossip/src/auth/mac.rs`) is `#[cfg(all(feature = "mac-hmac", not(feature =
     # "mac-blake3")))]` — with `all_features = true` above, this gate always builds and tests with
     # both MAC features on, so `not(feature = "mac-blake3")` is false and the entire impl is
@@ -175,11 +189,10 @@ exclude_re = [
     # for real needs `--no-default-features --features mac-hmac`, which this gate does not run.
     "impl Mac for HmacSha256Mac",
     "read_replica_map/membership\\.rs:72:53: replace < with <=",
-    "read_replica_map/write\\.rs:214:36: replace != with ==",
-    "fingerprint_tree_map/query\\.rs:(36|46):29:",
-    "fingerprint_tree_map/query\\.rs:59:19: replace \\+= with \\*=",
-    "fingerprint_tree_map/query\\.rs:68:19: replace \\+= with \\*=",
-    "fingerprint_tree_map/query\\.rs:100:38: replace \\+ with \\*",
+    "read_replica_map/write\\.rs:220:36: replace != with ==",
+    "fingerprint_tree_map/query\\.rs:(37|47):29:",
+    "fingerprint_tree_map/query\\.rs:61:19: replace \\+= with \\*=",
+    "fingerprint_tree_map/query\\.rs:70:19: replace \\+= with \\*=",
     "fingerprint_tree_map/range\\.rs:28:56: replace \\+ with \\*",
     "fingerprint_tree_map/range\\.rs:59:32: replace <= with >",
     "fingerprint_tree_map/range\\.rs:60:51: replace \\+ with \\*",
@@ -190,7 +203,7 @@ exclude_re = [
     "protocol/rank\\.rs:117:43: replace \\|\\| with &&",
     "protocol/rank\\.rs:117:62: replace != with ==",
     "protocol/rank\\.rs:118:49: replace != with ==",
-    "replica/construct\\.rs:194:33: replace < with <=",
+    "replica/construct\\.rs:204:33: replace < with <=",
     "replica/repair\\.rs:118:36: replace > with >=",
 ]
 

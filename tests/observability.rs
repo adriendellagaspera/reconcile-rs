@@ -42,6 +42,7 @@ fn local_config() -> Config {
         .with_port(next_test_port())
         .with_listen_addr("127.0.0.1".parse().unwrap())
         .with_net("127.0.0.1/8".parse().unwrap())
+        .unwrap()
         .with_insecure_no_key()
 }
 
@@ -252,7 +253,8 @@ async fn persistence_failures_recorded_as_counter_and_gauge_resets_on_success() 
     let store = ReplicatedMap::<i32, i32>::new(local_config())
         .await
         .expect("bind failed")
-        .with_persistence(backend.clone());
+        .with_persistence(backend.clone())
+        .unwrap();
 
     fn read_gauge(snapshotter: &metrics_util::debugging::Snapshotter, name: &str) -> Option<f64> {
         snapshotter
@@ -463,10 +465,12 @@ async fn read_replica_warns_about_more_than_one_net_but_not_zero_or_one() {
         "zero declared networks should not warn about nets"
     );
 
-    let two_nets = local_config().with_nets(&[
-        "127.0.0.1/8".parse().unwrap(),
-        "10.0.0.0/8".parse().unwrap(),
-    ]);
+    let two_nets = local_config()
+        .with_nets(&[
+            "127.0.0.1/8".parse().unwrap(),
+            "10.0.0.0/8".parse().unwrap(),
+        ])
+        .unwrap();
     assert!(
         nets_warning_fires(two_nets, "127.0.0.1:4"),
         "more than one declared network should warn about nets"

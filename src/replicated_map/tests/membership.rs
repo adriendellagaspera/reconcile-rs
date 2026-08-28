@@ -19,7 +19,7 @@ use crate::{
 
 use super::ephemeral_config;
 
-/// `set_nets` enforces the same [`MAX_NETS`] cap `Config::with_net`/`try_with_net` do at
+/// `set_nets` enforces the same [`MAX_NETS`] cap `Config::with_net` do at
 /// construction time, just at runtime — both the accepting and the rejecting side need coverage.
 #[tokio::test]
 async fn set_nets_enforces_max_nets_at_runtime() {
@@ -307,6 +307,7 @@ async fn set_remote_interval_actually_retunes_the_cross_network_cadence() {
             .with_listen_addr(a_ip)
             .with_port(port)
             .with_net(net_a)
+            .unwrap()
             .with_reconcile_interval(Duration::from_millis(5)),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
     );
@@ -392,6 +393,7 @@ async fn set_remote_fanout_actually_retunes_the_cross_network_sample_size() {
             .with_listen_addr(a_ip)
             .with_port(port)
             .with_net(net_a)
+            .unwrap()
             .with_reconcile_interval(Duration::from_millis(5)),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
     );
@@ -459,6 +461,7 @@ async fn set_reconcile_interval_actually_retunes_the_round_cadence() {
             .with_listen_addr(ip)
             .with_port(port)
             .with_net(shared_net)
+            .unwrap()
             // Deliberately far longer than this test's timeout: convergence below can only
             // happen if the runtime `set_reconcile_interval` call actually overrides this
             // before the loop's first real wait, proving the setter is not a no-op.

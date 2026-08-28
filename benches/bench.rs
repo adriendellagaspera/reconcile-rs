@@ -371,6 +371,7 @@ mod imp {
                                     .with_port(next_just_insert_port())
                                     .with_listen_addr("127.0.0.1".parse().unwrap())
                                     .with_net("127.0.0.1/8".parse().unwrap())
+                                    .unwrap()
                                     .with_insecure_no_key(),
                             )
                             .await
@@ -398,11 +399,13 @@ mod imp {
             .with_port(port)
             .with_listen_addr(addr1)
             .with_net(net)
+            .unwrap()
             .with_insecure_no_key();
         let cfg2 = Config::default()
             .with_port(port)
             .with_listen_addr(addr2)
             .with_net(net)
+            .unwrap()
             .with_insecure_no_key();
 
         let mut rng = rand::rngs::ThreadRng::default();
@@ -465,11 +468,13 @@ mod imp {
             .with_port(port)
             .with_listen_addr(addr1)
             .with_net(net)
+            .unwrap()
             .with_insecure_no_key();
         let cfg2 = Config::default()
             .with_port(port)
             .with_listen_addr(addr2)
             .with_net(net)
+            .unwrap()
             .with_insecure_no_key();
 
         let mut rng = rand::rngs::ThreadRng::default();
@@ -770,6 +775,7 @@ mod imp {
                         .with_port(port)
                         .with_listen_addr(addr)
                         .with_net(net)
+                        .unwrap()
                         .with_insecure_no_key()
                         .with_reconcile_interval(Duration::from_secs(3600))
                 };
@@ -1010,6 +1016,7 @@ mod imp {
                 .with_port(port)
                 .with_listen_addr(addr)
                 .with_net(net)
+                .unwrap()
                 .with_insecure_no_key()
         };
 
