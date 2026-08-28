@@ -496,6 +496,30 @@ ambient Tokio runtime the same way every propagating write does (see `Replicated
 Panics`); a write that joins an already-scheduled window returns without touching the reactor.
 Retunable live via `set_coalesce_window` (below).
 
+### Value-size ceiling
+
+A single encoded `(key, entry)` must fit `65507 - authentication overhead` bytes: the send path
+packs messages into datagrams but never fragments one. A value past that ceiling is silently
+accepted by `insert`/`update` — it is dropped only later, on the send path (a `warn!` and the
+`reconcile_values_oversized_total` counter), so the key never converges on any peer and the caller
+that wrote it never finds out synchronously (#82).
+
+`Config::max_value_size` (default `None`, no ceiling) closes that gap for a caller willing to opt
+in: set it, then write through `try_insert`/`try_update` instead of `insert`/`update` to get a
+`WriteRejected::TooLarge` back immediately, before the write reaches any local state — the same
+fallible pair the next section's write-broadcast backpressure also reaches for:
+
+```rust
+use reconcile::replicated_map::Config;
+
+let config = Config::new(8080)
+    .with_insecure_no_key()
+    .with_max_value_size(4096); // reject a write whose encoded value exceeds 4 KiB
+```
+
+`insert`/`update`/`get_mut`/`upsert` never consult `max_value_size` — setting it changes nothing
+for a caller that keeps using them; only `try_insert`/`try_update` check it.
+
 ### Write backpressure
 
 Every propagating write spawns a detached task that fans the message out to every known peer
@@ -518,13 +542,14 @@ reconciliation (`reconcile_interval`) or repair (#23) recovers it, the same boun
 already-tolerated lost datagram is. A caller that wants to *know* egress is falling behind rather
 than rely on that backstop reaches for the additive `try_insert`/`try_update` instead: both claim
 an egress slot **before** touching the map, so a call either fully applies (locally and broadcast)
-or not at all, returning `Err(Backpressure { in_flight, max_in_flight })` — never a write with a
-silently-skipped broadcast. Both always send immediately, bypassing `coalesce_window` batching, and
-require the same ambient Tokio runtime `insert` does.
+or not at all, returning `Err(WriteRejected::Backpressure(Backpressure { in_flight, max_in_flight
+}))` — never a write with a silently-skipped broadcast. Both always send immediately, bypassing
+`coalesce_window` batching, and require the same ambient Tokio runtime `insert` does — on the
+success path only; a rejection (size or backpressure) never touches the reactor.
 
 ```rust,no_run
 # use std::sync::Arc;
-use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
+use reconcile::{replicated_map::{Config, WriteRejected}, InMemoryNetwork, ReplicatedMap};
 
 # #[tokio::main]
 # async fn main() {
@@ -537,14 +562,15 @@ let store = ReplicatedMap::<String, i32>::new_with_transport(
 
 match store.try_insert("a".to_string(), 1) {
     Ok(previous) => { /* applied and broadcast */ let _ = previous; }
-    Err(backpressure) => { /* egress budget exhausted; retry, buffer, or drop */ let _ = backpressure; }
+    Err(WriteRejected::TooLarge(err)) => { /* value too big; see "Value-size ceiling" */ let _ = err; }
+    Err(WriteRejected::Backpressure(err)) => { /* egress budget exhausted; retry, buffer, or drop */ let _ = err; }
 }
 # }
 ```
 
 The current depth is the `reconcile_broadcasts_in_flight` gauge (below); rejections/skips are
 `reconcile_broadcast_backpressure_total`, labeled `path` (`"eager"` for the infallible skip,
-`"try"` for a `try_insert`/`try_update` rejection).
+`"try"` for a `try_insert`/`try_update` rejection on backpressure).
 
 ## Read replica (`ReadReplicaMap`)
 

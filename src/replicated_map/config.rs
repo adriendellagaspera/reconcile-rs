@@ -18,6 +18,9 @@ use crate::clock::{ClockDrift, NodeId, MAX_CLOCK_DRIFT};
 use super::persistence::SNAPSHOT_INTERVAL;
 
 mod builders;
+mod error;
+
+pub use error::ConfigError;
 
 /// Default metering rate of a single bulk transfer (see [`Config::bulk_send_rate`]). 32 MiB/s
 /// spaces 64 KiB datagrams ~2 ms apart: fast, but under the receiver's socket-buffer overrun
@@ -65,24 +68,6 @@ pub(super) const DEFAULT_SNAPSHOT_CHANGE_THRESHOLD: usize = 1;
 /// [`add_net`](super::ReplicatedMap::add_net) — one behavior for the cap everywhere it is
 /// enforced. Eight networks is generous for real geographical deployments.
 pub const MAX_NETS: usize = 8;
-
-/// Why a [`Config`] operation was rejected.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum ConfigError {
-    /// The operation would exceed [`MAX_NETS`] declared networks.
-    TooManyNets,
-}
-
-impl fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ConfigError::TooManyNets => write!(f, "at most {MAX_NETS} networks are supported"),
-        }
-    }
-}
-
-impl std::error::Error for ConfigError {}
 
 /// Construction parameters for a [`ReplicatedMap`](super::ReplicatedMap). Build with
 /// [`Config::new`] (or [`Config::default`]) and the `with_*` builders (e.g.
@@ -264,9 +249,9 @@ pub struct Config {
     /// the same bounded cost an already-tolerated lost datagram is.
     /// [`ReplicatedMap::try_insert`](super::ReplicatedMap::try_insert)/
     /// [`try_update`](super::ReplicatedMap::try_update) instead reject the whole call with
-    /// [`Backpressure`](super::Backpressure) when the budget is exhausted — neither the write nor
-    /// the broadcast applies — for a caller that wants to know egress is falling behind rather
-    /// than rely on the backstop.
+    /// [`WriteRejected::Backpressure`](super::WriteRejected::Backpressure) when the budget is
+    /// exhausted — neither the write nor the broadcast applies — for a caller that wants to know
+    /// egress is falling behind rather than rely on the backstop.
     pub max_concurrent_broadcasts: usize,
     /// How often the background task started by [`ReplicatedMap::run`](super::ReplicatedMap::run)
     /// wakes to consider writing a snapshot to the persistence backend (default `Some(5 s)`).
@@ -320,6 +305,20 @@ pub struct Config {
     /// rule this refines. Retunable at runtime via
     /// [`set_coalesce_window`](super::ReplicatedMap::set_coalesce_window).
     pub coalesce_window: Duration,
+    /// Optional ceiling on a single value's encoded size, in bytes (default `None`, no ceiling) —
+    /// checked at write time by [`try_insert`](super::ReplicatedMap::try_insert)/
+    /// [`try_update`](super::ReplicatedMap::try_update) (#82), returning
+    /// [`WriteRejected::TooLarge`](super::WriteRejected::TooLarge) before any local state changes.
+    ///
+    /// An *application-chosen* cap, independent of the wire protocol's own hard ceiling (`65507 -`
+    /// authentication overhead — see [`insert`](super::ReplicatedMap::insert)'s "Value-size
+    /// ceiling"): the infallible `insert`/`update`/`get_mut`/`upsert` never consult this field, so
+    /// setting it changes nothing for a caller that keeps using them. A value already past the
+    /// protocol ceiling that this field does *not* catch (unset, or set above the ceiling) is still
+    /// caught at send time exactly as before — logged and counted
+    /// (`VALUES_OVERSIZED_TOTAL`, behind the `metrics` feature), just not reported back to the
+    /// writer synchronously.
+    pub max_value_size: Option<usize>,
 }
 
 impl fmt::Debug for Config {
@@ -352,6 +351,7 @@ impl fmt::Debug for Config {
             .field("snapshot_change_threshold", &self.snapshot_change_threshold)
             .field("max_clock_drift", &self.max_clock_drift)
             .field("coalesce_window", &self.coalesce_window)
+            .field("max_value_size", &self.max_value_size)
             .finish()
     }
 }
@@ -381,6 +381,7 @@ impl Default for Config {
             snapshot_change_threshold: DEFAULT_SNAPSHOT_CHANGE_THRESHOLD,
             max_clock_drift: MAX_CLOCK_DRIFT,
             coalesce_window: Duration::ZERO,
+            max_value_size: None,
         }
     }
 }

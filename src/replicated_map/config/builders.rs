@@ -243,6 +243,17 @@ impl Config {
         self
     }
 
+    /// Set [`max_value_size`](Config::max_value_size) (default `None`, no ceiling). Checked only
+    /// by [`ReplicatedMap::try_insert`](crate::ReplicatedMap::try_insert)/
+    /// [`try_update`](crate::ReplicatedMap::try_update) (#82) —
+    /// [`insert`](crate::ReplicatedMap::insert)/[`update`](crate::ReplicatedMap::update) are
+    /// unaffected either way.
+    #[must_use]
+    pub fn with_max_value_size(mut self, max: usize) -> Self {
+        self.max_value_size = Some(max);
+        self
+    }
+
     /// Encrypt datagram payloads with XChaCha20-Poly1305, reusing
     /// [`cluster_key`](Self::cluster_key) as the AEAD key — so
     /// [`with_cluster_key`](Self::with_cluster_key) is required on every node.
