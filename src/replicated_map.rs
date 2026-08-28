@@ -41,7 +41,9 @@ pub(crate) use config::MIN_BULK_SEND_RATE;
 pub use config::{Config, ConfigError, MAX_NETS};
 #[cfg(test)]
 pub(crate) use discovery::MemberPresence;
+pub use discovery::NotAuthoritative;
 pub use membership::{RunOutcome, SyncState};
+pub use persistence::PersistenceLoadError;
 pub use value_size::ValueTooLarge;
 
 /// Default cadence of the dynamic-discovery task (see [`ReplicatedMap::with_discovery_interval`]).

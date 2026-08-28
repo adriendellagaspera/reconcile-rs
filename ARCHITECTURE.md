@@ -469,13 +469,22 @@ guarantees whose resolution history §8 tracks.
      twin should ever be needed again" — extended here to existing API too, since a twin pair is
      exactly the halfway state this decision exists to retire. `M-breaking`; every call site in
      this workspace (~70, all test/bench/example code) updated to `?`/`.unwrap()`.
-   - `ReplicatedMap::with_discovery` (`src/replicated_map/discovery.rs`) — panics, even in release
-     builds, on a `Speculative` `Discovery::kind()`; converting to `try_with_discovery` is tracked
-     as [#98](https://github.com/adriendellagaspera/reconcile-rs/issues/98) (`M-breaking`).
-   - `with_persistence`'s load path (`src/replicated_map/persistence.rs`) — panics on corrupted
-     (`InvalidData`) or retry-exhausted persisted state; `snapshot_now` in the same file already
-     returns `io::Result`, the pattern to extend. Tracked as
-     [#99](https://github.com/adriendellagaspera/reconcile-rs/issues/99) (`M-breaking`).
+   - `ReplicatedMap::with_discovery` (`src/replicated_map/discovery.rs`) — converted by #98:
+     returns `Result<Self, NotAuthoritative>` directly instead of panicking on a `Speculative`
+     `Discovery::kind()`; no `try_with_discovery` twin remains. `M-breaking`;
+     `ReplicatedSet::with_discovery` (a thin wrapper) converted the same way, and
+     `with_dns_discovery` stays infallible since `DnsDiscovery::kind()` is unconditionally
+     `Authoritative` by construction.
+   - `with_persistence`'s load path (`src/replicated_map/persistence.rs`,
+     `src/replicated_set.rs`) — resolved by #99: converted outright to
+     `Result<Self, PersistenceLoadError>`, replacing `PersistenceLoadError::{Corrupt,RetriesExhausted}`
+     panics; no `try_with_persistence` twin was added, and none remains. This one *is* genuine
+     runtime data: a corrupted or retry-exhausted disk state is an environmental fact discovered at
+     startup, not a static developer mistake — closer to `insert`/`update`'s DoS surface than to
+     `Config::with_net`'s static cap. The load loop's synchronous `std::thread::sleep` backoff was
+     reconsidered alongside this change and kept: making it async would require an `async fn`
+     `with_persistence`, a load-bearing signature change to every builder-chain caller, entangling
+     an orthogonal concern with this one — tracked separately if ever taken on.
    - `Authenticator::new`/`with_rotation` (`gossip/src/auth/key.rs`) — resolved by #100: converted
      outright to return `Result<Self, EncryptionFeatureDisabled>` instead of panicking when
      `encrypt = true` without the `encryption` feature. No `try_new`/`try_with_rotation` twin was

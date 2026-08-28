@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use crate::discovery::{DiscoverFuture, Discovery, DiscoveryKind};
 use crate::{
-    replicated_map::{Config, MemberPresence},
+    replicated_map::{Config, MemberPresence, NotAuthoritative},
     ReplicatedMap,
 };
 
@@ -62,7 +62,7 @@ impl Discovery for FakeDiscovery {
 }
 
 /// A discovery source that never lies about its kind — used to prove `with_discovery` rejects
-/// a speculative source unconditionally, not only under `debug_assertions`.
+/// a speculative source unconditionally.
 struct SpeculativeDiscovery;
 
 impl Discovery for SpeculativeDiscovery {
@@ -75,16 +75,35 @@ impl Discovery for SpeculativeDiscovery {
     }
 }
 
-/// The guard must be `assert!`, not `debug_assert!` — a no-op in `--release` would let a
-/// speculative source through, whose absences then wrongly decommission live members and
-/// release the causal-stability GC gate.
+/// #98: a speculative source is rejected, unconditionally — never accepted then silently causing
+/// live members to be wrongly decommissioned (absences from a speculative source must never
+/// release the causal-stability GC gate).
 #[tokio::test]
-#[should_panic(expected = "with_discovery expects an authoritative source")]
 async fn with_discovery_rejects_a_speculative_source() {
     let store = ReplicatedMap::<i32, i32>::new(discovery_config())
         .await
         .expect("bind failed");
-    let _ = store.with_discovery(Arc::new(SpeculativeDiscovery));
+    assert_eq!(
+        store.with_discovery(Arc::new(SpeculativeDiscovery)).err(),
+        Some(NotAuthoritative {
+            kind: DiscoveryKind::Speculative
+        })
+    );
+}
+
+/// `NotAuthoritative`'s `Display` text is user-facing (it's what `with_discovery` returns as an
+/// error) — assert its actual content, not merely that formatting it doesn't panic.
+#[test]
+fn not_authoritative_display_names_the_actual_kind() {
+    assert_eq!(
+        NotAuthoritative {
+            kind: DiscoveryKind::Speculative
+        }
+        .to_string(),
+        "with_discovery expects an authoritative source, got Speculative: a speculative prober \
+         would be seeded as permanent known peers and its absences would wrongly decommission \
+         members"
+    );
 }
 
 fn discovery_config() -> Config {
@@ -108,6 +127,7 @@ async fn discovery_decommissions_vanished_member_but_not_self() {
         .await
         .expect("bind failed")
         .with_discovery(Arc::new(fake.clone()))
+        .unwrap()
         .with_discovery_interval(Duration::from_millis(20))
         .with_discovery_miss_threshold(3);
 
@@ -152,6 +172,7 @@ async fn discovery_blip_does_not_decommission() {
         .await
         .expect("bind failed")
         .with_discovery(Arc::new(fake.clone()))
+        .unwrap()
         .with_discovery_interval(Duration::from_millis(20))
         .with_discovery_miss_threshold(3);
     store.engine.members.write().insert(member);
@@ -198,6 +219,7 @@ async fn discovery_failure_increments_the_failure_counter() {
         .await
         .expect("bind failed")
         .with_discovery(Arc::new(fake))
+        .unwrap()
         .with_discovery_interval(Duration::from_millis(5));
 
     let recorder = DebuggingRecorder::new();
@@ -229,6 +251,7 @@ async fn last_successful_discovery_at_advances_only_on_success() {
         .await
         .expect("bind failed")
         .with_discovery(Arc::new(fake.clone()))
+        .unwrap()
         .with_discovery_interval(Duration::from_millis(20));
 
     let loop_store = store.clone();
@@ -298,6 +321,7 @@ async fn pending_tombstone_acks_hold_decommission_past_the_miss_threshold() {
         .await
         .expect("bind failed")
         .with_discovery(Arc::new(fake.clone()))
+        .unwrap()
         .with_discovery_interval(Duration::from_millis(15))
         .with_discovery_miss_threshold(2)
         .with_discovery_decommission_floor(Duration::from_millis(300));
@@ -346,6 +370,7 @@ async fn reappearance_resets_the_floor_for_a_member_with_pending_acks() {
         .await
         .expect("bind failed")
         .with_discovery(Arc::new(fake.clone()))
+        .unwrap()
         .with_discovery_interval(Duration::from_millis(15))
         .with_discovery_miss_threshold(2)
         .with_discovery_decommission_floor(Duration::from_millis(300));
@@ -402,7 +427,8 @@ async fn a_continuously_present_member_is_never_decommissioned() {
     .with_discovery_interval(Duration::from_millis(5))
     // As strict as possible: a single erroneous miss would trip this.
     .with_discovery_miss_threshold(1)
-    .with_discovery(Arc::new(AlwaysPresent(peer)));
+    .with_discovery(Arc::new(AlwaysPresent(peer)))
+    .unwrap();
     // Seed the peer as a known member directly, bypassing a real handshake, so it appears in
     // `members_snapshot()` from round one.
     store.engine.members.write().insert(peer);

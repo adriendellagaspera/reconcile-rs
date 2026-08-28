@@ -18,6 +18,21 @@ let config = Config::new(8080).with_net(net)?;
 
 If you were already calling `try_with_net`, drop the `try_` prefix; the signature is unchanged.
 
+### `ReplicatedMap::with_discovery`/`ReplicatedSet::with_discovery` now return `Result`
+
+Both used to panic on a `Speculative` `Discovery::kind()` (#98, ARCHITECTURE.md §5 invariant 15).
+There is no `try_with_discovery` twin — `with_discovery` is now the sole, fallible entry point:
+
+```rust
+// Before
+let store = ReplicatedMap::new(config).await?.with_discovery(discovery);
+// After
+let store = ReplicatedMap::new(config).await?.with_discovery(discovery)?;
+```
+
+`with_dns_discovery` is unaffected (still `-> Self`): `DnsDiscovery::kind()` is unconditionally
+`Authoritative`, so it can never hit this error.
+
 ### `Config::snapshot_interval` is now `Option<Duration>`
 
 `Config::snapshot_interval` (and `Config::with_snapshot_interval`) changed from `Duration` to
@@ -67,6 +82,26 @@ drop the lifetime argument. `Deref<Target = V>` behavior is unchanged.
 One behavioral improvement falls out of this: holding a `ValueRef` no longer risks a deadlock
 against a concurrent write on the same handle — the write installs a fresh tree behind a new
 `Arc`, and the `ValueRef` still points at whichever tree was live when `get` returned it.
+
+### `with_persistence` now returns `Result` instead of panicking
+
+`ReplicatedMap::with_persistence`/`ReplicatedSet::with_persistence` changed from `Self` to
+`Result<Self, replicated_map::PersistenceLoadError>` (#99): loading corrupted (`InvalidData`) or
+retry-exhausted persisted state used to panic, now reports it instead. Action needed at every call
+site:
+
+```rust
+// Before
+let store = ReplicatedMap::<K, V>::new(config).await?.with_persistence(backend);
+// After
+let store = ReplicatedMap::<K, V>::new(config).await?.with_persistence(backend)?;
+```
+
+`PersistenceLoadError::Corrupt` wraps the original `io::Error` for an `InvalidData` failure (the
+disk state is corrupt or from an incompatible format); `PersistenceLoadError::RetriesExhausted`
+wraps it for any other error kind that persisted across every retry. There is no
+`try_with_persistence` — this is the one method now, not a fallible twin alongside the old
+panicking signature.
 
 ### `Authenticator::new`/`with_rotation` now return `Result` instead of panicking
 

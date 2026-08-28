@@ -200,6 +200,22 @@ impl core::marker::Unpin for reconcile::replicated_map::ConfigError
 impl core::marker::UnsafeUnpin for reconcile::replicated_map::ConfigError
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::ConfigError
 impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::ConfigError
+#[non_exhaustive] pub enum reconcile::replicated_map::PersistenceLoadError
+pub reconcile::replicated_map::PersistenceLoadError::Corrupt(core::io::error::Error)
+pub reconcile::replicated_map::PersistenceLoadError::RetriesExhausted(core::io::error::Error)
+impl core::error::Error for reconcile::replicated_map::PersistenceLoadError
+pub fn reconcile::replicated_map::PersistenceLoadError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for reconcile::replicated_map::PersistenceLoadError
+pub fn reconcile::replicated_map::PersistenceLoadError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for reconcile::replicated_map::PersistenceLoadError
+pub fn reconcile::replicated_map::PersistenceLoadError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for reconcile::replicated_map::PersistenceLoadError
+impl core::marker::Send for reconcile::replicated_map::PersistenceLoadError
+impl core::marker::Sync for reconcile::replicated_map::PersistenceLoadError
+impl core::marker::Unpin for reconcile::replicated_map::PersistenceLoadError
+impl core::marker::UnsafeUnpin for reconcile::replicated_map::PersistenceLoadError
+impl !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::PersistenceLoadError
+impl !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::PersistenceLoadError
 #[non_exhaustive] pub enum reconcile::replicated_map::WriteRejected
 pub reconcile::replicated_map::WriteRejected::Backpressure(reconcile::replicated_map::Backpressure)
 pub reconcile::replicated_map::WriteRejected::TooLarge(reconcile::replicated_map::ValueTooLarge)
@@ -307,6 +323,27 @@ impl core::marker::Unpin for reconcile::replicated_map::Config
 impl core::marker::UnsafeUnpin for reconcile::replicated_map::Config
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::Config
 impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::Config
+#[non_exhaustive] pub struct reconcile::replicated_map::NotAuthoritative
+pub reconcile::replicated_map::NotAuthoritative::kind: reconcile_gossip::discovery::DiscoveryKind
+impl core::clone::Clone for reconcile::replicated_map::NotAuthoritative
+pub fn reconcile::replicated_map::NotAuthoritative::clone(&self) -> reconcile::replicated_map::NotAuthoritative
+impl core::cmp::Eq for reconcile::replicated_map::NotAuthoritative
+impl core::cmp::PartialEq for reconcile::replicated_map::NotAuthoritative
+pub fn reconcile::replicated_map::NotAuthoritative::eq(&self, &reconcile::replicated_map::NotAuthoritative) -> bool
+impl core::error::Error for reconcile::replicated_map::NotAuthoritative
+impl core::fmt::Debug for reconcile::replicated_map::NotAuthoritative
+pub fn reconcile::replicated_map::NotAuthoritative::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for reconcile::replicated_map::NotAuthoritative
+pub fn reconcile::replicated_map::NotAuthoritative::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile::replicated_map::NotAuthoritative
+impl core::marker::StructuralPartialEq for reconcile::replicated_map::NotAuthoritative
+impl core::marker::Freeze for reconcile::replicated_map::NotAuthoritative
+impl core::marker::Send for reconcile::replicated_map::NotAuthoritative
+impl core::marker::Sync for reconcile::replicated_map::NotAuthoritative
+impl core::marker::Unpin for reconcile::replicated_map::NotAuthoritative
+impl core::marker::UnsafeUnpin for reconcile::replicated_map::NotAuthoritative
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::NotAuthoritative
+impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::NotAuthoritative
 pub struct reconcile::replicated_map::ReplicatedMap<K, V> where K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::add_net(&self, ipnet::ipnet::IpNet) -> bool
@@ -372,11 +409,11 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_seed(self, core::net
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::on_persistence_error<F: core::ops::function::Fn(&core::io::error::Error) + core::marker::Send + core::marker::Sync + 'static>(self, F) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot_now(&self) -> core::io::error::Result<()>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> Self
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::WriteRejected>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_miss_threshold(self, u32) -> Self
@@ -480,12 +517,12 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::set_repair_interval(&self, c
 pub fn reconcile::replicated_set::ReplicatedSet<K>::set_tombstone_timeout(&self, core::time::Duration)
 pub async fn reconcile::replicated_set::ReplicatedSet<K>::start_reconciliation(&self)
 pub fn reconcile::replicated_set::ReplicatedSet<K>::sync_state(&self) -> reconcile::replicated_map::SyncState
-pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_miss_threshold(self, u32) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
-pub fn reconcile::replicated_set::ReplicatedSet<K>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, ()>>) -> Self
+pub fn reconcile::replicated_set::ReplicatedSet<K>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, ()>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_tombstone_timeout(self, core::time::Duration) -> Self
 impl<K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync> core::clone::Clone for reconcile::replicated_set::ReplicatedSet<K>
@@ -670,11 +707,11 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_seed(self, core::net
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::on_persistence_error<F: core::ops::function::Fn(&core::io::error::Error) + core::marker::Send + core::marker::Sync + 'static>(self, F) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot_now(&self) -> core::io::error::Result<()>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> Self
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::WriteRejected>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_miss_threshold(self, u32) -> Self
@@ -725,12 +762,12 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::set_repair_interval(&self, c
 pub fn reconcile::replicated_set::ReplicatedSet<K>::set_tombstone_timeout(&self, core::time::Duration)
 pub async fn reconcile::replicated_set::ReplicatedSet<K>::start_reconciliation(&self)
 pub fn reconcile::replicated_set::ReplicatedSet<K>::sync_state(&self) -> reconcile::replicated_map::SyncState
-pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_miss_threshold(self, u32) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
-pub fn reconcile::replicated_set::ReplicatedSet<K>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, ()>>) -> Self
+pub fn reconcile::replicated_set::ReplicatedSet<K>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, ()>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_tombstone_timeout(self, core::time::Duration) -> Self
 impl<K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync> core::clone::Clone for reconcile::replicated_set::ReplicatedSet<K>
