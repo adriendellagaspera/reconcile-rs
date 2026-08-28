@@ -49,13 +49,14 @@ All notable changes to this project are documented here. Format follows
   different meanwhile, nothing is lost — but wasteful). A cluster running
   `Config::with_insecure_no_key()` is unaffected either way; the lift stays unkeyed exactly as
   before.
+- **BREAKING**: `ReplicatedMap::with_discovery`/`ReplicatedSet::with_discovery` now return
+  `Result<Self, replicated_map::NotAuthoritative>` instead of panicking on a `Speculative`
+  `Discovery::kind()` (#98, ARCHITECTURE.md §5 invariant 15) — no `try_with_discovery` twin
+  remains. `with_dns_discovery` is unaffected: `DnsDiscovery::kind()` is unconditionally
+  `Authoritative`. See [MIGRATING.md](MIGRATING.md).
 
 ### Added
 
-- `ReplicatedMap::try_with_discovery` and `replicated_map::NotAuthoritative` (#98): a non-panicking
-  twin of `with_discovery`, which keeps its panicking signature (ARCHITECTURE.md §5 invariant 15) —
-  a `Speculative` `Discovery::kind()` is a caught-at-startup bug in the impl the developer chose,
-  not runtime data a peer or attacker ever influences.
 - `Config::max_concurrent_broadcasts`/`with_max_concurrent_broadcasts` (default 1024, #83): bounds
   the number of concurrently in-flight write-broadcast tasks, the egress-side counterpart of
   `Config::max_concurrent_bulk_dumps`; the `reconcile_broadcasts_in_flight` gauge and

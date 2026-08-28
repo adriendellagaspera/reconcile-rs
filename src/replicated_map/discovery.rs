@@ -21,8 +21,8 @@ use crate::observability;
 
 use super::ReplicatedMap;
 
-/// Returned by [`try_with_discovery`](ReplicatedMap::try_with_discovery) when the supplied
-/// [`Discovery`] source is not [`Authoritative`](DiscoveryKind::Authoritative).
+/// Returned by [`with_discovery`](ReplicatedMap::with_discovery) when the supplied [`Discovery`]
+/// source is not [`Authoritative`](DiscoveryKind::Authoritative).
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct NotAuthoritative {
@@ -111,42 +111,28 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// The source must be [`Authoritative`](crate::DiscoveryKind::Authoritative): absence here
     /// drives decommissioning.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics — in release builds too, not only under `debug_assertions` — if `discovery.kind()`
-    /// is [`Speculative`](crate::DiscoveryKind::Speculative). A speculative source's absences must
-    /// never decommission a live member: that would release the causal-stability GC gate
-    /// (`ARCHITECTURE.md` §5 invariant 6) on a member that never actually left. See
-    /// [`try_with_discovery`](Self::try_with_discovery) for a non-panicking alternative.
+    /// If `discovery.kind()` is [`Speculative`](crate::DiscoveryKind::Speculative). A speculative
+    /// source's absences must never decommission a live member: that would release the
+    /// causal-stability GC gate (`ARCHITECTURE.md` §5 invariant 6) on a member that never actually
+    /// left.
     ///
     /// ```
     /// use std::sync::Arc;
     /// use reconcile::{replicated_map::Config, DnsDiscovery, ReplicatedMap};
     ///
     /// # #[tokio::main]
-    /// # async fn main() -> std::io::Result<()> {
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// // Point at a Kubernetes headless Service (`clusterIP: None`): one DNS record per ready pod.
     /// let discovery = Arc::new(DnsDiscovery::new("my-service.my-namespace.svc.cluster.local", 4242));
     /// let store = ReplicatedMap::<String, String>::new(Config::new(8084).with_insecure_no_key())
     ///     .await?
-    ///     .with_discovery(discovery);
+    ///     .with_discovery(discovery)?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_discovery(self, discovery: Arc<dyn Discovery>) -> Self {
-        match self.try_with_discovery(discovery) {
-            Ok(store) => store,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// As [`with_discovery`](Self::with_discovery), but returns a [`NotAuthoritative`] instead of
-    /// panicking on a [`Speculative`](DiscoveryKind::Speculative) source.
-    ///
-    /// # Errors
-    ///
-    /// If `discovery.kind()` is not [`Authoritative`](DiscoveryKind::Authoritative).
-    pub fn try_with_discovery(
+    pub fn with_discovery(
         mut self,
         discovery: Arc<dyn Discovery>,
     ) -> Result<Self, NotAuthoritative> {
@@ -163,8 +149,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     ///
     /// Point `name` at a **headless** `Service` (`clusterIP: None`): one address record per ready
     /// pod, no API client and no RBAC.
+    #[must_use]
     pub fn with_dns_discovery(self, name: impl Into<String>, port: u16) -> Self {
+        // Infallible in practice: `DnsDiscovery::kind()` always returns `Authoritative`,
+        // unconditionally, so `with_discovery` can never actually reject it here.
         self.with_discovery(Arc::new(DnsDiscovery::new(name, port)))
+            .expect("DnsDiscovery::kind() is always Authoritative")
     }
 
     /// Set how often the discovery task resolves the peer set (default 5 s). Only relevant when a

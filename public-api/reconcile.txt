@@ -368,8 +368,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, al
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::Backpressure>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_miss_threshold(self, u32) -> Self
@@ -451,7 +450,7 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::set_repair_interval(&self, c
 pub fn reconcile::replicated_set::ReplicatedSet<K>::set_tombstone_timeout(&self, core::time::Duration)
 pub async fn reconcile::replicated_set::ReplicatedSet<K>::start_reconciliation(&self)
 pub fn reconcile::replicated_set::ReplicatedSet<K>::sync_state(&self) -> reconcile::replicated_map::SyncState
-pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_miss_threshold(self, u32) -> Self
@@ -640,8 +639,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, al
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::Backpressure>
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_miss_threshold(self, u32) -> Self
@@ -692,7 +690,7 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::set_repair_interval(&self, c
 pub fn reconcile::replicated_set::ReplicatedSet<K>::set_tombstone_timeout(&self, core::time::Duration)
 pub async fn reconcile::replicated_set::ReplicatedSet<K>::start_reconciliation(&self)
 pub fn reconcile::replicated_set::ReplicatedSet<K>::sync_state(&self) -> reconcile::replicated_map::SyncState
-pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
+pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_miss_threshold(self, u32) -> Self

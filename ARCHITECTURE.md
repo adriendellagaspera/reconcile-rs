@@ -447,22 +447,24 @@ guarantees whose resolution history §8 tracks.
    control the shape or size of the data reaching it (config, discovery-supplied peer info,
    persisted state, a caller-chosen key), so panicking on it is a self-inflicted DoS surface, not a
    caller bug — the same reasoning #82 gave for `try_insert`/`try_update` (F13), generalized instead
-   of repeated ad hoc per method. New public API must return `Result` from the start; no new `try_`
-   twin should ever be needed again. This does not extend to a missing ambient Tokio runtime (an
-   environment precondition, documented as `# Panics`), an internal "provably impossible" assertion
-   (HLC monotonicity, mutex poisoning), or an index-style panic (`Rsos::select`,
-   `FingerprintTreeMap::select`) — those mirror `Vec`'s own `[]` vs `.get()` split, Rust's own
-   convention, not this crate's to relitigate. Disposition of #95's audit:
+   of repeated ad hoc per method. New public API must return `Result` from the start, as the sole
+   entry point — a panicking convenience plus a `try_` twin is exactly the halfway state this
+   decision retires, not a legitimate resting point, so an existing pair converts to one
+   `Result`-returning method rather than gaining a permanent twin. This does not extend to a missing
+   ambient Tokio runtime (an environment precondition, documented as `# Panics`), an internal
+   "provably impossible" assertion (HLC monotonicity, mutex poisoning), or an index-style panic
+   (`Rsos::select`, `FingerprintTreeMap::select`) — those mirror `Vec`'s own `[]` vs `.get()` split,
+   Rust's own convention, not this crate's to relitigate. Disposition of #95's audit:
    - `Config::with_net`/`with_nets` (`src/replicated_map/config/builders.rs`) — `with_net` already
      delegates to a fallible `try_with_net`; `with_nets` has no fallible bulk form. Converting
      either to the sole entry point is a signature break, tracked as
      [#97](https://github.com/adriendellagaspera/reconcile-rs/issues/97) (`M-breaking`).
-   - `ReplicatedMap::with_discovery` (`src/replicated_map/discovery.rs`) — resolved by #98: added
-     `try_with_discovery`, returning a `NotAuthoritative` error instead of panicking on a
-     `Speculative` `Discovery::kind()`. `with_discovery` itself keeps its panicking signature and
-     now delegates to the fallible form, same shape as `Config::with_net`/`try_with_net` above: the
-     kind mismatch is a caught-at-startup bug in the `Discovery` impl the developer chose, not
-     runtime data a peer or attacker ever influences.
+   - `ReplicatedMap::with_discovery` (`src/replicated_map/discovery.rs`) — converted by #98:
+     returns `Result<Self, NotAuthoritative>` directly instead of panicking on a `Speculative`
+     `Discovery::kind()`; no `try_with_discovery` twin remains. `M-breaking`;
+     `ReplicatedSet::with_discovery` (a thin wrapper) converted the same way, and
+     `with_dns_discovery` stays infallible since `DnsDiscovery::kind()` is unconditionally
+     `Authoritative` by construction.
    - `with_persistence`'s load path (`src/replicated_map/persistence.rs`) — panics on corrupted
      (`InvalidData`) or retry-exhausted persisted state; `snapshot_now` in the same file already
      returns `io::Result`, the pattern to extend. Tracked as

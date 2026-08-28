@@ -98,9 +98,15 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     }
 
     /// Attach an authoritative peer-discovery source. See [`ReplicatedMap::with_discovery`].
-    #[must_use]
-    pub fn with_discovery(self, discovery: Arc<dyn Discovery>) -> Self {
-        ReplicatedSet(self.0.with_discovery(discovery))
+    ///
+    /// # Errors
+    ///
+    /// If `discovery.kind()` is not [`Authoritative`](crate::DiscoveryKind::Authoritative).
+    pub fn with_discovery(
+        self,
+        discovery: Arc<dyn Discovery>,
+    ) -> Result<Self, crate::replicated_map::NotAuthoritative> {
+        self.0.with_discovery(discovery).map(ReplicatedSet)
     }
 
     /// Discover peers by resolving a DNS name. See [`ReplicatedMap::with_dns_discovery`].

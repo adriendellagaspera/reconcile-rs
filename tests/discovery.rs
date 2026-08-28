@@ -90,6 +90,7 @@ async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
         .with_seed(addr2)
         .with_tombstone_timeout(Duration::from_millis(50))
         .with_discovery(Arc::new(discovery.clone()))
+        .unwrap()
         .with_discovery_interval(Duration::from_millis(20))
         .with_discovery_miss_threshold(3)
         // store2's tombstone ack is pending (it was partitioned before it could send one), so
