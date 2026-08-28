@@ -304,6 +304,14 @@ Conflict resolution is **domain policy**, not a port: last-write-wins is the con
 pluggable `Resolve` seam is warranted only if a second policy (e.g. a CRDT) becomes a real
 requirement.
 
+**No cluster-wide conditional write** ([#26](https://github.com/adriendellagaspera/reconcile-rs/issues/26),
+decided). `compare_and_swap`/`insert_if_absent` are unsound over AP + LWW + no consensus: two nodes
+can each observe the expected value, each swap, and LWW picks one by timestamp rather than
+rejecting the loser — the exact race such a method exists to prevent. README "Conflict resolution"
+records the decision; `get_or_insert_with`/`upsert` (`src/replicated_map/mutate.rs`) document the
+atomicity they do provide (node-local, against this replica's own reconciliation loop, not
+cluster-wide).
+
 ### 4.1 Generic bounds
 
 ```rust
