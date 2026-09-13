@@ -1,6 +1,6 @@
 # Persistent-tree gate (#29)
 
-This is the one-off architecture gate for the persistent `FingerprintTreeMap` / `ArcSwap` work in #36. The long-lived regression suite remains `benches/bench.rs` + `benches/system.rs`; this file pins the historical comparator and the COW-only measurements needed to decide #29.
+This is the one-off architecture gate for the persistent `FingerprintTreeMap` / `ArcSwap` work in #36. The long-lived regression suite remains `benches/bench.rs` + `benches/system.rs`; this file pins the historical comparator and the COW-only measurements needed to decide #29. The issue body owns the measured decision and current verdict.
 
 ## Baseline
 
@@ -10,45 +10,70 @@ The last commit before the persistent-tree implementation is:
 0dbc656e8f7e2ed4c978a5f46bb8364c01688304
 ```
 
-Run the existing permanent benchmarks on both that commit and the candidate branch on the same machine, compiler, allocator and power settings. Do not compare absolute numbers copied from different machines.
+Run baseline and candidate on the same machine, compiler, allocator and power settings. Do not compare absolute numbers copied from different machines.
+
+For the `FingerprintTreeMap` regression lanes, use the same small harness source against both revisions. Do **not** use a regex-filtered `cargo bench --bench bench` for this gate: that target has a custom `main`, and a 2026-09-14 gate run reproduced unrelated groups executing after the requested FTM filter (`service_reconcile_rtt` eventually failed while the FTM measurements themselves had already completed).
 
 ```sh
-# from a checkout of this repository
 BASE=0dbc656e8f7e2ed4c978a5f46bb8364c01688304
 ROOT=$(git rev-parse --show-toplevel)
-git worktree add /tmp/reconcile-rs-pre-cow "$BASE"
+PRE=/tmp/reconcile-rs-pre-cow
 
-# permanent lanes that exist on both sides
+git worktree add "$PRE" "$BASE"
+mkdir -p "$PRE/devkit/src/bin"
+cp devkit/src/bin/persistent_tree_regression.rs \
+  "$PRE/devkit/src/bin/persistent_tree_regression.rs"
+
+cargo build --release -p devkit --bin persistent_tree_regression
 (
-  cd /tmp/reconcile-rs-pre-cow
-  RUSTFLAGS='--cfg reconcile_internal_testing' cargo bench --bench bench -- \
-    'FingerprintTreeMap::(fill|insert|remove|aggregate)'
+  cd "$PRE"
+  cargo build --release -p devkit --bin persistent_tree_regression
+)
+
+CANDIDATE="$ROOT/target/release/persistent_tree_regression"
+BASELINE="$PRE/target/release/persistent_tree_regression"
+
+for n in 1000 10000 100000; do
+  for trial in 1 2 3; do
+    echo "revision=baseline,n=$n,trial=$trial"
+    "$BASELINE" --n "$n" --iters 100000
+    echo "revision=candidate,n=$n,trial=$trial"
+    "$CANDIDATE" --n "$n" --iters 100000
+  done
+done
+```
+
+The harness reports fill, direct point-read, range aggregate, overwrite, and insert+remove costs. Use the median of the repeated same-runner samples.
+
+The public `ReplicatedMap` lanes remain in the normal `system` Criterion target, whose filtering works as expected:
+
+```sh
+(
+  cd "$PRE"
   RECONCILE_BENCH_SIZES=1000,10000,100000 cargo bench --bench system -- \
-    'point_read|bulk_load|cold_sync'
+    'point_read|bulk_load|cold_sync' --quick --noplot
 )
 (
   cd "$ROOT"
-  RUSTFLAGS='--cfg reconcile_internal_testing' cargo bench --bench bench -- \
-    'FingerprintTreeMap::(fill|insert|remove|aggregate)'
   RECONCILE_BENCH_SIZES=1000,10000,100000 cargo bench --bench system -- \
-    'point_read|bulk_load|cold_sync'
+    'point_read|bulk_load|cold_sync' --quick --noplot
 )
 ```
 
-Record candidate / pre-COW ratios for point reads, aggregate queries, fill/bulk load, single insert/remove and cold sync. #29 is a regression gate, not a claim that every row must improve: explain any material regression and decide whether the snapshot capability justifies it.
+Omit `--quick` for a publication-quality run. For this engineering gate it is useful for the system lanes only after the repeated common harness has isolated the tree-level change.
 
 ## COW-only lanes
 
 The historical commit cannot measure retained snapshots because `FingerprintTreeMap::clone` was not the O(1) persistent-snapshot primitive. The COW-only harness therefore lives in the unpublished `devkit` crate rather than adding another permanent Criterion target or a packaged example.
 
-Build it once, then run the same binary repeatedly for the decision run:
+Build it once, then run the same binary repeatedly:
 
 ```sh
 cargo build --release -p devkit --bin persistent_tree_gate
 BIN=target/release/persistent_tree_gate
 
 for n in 1000 10000 100000; do
-  for trial in 1 2 3 4 5; do
+  for trial in 1 2 3; do
     "$BIN" all --n "$n" --iters 10000
   done
 done
@@ -66,27 +91,38 @@ It reports:
 
 `mutation_retained` keeps the exact current version alive when `retained > 0`, so the timed write must take the `Arc::make_mut` copy path. Historical-version construction and destruction are outside the timed interval; older retained versions add history pressure without contaminating the write timer.
 
-For memory, measure the already-built process rather than `cargo run`, so Cargo/rustc RSS cannot contaminate the result:
+For a more stable retained-write comparison, run each retained count separately with a larger iteration count:
 
 ```sh
-for n in 1000 10000 100000; do
-  for retained in 0 1 8 64; do
-    /usr/bin/time -v "$BIN" rss-hold --n "$n" --retained "$retained"
+for retained in 0 1 8 64; do
+  for trial in 1 2 3; do
+    "$BIN" mutation --n 100000 --retained "$retained" --iters 5000
   done
 done
 ```
 
-Use the `retained=0` row at each `n` as the process/tree baseline and report the incremental peak-RSS shape for `1 / 8 / 64`. Peak RSS is intentionally measured externally here: the architecture question is actual retained memory, including allocator effects, not just requested-byte accounting.
+For memory, measure the already-built process rather than `cargo run`, so Cargo/rustc RSS cannot contaminate the result. Use a large enough tree that retained-version deltas have a chance to rise above process/runner noise:
+
+```sh
+for retained in 0 1 8 64; do
+  for trial in 1 2 3; do
+    /usr/bin/time -v "$BIN" rss-hold --n 1000000 --retained "$retained"
+  done
+done
+```
+
+Use `retained=0` as the process/tree baseline and report the incremental peak-RSS shape for `1 / 8 / 64`. Peak RSS is intentionally measured externally here: the architecture question is actual retained memory, including allocator effects, not just requested-byte accounting. If the deltas stay below run-to-run RSS noise, report them as unmeasurable rather than as negative memory.
 
 ## Decision record
 
-Record the decision in #29 with this compact table:
+Record the decision in #29 rather than duplicating a dated result here. At minimum cover:
 
 | axis | pre-COW | candidate | ratio / COW-only result | verdict |
 |---|---:|---:|---:|---|
-| point read | | | | |
+| direct tree point read | | | | |
 | range aggregate | | | | |
 | insert/remove | | | | |
+| public `ReplicatedMap::get` | | | | |
 | bulk load | | | | |
 | cold sync | | | | |
 | snapshot acquire | n/a | | | |
@@ -95,4 +131,4 @@ Record the decision in #29 with this compact table:
 | mutation, 64 retained | n/a | | | |
 | retained-version RSS | n/a | | | |
 
-Close #29 only when the table is filled from one controlled same-machine run and the result explicitly says either **accept persistent tree** or **rework/revert before #36 closes**. #32 stays blocked until that decision exists.
+Close #29 only when the measured result has an explicit architecture disposition and any material point-read regression has either been removed or consciously accepted as part of the API contract. #32 stays blocked until then.
