@@ -97,6 +97,36 @@ dependencies by design. `devkit` is neither domain nor adapter — a dev/bench-o
 does not cover at all (not in its manifest list, not shipped, #524) — the same exemption `gossip`
 and `reconcile` already have, for the same reason: nothing here is claiming purity for it.
 
+### 2.2 Persistent RSOS snapshots
+
+`FingerprintTreeMap` is a persistent, structurally-shared B-tree. Its root and child links are
+`Arc<Node<...>>`; cloning the map is an `O(1)` root refcount increment. A mutation follows only the
+affected root-to-leaf path and calls `Arc::make_mut`: unshared nodes mutate in place, while nodes
+still reachable from an older snapshot are copied before modification. Cached subtree `Aggregate`s
+therefore belong to the same immutable version as the keys and values they summarize.
+
+The facade publishes immutable roots through `ArcSwap`. `Replica` owns the dated tree and its
+value-only projection as separate `ArcSwap<FingerprintTreeMap<...>>`; `ReadReplicaMap` uses the same
+shape for its projected tree. Writers serialize the `load_full -> clone root -> COW mutation ->
+store` sequence with a mutex so the dated tree, projection and tombstone side effects advance as one
+logical mutation. That mutex is write-side only: readers call `load_full()` and own an `Arc`, so they
+take no read lock and never pin a writer. `ArcSwap::rcu` is deliberately not used because an
+optimistic retry could replay the projection/tombstone side effects.
+
+`ReplicatedMap::snapshot` / `value_snapshot` and `ReadReplicaMap::snapshot` expose the whole
+immutable root for zero-copy iteration and range scans. Point reads use a narrower handle:
+`FingerprintTreeMap::get_owned` performs one tree descent, clones only the `Arc<Node>` containing the
+matched slot, and `ValueRef` owns that node plus the slot. Dereferencing is `O(1)` and an old
+`ValueRef` continues to observe its old value after a concurrent overwrite or deletion.
+
+The architecture gate in [issue #29](https://github.com/adriendellagaspera/reconcile-rs/issues/29)
+accepted the measured trade-off. At 100k entries, direct tree reads were ~1.05× the pre-COW cost,
+overwrite ~1.11×, insert+remove ~1.10×, range aggregate ~1.14×, bulk load ~1.07× and cold sync
+~1.10×; retained versions produced no measurable RSS increase through 64 snapshots in the 1M-entry
+runner test. The first public `get` implementation was an outlier at ~2.54× because it searched the
+tree twice. The merged point-read repair removed that second descent; the final same-runner result
+was 57.224 ns versus 47.758 ns pre-COW (+19.8%).
+
 ---
 
 ## 3. Ports & adapters
@@ -352,6 +382,27 @@ The 2026-08 sweep for this pattern is closed. Both items it left open have since
 the direction it recommended: `Authenticator`'s `is_enabled`/`is_encrypted` booleans are gone (call
 sites `match` the enum, which was already a well-typed state), and `Discovery::is_authoritative() ->
 bool` became `kind() -> DiscoveryKind`.
+
+### 4.3 Read views and snapshot semantics
+
+The user-facing maps expose three ownership shapes over the same persistent core:
+
+| API | ownership | semantics |
+|---|---|---|
+| `get(&K) -> Option<ValueRef<...>>` | matched persistent node | one lookup; zero-copy access that remains valid across later writes |
+| `get_cloned(&K) -> Option<V>` | owned `V` | one lookup + value clone; no persistent read handle |
+| `snapshot()` / `value_snapshot()` | `Arc<FingerprintTreeMap<...>>` | `O(1)` root snapshot; `iter`/`range` borrow directly with no lock held |
+
+`ReplicatedMap` stores dated `Entry<Timestamp, V>` in one persistent tree and keeps a timestamp-less
+`State<V>` projection in a second; `ReadReplicaMap` stores only that projection. One read operation
+therefore sees one immutable version. A writer may publish a newer root while the read is running,
+but cannot mutate nodes still owned by that read. This is both the facade's lock-free zero-copy
+read contract and the coherent-snapshot discipline used by reconciliation rounds.
+
+The writer mutex is intentionally not a reader/writer lock: it serializes logical mutations so the
+dated tree, value projection and tombstone bookkeeping remain consistent. Multi-writer aggregate
+schemes are a separate concern; the persistent snapshot architecture solves reader/writer
+contention without weakening the existing write-side invariants.
 
 ---
 
