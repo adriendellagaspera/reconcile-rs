@@ -10,70 +10,88 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Environment
         run: |
           mkdir -p benchmark-29-results
           {
             echo "candidate=$(git rev-parse HEAD)"
-            echo "baseline=0dbc656e8f7e2ed4c978a5f46bb8364c01688304"
             rustc --version
             cargo --version
             uname -a
             lscpu
           } | tee benchmark-29-results/environment.txt
-      - name: Create pre-COW worktree
-        run: |
-          git worktree add /tmp/reconcile-rs-pre-cow 0dbc656e8f7e2ed4c978a5f46bb8364c01688304
-          mkdir -p /tmp/reconcile-rs-pre-cow/devkit/src/bin
-          cp devkit/src/bin/persistent_tree_regression.rs \
-            /tmp/reconcile-rs-pre-cow/devkit/src/bin/persistent_tree_regression.rs
-      - name: Build common FTM harness on both revisions
-        run: |
-          cargo build --release -p devkit --bin persistent_tree_regression
-          (cd /tmp/reconcile-rs-pre-cow && cargo build --release -p devkit --bin persistent_tree_regression)
-      - name: Compare FingerprintTreeMap on identical harness
+      - name: High-precision COW mutation lanes
         run: |
           set -euo pipefail
-          : > benchmark-29-results/ftm-regression.txt
-          for n in 1000 10000 100000; do
+          cargo build --release -p devkit --bin persistent_tree_gate
+          : > benchmark-29-results/cow-mutation.txt
+          for retained in 0 1 8 64; do
             for rep in 1 2 3; do
-              echo "revision=baseline,n=$n,rep=$rep" | tee -a benchmark-29-results/ftm-regression.txt
-              /tmp/reconcile-rs-pre-cow/target/release/persistent_tree_regression --n "$n" --iters 100000 \
-                | tee -a benchmark-29-results/ftm-regression.txt
-              echo "revision=candidate,n=$n,rep=$rep" | tee -a benchmark-29-results/ftm-regression.txt
-              target/release/persistent_tree_regression --n "$n" --iters 100000 \
-                | tee -a benchmark-29-results/ftm-regression.txt
+              echo "rep=$rep,retained=$retained" | tee -a benchmark-29-results/cow-mutation.txt
+              target/release/persistent_tree_gate mutation --n 100000 --retained "$retained" --iters 5000 \
+                | tee -a benchmark-29-results/cow-mutation.txt
             done
           done
-      - name: Baseline system lanes
-        working-directory: /tmp/reconcile-rs-pre-cow
-        env:
-          RECONCILE_BENCH_SIZES: 1000,10000,100000
+      - name: Public snapshot and read costs
         run: |
-          set -o pipefail
-          cargo bench --bench system -- 'point_read|bulk_load|cold_sync' --quick --noplot \
-            2>&1 | tee "$GITHUB_WORKSPACE/benchmark-29-results/baseline-system.txt"
-      - name: Candidate system lanes
-        env:
-          RECONCILE_BENCH_SIZES: 1000,10000,100000
+          cat > examples/benchmark_29_public_snapshot.rs <<'RS'
+          use std::hint::black_box;
+          use std::sync::Arc;
+          use std::time::Instant;
+
+          use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
+
+          fn ns_per_op(start: Instant, iters: usize) -> f64 {
+              start.elapsed().as_nanos() as f64 / iters as f64
+          }
+
+          #[tokio::main]
+          async fn main() {
+              const N: usize = 100_000;
+              const ITERS: usize = 1_000_000;
+              let network = InMemoryNetwork::new();
+              let transport = Arc::new(network.bind("127.0.0.1:19029".parse().unwrap()));
+              let store = ReplicatedMap::<u32, u32>::new_with_transport(
+                  Config::default().with_insecure_no_key(),
+                  transport,
+              );
+              let values: Vec<_> = (0..N as u32).map(|k| (k, k.wrapping_mul(2_654_435_761))).collect();
+              store.insert_bulk(&values);
+              let probe = (N / 2) as u32;
+
+              let start = Instant::now();
+              for _ in 0..ITERS {
+                  black_box(store.snapshot());
+              }
+              println!("replicated_map_snapshot,n={N},iters={ITERS},ns_per_op={:.2}", ns_per_op(start, ITERS));
+
+              let start = Instant::now();
+              for _ in 0..ITERS {
+                  black_box(store.get(black_box(&probe)).map(|v| *v));
+              }
+              println!("replicated_map_get,n={N},iters={ITERS},ns_per_op={:.2}", ns_per_op(start, ITERS));
+
+              let start = Instant::now();
+              for _ in 0..ITERS {
+                  black_box(store.get_cloned(black_box(&probe)));
+              }
+              println!("replicated_map_get_cloned,n={N},iters={ITERS},ns_per_op={:.2}", ns_per_op(start, ITERS));
+          }
+          RS
+          cargo run --release --example benchmark_29_public_snapshot \
+            2>&1 | tee benchmark-29-results/public-snapshot.txt
+      - name: Retained-version RSS at 1M entries
         run: |
-          set -o pipefail
-          cargo bench --bench system -- 'point_read|bulk_load|cold_sync' --quick --noplot \
-            2>&1 | tee benchmark-29-results/candidate-system.txt
-      - name: Candidate COW-only lanes
-        run: |
-          set -o pipefail
-          cargo run --release -p devkit --bin persistent_tree_gate -- all --n 100000 --iters 10000 \
-            2>&1 | tee benchmark-29-results/cow-lanes.txt
+          set -euo pipefail
           cargo build --release -p devkit --bin persistent_tree_gate
           for retained in 0 1 8 64; do
-            /usr/bin/time -v target/release/persistent_tree_gate rss-hold --n 100000 --retained "$retained" \
-              >"benchmark-29-results/rss-${retained}.txt" 2>&1
+            for rep in 1 2 3; do
+              /usr/bin/time -v target/release/persistent_tree_gate rss-hold --n 1000000 --retained "$retained" \
+                >"benchmark-29-results/rss-${retained}-rep-${rep}.txt" 2>&1
+            done
           done
       - uses: actions/upload-artifact@v4
         if: always()
