@@ -655,7 +655,7 @@ per location, no rack/host level and no hierarchy), because the CIDR mask alread
 granularity. Declare every network with `with_net` — **including this node's own**:
 
 ```rust
-use reconcile::{replicated_map::Config, NodeId, ReplicatedMap};
+use reconcile::{replicated_map::Config, ReplicatedMap};
 
 let config = Config::new(8080)
     .with_insecure_no_key()
