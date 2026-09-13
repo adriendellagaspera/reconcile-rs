@@ -4,6 +4,7 @@ on:
   push:
     branches: ["fix/point-read-value-ref"]
 
+# Temporary same-runner regression check for #112. Removed before merge.
 permissions:
   contents: read
 
