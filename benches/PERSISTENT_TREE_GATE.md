@@ -35,30 +35,48 @@ git worktree add /tmp/reconcile-rs-pre-cow "$BASE"
 )
 ```
 
-Record ratios candidate / pre-COW for point reads, aggregate queries, fill/bulk load, single insert/remove and cold sync. #29 is a regression gate, not a claim that every row must improve: explain any material regression and decide whether the snapshot capability justifies it.
+Record candidate / pre-COW ratios for point reads, aggregate queries, fill/bulk load, single insert/remove and cold sync. #29 is a regression gate, not a claim that every row must improve: explain any material regression and decide whether the snapshot capability justifies it.
 
 ## COW-only lanes
 
-The historical commit cannot measure retained snapshots because `FingerprintTreeMap::clone` was not the O(1) persistent snapshot primitive. Run the dedicated example on the candidate branch:
+The historical commit cannot measure retained snapshots because `FingerprintTreeMap::clone` was not the O(1) persistent-snapshot primitive. The COW-only harness therefore lives in the unpublished `devkit` crate rather than adding another permanent Criterion target or a packaged example.
+
+Build it once, then run the same binary repeatedly for the decision run:
 
 ```sh
-cargo run --release --example persistent_tree_bench -- --quick
-# omit --quick for the decision run
-cargo run --release --example persistent_tree_bench
+cargo build --release -p devkit --bin persistent_tree_gate
+BIN=target/release/persistent_tree_gate
+
+for n in 1000 10000 100000; do
+  for trial in 1 2 3 4 5; do
+    "$BIN" all --n "$n" --iters 10000
+  done
+done
 ```
 
 It reports:
 
 | lane | question |
 |---|---|
-| `persistent_tree/snapshot_acquire` | Is an O(1) snapshot cheap enough to be a normal read primitive? |
-| `persistent_tree/point_read` | Does a direct read through the persistent tree preserve the expected point-read shape? |
-| `persistent_tree/iteration` | What does a full zero-copy scan cost? |
-| `persistent_tree/range_iteration` | What does a half-tree zero-copy range scan cost? |
-| `persistent_tree/mutation_retained` | What is the write cost with `0 / 1 / 8 / 64` retained versions? |
-| `[persistent_tree_memory]` | How much requested live heap do successive historical versions retain? |
+| `snapshot_acquire` | Is an O(1) snapshot cheap enough to be a normal read primitive? |
+| `point_read` | Does a direct read through the persistent tree preserve the expected point-read shape? |
+| `iteration` | What does a full zero-copy scan cost? |
+| `range_iteration` | What does a half-tree zero-copy range scan cost? |
+| `mutation_retained` | What is one overwrite's write-path cost with `0 / 1 / 8 / 64` retained versions? |
 
-`mutation_retained` keeps the exact current version alive when `retained > 0`, so the next mutation must take the `Arc::make_mut` copy path. Older retained versions then add realistic history pressure. The memory counter is deliberately the same kind of floor as `system::heap_footprint`: requested live heap only, not allocator rounding, fragmentation or RSS.
+`mutation_retained` keeps the exact current version alive when `retained > 0`, so the timed write must take the `Arc::make_mut` copy path. Historical-version construction and destruction are outside the timed interval; older retained versions add history pressure without contaminating the write timer.
+
+For memory, measure the already-built process rather than `cargo run`, so Cargo/rustc RSS cannot contaminate the result:
+
+```sh
+for n in 1000 10000 100000; do
+  for retained in 0 1 8 64; do
+    /usr/bin/time -v "$BIN" rss-hold --n "$n" --retained "$retained"
+  done
+done
+```
+
+Use the `retained=0` row at each `n` as the process/tree baseline and report the incremental peak-RSS shape for `1 / 8 / 64`. Peak RSS is intentionally measured externally here: the architecture question is actual retained memory, including allocator effects, not just requested-byte accounting.
 
 ## Decision record
 
@@ -75,6 +93,6 @@ Record the decision in #29 with this compact table:
 | mutation, 1 retained | n/a | | | |
 | mutation, 8 retained | n/a | | | |
 | mutation, 64 retained | n/a | | | |
-| retained-version heap | n/a | | | |
+| retained-version RSS | n/a | | | |
 
-Close #29 only when the table is filled from one controlled run and the result explicitly says either **accept persistent tree** or **revert/rework before #36 closes**. #32 stays blocked until that decision exists.
+Close #29 only when the table is filled from one controlled same-machine run and the result explicitly says either **accept persistent tree** or **rework/revert before #36 closes**. #32 stays blocked until that decision exists.
