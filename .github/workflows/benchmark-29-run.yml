@@ -27,22 +27,29 @@ jobs:
             lscpu
           } | tee benchmark-29-results/environment.txt
       - name: Create pre-COW worktree
-        run: git worktree add /tmp/reconcile-rs-pre-cow 0dbc656e8f7e2ed4c978a5f46bb8364c01688304
-      - name: Baseline FingerprintTreeMap lanes
-        working-directory: /tmp/reconcile-rs-pre-cow
-        env:
-          RUSTFLAGS: --cfg reconcile_internal_testing
         run: |
-          set -o pipefail
-          cargo bench --bench bench -- 'FingerprintTreeMap::(fill|insert|remove|aggregate)' --quick --noplot \
-            2>&1 | tee "$GITHUB_WORKSPACE/benchmark-29-results/baseline-ftm.txt"
-      - name: Candidate FingerprintTreeMap lanes
-        env:
-          RUSTFLAGS: --cfg reconcile_internal_testing
+          git worktree add /tmp/reconcile-rs-pre-cow 0dbc656e8f7e2ed4c978a5f46bb8364c01688304
+          mkdir -p /tmp/reconcile-rs-pre-cow/devkit/src/bin
+          cp devkit/src/bin/persistent_tree_regression.rs \
+            /tmp/reconcile-rs-pre-cow/devkit/src/bin/persistent_tree_regression.rs
+      - name: Build common FTM harness on both revisions
         run: |
-          set -o pipefail
-          cargo bench --bench bench -- 'FingerprintTreeMap::(fill|insert|remove|aggregate)' --quick --noplot \
-            2>&1 | tee benchmark-29-results/candidate-ftm.txt
+          cargo build --release -p devkit --bin persistent_tree_regression
+          (cd /tmp/reconcile-rs-pre-cow && cargo build --release -p devkit --bin persistent_tree_regression)
+      - name: Compare FingerprintTreeMap on identical harness
+        run: |
+          set -euo pipefail
+          : > benchmark-29-results/ftm-regression.txt
+          for n in 1000 10000 100000; do
+            for rep in 1 2 3; do
+              echo "revision=baseline,n=$n,rep=$rep" | tee -a benchmark-29-results/ftm-regression.txt
+              /tmp/reconcile-rs-pre-cow/target/release/persistent_tree_regression --n "$n" --iters 100000 \
+                | tee -a benchmark-29-results/ftm-regression.txt
+              echo "revision=candidate,n=$n,rep=$rep" | tee -a benchmark-29-results/ftm-regression.txt
+              target/release/persistent_tree_regression --n "$n" --iters 100000 \
+                | tee -a benchmark-29-results/ftm-regression.txt
+            done
+          done
       - name: Baseline system lanes
         working-directory: /tmp/reconcile-rs-pre-cow
         env:
