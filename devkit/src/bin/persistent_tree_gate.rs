@@ -98,19 +98,24 @@ fn run_range_iteration(n: usize, iters: usize) {
 
 fn run_mutation(n: usize, retained_count: usize, iters: usize) {
     let base = tree(n);
-    let start = Instant::now();
-    for _ in 0..iters {
+    let key = (n / 2) as u32;
+    let mut elapsed = Duration::ZERO;
+
+    for i in 0..iters {
+        // Setup and teardown are deliberately outside the timed interval. The question is the
+        // write-path cost once this many historical versions are alive, not the cost of creating
+        // or dropping those versions.
         let (mut current, retained) = retained_history(base.clone(), retained_count);
-        let key = (n / 2) as u32;
         let old = *current.get(&key).expect("key exists");
-        current.insert(key, old.wrapping_add(1));
-        current.remove(&key);
-        current.insert(key, old);
-        black_box((current, retained));
+        let start = Instant::now();
+        current.insert(key, old.wrapping_add(i as u32).wrapping_add(1));
+        elapsed += start.elapsed();
+        black_box((&current, &retained));
     }
+
     println!(
         "mutation_retained,n={n},retained={retained_count},iters={iters},ns_per_op={:.2}",
-        ns_per_op(start.elapsed(), iters)
+        ns_per_op(elapsed, iters)
     );
 }
 
