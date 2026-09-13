@@ -33,6 +33,7 @@ mod node;
 mod query;
 mod range;
 
+pub use access::OwnedValueRef;
 pub use mutate::Entry;
 pub(crate) use node::Node;
 

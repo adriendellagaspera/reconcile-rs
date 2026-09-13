@@ -10,42 +10,39 @@
 //! [`ReadReplicaMap::get`](crate::ReadReplicaMap::get) return.
 
 use std::ops::Deref;
-use std::sync::Arc;
 
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
-use crate::FingerprintTreeMap;
+use rsos::OwnedValueRef;
 
 /// Which backing tree a [`ValueRef`] was built over: [`ReplicatedMap`](crate::ReplicatedMap)'s
-/// dated map, or [`ReadReplicaMap`](crate::ReadReplicaMap)'s value-only projection. `pub(crate)`
-/// so `get()` in either module can construct one, but the shape stays opaque to callers (#297).
+/// dated map, or [`ReadReplicaMap`](crate::ReadReplicaMap)'s value-only projection. Each variant
+/// owns the exact persistent B-tree node containing the value, so dereferencing never repeats the
+/// key lookup that created the handle.
 pub(crate) enum Snapshot<K, V> {
-    Dated(Arc<FingerprintTreeMap<K, Entry<Timestamp, V>>>, K),
-    Projected(Arc<FingerprintTreeMap<K, State<V>>>, K),
+    Dated(OwnedValueRef<K, Entry<Timestamp, V>>),
+    Projected(OwnedValueRef<K, State<V>>),
 }
 
 /// A snapshot-backed reference to a live value.
 ///
-/// #34: owns an immutable `Arc` snapshot of the whole backing tree rather than holding a lock —
-/// unlike the pre-#34, `RwLock`-guard-backed version, a `ValueRef` may be held indefinitely,
-/// including across a write on the same handle, with no deadlock risk: the write installs a fresh
-/// tree behind a new `Arc`, and this `ValueRef` still points at whichever tree was live when
-/// `get` returned it. Derefs to `&V`.
+/// #34: owns a persistent-node handle rather than a lock. A `ValueRef` may therefore be held
+/// indefinitely, including across a write on the same map: the write forks a shared node before
+/// mutating it and this handle continues to observe the version in which it was created. The
+/// initial lookup is `O(log n)`; dereferencing the resulting handle is `O(1)`.
 pub struct ValueRef<K, V>(pub(crate) Snapshot<K, V>);
 
-impl<K: Ord, V> Deref for ValueRef<K, V> {
+impl<K, V> Deref for ValueRef<K, V> {
     type Target = V;
 
     fn deref(&self) -> &V {
         match &self.0 {
-            Snapshot::Dated(snapshot, key) => snapshot
-                .get(key)
-                .and_then(|entry| entry.value())
-                .expect("ValueRef always wraps a key live in the snapshot it was built from"),
-            Snapshot::Projected(snapshot, key) => snapshot
-                .get(key)
-                .and_then(|state| state.as_value())
-                .expect("ValueRef always wraps a key live in the snapshot it was built from"),
+            Snapshot::Dated(entry) => entry
+                .value()
+                .expect("ValueRef always wraps a live dated entry"),
+            Snapshot::Projected(state) => state
+                .as_value()
+                .expect("ValueRef always wraps a live projected state"),
         }
     }
 }

@@ -19,12 +19,15 @@ use super::ReadReplicaMap;
 
 impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// Get the live value for a key, or `None` if the key is absent or holds a replicated
-    /// tombstone. Unlike before #34, the returned [`ValueRef`] owns an immutable snapshot rather
-    /// than a lock, so holding it never blocks a concurrent inbound update from integrating.
+    /// tombstone.
+    ///
+    /// The returned [`ValueRef`] pins the exact persistent B-tree node that contained the value at
+    /// lookup time. Holding it never blocks an inbound update, and dereferencing it is `O(1)`.
     pub fn get(&self, k: &K) -> Option<ValueRef<K, V>> {
         let snapshot = self.tree.load_full();
-        snapshot.get(k)?.as_value()?;
-        Some(ValueRef(Snapshot::Projected(snapshot, k.clone())))
+        let state = snapshot.get_owned(k)?;
+        state.as_value()?;
+        Some(ValueRef(Snapshot::Projected(state)))
     }
 
     /// A zero-copy `Arc` snapshot of the value-only tree as it stands right now (#34): `rsos`'s
@@ -35,11 +38,16 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         self.tree.load_full()
     }
 
-    /// Clone of the live value for `k`, or `None`. Cheaper than holding a [`ValueRef`] snapshot
-    /// when the value itself, not a reference into it, is what a subsequent write needs; mirrors
-    /// [`ReplicatedMap::get_cloned`](crate::ReplicatedMap::get_cloned).
+    /// Clone of the live value for `k`, or `None`.
+    ///
+    /// This is a direct one-snapshot/one-lookup path; callers asking for an owned value do not pay
+    /// for the persistent node handle used by [`get`](Self::get).
     pub fn get_cloned(&self, k: &K) -> Option<V> {
-        self.get(k).map(|v| v.clone())
+        self.tree
+            .load_full()
+            .get(k)
+            .and_then(|state| state.as_value())
+            .cloned()
     }
 
     /// Whether the read replica currently holds a live value for the key (a tombstone counts as

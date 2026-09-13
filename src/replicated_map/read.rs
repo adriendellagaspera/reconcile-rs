@@ -30,26 +30,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// unwrap the value; a caller wanting only live values checks
     /// [`is_tombstone`](crate::entry::Entry::is_tombstone)/[`value`](crate::entry::Entry::value)
     /// itself.
-    ///
-    /// ```
-    /// # use std::sync::Arc;
-    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8308".parse().unwrap()));
-    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
-    /// );
-    /// store.insert("a".to_string(), 1);
-    ///
-    /// let snapshot = store.snapshot();
-    /// let live: Vec<_> = snapshot.range(..).filter(|(_, e)| !e.is_tombstone()).collect();
-    /// assert_eq!(live.len(), 1);
-    /// # }
-    /// ```
     pub fn snapshot(&self) -> Arc<FingerprintTreeMap<K, Entry<Timestamp, V>>> {
         self.engine.map.load_full()
     }
@@ -76,42 +56,29 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.engine.value_fingerprint(range)
     }
 
-    /// Unlike before #34, holding the returned [`ValueRef`] does **not** block a concurrent write
-    /// on the same handle — it owns an immutable snapshot of the tree as it stood when `get`
-    /// returned, not a lock. [`get_cloned`](Self::get_cloned) remains the default read when the
-    /// value will be compared against or fed into a subsequent write and a clone is cheap enough;
-    /// [`update`](Self::update) is still the one that makes that read-then-write atomic.
+    /// Get the live value for `k`, or `None` if the key is absent or tombstoned.
     ///
-    /// ```
-    /// # use std::sync::Arc;
-    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8302".parse().unwrap()));
-    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
-    /// );
-    ///
-    /// assert!(store.get(&"a".to_string()).is_none());
-    /// store.insert("a".to_string(), 1);
-    /// assert_eq!(store.get(&"a".to_string()).as_deref(), Some(&1)); // ValueRef derefs to &V
-    /// # }
-    /// ```
+    /// The returned [`ValueRef`] pins the exact persistent B-tree node that contained the value at
+    /// lookup time. Holding it does not block a concurrent write, and dereferencing it does not
+    /// repeat the key lookup.
     pub fn get(&self, k: &K) -> Option<ValueRef<K, V>> {
         let snapshot = self.engine.map.load_full();
-        snapshot.get(k)?.value()?;
-        Some(ValueRef(Snapshot::Dated(snapshot, k.clone())))
+        let entry = snapshot.get_owned(k)?;
+        entry.value()?;
+        Some(ValueRef(Snapshot::Dated(entry)))
     }
 
-    /// Clone of the live value for `k`, or `None`. Cheaper than holding a [`ValueRef`] when the
-    /// value itself, not a reference into the snapshot, is what a subsequent write needs. Still
-    /// racy against a concurrent write between the read and the write; use [`update`](Self::update)
-    /// instead when the write must be atomic with the read.
+    /// Clone of the live value for `k`, or `None`.
+    ///
+    /// This is intentionally a direct one-snapshot/one-lookup path rather than `get(k).map(Clone)`:
+    /// callers asking for an owned value do not need a persistent [`ValueRef`] node handle.
     pub fn get_cloned(&self, k: &K) -> Option<V> {
-        self.get(k).map(|v| v.clone())
+        self.engine
+            .map
+            .load_full()
+            .get(k)
+            .and_then(|entry| entry.value())
+            .cloned()
     }
 
     /// The number of **live** entries. `O(n)`, and smaller than the raw map size: tombstones
@@ -138,7 +105,11 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Whether `k` maps to a live value (a tombstoned key reads as absent).
     pub fn contains_key(&self, k: &K) -> bool {
-        self.get(k).is_some()
+        self.engine
+            .map
+            .load_full()
+            .get(k)
+            .is_some_and(|entry| !entry.is_tombstone())
     }
 
     /// The smallest live key and its value, or `None` if the store holds no live entry. `O(log n)`,

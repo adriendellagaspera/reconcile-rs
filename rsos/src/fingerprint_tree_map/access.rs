@@ -8,6 +8,7 @@
 
 use std::borrow::Borrow;
 use std::cmp::Ordering;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -17,6 +18,29 @@ use crate::fingerprint::{lift_with, Fingerprint, LiftKey};
 
 use super::node::Node;
 use super::FingerprintTreeMap;
+
+/// An owned, zero-copy handle to one value in a persistent [`FingerprintTreeMap`].
+///
+/// The handle owns an [`Arc`] to the exact B-tree node containing the value plus its slot in that
+/// node. It therefore needs no cloned key and no second lookup recipe. Concurrent writes remain
+/// safe: the persistent tree forks a shared node through `Arc::make_mut` before changing it, so
+/// this handle continues to observe the version in which it was created. Dereferencing the handle
+/// is `O(1)`.
+///
+/// This is primarily useful to owners of an `Arc<FingerprintTreeMap<_, _>>` that need a borrowed
+/// value to outlive the temporary tree snapshot used for lookup.
+pub struct OwnedValueRef<K, V> {
+    node: Arc<Node<K, V>>,
+    index: usize,
+}
+
+impl<K, V> Deref for OwnedValueRef<K, V> {
+    type Target = V;
+
+    fn deref(&self) -> &V {
+        &self.node.values[self.index]
+    }
+}
 
 /// The route from the root to the node holding a key: the child index taken at each interior node,
 /// then the key's own index inside the node where the key was found.
@@ -143,6 +167,35 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
             }
         }
         aux(self.root.as_ref(), key)
+    }
+
+    /// Returns an owned zero-copy handle to the value associated with `key`, if present.
+    ///
+    /// Unlike [`get`](Self::get), the returned reference is not tied to `&self`: it owns the exact
+    /// persistent node containing the value. The descent itself is borrowed and only the matched
+    /// node's `Arc` is cloned, after which dereferencing is `O(1)` and the observed version remains
+    /// alive across mutations of this map or another clone.
+    pub fn get_owned<Q>(&self, key: &Q) -> Option<OwnedValueRef<K, V>>
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        fn aux<K: Borrow<Q>, V, Q: Ord + ?Sized>(
+            node: &Arc<Node<K, V>>,
+            key: &Q,
+        ) -> Option<OwnedValueRef<K, V>> {
+            match node.keys.binary_search_by(|probe| probe.borrow().cmp(key)) {
+                Ok(index) => Some(OwnedValueRef {
+                    node: Arc::clone(node),
+                    index,
+                }),
+                Err(index) => {
+                    let children = node.children.as_ref()?;
+                    aux(&children[index], key)
+                }
+            }
+        }
+        aux(&self.root, key)
     }
 
     /// Returns whether `key` is present.

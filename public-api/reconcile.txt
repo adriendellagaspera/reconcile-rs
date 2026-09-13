@@ -536,7 +536,7 @@ impl<K> !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_set::
 impl<K> !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_set::ReplicatedSet<K>
 pub mod reconcile::value_ref
 pub struct reconcile::value_ref::ValueRef<K, V>(_)
-impl<K: core::cmp::Ord, V> core::ops::deref::Deref for reconcile::value_ref::ValueRef<K, V>
+impl<K, V> core::ops::deref::Deref for reconcile::value_ref::ValueRef<K, V>
 pub type reconcile::value_ref::ValueRef<K, V>::Target = V
 pub fn reconcile::value_ref::ValueRef<K, V>::deref(&self) -> &V
 impl<K, V> core::marker::Freeze for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Freeze
@@ -780,7 +780,7 @@ impl<K> core::marker::UnsafeUnpin for reconcile::replicated_set::ReplicatedSet<K
 impl<K> !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_set::ReplicatedSet<K>
 impl<K> !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_set::ReplicatedSet<K>
 pub struct reconcile::ValueRef<K, V>(_)
-impl<K: core::cmp::Ord, V> core::ops::deref::Deref for reconcile::value_ref::ValueRef<K, V>
+impl<K, V> core::ops::deref::Deref for reconcile::value_ref::ValueRef<K, V>
 pub type reconcile::value_ref::ValueRef<K, V>::Target = V
 pub fn reconcile::value_ref::ValueRef<K, V>::deref(&self) -> &V
 impl<K, V> core::marker::Freeze for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::Freeze

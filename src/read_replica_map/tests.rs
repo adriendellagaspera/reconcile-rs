@@ -13,6 +13,7 @@ mod keyed_fingerprint;
 mod lifecycle;
 mod membership;
 mod read;
+mod value_ref;
 mod write;
 
 fn ephemeral_config() -> Config {
