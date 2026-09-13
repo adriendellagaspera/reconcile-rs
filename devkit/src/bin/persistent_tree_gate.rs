@@ -20,7 +20,10 @@ fn tree(n: usize) -> FingerprintTreeMap<u32, u32> {
 fn retained_history(
     mut current: FingerprintTreeMap<u32, u32>,
     count: usize,
-) -> (FingerprintTreeMap<u32, u32>, Vec<FingerprintTreeMap<u32, u32>>) {
+) -> (
+    FingerprintTreeMap<u32, u32>,
+    Vec<FingerprintTreeMap<u32, u32>>,
+) {
     if count == 0 {
         return (current, Vec::new());
     }
