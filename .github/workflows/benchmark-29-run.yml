@@ -1,0 +1,75 @@
+name: benchmark-29-run
+
+on:
+  push:
+    branches: ["bench/29-persistent-tree-gate"]
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Environment
+        run: |
+          mkdir -p benchmark-29-results
+          {
+            echo "candidate=$(git rev-parse HEAD)"
+            echo "baseline=0dbc656e8f7e2ed4c978a5f46bb8364c01688304"
+            rustc --version
+            cargo --version
+            uname -a
+            lscpu
+          } | tee benchmark-29-results/environment.txt
+      - name: Create pre-COW worktree
+        run: git worktree add /tmp/reconcile-rs-pre-cow 0dbc656e8f7e2ed4c978a5f46bb8364c01688304
+      - name: Baseline FingerprintTreeMap lanes
+        working-directory: /tmp/reconcile-rs-pre-cow
+        env:
+          RUSTFLAGS: --cfg reconcile_internal_testing
+        run: |
+          set -o pipefail
+          cargo bench --bench bench -- 'FingerprintTreeMap::(fill|insert|remove|aggregate)' --quick --noplot \
+            2>&1 | tee "$GITHUB_WORKSPACE/benchmark-29-results/baseline-ftm.txt"
+      - name: Candidate FingerprintTreeMap lanes
+        env:
+          RUSTFLAGS: --cfg reconcile_internal_testing
+        run: |
+          set -o pipefail
+          cargo bench --bench bench -- 'FingerprintTreeMap::(fill|insert|remove|aggregate)' --quick --noplot \
+            2>&1 | tee benchmark-29-results/candidate-ftm.txt
+      - name: Baseline system lanes
+        working-directory: /tmp/reconcile-rs-pre-cow
+        env:
+          RECONCILE_BENCH_SIZES: 1000,10000,100000
+        run: |
+          set -o pipefail
+          cargo bench --bench system -- 'point_read|bulk_load|cold_sync' --quick --noplot \
+            2>&1 | tee "$GITHUB_WORKSPACE/benchmark-29-results/baseline-system.txt"
+      - name: Candidate system lanes
+        env:
+          RECONCILE_BENCH_SIZES: 1000,10000,100000
+        run: |
+          set -o pipefail
+          cargo bench --bench system -- 'point_read|bulk_load|cold_sync' --quick --noplot \
+            2>&1 | tee benchmark-29-results/candidate-system.txt
+      - name: Candidate COW-only lanes
+        run: |
+          set -o pipefail
+          cargo run --release -p devkit --bin persistent_tree_gate -- all --n 100000 --iters 10000 \
+            2>&1 | tee benchmark-29-results/cow-lanes.txt
+          cargo build --release -p devkit --bin persistent_tree_gate
+          for retained in 0 1 8 64; do
+            /usr/bin/time -v target/release/persistent_tree_gate rss-hold --n 100000 --retained "$retained" \
+              >"benchmark-29-results/rss-${retained}.txt" 2>&1
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-29-results
+          path: benchmark-29-results
