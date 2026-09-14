@@ -35,8 +35,9 @@ Out of scope — documented design choices, not bugs:
 
 `Config::with_cluster_key_rotation(primary, also_accept)` provides a fixed two-key receive window
 without changing the wire format. The `primary` key remains the **only** key used to
-authenticate/encrypt outgoing datagrams; `also_accept` is receive-only. At the lower-level gossip
-API, the same shape is available as `ClusterKey::with_accepted_key`.
+authenticate/encrypt outgoing datagrams and to derive the keyed RSOS fingerprint lift;
+`also_accept` is receive-only. Internally the facade maps those two keys to `gossip::auth::Keys`,
+whose verifier already supports a primary plus additional accepted keys.
 
 Rotate in three deployments, never by switching every node directly from old-only to new-only:
 
@@ -50,9 +51,10 @@ Rotate in three deployments, never by switching every node directly from old-onl
 Provision both secrets through the same protected channel you use for a single cluster key: an
 environment variable injected by the process supervisor, a mounted orchestrator secret, or a
 secret-manager/KMS integration. Do not put either secret in source control, images, command-line
-arguments, logs, or generated configuration committed to the repository. `ClusterKey`'s `Debug`
-implementation redacts both keys, and the optional `zeroize` feature wipes both owned copies on
-drop, but neither property protects the caller's original environment/string/file buffer.
+arguments, logs, or generated configuration committed to the repository. `Config`'s `Debug`
+implementation redacts both configured keys, and the optional `zeroize` feature wipes each owned
+`ClusterKey` on drop, but neither property protects the caller's original
+environment/string/file buffer.
 
 The cluster key also derives the keyed RSOS fingerprint lift. During step 2, nodes whose primaries
 differ can authenticate and exchange values, but equal datasets intentionally produce different
