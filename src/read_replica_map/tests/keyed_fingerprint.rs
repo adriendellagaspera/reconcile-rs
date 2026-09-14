@@ -15,7 +15,8 @@
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use gossip::auth::ClusterKey;
+use gossip::auth::{Authenticator, ClusterKey};
+use gossip::replay::{Seq, Stamp};
 
 use crate::entry::State;
 use crate::replicated_map::Config;
@@ -72,4 +73,37 @@ fn a_cluster_key_actually_changes_the_fingerprint_the_unkeyed_lift_would_produce
     // Guards against the seam silently no-oping (e.g. the derived key never reaching
     // `FingerprintTreeMap::with_lift_key`, leaving every read replica unkeyed regardless of config).
     assert_ne!(keyed.value_fingerprint(..), unkeyed.value_fingerprint(..));
+}
+
+#[test]
+fn rotation_fallback_is_receive_only_on_a_read_replica() {
+    let net = InMemoryNetwork::new();
+    let port = 4900u16;
+    let rotating_ip: IpAddr = "127.0.11.5".parse().unwrap();
+    let primary_ip: IpAddr = "127.0.11.6".parse().unwrap();
+    let primary = ClusterKey::new([3; 32]);
+    let fallback = ClusterKey::new([4; 32]);
+
+    let rotating = ReadReplicaMap::<u32, u32>::new_with_transport(
+        Config::default()
+            .with_listen_addr(rotating_ip)
+            .with_port(port)
+            .with_cluster_key_rotation(primary.clone(), fallback.clone()),
+        Arc::new(net.bind(SocketAddr::new(rotating_ip, port))),
+    );
+
+    // The fallback really reaches ReadReplicaMap's independently-built authenticator.
+    let fallback_sender = Authenticator::new(Some(fallback), false).unwrap();
+    let datagram = fallback_sender.seal(Seq::FIRST, Stamp::NONE, b"rotation-probe");
+    assert!(rotating.authenticator.open(&datagram).is_some());
+
+    // It does not influence the value-only fingerprint tree: the primary alone defines it.
+    let primary_only = read_replica_with_key(&net, primary_ip, Some(primary));
+    let entries = [(1, 10), (2, 20), (3, 30)];
+    load(&rotating, &entries);
+    load(&primary_only, &entries);
+    assert_eq!(
+        rotating.value_fingerprint(..),
+        primary_only.value_fingerprint(..)
+    );
 }

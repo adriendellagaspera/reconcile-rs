@@ -31,6 +31,7 @@ fn ephemeral_config() -> Config {
         remote_interval: 6,
         remote_fanout: 2,
         cluster_key: None,
+        also_accept_cluster_key: None,
         insecure_no_key: true,
         node_id: None,
         encrypt: false,

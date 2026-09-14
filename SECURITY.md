@@ -31,4 +31,37 @@ Out of scope — documented design choices, not bugs:
   #136).
 - UDP source addresses are spoofable — a property of the transport, not this crate.
 
+## Rotating the cluster key
+
+`Config::with_cluster_key_rotation(primary, also_accept)` provides a fixed two-key receive window
+without changing the wire format. The `primary` key remains the **only** key used to
+authenticate/encrypt outgoing datagrams and to derive the keyed RSOS fingerprint lift;
+`also_accept` is receive-only. Internally the facade maps those two keys to `gossip::auth::Keys`,
+whose verifier already supports a primary plus additional accepted keys. This is construction-time
+configuration, not a runtime key-management API: each phase below is a deployment/restart with a
+new `Config`.
+
+Rotate in three deployments, never by switching every node directly from old-only to new-only:
+
+1. deploy `with_cluster_key_rotation(old, new)` everywhere — traffic is still sent with the old key,
+   but every node is ready to receive the new one;
+2. deploy `with_cluster_key_rotation(new, old)` node by node — upgraded and not-yet-upgraded nodes
+   can still authenticate each other in both directions;
+3. once every node sends with the new key, deploy `with_cluster_key(new)` — the old key is then
+   rejected.
+
+Provision both secrets through the same protected channel you use for a single cluster key: an
+environment variable injected by the process supervisor, a mounted orchestrator secret, or a
+secret-manager/KMS integration. Do not put either secret in source control, images, command-line
+arguments, logs, or generated configuration committed to the repository. `Config`'s `Debug`
+implementation redacts both configured keys, and the optional `zeroize` feature wipes each owned
+`ClusterKey` on drop, but neither property protects the caller's original
+environment/string/file buffer.
+
+The cluster key also derives the keyed RSOS fingerprint lift. During step 2, nodes whose primaries
+differ can authenticate and exchange values, but equal datasets intentionally produce different
+range fingerprints until every node has switched primary; this can cause transient repeated
+anti-entropy work. The data path remains convergent; issue #114 tracks whether this temporary
+amplification merits a separate fingerprint-rotation mechanism.
+
 See the README's [Security model](README.md#security-model) section for the full threat model.

@@ -1,0 +1,30 @@
+name: bless-117-public-api
+
+on:
+  push:
+    branches: [feat/53-cluster-key-rotation]
+
+permissions:
+  contents: write
+
+jobs:
+  bless:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/53-cluster-key-rotation
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-public-api
+        run: cargo install cargo-public-api --locked
+      - name: Bless deliberate public API changes
+        run: ./scripts/check-public-api.sh --bless
+      - name: Commit snapshot
+        run: |
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add public-api/reconcile.txt
+          git diff --cached --quiet || git commit -m 'Bless #53 public API snapshot'
+          git push origin HEAD:feat/53-cluster-key-rotation

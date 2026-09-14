@@ -139,6 +139,38 @@ impl Config {
     #[must_use]
     pub fn with_cluster_key(mut self, key: ClusterKey) -> Self {
         self.cluster_key = Some(key);
+        self.also_accept_cluster_key = None;
+        self
+    }
+
+    /// Configure a fixed two-key rolling-rotation window.
+    ///
+    /// `primary` authenticates/encrypts every outgoing datagram and derives this node's keyed RSOS
+    /// fingerprint lift. `also_accept` is receive-only: incoming datagrams authenticated with
+    /// either key are accepted, but this node never emits with the fallback key.
+    ///
+    /// Rotate without cutting communication in three deployments:
+    ///
+    /// 1. old primary + new `also_accept` on every node;
+    /// 2. new primary + old `also_accept`, rolled node by node;
+    /// 3. new primary only after every node emits with it, retiring the old key.
+    ///
+    /// Provision both secrets at runtime through an environment variable, mounted orchestrator
+    /// secret, or secret-manager/KMS integration; never put either in source control, images,
+    /// command-line arguments, logs, or committed generated configuration. See `SECURITY.md`.
+    ///
+    /// During phase 2, nodes with different primaries can authenticate and converge values, but
+    /// their keyed range fingerprints differ, causing transient extra anti-entropy work until every
+    /// node uses the new primary. #114 tracks that bounded operational follow-up; it does not
+    /// require a wire-format key id for this rotation window.
+    #[must_use]
+    pub fn with_cluster_key_rotation(
+        mut self,
+        primary: ClusterKey,
+        also_accept: ClusterKey,
+    ) -> Self {
+        self.cluster_key = Some(primary);
+        self.also_accept_cluster_key = Some(also_accept);
         self
     }
 

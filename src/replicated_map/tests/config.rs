@@ -90,6 +90,21 @@ fn config_debug_redacts_cluster_key_but_not_its_presence() {
         "raw key bytes must not appear in Debug output: {debug}"
     );
 
+    let rotating = ephemeral_config().with_cluster_key_rotation(
+        gossip::auth::ClusterKey::new([0xAB; 32]),
+        gossip::auth::ClusterKey::new([0xCD; 32]),
+    );
+    let debug = format!("{rotating:?}");
+    assert_eq!(
+        debug.matches("<redacted>").count(),
+        2,
+        "both rotation secrets must be redacted: {debug}"
+    );
+    assert!(
+        !debug.contains("cd, cd, cd") && !debug.contains("205, 205, 205"),
+        "alternate key bytes must not appear in Debug output: {debug}"
+    );
+
     let without_key = ephemeral_config();
     let debug = format!("{without_key:?}");
     assert!(
@@ -140,13 +155,38 @@ fn config_builders_actually_set_their_field() {
 
     let cfg = Config::default().with_max_value_size(4096);
     assert_eq!(cfg.max_value_size, Some(4096));
+
+    let primary = gossip::auth::ClusterKey::new([0x11; 32]);
+    let alternate = gossip::auth::ClusterKey::new([0x22; 32]);
+    let primary_lift = primary.derive_lift_key();
+    let alternate_lift = alternate.derive_lift_key();
+    let cfg = Config::default().with_cluster_key_rotation(primary, alternate);
+    assert_eq!(
+        cfg.cluster_key.as_ref().unwrap().derive_lift_key(),
+        primary_lift
+    );
+    assert_eq!(
+        cfg.also_accept_cluster_key
+            .as_ref()
+            .unwrap()
+            .derive_lift_key(),
+        alternate_lift
+    );
+
+    let cfg = cfg.with_cluster_key(gossip::auth::ClusterKey::new([0x33; 32]));
+    assert!(
+        cfg.also_accept_cluster_key.is_none(),
+        "with_cluster_key must retire the rotation key"
+    );
 }
 
 /// [`Config::max_value_size`] is `None` (no ceiling) unless a caller opts in — #82's write-time
 /// rejection must never engage for a `Config` nobody configured it on.
 #[test]
 fn max_value_size_defaults_to_none() {
-    assert_eq!(Config::default().max_value_size, None);
+    let cfg = Config::default();
+    assert_eq!(cfg.max_value_size, None);
+    assert!(cfg.also_accept_cluster_key.is_none());
 }
 
 /// The new #292 fields default to the documented values: [`SNAPSHOT_INTERVAL`] (5 s) and
