@@ -1,0 +1,285 @@
+name: apply-53-rotation
+
+on:
+  push:
+    branches: [feat/53-cluster-key-rotation]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/53-cluster-key-rotation
+      - name: Apply #53
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              assert count == 1, f"{path}: expected one anchor, got {count}: {old[:80]!r}"
+              p.write_text(text.replace(old, new, 1))
+
+          # Config owns the two-key window. The existing cluster_key remains the primary key.
+          replace_once(
+              "src/replicated_map/config.rs",
+              "    pub cluster_key: Option<ClusterKey>,\n    /// Explicit, loudly-named opt-in to run with [`cluster_key`](Self::cluster_key) unset. Default\n",
+              "    pub cluster_key: Option<ClusterKey>,\n    /// A second cluster key accepted only on receive during a rolling key rotation (#53).\n    ///\n    /// [`cluster_key`](Self::cluster_key) remains the primary key: it seals every outgoing\n    /// datagram and derives the keyed RSOS fingerprint lift. This key is tried only after the\n    /// primary fails to verify/decrypt. Configure both through\n    /// [`with_cluster_key_rotation`](Self::with_cluster_key_rotation); calling\n    /// [`with_cluster_key`](Self::with_cluster_key) retires the alternate key.\n    pub also_accept_cluster_key: Option<ClusterKey>,\n    /// Explicit, loudly-named opt-in to run with [`cluster_key`](Self::cluster_key) unset. Default\n",
+          )
+          replace_once(
+              "src/replicated_map/config.rs",
+              "    /// Redacts [`cluster_key`](Self::cluster_key): prints `Some(<redacted>)`/`None`, never the\n    /// key material, so an accidental `{:?}` in a log statement cannot leak it.\n",
+              "    /// Redacts both configured cluster keys: prints `Some(<redacted>)`/`None`, never key\n    /// material, so an accidental `{:?}` in a log statement cannot leak either secret.\n",
+          )
+          replace_once(
+              "src/replicated_map/config.rs",
+              "            .field(\n                \"cluster_key\",\n                &self.cluster_key.as_ref().map(|_| \"<redacted>\"),\n            )\n            .field(\"insecure_no_key\", &self.insecure_no_key)\n",
+              "            .field(\n                \"cluster_key\",\n                &self.cluster_key.as_ref().map(|_| \"<redacted>\"),\n            )\n            .field(\n                \"also_accept_cluster_key\",\n                &self.also_accept_cluster_key.as_ref().map(|_| \"<redacted>\"),\n            )\n            .field(\"insecure_no_key\", &self.insecure_no_key)\n",
+          )
+          replace_once(
+              "src/replicated_map/config.rs",
+              "            cluster_key: None,\n            insecure_no_key: false,\n",
+              "            cluster_key: None,\n            also_accept_cluster_key: None,\n            insecure_no_key: false,\n",
+          )
+
+          # Public builders: the rotation builder is atomic, and the ordinary builder retires any
+          # alternate key so phase 3 is just with_cluster_key(new).
+          replace_once(
+              "src/replicated_map/config/builders.rs",
+              "    pub fn with_cluster_key(mut self, key: ClusterKey) -> Self {\n        self.cluster_key = Some(key);\n        self\n    }\n\n    /// Explicit, loudly-named opt-in to run with no [`cluster_key`](Self::cluster_key) at all.\n",
+              "    pub fn with_cluster_key(mut self, key: ClusterKey) -> Self {\n        self.cluster_key = Some(key);\n        self.also_accept_cluster_key = None;\n        self\n    }\n\n    /// Configure a two-key acceptance window for a rolling cluster-key rotation (#53).\n    ///\n    /// `primary` seals every outgoing datagram; `also_accept` is receive-only and is tried only\n    /// after `primary` fails verification/decryption. This changes no wire framing. Roll out the\n    /// acceptance window cluster-wide before changing which key is primary, then call\n    /// [`with_cluster_key`](Self::with_cluster_key) with the new key on every node to retire the\n    /// old one. README \"Cluster-key rotation\" gives the exact three-phase sequence.\n    #[must_use]\n    pub fn with_cluster_key_rotation(\n        mut self,\n        primary: ClusterKey,\n        also_accept: ClusterKey,\n    ) -> Self {\n        self.cluster_key = Some(primary);\n        self.also_accept_cluster_key = Some(also_accept);\n        self\n    }\n\n    /// Explicit, loudly-named opt-in to run with no [`cluster_key`](Self::cluster_key) at all.\n",
+          )
+
+          # Both replica kinds derive fingerprints from primary, but authenticate with both keys.
+          replace_once(
+              "src/replica/construct.rs",
+              "        // `config.encrypt` can only be `true` via `Config::with_encryption`, itself gated on\n        // `reconcile`'s `encryption` feature, which unifies to `gossip/encryption` (Cargo.toml) —\n        // so this can never actually hit `EncryptionFeatureDisabled`.\n        let authenticator = auth::Authenticator::new(config.cluster_key, config.encrypt)\n            .expect(\"reconcile's encryption feature unifies to gossip/encryption\");\n",
+              "        // `config.encrypt` can only be `true` via `Config::with_encryption`, itself gated on\n        // `reconcile`'s `encryption` feature, which unifies to `gossip/encryption` (Cargo.toml) —\n        // so this can never actually hit `EncryptionFeatureDisabled`. The primary key remains the\n        // fingerprint-lift key above; `also_accept_cluster_key` is receive-only (#53). During the\n        // brief rollout phase where primaries differ, equal content therefore has different range\n        // fingerprints and may be re-diffed/re-sent; #116 tracks whether that transient cost needs\n        // a deeper multi-summary design.\n        let auth_keys = config.cluster_key.clone().map(|primary| auth::Keys {\n            primary,\n            also_accept: config\n                .also_accept_cluster_key\n                .clone()\n                .into_iter()\n                .collect(),\n        });\n        let authenticator = auth::Authenticator::with_rotation(auth_keys, config.encrypt)\n            .expect(\"reconcile's encryption feature unifies to gossip/encryption\");\n",
+          )
+          replace_once(
+              "src/read_replica_map.rs",
+              "        // `config.encrypt` can only be `true` via `Config::with_encryption`, itself gated on\n        // `reconcile`'s `encryption` feature, which unifies to `gossip/encryption` (Cargo.toml) —\n        // so this can never actually hit `EncryptionFeatureDisabled`.\n        let authenticator = auth::Authenticator::new(config.cluster_key, config.encrypt)\n            .expect(\"reconcile's encryption feature unifies to gossip/encryption\");\n",
+              "        // `config.encrypt` can only be `true` via `Config::with_encryption`, itself gated on\n        // `reconcile`'s `encryption` feature, which unifies to `gossip/encryption` (Cargo.toml) —\n        // so this can never actually hit `EncryptionFeatureDisabled`. As on a dated replica, the\n        // primary key above owns the fingerprint lift while the alternate is receive-only (#53).\n        let auth_keys = config.cluster_key.clone().map(|primary| auth::Keys {\n            primary,\n            also_accept: config\n                .also_accept_cluster_key\n                .clone()\n                .into_iter()\n                .collect(),\n        });\n        let authenticator = auth::Authenticator::with_rotation(auth_keys, config.encrypt)\n            .expect(\"reconcile's encryption feature unifies to gossip/encryption\");\n",
+          )
+
+          # Internal Config literals and config-focused regression tests.
+          replace_once(
+              "src/replicated_map/tests.rs",
+              "        cluster_key: None,\n        insecure_no_key: true,\n",
+              "        cluster_key: None,\n        also_accept_cluster_key: None,\n        insecure_no_key: true,\n",
+          )
+          replace_once(
+              "src/replicated_map/tests/config.rs",
+              "    let without_key = ephemeral_config();\n    let debug = format!(\"{without_key:?}\");\n",
+              "    let rotating = ephemeral_config().with_cluster_key_rotation(\n        gossip::auth::ClusterKey::new([0xAB; 32]),\n        gossip::auth::ClusterKey::new([0xCD; 32]),\n    );\n    let debug = format!(\"{rotating:?}\");\n    assert_eq!(\n        debug.matches(\"<redacted>\").count(),\n        2,\n        \"both rotation secrets must be redacted: {debug}\"\n    );\n    assert!(\n        !debug.contains(\"cd, cd, cd\") && !debug.contains(\"205, 205, 205\"),\n        \"alternate key bytes must not appear in Debug output: {debug}\"\n    );\n\n    let without_key = ephemeral_config();\n    let debug = format!(\"{without_key:?}\");\n",
+          )
+          replace_once(
+              "src/replicated_map/tests/config.rs",
+              "    let cfg = Config::default().with_max_value_size(4096);\n    assert_eq!(cfg.max_value_size, Some(4096));\n}\n",
+              "    let cfg = Config::default().with_max_value_size(4096);\n    assert_eq!(cfg.max_value_size, Some(4096));\n\n    let primary = gossip::auth::ClusterKey::new([0x11; 32]);\n    let alternate = gossip::auth::ClusterKey::new([0x22; 32]);\n    let primary_lift = primary.derive_lift_key();\n    let alternate_lift = alternate.derive_lift_key();\n    let cfg = Config::default().with_cluster_key_rotation(primary, alternate);\n    assert_eq!(\n        cfg.cluster_key.as_ref().unwrap().derive_lift_key(),\n        primary_lift\n    );\n    assert_eq!(\n        cfg.also_accept_cluster_key\n            .as_ref()\n            .unwrap()\n            .derive_lift_key(),\n        alternate_lift\n    );\n\n    let cfg = cfg.with_cluster_key(gossip::auth::ClusterKey::new([0x33; 32]));\n    assert!(\n        cfg.also_accept_cluster_key.is_none(),\n        \"with_cluster_key must retire the rotation key\"\n    );\n}\n",
+          )
+          replace_once(
+              "src/replicated_map/tests/config.rs",
+              "fn max_value_size_defaults_to_none() {\n    assert_eq!(Config::default().max_value_size, None);\n}\n",
+              "fn max_value_size_defaults_to_none() {\n    let cfg = Config::default();\n    assert_eq!(cfg.max_value_size, None);\n    assert!(cfg.also_accept_cluster_key.is_none());\n}\n",
+          )
+
+          # End-to-end in-memory cluster coverage: bidirectional traffic during a mixed-primary
+          # window, then a fresh pair proves the retired key no longer authenticates.
+          replace_once(
+              "src/replica/tests.rs",
+              "mod keyed_fingerprint;\nmod pacing;\n",
+              "mod key_rotation;\nmod keyed_fingerprint;\nmod pacing;\n",
+          )
+          Path("src/replica/tests/key_rotation.rs").write_text(r'''// Copyright 2026 Developers of the reconcile-rs project.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+//! #53: the facade-level two-key rotation window, over the real anti-entropy loop and in-memory
+//! transport. `gossip::auth` separately pins the lower-level "seal primary / verify alternate"
+//! rule; these tests prove `Config` wires that rule into a running `Replica`.
+
+use std::collections::BTreeMap;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use gossip::auth::ClusterKey;
+
+use crate::clock::{ManualClock, NodeId};
+use crate::entry::Entry;
+use crate::replica::Replica;
+use crate::replicated_map::Config;
+use crate::transport::InMemoryNetwork;
+
+fn live_view(replica: &Replica<u32, u32>) -> BTreeMap<u32, u32> {
+    replica
+        .map
+        .load_full()
+        .iter()
+        .filter_map(|(key, entry)| entry.value().map(|value| (*key, *value)))
+        .collect()
+}
+
+fn rotating_replica(
+    net: &InMemoryNetwork,
+    ip: IpAddr,
+    port: u16,
+    node_id: u64,
+    primary: ClusterKey,
+    also_accept: ClusterKey,
+) -> Replica<u32, u32> {
+    let config = Config::default()
+        .with_listen_addr(ip)
+        .with_port(port)
+        .with_reconcile_interval(Duration::from_millis(5))
+        .with_cluster_key_rotation(primary, also_accept);
+    Replica::new_with_transport(
+        config,
+        Arc::new(net.bind(SocketAddr::new(ip, port))),
+        Arc::new(ManualClock::new(NodeId::new(node_id))),
+    )
+}
+
+fn single_key_replica(
+    net: &InMemoryNetwork,
+    ip: IpAddr,
+    port: u16,
+    node_id: u64,
+    key: ClusterKey,
+) -> Replica<u32, u32> {
+    let config = Config::default()
+        .with_listen_addr(ip)
+        .with_port(port)
+        .with_reconcile_interval(Duration::from_millis(5))
+        .with_cluster_key(key);
+    Replica::new_with_transport(
+        config,
+        Arc::new(net.bind(SocketAddr::new(ip, port))),
+        Arc::new(ManualClock::new(NodeId::new(node_id))),
+    )
+}
+
+async fn wait_for(replica: &Replica<u32, u32>, expected: &[(u32, u32)]) {
+    let expected: BTreeMap<_, _> = expected.iter().copied().collect();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        if live_view(replica) == expected {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("replica did not converge: got {:?}, want {expected:?}", live_view(replica));
+}
+
+#[tokio::test]
+async fn mixed_primary_cluster_exchanges_updates_during_rotation() {
+    let net = InMemoryNetwork::new();
+    let port = 4810;
+    let a_ip: IpAddr = "127.0.11.1".parse().unwrap();
+    let b_ip: IpAddr = "127.0.11.2".parse().unwrap();
+    let old = ClusterKey::new([0x11; 32]);
+    let new = ClusterKey::new([0x22; 32]);
+
+    // Phase 2 of the documented rollout: A still seals with old and accepts new; B has switched
+    // to new and accepts old. Their keyed fingerprints intentionally differ during this phase,
+    // but authentication must not partition the cluster (#116 tracks the temporary re-diff cost).
+    let a = rotating_replica(&net, a_ip, port, 1, old.clone(), new.clone());
+    let b = rotating_replica(&net, b_ip, port, 2, new, old);
+    a.peers.write().insert(b_ip, Instant::now());
+    b.peers.write().insert(a_ip, Instant::now());
+
+    a.just_insert(1, Entry::present(a.clock_now(), 10));
+    let ta = tokio::spawn(a.clone().run());
+    let tb = tokio::spawn(b.clone().run());
+    wait_for(&b, &[(1, 10)]).await;
+
+    b.just_insert(2, Entry::present(b.clock_now(), 20));
+    wait_for(&a, &[(1, 10), (2, 20)]).await;
+
+    ta.abort();
+    tb.abort();
+}
+
+#[tokio::test]
+async fn retired_key_is_rejected_after_rotation_window_closes() {
+    let net = InMemoryNetwork::new();
+    let port = 4811;
+    let old_ip: IpAddr = "127.0.11.3".parse().unwrap();
+    let new_ip: IpAddr = "127.0.11.4".parse().unwrap();
+    let old = single_key_replica(&net, old_ip, port, 3, ClusterKey::new([0x33; 32]));
+    let new = single_key_replica(&net, new_ip, port, 4, ClusterKey::new([0x44; 32]));
+    old.peers.write().insert(new_ip, Instant::now());
+    new.peers.write().insert(old_ip, Instant::now());
+    old.just_insert(1, Entry::present(old.clock_now(), 10));
+
+    let to = tokio::spawn(old.clone().run());
+    let tn = tokio::spawn(new.clone().run());
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert!(
+        live_view(&new).is_empty(),
+        "a node configured with only the new key must reject old-key datagrams"
+    );
+    to.abort();
+    tn.abort();
+}
+''')
+
+          # Operator-facing rollout. The second key is a short-lived receive window, not key history.
+          readme = Path("README.md")
+          text = readme.read_text()
+          anchor = "The MAC primitive is selected at build time via Cargo features: `mac-blake3` (default, keyed\n"
+          assert text.count(anchor) == 1
+          rotation = '''### Cluster-key rotation
+
+Rotate the shared secret with a two-key receive window; no key id or epoch is added to the wire.
+`Config::with_cluster_key_rotation(primary, also_accept)` always **sends with `primary`** and accepts
+both keys on receive (MAC and encrypted modes). Use three cluster-wide phases:
+
+| phase | config on each node | rule |
+|---|---|---|
+| 1 — prepare | `with_cluster_key_rotation(old, new)` | deploy everywhere before any node sends with `new` |
+| 2 — switch | `with_cluster_key_rotation(new, old)` | roll node-by-node; old and new senders interoperate |
+| 3 — retire | `with_cluster_key(new)` | deploy everywhere; the old key is rejected again |
+
+Keep both secrets in the same secret manager / orchestrator secret source during the window (for
+example two environment variables populated from a Kubernetes Secret), never in source or an image.
+The process necessarily holds both secrets in memory while phase 1/2 is active; with the `zeroize`
+feature each `ClusterKey` copy is wiped on drop. Keep the overlap short: accepting two keys expands
+the credential set that can authenticate a peer until phase 3 completes.
+
+The cluster key also derives the keyed range-fingerprint lift. Phase 2 therefore temporarily mixes
+fingerprint keys: data still authenticates and converges, but equal datasets on old-primary vs
+new-primary nodes do not SKIP at the root and may be re-diffed/re-sent until every primary is `new`.
+[#116](https://github.com/adriendellagaspera/reconcile-rs/issues/116) tracks whether that transient
+amplification warrants a multi-summary design; it does not require a wire-format change for #53.
+
+'''
+          readme.write_text(text.replace(anchor, rotation + anchor, 1))
+          PY
+      - name: Format and check patch
+        run: |
+          cargo fmt --all
+          git diff --check
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add README.md src/replicated_map/config.rs src/replicated_map/config/builders.rs \
+            src/replica/construct.rs src/read_replica_map.rs src/replicated_map/tests.rs \
+            src/replicated_map/tests/config.rs src/replica/tests.rs src/replica/tests/key_rotation.rs
+          git commit -m 'Add cluster-key rotation window for #53'
+          git push origin HEAD:feat/53-cluster-key-rotation
