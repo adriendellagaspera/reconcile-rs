@@ -37,7 +37,9 @@ Out of scope — documented design choices, not bugs:
 without changing the wire format. The `primary` key remains the **only** key used to
 authenticate/encrypt outgoing datagrams and to derive the keyed RSOS fingerprint lift;
 `also_accept` is receive-only. Internally the facade maps those two keys to `gossip::auth::Keys`,
-whose verifier already supports a primary plus additional accepted keys.
+whose verifier already supports a primary plus additional accepted keys. This is construction-time
+configuration, not a runtime key-management API: each phase below is a deployment/restart with a
+new `Config`.
 
 Rotate in three deployments, never by switching every node directly from old-only to new-only:
 
