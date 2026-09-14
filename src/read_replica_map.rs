@@ -252,10 +252,9 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     fn build(config: Config, transport: Arc<dyn Transport>) -> Self {
         config.check_key_or_insecure_opt_in();
         warn_on_ignored_config_fields(&config);
-        // Derived before `config.cluster_key` is moved into the authenticator below — see
-        // `Replica::build`'s identical seam. Must match the dated peer's own cluster key for the
-        // two trees' fingerprints to agree at all, exactly as datagram authentication already
-        // requires.
+        // The primary key derives the value tree's lift exactly as it does on the dated peer. The
+        // receive-only rotation key affects authentication only; mixed primaries can exchange
+        // values but have different summaries until the primary rollout completes (#118).
         let lift_key = config
             .cluster_key
             .as_ref()
@@ -263,7 +262,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         // `config.encrypt` can only be `true` via `Config::with_encryption`, itself gated on
         // `reconcile`'s `encryption` feature, which unifies to `gossip/encryption` (Cargo.toml) —
         // so this can never actually hit `EncryptionFeatureDisabled`.
-        let authenticator = auth::Authenticator::new(config.cluster_key, config.encrypt)
+        let authenticator = auth::Authenticator::with_rotation(config.auth_keys(), config.encrypt)
             .expect("reconcile's encryption feature unifies to gossip/encryption");
         if matches!(authenticator, auth::Authenticator::Disabled) {
             warn!(

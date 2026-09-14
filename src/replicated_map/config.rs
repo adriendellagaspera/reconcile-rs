@@ -6,9 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::fmt;
-use std::net::IpAddr;
-use std::time::Duration;
+use std::{fmt, net::IpAddr, time::Duration};
 
 use gossip::auth::ClusterKey;
 use ipnet::IpNet;
@@ -71,9 +69,9 @@ pub const MAX_NETS: usize = 8;
 
 /// Construction parameters for a [`ReplicatedMap`](super::ReplicatedMap). Build with
 /// [`Config::new`] (or [`Config::default`]) and the `with_*` builders (e.g.
-/// [`with_net`](Config::with_net)); every field is `pub` for direct construction and reading
-/// within this crate, but `#[non_exhaustive]` means an external crate must go through a
-/// constructor and builders — one construction path, not two with different guarantees.
+/// [`with_net`](Config::with_net)); every public field is readable, but `#[non_exhaustive]` means
+/// an external crate must go through a constructor and builders — one construction path, not two
+/// with different guarantees.
 ///
 /// ```
 /// use reconcile::{replicated_map::Config, ClusterKey};
@@ -127,14 +125,23 @@ pub struct Config {
     pub remote_fanout: usize,
     /// Optional shared cluster secret enabling per-datagram MAC authentication.
     ///
+    /// This is the **primary** key: outgoing datagrams are always sealed with it and it derives
+    /// the keyed RSOS fingerprint lift. During a rollout,
+    /// [`with_cluster_key_rotation`](Self::with_cluster_key_rotation) also accepts one other key
+    /// on receive without changing what this field sends with.
+    ///
     /// `None` is **unauthenticated**: any host reaching the port can forge updates, and
     /// [`RandomProbe`](crate::discovery::RandomProbe) answers any host inside the configured
     /// [`nets`](Self::nets) — a stranger squatting one IP eventually receives the **entire
     /// dataset**, unauthenticated, via paced diff dumps. `None` without also setting
     /// [`insecure_no_key`](Self::insecure_no_key) is refused at construction time (see
     /// [`with_insecure_no_key`](Self::with_insecure_no_key)) rather than silently running that way.
-    /// When set, every node needs the same key and the same MAC backend feature.
+    /// Outside a rotation, every node needs the same key and the same MAC backend feature.
     pub cluster_key: Option<ClusterKey>,
+    /// One additional cluster key accepted on receive during a staged rotation. Never used to
+    /// seal an outgoing datagram or derive this node's fingerprint lift. Private so the only
+    /// supported way to open the window is [`with_cluster_key_rotation`](Self::with_cluster_key_rotation).
+    pub(crate) rotation_key: Option<ClusterKey>,
     /// Explicit, loudly-named opt-in to run with [`cluster_key`](Self::cluster_key) unset. Default
     /// `false`. Set only through [`with_insecure_no_key`](Self::with_insecure_no_key) — see #325 and
     /// README "Security model" for exactly what a keyless prober receives.
@@ -322,8 +329,8 @@ pub struct Config {
 }
 
 impl fmt::Debug for Config {
-    /// Redacts [`cluster_key`](Self::cluster_key): prints `Some(<redacted>)`/`None`, never the
-    /// key material, so an accidental `{:?}` in a log statement cannot leak it.
+    /// Redacts the configured cluster keys: prints `Some(<redacted>)`/`None`, never key material,
+    /// so an accidental `{:?}` in a log statement cannot leak either side of a rotation window.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config")
             .field("port", &self.port)
@@ -334,6 +341,10 @@ impl fmt::Debug for Config {
             .field(
                 "cluster_key",
                 &self.cluster_key.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "rotation_key",
+                &self.rotation_key.as_ref().map(|_| "<redacted>"),
             )
             .field("insecure_no_key", &self.insecure_no_key)
             .field("node_id", &self.node_id)
@@ -365,6 +376,7 @@ impl Default for Config {
             remote_interval: 6,
             remote_fanout: 2,
             cluster_key: None,
+            rotation_key: None,
             insecure_no_key: false,
             node_id: None,
             encrypt: false,
