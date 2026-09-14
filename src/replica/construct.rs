@@ -170,10 +170,11 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         node_id_is_random: bool,
     ) -> Self {
         config.check_key_or_insecure_opt_in();
-        // Derived before `config.cluster_key` is moved into the authenticator below: a cluster
-        // key closes the Wagner-grinding gap on the range fingerprint too, not just the datagram
-        // MAC, via an independent BLAKE3-derived subkey — see `ClusterKey::derive_lift_key` and
-        // `rsos::fingerprint`'s module doc. `None` (no cluster key) keeps today's unkeyed lift.
+        // The primary key closes the Wagner-grinding gap on the range fingerprint too, via an
+        // independent BLAKE3-derived subkey. The receive-only rotation key deliberately does not
+        // alter this tree's lift; peers on different primaries can exchange authenticated values
+        // during rollout, but their range summaries differ until the primary rollout completes
+        // (#118). `None` keeps the unkeyed lift used by explicit insecure mode.
         let lift_key = config
             .cluster_key
             .as_ref()
@@ -181,7 +182,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // `config.encrypt` can only be `true` via `Config::with_encryption`, itself gated on
         // `reconcile`'s `encryption` feature, which unifies to `gossip/encryption` (Cargo.toml) —
         // so this can never actually hit `EncryptionFeatureDisabled`.
-        let authenticator = auth::Authenticator::new(config.cluster_key, config.encrypt)
+        let authenticator = auth::Authenticator::with_rotation(config.auth_keys(), config.encrypt)
             .expect("reconcile's encryption feature unifies to gossip/encryption");
         match &authenticator {
             #[cfg(feature = "encryption")]
