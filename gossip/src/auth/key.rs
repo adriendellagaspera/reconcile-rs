@@ -23,10 +23,7 @@ use crate::replay::REPLAY_HEADER_LEN;
 impl ClusterKey {
     /// Wrap a raw 32-byte secret as a cluster key.
     pub fn new(bytes: [u8; KEY_LEN]) -> Self {
-        ClusterKey {
-            bytes,
-            also_accept: None,
-        }
+        ClusterKey(bytes)
     }
 
     /// Parse a cluster key from `2 * KEY_LEN` (64) hex characters, case-insensitive.
@@ -43,25 +40,11 @@ impl ClusterKey {
             *byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
                 .map_err(|_| ClusterKeyError::InvalidHexDigit)?;
         }
-        Ok(ClusterKey::new(bytes))
-    }
-
-    /// Accept one additional cluster secret on receive while continuing to emit with `self`.
-    ///
-    /// This is the fixed transition shape used by
-    /// `reconcile::replicated_map::Config::with_cluster_key_rotation`: the returned key still uses
-    /// the original primary bytes for [`derive_lift_key`](Self::derive_lift_key) and for every
-    /// outgoing MAC/AEAD seal, while [`Authenticator::new`] also accepts `also_accept` when opening
-    /// incoming datagrams. Attaching another accepted key replaces the previous receive-only key;
-    /// the window is intentionally bounded to one fallback rather than becoming key history.
-    #[must_use]
-    pub fn with_accepted_key(mut self, also_accept: ClusterKey) -> Self {
-        self.also_accept = Some(also_accept.bytes);
-        self
+        Ok(ClusterKey(bytes))
     }
 
     pub(super) fn as_bytes(&self) -> &[u8; KEY_LEN] {
-        &self.bytes
+        &self.0
     }
 
     /// Derive a 32-byte subkey for `rsos`'s keyed range-fingerprint lift, independent of the
@@ -89,7 +72,7 @@ impl ClusterKey {
     pub fn derive_lift_key(&self) -> [u8; KEY_LEN] {
         blake3::derive_key(
             "reconcile-rs 2026-08-25 rsos::fingerprint lift key",
-            &self.bytes,
+            &self.0,
         )
     }
 }
@@ -107,13 +90,13 @@ impl TryFrom<&[u8]> for ClusterKey {
     /// `bytes` must be exactly `KEY_LEN` (32) bytes long.
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         <[u8; KEY_LEN]>::try_from(bytes)
-            .map(ClusterKey::new)
+            .map(ClusterKey)
             .map_err(|_| ClusterKeyError::WrongByteLength(bytes.len()))
     }
 }
 
 impl fmt::Display for ClusterKeyError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClusterKeyError::WrongHexLength(got) => write!(
                 f,
@@ -147,19 +130,11 @@ impl fmt::Display for EncryptionFeatureDisabled {
 impl std::error::Error for EncryptionFeatureDisabled {}
 
 impl Keys {
-    /// A cluster key as configured by the facade. A receive-only rotation key, when attached to
-    /// `key`, is split out into [`also_accept`](Self::also_accept); the primary stored here never
-    /// carries another fallback itself.
-    pub fn single(mut key: ClusterKey) -> Keys {
-        let also_accept = key
-            .also_accept
-            .take()
-            .map(ClusterKey::new)
-            .into_iter()
-            .collect();
+    /// A single key, accepting nothing else — the common, non-rotating case.
+    pub fn single(key: ClusterKey) -> Keys {
         Keys {
             primary: key,
-            also_accept,
+            also_accept: Vec::new(),
         }
     }
 
@@ -170,9 +145,8 @@ impl Keys {
 }
 
 impl Authenticator {
-    /// Build an authenticator from an optional cluster key and whether to encrypt. If the key
-    /// carries one receive-only fallback through [`ClusterKey::with_accepted_key`], that fallback
-    /// is accepted by `open` while `seal` continues to use only the primary.
+    /// Build an authenticator from an optional cluster key and whether to encrypt. No rotation:
+    /// see [`with_rotation`](Self::with_rotation) to also accept prior keys on the verify path.
     ///
     /// # Errors
     ///
