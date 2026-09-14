@@ -24,12 +24,7 @@ fn config(ip: IpAddr, port: u16, key: ClusterKey) -> Config {
     base_config(ip, port).with_cluster_key(key)
 }
 
-fn rotating_config(
-    ip: IpAddr,
-    port: u16,
-    primary: ClusterKey,
-    also_accept: ClusterKey,
-) -> Config {
+fn rotating_config(ip: IpAddr, port: u16, primary: ClusterKey, also_accept: ClusterKey) -> Config {
     base_config(ip, port).with_cluster_key_rotation(primary, also_accept)
 }
 
