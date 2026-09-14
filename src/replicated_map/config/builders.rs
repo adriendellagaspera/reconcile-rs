@@ -9,7 +9,7 @@
 use std::net::IpAddr;
 use std::time::Duration;
 
-use gossip::auth::ClusterKey;
+use gossip::auth::{ClusterKey, Keys};
 use ipnet::IpNet;
 
 use crate::clock::{ClockDrift, NodeId};
@@ -129,17 +129,45 @@ impl Config {
         self
     }
 
-    /// Enable per-datagram MAC authentication with a shared cluster secret, closing the
-    /// unauthenticated LWW poisoning vector.
+    /// Enable per-datagram MAC authentication with one shared cluster secret.
     ///
     /// Incoming datagrams are verified before deserialization and silently dropped on failure.
-    /// Every node must share the key and the MAC backend feature (`mac-blake3` or `mac-hmac`);
-    /// without one, construction refuses to proceed unless
-    /// [`with_insecure_no_key`](Self::with_insecure_no_key) opted in explicitly.
+    /// Every node must share the key and MAC backend (`mac-blake3` or `mac-hmac`) outside a key
+    /// rotation. Calling this also closes any receive-side rotation window opened by
+    /// [`with_cluster_key_rotation`](Self::with_cluster_key_rotation).
     #[must_use]
     pub fn with_cluster_key(mut self, key: ClusterKey) -> Self {
         self.cluster_key = Some(key);
+        self.rotation_key = None;
         self
+    }
+
+    /// Open a two-key rotation window: seal outgoing datagrams with `primary`, while accepting
+    /// incoming datagrams authenticated by either `primary` or `also_accept`.
+    ///
+    /// Rotate in three cluster-wide phases, completing each rollout before starting the next:
+    /// `old + accept(new)` → `new + accept(old)` → [`with_cluster_key(new)`](Self::with_cluster_key).
+    /// This changes no wire bytes; the receiver simply tries both secrets. See README
+    /// "Cluster-key rotation" for provisioning and the temporary keyed-fingerprint cost.
+    #[must_use]
+    pub fn with_cluster_key_rotation(
+        mut self,
+        primary: ClusterKey,
+        also_accept: ClusterKey,
+    ) -> Self {
+        self.cluster_key = Some(primary);
+        self.rotation_key = Some(also_accept);
+        self
+    }
+
+    /// The authentication key set implied by the public config: one primary plus at most one
+    /// receive-only fallback. The primary is cloned rather than moved because callers still need
+    /// it to derive the RSOS lift key during construction.
+    pub(crate) fn auth_keys(&self) -> Option<Keys> {
+        self.cluster_key.clone().map(|primary| Keys {
+            primary,
+            also_accept: self.rotation_key.clone().into_iter().collect(),
+        })
     }
 
     /// Explicit, loudly-named opt-in to run with no [`cluster_key`](Self::cluster_key) at all.
@@ -256,11 +284,12 @@ impl Config {
 
     /// Encrypt datagram payloads with XChaCha20-Poly1305, reusing
     /// [`cluster_key`](Self::cluster_key) as the AEAD key — so
-    /// [`with_cluster_key`](Self::with_cluster_key) is required on every node.
+    /// [`with_cluster_key`](Self::with_cluster_key) or
+    /// [`with_cluster_key_rotation`](Self::with_cluster_key_rotation) is required on every node.
     ///
     /// Framed as `nonce || ciphertext || tag`, 40 bytes of overhead, verified before
-    /// deserialization. The trust model is unchanged: one shared secret, so no per-peer identity
-    /// and no forward secrecy.
+    /// deserialization. The trust model is unchanged: one shared secret at a time for sending, so
+    /// no per-peer identity and no forward secrecy.
     ///
     /// Requires the `encryption` cargo feature.
     #[cfg(feature = "encryption")]
