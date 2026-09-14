@@ -74,6 +74,26 @@ Because every replica holds everything, memory use and write fan-out grow with t
 node count; see [`POSITIONING.md`](POSITIONING.md) for the detailed positioning and the issue
 tracker for current performance limitations.
 
+### Lock-free snapshot reads
+
+The in-memory map is persistent rather than mutated in place. B-tree nodes are structurally shared
+behind `Arc`s; a write copy-on-writes only the changed path, while readers keep immutable snapshots
+of the old root. `ReplicatedMap` and `ReadReplicaMap` publish the current root through `ArcSwap`, so
+a read takes no read lock and an in-flight reader never blocks a writer.
+
+- `get(&key)` returns a zero-copy `ValueRef` pinned to the persistent node found by one tree lookup;
+  it remains valid if that key is concurrently overwritten or removed.
+- `get_cloned(&key)` performs one lookup and clones the value, avoiding the persistent handle when
+  an owned value is preferable.
+- `snapshot()` (`value_snapshot()` on `ReplicatedMap`) returns an `O(1)` `Arc` snapshot whose
+  `iter()`/`range()` borrow keys and values directly, with no lock held during the scan.
+
+The trade-off is measured rather than assumed: after removing an avoidable second lookup,
+`ReplicatedMap::get` measured 57.224 ns at 100k entries versus 47.758 ns before the persistent core
+(+19.8%) on the same runner. Tree-level mutation and cold-sync costs stayed within roughly 10–14%
+of the mutate-in-place baseline. See [`ARCHITECTURE.md`](ARCHITECTURE.md) §2.2 for the mechanism and
+[issue #29](https://github.com/adriendellagaspera/reconcile-rs/issues/29) for the measurement record.
+
 ## Modelling sets
 
 The most-requested CRDT beyond LWW-Register is an add-wins set (OR-Set). The instinct is to store
