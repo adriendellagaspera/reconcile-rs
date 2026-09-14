@@ -32,7 +32,7 @@
 //! only from [`Payload::verify_replay`] — so authenticate-before-decode
 //! (`ARCHITECTURE.md` §5 invariant 5) and check-replay-before-handle are both compile-time.
 //! [`Payload::check_version`] is the mandatory step between the two: version-checking runs on
-//! authenticated bytes (so a forged version claim is rejected the same way a forged payload is),
+//! authenticated bytes (so a forged version claim is rejected the same way as a forged payload),
 //! but ahead of replay bookkeeping (so a differently-versioned peer never consumes a replay-filter
 //! slot over a datagram this build cannot even interpret).
 //!
@@ -93,15 +93,21 @@ compile_error!(
      either on this crate directly, or via the identically-named unification feature on `reconcile`."
 );
 
-/// A shared cluster secret. Constructing one is the only way to enable authentication.
+/// A shared cluster secret and, during a rolling rotation, at most one additional receive-only
+/// secret. Constructing one is the only way to enable authentication.
+///
+/// The ordinary case owns only `bytes`. [`ClusterKey::with_accepted_key`] adds a second key which
+/// [`Authenticator::open`] accepts but [`Authenticator::seal`] never uses. This keeps the public
+/// `Config::with_cluster_key` shape unchanged while exposing the two-key acceptance window needed
+/// for a zero-downtime rotation (#53).
 ///
 /// `Clone` but not `Copy`: the `zeroize` feature gives it a wiping `Drop`, which `Copy` forbids.
 /// The public boundary (`Config::cluster_key`, `Authenticator::new`) takes and returns
 /// `ClusterKey`, never a bare `[u8; 32]` — AGENTS.md §4: type-owned parsing, an invalid instance
 /// structurally impossible to hand to either.
 ///
-/// `Debug` is redacting: it never prints the key material, so an accidental `{:?}` in a log
-/// statement cannot leak it.
+/// `Debug` is redacting: it never prints key material, so an accidental `{:?}` in a log statement
+/// cannot leak either secret.
 ///
 /// ```
 /// use reconcile_gossip::auth::ClusterKey;
@@ -119,7 +125,12 @@ compile_error!(
 /// ```
 #[cfg_attr(feature = "zeroize", derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop))]
 #[derive(Clone)]
-pub struct ClusterKey([u8; KEY_LEN]);
+pub struct ClusterKey {
+    bytes: [u8; KEY_LEN],
+    /// One extra key accepted only on receive during a rolling rotation. A fixed two-key window is
+    /// intentional: epochs/key identifiers and runtime key management are outside #53's scope.
+    accepted_key: Option<[u8; KEY_LEN]>,
+}
 
 /// Why constructing a [`ClusterKey`] from untrusted input failed.
 ///
@@ -179,9 +190,10 @@ pub struct Payload<'a, State = Authenticated> {
 }
 
 /// A [`ClusterKey`] this node seals outgoing datagrams with, plus zero or more additional keys it
-/// still accepts on the verify path (#285) — the shape a rotation needs: roll out `also_accept:
-/// [old_key]` cluster-wide, then once every peer has it, roll `primary` to the new key with the
-/// old one demoted to `also_accept`, then finally drop it once every peer is on the new primary.
+/// still accepts on the verify path (#285) — the low-level shape used by [`Authenticator`]. The
+/// public [`ClusterKey::with_accepted_key`] API intentionally limits `Config` to two active keys;
+/// this vector remains here because `gossip` owns the generic auth mechanism independently of the
+/// facade's operational policy.
 #[derive(Clone, Debug)]
 pub struct Keys {
     /// The key `seal` always uses.
