@@ -23,10 +23,7 @@ use crate::replay::REPLAY_HEADER_LEN;
 impl ClusterKey {
     /// Wrap a raw 32-byte secret as a cluster key.
     pub fn new(bytes: [u8; KEY_LEN]) -> Self {
-        ClusterKey {
-            bytes,
-            accepted_key: None,
-        }
+        ClusterKey(bytes)
     }
 
     /// Parse a cluster key from `2 * KEY_LEN` (64) hex characters, case-insensitive.
@@ -43,44 +40,11 @@ impl ClusterKey {
             *byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
                 .map_err(|_| ClusterKeyError::InvalidHexDigit)?;
         }
-        Ok(ClusterKey::new(bytes))
-    }
-
-    /// Accept one additional cluster key on the receive path while continuing to seal every
-    /// outgoing datagram with `self`.
-    ///
-    /// This is a fixed two-key rolling-rotation window. It is deliberately **receive-only**:
-    /// [`Authenticator::seal`](crate::auth::Authenticator::seal) always uses this key's primary
-    /// bytes, while [`Authenticator::open`](crate::auth::Authenticator::open) tries the primary
-    /// first and then `accepted_key`.
-    ///
-    /// A zero-downtime rotation is three deployments:
-    ///
-    /// 1. old primary + `with_accepted_key(new)` on every node;
-    /// 2. new primary + `with_accepted_key(old)` on every node;
-    /// 3. new primary only, retiring the old key.
-    ///
-    /// The extra key must come from the same secret-management path as the primary (environment,
-    /// mounted secret, KMS/secret-manager material), never source control. Calling this twice
-    /// replaces the previous receive-only key; the public policy intentionally supports exactly
-    /// two active keys, with epochs/key ids and runtime key management deferred.
-    ///
-    /// The keyed RSOS fingerprint lift remains derived from the **primary** key. During step 2,
-    /// nodes switched at different times therefore authenticate each other but may repeatedly
-    /// re-diff equal content until every node uses the new primary; #114 tracks whether that
-    /// transient amplification warrants a separate mechanism.
-    #[must_use]
-    pub fn with_accepted_key(mut self, accepted_key: ClusterKey) -> Self {
-        self.accepted_key = Some(*accepted_key.as_bytes());
-        self
+        Ok(ClusterKey(bytes))
     }
 
     pub(super) fn as_bytes(&self) -> &[u8; KEY_LEN] {
-        &self.bytes
-    }
-
-    fn accepted_key(&self) -> Option<ClusterKey> {
-        self.accepted_key.map(ClusterKey::new)
+        &self.0
     }
 
     /// Derive a 32-byte subkey for `rsos`'s keyed range-fingerprint lift, independent of the
@@ -91,9 +55,6 @@ impl ClusterKey {
     /// §9 — no edge between the two adapter/leaf crates in `ARCHITECTURE.md` §2's graph), so
     /// `reconcile`, which depends on both, is the one that wraps the result with
     /// `rsos::LiftKey::new`.
-    ///
-    /// During a two-key rotation this always derives from the **primary** key, never the
-    /// receive-only accepted key. See [`with_accepted_key`](Self::with_accepted_key) and #114.
     ///
     /// ```
     /// use reconcile_gossip::auth::ClusterKey;
@@ -111,13 +72,13 @@ impl ClusterKey {
     pub fn derive_lift_key(&self) -> [u8; KEY_LEN] {
         blake3::derive_key(
             "reconcile-rs 2026-08-25 rsos::fingerprint lift key",
-            &self.bytes,
+            &self.0,
         )
     }
 }
 
 impl fmt::Debug for ClusterKey {
-    /// Redacted: never prints key material, whatever the format flags.
+    /// Redacted: never prints the key material, whatever the format flags.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("ClusterKey").field(&"<redacted>").finish()
     }
@@ -129,7 +90,7 @@ impl TryFrom<&[u8]> for ClusterKey {
     /// `bytes` must be exactly `KEY_LEN` (32) bytes long.
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         <[u8; KEY_LEN]>::try_from(bytes)
-            .map(ClusterKey::new)
+            .map(ClusterKey)
             .map_err(|_| ClusterKeyError::WrongByteLength(bytes.len()))
     }
 }
@@ -172,16 +133,8 @@ impl Keys {
     /// A single key, accepting nothing else — the common, non-rotating case.
     pub fn single(key: ClusterKey) -> Keys {
         Keys {
-            primary: ClusterKey::new(*key.as_bytes()),
+            primary: key,
             also_accept: Vec::new(),
-        }
-    }
-
-    /// Expand the facade's fixed two-key [`ClusterKey`] shape into the lower-level auth shape.
-    fn from_cluster_key(key: &ClusterKey) -> Keys {
-        Keys {
-            primary: ClusterKey::new(*key.as_bytes()),
-            also_accept: key.accepted_key().into_iter().collect(),
         }
     }
 
@@ -192,26 +145,18 @@ impl Keys {
 }
 
 impl Authenticator {
-    /// Build an authenticator from an optional cluster key and whether to encrypt.
-    ///
-    /// A key created with [`ClusterKey::with_accepted_key`] expands to a two-key verify window:
-    /// outgoing datagrams use the primary key, incoming datagrams accept either key. A plain
-    /// `ClusterKey` is the common single-key case.
+    /// Build an authenticator from an optional cluster key and whether to encrypt. No rotation:
+    /// see [`with_rotation`](Self::with_rotation) to also accept prior keys on the verify path.
     ///
     /// # Errors
     ///
     /// If `encrypt` is `true` and the crate was built without the `encryption` feature.
     pub fn new(key: Option<ClusterKey>, encrypt: bool) -> Result<Self, EncryptionFeatureDisabled> {
-        let keys = key.as_ref().map(Keys::from_cluster_key);
-        Self::with_rotation(keys, encrypt)
+        Self::with_rotation(key.map(Keys::single), encrypt)
     }
 
     /// Build an authenticator from an optional [`Keys`] (a primary key to seal with, plus
-    /// prior keys still accepted on the verify path — #285) and whether to encrypt.
-    ///
-    /// This lower-level API is intentionally more general than
-    /// [`ClusterKey::with_accepted_key`]; the `reconcile` facade's operational policy remains a
-    /// fixed two-key window.
+    /// prior keys still accepted on the verify path — #285/#137) and whether to encrypt.
     ///
     /// # Errors
     ///
