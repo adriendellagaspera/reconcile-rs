@@ -33,16 +33,19 @@ Out of scope — documented design choices, not bugs:
 
 ## Rotating the cluster key
 
-`ClusterKey::with_accepted_key` provides a fixed two-key receive window without changing the wire
-format. The key on which the method is called remains the **only** key used to authenticate/encrypt
-outgoing datagrams; the additional key is receive-only. Rotate in three deployments, never by
-switching every node directly from old-only to new-only:
+`Config::with_cluster_key_rotation(primary, also_accept)` provides a fixed two-key receive window
+without changing the wire format. The `primary` key remains the **only** key used to
+authenticate/encrypt outgoing datagrams; `also_accept` is receive-only. At the lower-level gossip
+API, the same shape is available as `ClusterKey::with_accepted_key`.
 
-1. deploy `old.with_accepted_key(new)` everywhere — traffic is still sent with the old key, but
-   every node is ready to receive the new one;
-2. deploy `new.with_accepted_key(old)` node by node — upgraded and not-yet-upgraded nodes can still
-   authenticate each other in both directions;
-3. once every node sends with the new key, deploy `new` alone — the old key is then rejected.
+Rotate in three deployments, never by switching every node directly from old-only to new-only:
+
+1. deploy `with_cluster_key_rotation(old, new)` everywhere — traffic is still sent with the old key,
+   but every node is ready to receive the new one;
+2. deploy `with_cluster_key_rotation(new, old)` node by node — upgraded and not-yet-upgraded nodes
+   can still authenticate each other in both directions;
+3. once every node sends with the new key, deploy `with_cluster_key(new)` — the old key is then
+   rejected.
 
 Provision both secrets through the same protected channel you use for a single cluster key: an
 environment variable injected by the process supervisor, a mounted orchestrator secret, or a
