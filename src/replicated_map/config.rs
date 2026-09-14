@@ -135,6 +135,14 @@ pub struct Config {
     /// [`with_insecure_no_key`](Self::with_insecure_no_key)) rather than silently running that way.
     /// When set, every node needs the same key and the same MAC backend feature.
     pub cluster_key: Option<ClusterKey>,
+    /// Optional receive-only cluster key used during a rolling key rotation.
+    ///
+    /// [`cluster_key`](Self::cluster_key) remains the primary: it seals every outgoing datagram
+    /// and derives the keyed RSOS fingerprint lift. This key is tried only after the primary
+    /// fails verification/decryption. Configure both atomically through
+    /// [`with_cluster_key_rotation`](Self::with_cluster_key_rotation); calling
+    /// [`with_cluster_key`](Self::with_cluster_key) retires it.
+    pub also_accept_cluster_key: Option<ClusterKey>,
     /// Explicit, loudly-named opt-in to run with [`cluster_key`](Self::cluster_key) unset. Default
     /// `false`. Set only through [`with_insecure_no_key`](Self::with_insecure_no_key) — see #325 and
     /// README "Security model" for exactly what a keyless prober receives.
@@ -322,8 +330,8 @@ pub struct Config {
 }
 
 impl fmt::Debug for Config {
-    /// Redacts [`cluster_key`](Self::cluster_key): prints `Some(<redacted>)`/`None`, never the
-    /// key material, so an accidental `{:?}` in a log statement cannot leak it.
+    /// Redacts both cluster-key fields: prints `Some(<redacted>)`/`None`, never key material,
+    /// so an accidental `{:?}` in a log statement cannot leak either secret.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config")
             .field("port", &self.port)
@@ -334,6 +342,10 @@ impl fmt::Debug for Config {
             .field(
                 "cluster_key",
                 &self.cluster_key.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "also_accept_cluster_key",
+                &self.also_accept_cluster_key.as_ref().map(|_| "<redacted>"),
             )
             .field("insecure_no_key", &self.insecure_no_key)
             .field("node_id", &self.node_id)
@@ -365,6 +377,7 @@ impl Default for Config {
             remote_interval: 6,
             remote_fanout: 2,
             cluster_key: None,
+            also_accept_cluster_key: None,
             insecure_no_key: false,
             node_id: None,
             encrypt: false,

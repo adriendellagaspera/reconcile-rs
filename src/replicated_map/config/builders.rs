@@ -139,10 +139,11 @@ impl Config {
     #[must_use]
     pub fn with_cluster_key(mut self, key: ClusterKey) -> Self {
         self.cluster_key = Some(key);
+        self.also_accept_cluster_key = None;
         self
     }
 
-    /// Configure a fixed two-key rolling-rotation window (#53).
+    /// Configure a fixed two-key rolling-rotation window.
     ///
     /// `primary` authenticates/encrypts every outgoing datagram and derives this node's keyed RSOS
     /// fingerprint lift. `also_accept` is receive-only: incoming datagrams authenticated with
@@ -168,7 +169,8 @@ impl Config {
         primary: ClusterKey,
         also_accept: ClusterKey,
     ) -> Self {
-        self.cluster_key = Some(primary.with_accepted_key(also_accept));
+        self.cluster_key = Some(primary);
+        self.also_accept_cluster_key = Some(also_accept);
         self
     }
 

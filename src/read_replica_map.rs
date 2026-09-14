@@ -262,8 +262,13 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             .map(|key| rsos::LiftKey::new(key.derive_lift_key()));
         // `config.encrypt` can only be `true` via `Config::with_encryption`, itself gated on
         // `reconcile`'s `encryption` feature, which unifies to `gossip/encryption` (Cargo.toml) —
-        // so this can never actually hit `EncryptionFeatureDisabled`.
-        let authenticator = auth::Authenticator::new(config.cluster_key, config.encrypt)
+        // so this can never actually hit `EncryptionFeatureDisabled`. The alternate key is
+        // receive-only; the primary above remains the fingerprint-lift key.
+        let auth_keys = config.cluster_key.clone().map(|primary| auth::Keys {
+            primary,
+            also_accept: config.also_accept_cluster_key.clone().into_iter().collect(),
+        });
+        let authenticator = auth::Authenticator::with_rotation(auth_keys, config.encrypt)
             .expect("reconcile's encryption feature unifies to gossip/encryption");
         if matches!(authenticator, auth::Authenticator::Disabled) {
             warn!(
