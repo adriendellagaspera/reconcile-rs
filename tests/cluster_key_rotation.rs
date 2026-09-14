@@ -13,12 +13,24 @@ use std::time::{Duration, Instant};
 use reconcile::{replicated_map::Config, ClusterKey, InMemoryNetwork, ReplicatedMap};
 use tokio_util::sync::CancellationToken;
 
-fn config(ip: IpAddr, port: u16, key: ClusterKey) -> Config {
+fn base_config(ip: IpAddr, port: u16) -> Config {
     Config::default()
         .with_listen_addr(ip)
         .with_port(port)
         .with_reconcile_interval(Duration::from_millis(5))
-        .with_cluster_key(key)
+}
+
+fn config(ip: IpAddr, port: u16, key: ClusterKey) -> Config {
+    base_config(ip, port).with_cluster_key(key)
+}
+
+fn rotating_config(
+    ip: IpAddr,
+    port: u16,
+    primary: ClusterKey,
+    also_accept: ClusterKey,
+) -> Config {
+    base_config(ip, port).with_cluster_key_rotation(primary, also_accept)
 }
 
 async fn wait_until(deadline: Instant, mut predicate: impl FnMut() -> bool) -> bool {
@@ -42,15 +54,12 @@ async fn mixed_primary_keys_converge_inside_the_two_key_window() {
 
     // Phase 2 of the documented rollout: A has switched its send key to `new`, while B still
     // sends with `old`. Both accept the other key on receive, so neither direction is cut off.
-    let a_key = new.clone().with_accepted_key(old.clone());
-    let b_key = old.clone().with_accepted_key(new.clone());
-
     let a = ReplicatedMap::<u32, u32>::new_with_transport(
-        config(a_ip, port, a_key),
+        rotating_config(a_ip, port, new.clone(), old.clone()),
         Arc::new(network.bind(SocketAddr::new(a_ip, port))),
     );
     let b = ReplicatedMap::<u32, u32>::new_with_transport(
-        config(b_ip, port, b_key),
+        rotating_config(b_ip, port, old.clone(), new.clone()),
         Arc::new(network.bind(SocketAddr::new(b_ip, port))),
     );
 
@@ -75,7 +84,10 @@ async fn mixed_primary_keys_converge_inside_the_two_key_window() {
     a_task.await.unwrap();
     b_task.await.unwrap();
 
-    assert!(converged, "mixed-primary peers did not converge inside the rotation window");
+    assert!(
+        converged,
+        "mixed-primary peers did not converge inside the rotation window"
+    );
 }
 
 #[tokio::test]
