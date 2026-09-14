@@ -529,7 +529,7 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::with_tombstone_timeout(self,
 impl<K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync> core::clone::Clone for reconcile::replicated_set::ReplicatedSet<K>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::clone(&self) -> Self
 impl<K> core::marker::Freeze for reconcile::replicated_set::ReplicatedSet<K> where reconcile::replicated_map::ReplicatedMap<K, ()>: core::marker::Freeze
-impl<K> core::marker::Send for reconcile::replicated_set::ReplicatedSet<K> where reconcile::read_replica_map::ReadReplicaMap<K, ()>: core::marker::Send
+impl<K> core::marker::Send for reconcile::replicated_set::ReplicatedSet<K> where reconcile::replicated_map::ReplicatedMap<K, ()>: core::marker::Send
 impl<K> core::marker::Sync for reconcile::replicated_set::ReplicatedSet<K> where reconcile::replicated_map::ReplicatedMap<K, ()>: core::marker::Sync
 impl<K> core::marker::Unpin for reconcile::replicated_set::ReplicatedSet<K> where reconcile::replicated_map::ReplicatedMap<K, ()>: core::marker::Unpin
 impl<K> core::marker::UnsafeUnpin for reconcile::replicated_set::ReplicatedSet<K> where reconcile::replicated_map::ReplicatedMap<K, ()>: core::marker::UnsafeUnpin
