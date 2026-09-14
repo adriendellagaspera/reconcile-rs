@@ -1,0 +1,65 @@
+name: fix-117-ci
+
+on:
+  push:
+    branches: [feat/53-cluster-key-rotation]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/53-cluster-key-rotation
+      - name: Fix stale literals, mutant exclusion and formatting
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          for path in ["src/read_replica_set/tests.rs", "src/replicated_set/tests.rs"]:
+              p = Path(path)
+              text = p.read_text()
+              old = "        cluster_key: None,\n        insecure_no_key: true,\n"
+              assert text.count(old) == 1, f"{path}: Config anchor changed"
+              p.write_text(text.replace(
+                  old,
+                  "        cluster_key: None,\n        also_accept_cluster_key: None,\n        insecure_no_key: true,\n",
+                  1,
+              ))
+
+          p = Path(".cargo/mutants.toml")
+          text = p.read_text()
+          block = '''# `replica/construct.rs:208:33` (`replace < with <=` in `build`'s bulk-send-rate clamp,
+# `if rate > 0 && rate < MIN_BULK_SEND_RATE { warn!(...); MIN_BULK_SEND_RATE } else { rate }`)
+# is equivalent at exactly this one operator: `<` and `<=` disagree only when `rate ==
+# MIN_BULK_SEND_RATE`, and at that point clamping to the floor and leaving `rate` unclamped
+# produce the identical value (the floor itself) either way -- the only difference is whether
+# `warn!` fires. Every *other* mutation to this same condition (`>` flipped, `&&` to `||`, `<`
+# to `==` or `>`) genuinely changes the clamped value for some input and is caught; this is the
+# single boundary point where the two comparisons coincide. No test capturing log output exists
+# in this codebase, and none should be added just to pin an operator that gates nothing but
+# which log line fires.
+#
+'''
+          assert block in text, "mutant rationale anchor changed"
+          text = text.replace(block, "", 1)
+          entry = '    "replica/construct\\\\.rs:208:33: replace < with <=",\n'
+          assert entry in text, "stale mutant exclusion anchor changed"
+          p.write_text(text.replace(entry, "", 1))
+          PY
+
+          cargo fmt --all
+          git rm .github/workflows/fix-117-ci.yml
+          git add .cargo/mutants.toml src/read_replica_set/tests.rs src/replicated_set/tests.rs \
+            gossip/src/auth.rs gossip/src/auth/key.rs src/read_replica_map.rs src/replica/construct.rs \
+            src/replicated_map/config.rs src/replicated_map/config/builders.rs \
+            src/replicated_map/tests.rs src/replicated_map/tests/config.rs tests/cluster_key_rotation.rs
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'Fix cluster-key rotation CI fallout'
+          git push origin HEAD:feat/53-cluster-key-rotation
