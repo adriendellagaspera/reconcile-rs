@@ -49,7 +49,7 @@ impl ClusterKey {
     /// Accept one additional cluster key on the receive path while continuing to seal every
     /// outgoing datagram with `self`.
     ///
-    /// This is the two-key rolling-rotation window from #53. It is deliberately **receive-only**:
+    /// This is a fixed two-key rolling-rotation window. It is deliberately **receive-only**:
     /// [`Authenticator::seal`](crate::auth::Authenticator::seal) always uses this key's primary
     /// bytes, while [`Authenticator::open`](crate::auth::Authenticator::open) tries the primary
     /// first and then `accepted_key`.
@@ -62,8 +62,8 @@ impl ClusterKey {
     ///
     /// The extra key must come from the same secret-management path as the primary (environment,
     /// mounted secret, KMS/secret-manager material), never source control. Calling this twice
-    /// replaces the previous receive-only key; #53 intentionally supports exactly two active keys,
-    /// with epochs/key ids and runtime key management deferred.
+    /// replaces the previous receive-only key; the public policy intentionally supports exactly
+    /// two active keys, with epochs/key ids and runtime key management deferred.
     ///
     /// The keyed RSOS fingerprint lift remains derived from the **primary** key. During step 2,
     /// nodes switched at different times therefore authenticate each other but may repeatedly
@@ -207,7 +207,7 @@ impl Authenticator {
     }
 
     /// Build an authenticator from an optional [`Keys`] (a primary key to seal with, plus
-    /// prior keys still accepted on the verify path — #285/#53) and whether to encrypt.
+    /// prior keys still accepted on the verify path — #285) and whether to encrypt.
     ///
     /// This lower-level API is intentionally more general than
     /// [`ClusterKey::with_accepted_key`]; the `reconcile` facade's operational policy remains a
