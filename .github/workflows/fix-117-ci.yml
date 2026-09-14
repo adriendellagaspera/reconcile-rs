@@ -2,14 +2,14 @@ name: fix-117-ci
 
 on:
   push:
-    branches: [feat/53-cluster-key-rotation]
+    branches:
+      - feat/53-cluster-key-rotation
 
 permissions:
   contents: write
 
 jobs:
   fix:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,36 +21,22 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          for path in ["src/read_replica_set/tests.rs", "src/replicated_set/tests.rs"]:
+          for path in ("src/read_replica_set/tests.rs", "src/replicated_set/tests.rs"):
               p = Path(path)
               text = p.read_text()
               old = "        cluster_key: None,\n        insecure_no_key: true,\n"
               assert text.count(old) == 1, f"{path}: Config anchor changed"
-              p.write_text(text.replace(
-                  old,
-                  "        cluster_key: None,\n        also_accept_cluster_key: None,\n        insecure_no_key: true,\n",
-                  1,
-              ))
+              p.write_text(text.replace(old, "        cluster_key: None,\n        also_accept_cluster_key: None,\n        insecure_no_key: true,\n", 1))
 
           p = Path(".cargo/mutants.toml")
           text = p.read_text()
-          block = '''# `replica/construct.rs:208:33` (`replace < with <=` in `build`'s bulk-send-rate clamp,
-# `if rate > 0 && rate < MIN_BULK_SEND_RATE { warn!(...); MIN_BULK_SEND_RATE } else { rate }`)
-# is equivalent at exactly this one operator: `<` and `<=` disagree only when `rate ==
-# MIN_BULK_SEND_RATE`, and at that point clamping to the floor and leaving `rate` unclamped
-# produce the identical value (the floor itself) either way -- the only difference is whether
-# `warn!` fires. Every *other* mutation to this same condition (`>` flipped, `&&` to `||`, `<`
-# to `==` or `>`) genuinely changes the clamped value for some input and is caught; this is the
-# single boundary point where the two comparisons coincide. No test capturing log output exists
-# in this codebase, and none should be added just to pin an operator that gates nothing but
-# which log line fires.
-#
-'''
-          assert block in text, "mutant rationale anchor changed"
-          text = text.replace(block, "", 1)
-          entry = '    "replica/construct\\\\.rs:208:33: replace < with <=",\n'
-          assert entry in text, "stale mutant exclusion anchor changed"
-          p.write_text(text.replace(entry, "", 1))
+          start_marker = "# `replica/construct.rs:208:33`"
+          end_marker = "# `protocol/rank.rs:117-118`"
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          text = text[:start] + text[end:]
+          lines = [line for line in text.splitlines(keepends=True) if "replica/construct\\\\.rs:208:33:" not in line]
+          p.write_text("".join(lines))
           PY
 
           cargo fmt --all
