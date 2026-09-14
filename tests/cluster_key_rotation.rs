@@ -10,7 +10,9 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use reconcile::{replicated_map::Config, ClusterKey, InMemoryNetwork, ReadReplicaMap, ReplicatedMap};
+use reconcile::{
+    replicated_map::Config, ClusterKey, InMemoryNetwork, ReadReplicaMap, ReplicatedMap,
+};
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
