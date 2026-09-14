@@ -99,7 +99,7 @@ compile_error!(
 /// The ordinary case owns only `bytes`. [`ClusterKey::with_accepted_key`] adds a second key which
 /// [`Authenticator::open`] accepts but [`Authenticator::seal`] never uses. This keeps the public
 /// `Config::with_cluster_key` shape unchanged while exposing the two-key acceptance window needed
-/// for a zero-downtime rotation (#53).
+/// for a zero-downtime rotation.
 ///
 /// `Clone` but not `Copy`: the `zeroize` feature gives it a wiping `Drop`, which `Copy` forbids.
 /// The public boundary (`Config::cluster_key`, `Authenticator::new`) takes and returns
@@ -128,7 +128,8 @@ compile_error!(
 pub struct ClusterKey {
     bytes: [u8; KEY_LEN],
     /// One extra key accepted only on receive during a rolling rotation. A fixed two-key window is
-    /// intentional: epochs/key identifiers and runtime key management are outside #53's scope.
+    /// intentional: epochs/key identifiers and runtime key management are outside this feature's
+    /// scope.
     accepted_key: Option<[u8; KEY_LEN]>,
 }
 
