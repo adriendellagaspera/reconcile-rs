@@ -6,9 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::fmt;
-use std::net::IpAddr;
-use std::time::Duration;
+use std::{fmt, net::IpAddr, time::Duration};
 
 use gossip::auth::ClusterKey;
 use ipnet::IpNet;
