@@ -98,7 +98,9 @@ compile_error!(
 /// `Clone` but not `Copy`: the `zeroize` feature gives it a wiping `Drop`, which `Copy` forbids.
 /// The public boundary (`Config::cluster_key`, `Authenticator::new`) takes and returns
 /// `ClusterKey`, never a bare `[u8; 32]` — AGENTS.md §4: type-owned parsing, an invalid instance
-/// structurally impossible to hand to either.
+/// structurally impossible to hand to either. During a rolling rotation, one additional
+/// receive-only secret can be attached with [`ClusterKey::with_accepted_key`]; the primary bytes
+/// remain the only bytes used for sealing and keyed-fingerprint derivation.
 ///
 /// `Debug` is redacting: it never prints the key material, so an accidental `{:?}` in a log
 /// statement cannot leak it.
@@ -119,7 +121,10 @@ compile_error!(
 /// ```
 #[cfg_attr(feature = "zeroize", derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop))]
 #[derive(Clone)]
-pub struct ClusterKey([u8; KEY_LEN]);
+pub struct ClusterKey {
+    bytes: [u8; KEY_LEN],
+    also_accept: Option<[u8; KEY_LEN]>,
+}
 
 /// Why constructing a [`ClusterKey`] from untrusted input failed.
 ///
