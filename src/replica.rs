@@ -315,6 +315,7 @@ mod collision;
 mod construct;
 mod dispatch;
 mod gc;
+mod inbound;
 mod membership;
 mod pacing;
 mod read;
@@ -325,6 +326,7 @@ mod write;
 
 pub(crate) use construct::check_port_is_nonzero;
 pub(crate) use gc::version_hash;
+pub(crate) use inbound::{admit_inbound, InboundRejection};
 pub(crate) use membership::derive_local_net;
 
 #[cfg(test)]
