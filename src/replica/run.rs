@@ -124,7 +124,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::replica::PeerCap;
 
     /// `max()` reflects the constructed value — its only call site today is a `trace!` format
