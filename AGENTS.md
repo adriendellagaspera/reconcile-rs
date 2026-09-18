@@ -150,12 +150,8 @@ that edge, it has landed in the wrong crate. Widening either set means updating 
 Docs that change with code, same PR: `README.md`, `ARCHITECTURE.md` §1–§3, this file.
 `POSITIONING.md` is a durable reference, not updated for routine changes (§1).
 
-**Current-state surfaces describe the current state.** README/rustdoc/comments/manifests explain
-what this revision does and what contract it exposes; `ARCHITECTURE.md` records architecture and
-durable decisions. They do not preserve the sequence of issues/PRs that produced that state.
-Upgrade actions belong in `MIGRATING.md`, release history in `CHANGELOG.md`, and implementation
-chronology in the issue/PR/git history. An issue that remains open is rewritten when its scope
-changes instead of accumulating dated re-triage sections.
+**Current-state surfaces describe current state, not history.** README/rustdoc/comments/manifests
+describe this revision; architecture lives in `ARCHITECTURE.md`, upgrades in `MIGRATING.md`, release history in `CHANGELOG.md`, implementation chronology in tracker/git; rewrite open issues when scope changes instead of appending re-triage.
 **Every fact lives in exactly one place; everywhere else links to it.** A restatement is a second
 copy that drifts, and the drifted copy is read as true. Hence **prose is the last resort**, in docs
 and in code comments alike: prefer a mermaid diagram (`ARCHITECTURE.md` §2/§3 is the model), a table,
