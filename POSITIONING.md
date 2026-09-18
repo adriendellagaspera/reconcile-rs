@@ -204,7 +204,7 @@ copy-on-write B+-tree addressed by page number.
     conflict is not**: both records share a key, so no rank split ever separates them and every
     range containing that key is count-balanced at every depth. Re-ordering the store does not
     rescue it, and *injectivity* is not the lever that would —
-    [§2.4.1](#241-open-research-questions). The failure mode `f_p = id` covers
+    §2.4. The failure mode `f_p = id` covers
     outright is the rarer one; the one an LWW register produces continuously falls back on Σ's
     injectivity alone. Truncating a count-folding hash (Negentropy) trades the probability-1 half
     away entirely; comparing `(count, Σ mod 2^τ)` would keep it for the price of a varint. The same
