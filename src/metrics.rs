@@ -8,10 +8,8 @@
 
 //! Public, stable names for every metric this crate emits (behind the `metrics` feature).
 //!
-//! Previously each name was a `pub(crate) const` inside the internal `observability` module —
-//! discoverable only by reading the source, with no stable set a dashboard or alert rule could
-//! depend on (#27). This module is that stable set; `observability` records against these same
-//! constants rather than defining its own.
+//! This module is the stable set dashboards and alert rules can depend on; the internal
+//! `observability` helpers record against these same constants rather than defining their own.
 //!
 //! | Metric | Type | Meaning |
 //! |---|---|---|
@@ -38,7 +36,7 @@
 //! | [`TOMBSTONES_CURRENT`](crate::metrics::TOMBSTONES_CURRENT) | gauge | outstanding tombstones right now |
 //! | [`BULK_DUMPS_IN_FLIGHT`](crate::metrics::BULK_DUMPS_IN_FLIGHT) | gauge | bulk anti-entropy dumps in flight right now |
 //! | [`BROADCASTS_IN_FLIGHT`](crate::metrics::BROADCASTS_IN_FLIGHT) | gauge | write-broadcast tasks in flight right now |
-//! | [`BROADCAST_BACKPRESSURE_TOTAL`](crate::metrics::BROADCAST_BACKPRESSURE_TOTAL) | counter (`path` label) | writes that hit the egress budget (#83) |
+//! | [`BROADCAST_BACKPRESSURE_TOTAL`](crate::metrics::BROADCAST_BACKPRESSURE_TOTAL) | counter (`path` label) | writes that hit the egress budget |
 //! | [`PERSISTENCE_FAILURES_CURRENT`](crate::metrics::PERSISTENCE_FAILURES_CURRENT) | gauge | consecutive snapshot failures since the last success (0 when healthy) |
 
 /// Local key insertions.
@@ -92,10 +90,10 @@ pub const TOMBSTONES_CURRENT: &str = "reconcile_tombstones_current";
 /// `Config::max_concurrent_bulk_dumps`).
 pub const BULK_DUMPS_IN_FLIGHT: &str = "reconcile_bulk_dumps_in_flight";
 /// Current count of write-broadcast tasks in flight, across every propagating local write
-/// (bounded by `Config::max_concurrent_broadcasts`, #83) — the egress-side counterpart of
+/// (bounded by `Config::max_concurrent_broadcasts`) — the egress-side counterpart of
 /// [`BULK_DUMPS_IN_FLIGHT`].
 pub const BROADCASTS_IN_FLIGHT: &str = "reconcile_broadcasts_in_flight";
-/// Writes that hit the `Config::max_concurrent_broadcasts` egress budget (#83), labeled `path`:
+/// Writes that hit the `Config::max_concurrent_broadcasts` egress budget, labeled `path`:
 /// `"eager"` for `insert`/`update`/`insert_bulk`, which skip only that write's broadcast and keep
 /// the local write; `"try"` for `try_insert`/`try_update`, which reject the whole call instead.
 pub const BROADCAST_BACKPRESSURE_TOTAL: &str = "reconcile_broadcast_backpressure_total";
