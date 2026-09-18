@@ -18,7 +18,8 @@ use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
 use crate::replica::{
-    send_messages_to, send_to_retry, Message, SendPorts, MAX_MESSAGES_PER_DATAGRAM,
+    admit_datagram, send_messages_to, send_to_retry, DatagramRejection, Message, SendPorts,
+    BUFFER_SIZE, MAX_MESSAGES_PER_DATAGRAM,
 };
 use crate::transport::Transport;
 use gossip::auth;
@@ -26,7 +27,6 @@ use gossip::gen_ip::gen_ip;
 
 use super::ReadReplicaMap;
 
-const BUFFER_SIZE: usize = 65507;
 
 /// The wire value type, named only so the shared [`Message`] enum has a concrete `Update` payload
 /// — which a read replica ignores, storing no dated value.
@@ -226,56 +226,53 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                     if size == recv_buf.len() {
                         warn!("read replica buffer too small for message, discarded");
                     } else {
-                        match self.authenticator.open(&recv_buf[..size]) {
-                            Some(payload) => {
-                                // Reject a differently-versioned peer distinguishably from an
-                                // authentication failure — see `Replica::run`'s identical gate.
-                                let payload = match payload.check_version() {
-                                    Ok(payload) => payload,
-                                    Err(version) => {
-                                        trace!(
-                                            "read replica dropped datagram from {peer}: wire \
-                                             version {version} != {}",
-                                            auth::WIRE_VERSION
-                                        );
-                                        continue;
-                                    }
-                                };
-                                let sender = peer.ip();
-                                // Per-peer cap check: drop datagrams from unknown senders when the
-                                // peers map is at capacity, before any per-sender state is
-                                // allocated (peers slot or replay-filter entry).
-                                {
-                                    let guard = self.peers.read();
-                                    let (known, current_len) =
-                                        (guard.contains_key(&sender), guard.len());
-                                    if !self.max_peers.admits(known, current_len) {
-                                        trace!(
-                                            "read replica dropped datagram from {peer}: peer cap \
-                                             reached ({current_len}/{})",
-                                            self.max_peers.max()
-                                        );
-                                        continue;
-                                    }
-                                }
-                                let (seq, stamp) = (payload.seq, payload.stamp);
-                                let Some(payload) =
-                                    payload.verify_replay(&self.replay_filter, sender)
-                                else {
-                                    trace!(
-                                        "read replica dropped replayed datagram from {peer}: \
-                                         seq={seq} stamp={stamp}"
-                                    );
-                                    continue;
-                                };
-                                self.handle_messages(payload, peer, &mut send_buf).await;
-                                // Record the sender so we keep gossiping value-only diffs to it.
-                                self.peers.write().insert(sender, Instant::now());
+                        let sender = peer.ip();
+                        let payload = match admit_datagram(
+                            &self.authenticator,
+                            &self.replay_filter,
+                            self.max_peers,
+                            sender,
+                            || {
+                                // Read replicas count routing peers, never causal-stability members.
+                                // This closure runs only after auth and version validation.
+                                let guard = self.peers.read();
+                                (guard.contains_key(&sender), guard.len())
+                            },
+                            &recv_buf[..size],
+                        ) {
+                            Ok(payload) => payload,
+                            Err(DatagramRejection::Authentication) => {
+                                trace!(
+                                    "read replica dropped datagram from {peer}: missing or invalid MAC"
+                                );
+                                continue;
                             }
-                            None => trace!(
-                                "read replica dropped datagram from {peer}: missing or invalid MAC"
-                            ),
-                        }
+                            Err(DatagramRejection::Version(version)) => {
+                                trace!(
+                                    "read replica dropped datagram from {peer}: wire version \
+                                     {version} != {}",
+                                    auth::WIRE_VERSION
+                                );
+                                continue;
+                            }
+                            Err(DatagramRejection::PeerCap { current_len, max }) => {
+                                trace!(
+                                    "read replica dropped datagram from {peer}: peer cap reached \
+                                     ({current_len}/{max})"
+                                );
+                                continue;
+                            }
+                            Err(DatagramRejection::Replay { seq, stamp }) => {
+                                trace!(
+                                    "read replica dropped replayed datagram from {peer}: \
+                                     seq={seq} stamp={stamp}"
+                                );
+                                continue;
+                            }
+                        };
+                        self.handle_messages(payload, peer, &mut send_buf).await;
+                        // Record the sender so we keep gossiping value-only diffs to it.
+                        self.peers.write().insert(sender, Instant::now());
                     }
                 }
             }
