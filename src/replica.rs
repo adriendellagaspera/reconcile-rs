@@ -30,7 +30,8 @@ use gossip::auth;
 use gossip::replay;
 use rbsr::{EnumerationRange, RangeAggregate};
 
-const BUFFER_SIZE: usize = 65507;
+/// Maximum UDP payload size accepted by the receive loops.
+pub(crate) const BUFFER_SIZE: usize = 65507;
 /// Upper bound on protocol messages decoded from a single datagram. A datagram is at most
 /// [`BUFFER_SIZE`] bytes and the smallest message is at least one byte, so it can never legitimately
 /// contain more than this many messages; the cap turns a crafted datagram's decode-expansion into a
@@ -310,6 +311,7 @@ pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
     Reserved6(Vec<u8>),
 }
 
+mod admission;
 mod coalesce;
 mod collision;
 mod construct;
@@ -323,6 +325,7 @@ mod repair;
 mod run;
 mod write;
 
+pub(crate) use admission::{admit_datagram, DatagramRejection};
 pub(crate) use construct::check_port_is_nonzero;
 pub(crate) use gc::version_hash;
 pub(crate) use membership::derive_local_net;
