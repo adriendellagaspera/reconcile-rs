@@ -91,7 +91,7 @@ impl Authenticator {
     ///
     /// Tries [`Keys::primary`](super::Keys::primary) then each `also_accept` key in order, so a
     /// mid-rotation cluster — some peers still sealing with the outgoing key — keeps verifying
-    /// until every sender has moved (#137).
+    /// until every sender has moved.
     ///
     /// Produces [`Authenticated`], never [`Verified`]: the caller must still
     /// [`Payload::check_version`] then [`Payload::verify_replay`]. `None` on any authentication
