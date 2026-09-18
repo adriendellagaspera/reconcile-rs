@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Per-datagram message authentication. Unauthenticated by default: README "Security model".
+//! Per-datagram authentication/framing. The `reconcile` facade requires either a cluster key or an explicit insecure opt-in.
 //!
 //! # Wire layout
 //!
@@ -24,8 +24,7 @@
 //! The replay header sits inside the authenticated/encrypted region in both cases; the wire
 //! version byte sits inside it too, and — unlike the replay header, which is absent when
 //! disabled — is present on **every** datagram regardless of authentication mode: a
-//! mixed-version cluster must be diagnosable whether or not a cluster key is configured, and
-//! unauthenticated is the default (`ARCHITECTURE.md` §8).
+//! mixed-version cluster must be diagnosable whether or not a cluster key is configured.
 //!
 //! The layering carries the security invariants in the types: [`Authenticator`] is the sole
 //! producer of a [`Payload`], and message handling consumes `Payload<`[`Verified`]`>`, obtainable
@@ -179,7 +178,7 @@ pub struct Payload<'a, State = Authenticated> {
 }
 
 /// A [`ClusterKey`] this node seals outgoing datagrams with, plus zero or more additional keys it
-/// still accepts on the verify path (#285) — the shape a rotation needs: roll out `also_accept:
+/// still accepts on the verify path — the shape a rotation needs: roll out `also_accept:
 /// [old_key]` cluster-wide, then once every peer has it, roll `primary` to the new key with the
 /// old one demoted to `also_accept`, then finally drop it once every peer is on the new primary.
 #[derive(Clone, Debug)]
