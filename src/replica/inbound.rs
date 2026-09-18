@@ -36,14 +36,8 @@ impl PeerCap {
 pub(crate) enum InboundRejection {
     Authentication,
     Version(u8),
-    PeerCap {
-        current_len: usize,
-        max: usize,
-    },
-    Replay {
-        seq: Seq,
-        stamp: Stamp,
-    },
+    PeerCap { current_len: usize, max: usize },
+    Replay { seq: Seq, stamp: Stamp },
 }
 
 /// Authenticate, version-check, apply the peer cap, then replay-check one inbound datagram.
@@ -63,9 +57,7 @@ pub(crate) fn admit_inbound<'a>(
         .open(datagram)
         .ok_or(InboundRejection::Authentication)?;
 
-    let payload = payload
-        .check_version()
-        .map_err(InboundRejection::Version)?;
+    let payload = payload.check_version().map_err(InboundRejection::Version)?;
 
     let (known, current_len) = peer_state();
     if !max_peers.admits(known, current_len) {
@@ -94,8 +86,7 @@ mod tests {
 
     #[test]
     fn authentication_and_version_fail_before_peer_state_is_read() {
-        let keyed =
-            auth::Authenticator::new(Some(ClusterKey::new([7; 32])), false).unwrap();
+        let keyed = auth::Authenticator::new(Some(ClusterKey::new([7; 32])), false).unwrap();
         let filter = ReplayFilter::new(FRESHNESS_WINDOW_DEFAULT, true);
 
         let auth_rejection = admit_inbound(
@@ -132,8 +123,7 @@ mod tests {
         let authenticator =
             auth::Authenticator::new(Some(ClusterKey::new([7; 32])), false).unwrap();
         let counter = SenderCounter::new();
-        let datagram =
-            authenticator.seal(counter.next_seq(), counter.next_stamp(), b"payload");
+        let datagram = authenticator.seal(counter.next_seq(), counter.next_stamp(), b"payload");
         let filter = ReplayFilter::new(FRESHNESS_WINDOW_DEFAULT, true);
 
         let rejected = admit_inbound(
@@ -170,8 +160,7 @@ mod tests {
         let authenticator =
             auth::Authenticator::new(Some(ClusterKey::new([9; 32])), false).unwrap();
         let counter = SenderCounter::new();
-        let datagram =
-            authenticator.seal(counter.next_seq(), counter.next_stamp(), b"payload");
+        let datagram = authenticator.seal(counter.next_seq(), counter.next_stamp(), b"payload");
         let filter = ReplayFilter::new(FRESHNESS_WINDOW_DEFAULT, true);
 
         assert!(admit_inbound(
@@ -192,9 +181,6 @@ mod tests {
             &datagram,
             || (true, 1),
         );
-        assert!(matches!(
-            replayed,
-            Err(InboundRejection::Replay { .. })
-        ));
+        assert!(matches!(replayed, Err(InboundRejection::Replay { .. })));
     }
 }
