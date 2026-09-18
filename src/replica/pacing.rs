@@ -29,7 +29,7 @@ use gossip::replay;
 
 use super::{Message, Replica, BUFFER_SIZE, MAX_SENDTO_RETRIES};
 
-/// Which channel a paced bulk dump resolves ranges against (#516): a `differences` batch that
+/// Which channel a paced bulk dump resolves ranges against: a `differences` batch that
 /// loses the per-peer dump-slot race is stashed by channel, since the dated and value-only
 /// channels share one slot but resolve ranges against different trees and message variants.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -93,7 +93,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         ))
     }
 
-    /// Stash a `differences` batch that lost the per-peer dump-slot race (#516) instead of
+    /// Stash a `differences` batch that lost the per-peer dump-slot race instead of
     /// letting the caller drop it. Drained by whichever task is currently holding `peer`'s slot,
     /// via [`spawn_paced_send`](Self::spawn_paced_send)'s own loop — never dependent on a new
     /// incoming datagram or the idle `reconcile_interval` timeout.
@@ -121,7 +121,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     ///
     /// Before releasing `peer`'s slot, drains [`stash_pending_dump`](Self::stash_pending_dump)'s
     /// stash for `channel`/`peer` and sends that too, looping until nothing more is pending
-    /// (#516): a `differences` batch discovered while this task was already sending must not wait
+    /// before releasing the slot: a `differences` batch discovered while this task was already sending must not wait
     /// for a fresh round to be noticed.
     pub(super) fn spawn_paced_send(
         &self,
