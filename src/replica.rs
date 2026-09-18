@@ -67,12 +67,12 @@ pub(crate) struct Replica<K, V> {
 
 /// Shared, refcounted state of a [`Replica`]; see that struct for the rationale.
 pub(crate) struct Inner<K, V> {
-    /// `ArcSwap`, not `RwLock` (#34): a reader `load_full()`s an owned `Arc` with no lock at all,
+    /// `ArcSwap`, not `RwLock`: a reader `load_full()`s an owned `Arc` with no lock at all,
     /// which is what makes it safe to hold across an `.await` point
     /// ([`start_reconciliation`](Self::start_reconciliation),
     /// [`handle_messages`](Self::handle_messages)) — `ArcSwap::load()`'s pooled `Guard` is
-    /// documented as unsuitable for that. A writer clones the current `Arc` (an O(1) root bump,
-    /// #41), mutates the clone with the ordinary COW `&mut self` API, and `store()`s it back,
+    /// documented as unsuitable for that. A writer clones the current `Arc` (an O(1) root bump),
+    /// mutates the clone with the ordinary COW `&mut self` API, and `store()`s it back,
     /// serialized through [`write_lock`](Self::write_lock) — see that field for why.
     pub(crate) map: Arc<ArcSwap<FingerprintTreeMap<K, Entry<Timestamp, V>>>>,
     /// Value-only **projection** of [`map`](Self::map), kept in sync at every mutation.
@@ -112,7 +112,7 @@ pub(crate) struct Inner<K, V> {
     /// How long the [`run`](Self::run) loop waits for inbound activity before initiating a
     /// reconciliation round — the effective gossip cadence. Shared so it can be retuned at runtime.
     reconcile_interval: Arc<RwLock<Duration>>,
-    /// RTT-scale timer for [`repair_periodically`](Self::repair_periodically) (#23): how long an
+    /// RTT-scale timer for [`repair_periodically`](Self::repair_periodically): how long an
     /// entry in [`pending_repairs`](Self::pending_repairs) waits before being retried. Shared so
     /// it can be retuned at runtime; mirrors [`Config::repair_interval`](crate::replicated_map::Config::repair_interval).
     repair_interval: Arc<RwLock<Duration>>,
@@ -121,18 +121,18 @@ pub(crate) struct Inner<K, V> {
     /// node just bulk-updated and wants to double-check sooner than the next background round.
     /// Cleared the moment any reply at all is heard from that peer ([`run`](Self::run)) — an
     /// `EntryFingerprint` that finds a real difference, an `EntryUpdate`'s tombstone ack, and a
-    /// round that resolves to a pure SKIP's [`Message::ConvergenceAck`] (#23) all clear it. What still
+    /// round that resolves to a pure SKIP's [`Message::ConvergenceAck`] all clear it. What still
     /// falls back to a bounded retry (up to
     /// [`repair::MAX_REPAIR_ATTEMPTS`](repair::MAX_REPAIR_ATTEMPTS) times) is a datagram — the
     /// original round, or its ack — actually lost in flight, not a converged round going
     /// unacknowledged: the same order of magnitude as the existing per-round tombstone-ack
-    /// resend, not the bulk-transfer amplification akvize/reconcile-rs#168/#177 fixed. Given up
+    /// resend rather than a full bulk-transfer retry. Given up
     /// on after that bound, leaving it to the next full
     /// [`reconcile_interval`](Self::reconcile_interval) round.
     pending_repairs: Arc<RwLock<HashMap<IpAddr, repair::PendingRepair>>>,
     /// Per-peer instant of the most recently received dated [`Message::EntryUpdate`] batch — the
     /// receiver-side signal that a paced cold-sync bulk transfer from that peer might still be in
-    /// progress (#85, akvize/reconcile-rs#178).
+    /// progress.
     /// [`start_reconciliation`](Self::start_reconciliation) excludes a peer from a round's targets
     /// while it is within [`repair_interval`](Self::repair_interval) of this instant: re-initiating
     /// a full comparison mid-transfer only re-diffs and re-sends ranges the peer is already
@@ -156,11 +156,11 @@ pub(crate) struct Inner<K, V> {
     max_concurrent_bulk_dumps: usize,
     /// Ceiling on a single value's encoded size, in bytes, checked by
     /// [`ReplicatedMap::try_insert`](crate::replicated_map::ReplicatedMap::try_insert)/`try_update`
-    /// before any local state changes (#82). Mirrors
+    /// before any local state changes. Mirrors
     /// [`Config::max_value_size`](crate::replicated_map::Config::max_value_size); `None` (the
     /// default) checks nothing, matching `insert`/`update`'s unchanged behavior.
     max_value_size: Option<usize>,
-    /// Write-broadcast tasks currently in flight, across every propagating local write (#83) —
+    /// Write-broadcast tasks currently in flight, across every propagating local write —
     /// the egress-side counterpart of [`bulk_dumps_in_flight`](Self::bulk_dumps_in_flight). At
     /// [`max_concurrent_broadcasts`](Self::max_concurrent_broadcasts) a new eager broadcast is
     /// skipped rather than spawned ([`Replica::broadcast`]), or the whole call rejected with
@@ -170,7 +170,7 @@ pub(crate) struct Inner<K, V> {
     /// Global cap on the number of concurrently in-flight write-broadcast tasks.
     max_concurrent_broadcasts: usize,
     /// Dated-channel [`EnumerationRange`](rbsr::EnumerationRange)s a round found still diverging
-    /// but whose peer already had a dump in flight (#516): stashed here instead of silently
+    /// but whose peer already had a dump in flight: stashed here instead of silently
     /// dropped. Drained by the task already holding that peer's [`bulk_in_flight`](Self::bulk_in_flight)
     /// slot once it finishes its current send (`spawn_paced_send`'s own loop) — recovery from a
     /// lost dump-slot race never depends on a new incoming datagram or the idle
