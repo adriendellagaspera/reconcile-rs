@@ -27,13 +27,11 @@
 //!
 //! # Security model
 //!
-//! **Unauthenticated by default**: any host that can reach the port can forge an update and
-//! poison the cluster through last-write-wins, and a captured datagram can be replayed. Suitable
-//! only for a trusted underlay.
-//!
-//! [`Config::with_cluster_key`](replicated_map::Config::with_cluster_key), set on **every** node,
-//! enables per-datagram MAC authentication and per-sender replay protection. Full threat model:
-//! README "Security model".
+//! Construction requires an explicit trust mode. [`Config::with_cluster_key`](replicated_map::Config::with_cluster_key),
+//! set on **every** node, enables per-datagram MAC authentication and per-sender replay protection.
+//! [`Config::with_insecure_no_key`](replicated_map::Config::with_insecure_no_key) explicitly opts
+//! into unauthenticated operation and is suitable only for a trusted underlay. The repository's
+//! `SECURITY.md` is canonical for the full threat model.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -56,7 +54,7 @@ pub use gossip::auth::{ClusterKey, ClusterKeyError};
 pub use gossip::{discovery, transport};
 pub use lww_register::{bounds, entry};
 
-// #297: re-exported so no public signature that names one of these types — `Config::nets`'
+// Re-exported so no public signature that names one of these types — `Config::nets`'
 // `ipnet::IpNet`, `UdpTransport::new`/`socket`'s `tokio::net::UdpSocket`, `RandomProbe::new`'s
 // `parking_lot`/`rand` parameters, `Transport`'s `#[async_trait]` — forces a dependent onto an
 // independently-versioned copy of that crate. `bincode` and `metrics-exporter-prometheus` are
@@ -168,7 +166,7 @@ pub mod testing {
         store.bulk_dumps_in_flight_count()
     }
 
-    /// Number of write-broadcast tasks currently in flight (#83).
+    /// Number of write-broadcast tasks currently in flight.
     pub fn broadcasts_in_flight_count<K, V>(store: &crate::ReplicatedMap<K, V>) -> usize
     where
         K: crate::bounds::Key + std::hash::Hash,
