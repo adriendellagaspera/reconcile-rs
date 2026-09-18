@@ -20,7 +20,7 @@ use rsos::Fingerprint;
 use super::ReplicatedMap;
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
-    /// A zero-copy `Arc` snapshot of the dated map as it stands right now (#34): `rsos`'s
+    /// A zero-copy `Arc` snapshot of the dated map as it stands right now: `rsos`'s
     /// `iter`/`range` borrow straight from it, with no lock held and no lifetime tied back to
     /// `self` — a concurrent write on this handle installs a fresh tree behind a new `Arc` and
     /// leaves this snapshot untouched.
