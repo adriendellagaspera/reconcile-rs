@@ -127,6 +127,9 @@ deployment. `MIGRATING.md` records release-specific compatibility actions.
 - Use `Config::max_value_size` / fallible writes when applications need synchronous rejection
   before an oversized value reaches the UDP send path.
 - Coordinate wire-version upgrades and key-rotation phases cluster-wide.
+- The optional Prometheus HTTP endpoint is unauthenticated. Bind it to an internal interface or
+  restrict reachability with network policy/firewall rules; the examples use `0.0.0.0:9000` only
+  for convenience.
 
 ## Scope
 
