@@ -177,7 +177,7 @@ type VisitedStates = HashMap<(bool, u64), Vec<(usize, Vec<RangeAggregate<u64>>)>
 /// confirmed with `==`, so a hash collision cannot manufacture a false stall.
 fn state_hash(active: &[RangeAggregate<u64>]) -> u64 {
     let mut hasher = DefaultHasher::new();
-    // Every field #289 made public, so a state that hashes equal really is the same state; the
+    // Every field is public, so a state that hashes equal really is the same state; the
     // exact confirmation below then makes a hash collision harmless rather than merely unlikely.
     for segment in active {
         segment.start_bound().hash(&mut hasher);
