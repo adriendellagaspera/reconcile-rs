@@ -145,7 +145,7 @@ note() {
     printf '  #%-5s · %s\n' "$1" "$2"
 }
 
-while IFS=
+while IFS="$(printf '\t')" read -r number kinds areas statuses needs_triage unknown blocked_ok fresh title; do
     [ -n "$number" ] || continue
 
     # Within the grace window every finding below downgrades to a note. One `if` rather than a
