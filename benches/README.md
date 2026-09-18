@@ -1,1020 +1,181 @@
 # Benchmarks
 
-Four Criterion targets, all `harness = false`, none feature-gated:
+The benchmark suite answers engineering questions about the code that ships in this repository.
+It is not a research notebook or a cross-project leaderboard. Historical campaigns and the
+decisions they produced live in their issues/PRs; this file documents how to reproduce and
+interpret the current harness.
 
-| Target | What it measures |
+None of the benchmark targets execute in CI. CI only compile-checks them with
+`cargo bench --no-run`.
+
+## Targets
+
+| target | scope |
 |---|---|
-| `bench` | `FingerprintTreeMap` micro-benchmarks (fill, single insert/remove, cumulated range-fingerprint) vs `BTreeMap`, plus the dated-vs-value-only fill, the single-difference `ReplicatedMap` send/reconcile latency, the injected-RTT refinement lane `service_reconcile_rtt`, and the `reconcile_interval` idle-timeout lane `service_reconcile_interval` (both below). |
-| `system` | End-to-end, **public-API** system benchmarks (below), including the injected-RTT/loss lane. |
-| `protocol` | Wire *and* local cost of one full RBSR reconciliation, **per refinement policy** — total wire bytes at four value sizes, then messages, advertised ranges, refinement bytes, datagrams, IP fragments, IDLIST elements and RSOS query counts, as a function of store size `n`, difference size `d`, and how the differences cluster (below). |
-| `contention` | `K`-writer write throughput vs writer count, `FingerprintTreeMap` against a `BTreeMap` no-aggregate control, both behind one shared `parking_lot::RwLock` of the exact shape `src/replica.rs` uses (below). |
+| `bench` | `FingerprintTreeMap` micro-benchmarks and focused internal reconciliation timing |
+| `system` | end-to-end behavior through the public `ReplicatedMap` API |
+| `protocol` | one complete RBSR reconciliation under the shipped default `FixedFanOut` policy |
+| `contention` | concurrent-writer cost of maintaining RSOS aggregates vs a `BTreeMap` control |
 
-No target runs in CI — CI only *compile-checks* them (`cargo bench --no-run` with `--cfg reconcile_internal_testing` in RUSTFLAGS, AGENTS.md §6). Run them locally when you want numbers.
+The source-level module docs in each benchmark file define the exact corpus and measurement unit.
+When a detail here and the harness disagree, the harness is authoritative.
 
-## Running the system benchmarks
+## Running
+
+Run one target:
 
 ```sh
-# Everything (point-read, memory, bulk-load, cold-sync, gossip fan-out/propagation, broadcast
-# coalescing, the injected-RTT/loss lane, durable-rejoin):
+cargo bench --bench bench
 cargo bench --bench system
+cargo bench --bench protocol
+cargo bench --bench contention
+```
 
-# A single benchmark or size (Criterion treats the argument as a regex over the benchmark id):
+Criterion arguments filter benchmark ids:
+
+```sh
 cargo bench --bench system -- point_read
 cargo bench --bench system -- 'cold_sync/1000'
 cargo bench --bench system -- 'gossip_fanout/64'
-cargo bench --bench system -- 'durable_rejoin/snapshot/n=10000'
-
-# A fast pass while iterating (lower statistical confidence):
 cargo bench --bench system -- --quick
 ```
 
-Criterion writes HTML reports and raw CSV under `target/criterion/`; open `target/criterion/report/index.html`. Every corpus is seeded deterministically, so runs are comparable across machines and over time.
+Criterion writes reports under `target/criterion/`.
 
-## What each benchmark covers
-
-- **`point_read`** — `ReplicatedMap::get` latency vs `HashMap` and `BTreeMap` across dataset sizes. The store walks the B-tree (`O(log n)`), so this quantifies the read-path cost against the flat-map baselines (drives #52). `point_read_heap` is its heap-indirected (`String -> Vec<u8>`) counterpart — see "Re-measuring #47/#51/#52" below.
-- **`memory_footprint`** — prints the fixed per-entry footprint of the dated cell `Entry<Timestamp, V>` vs the value-only mirror projection `State<V>` across value payload sizes; the delta is the mirror's per-entry saving. Printed, not timed. `heap_footprint` is the real per-entry **heap**-cost measurement (drives #47) — see "Re-measuring #47/#51/#52" below.
-- **`bulk_load`** — `insert_bulk` throughput (entries/s) filling an empty store, across sizes (drives #51). `bulk_load_heap` is its heap-indirected counterpart; `bulk_load_just_insert` (`benches/bench.rs`, below) is the per-entry `just_insert` counterpart to both.
-- **`cold_sync`** — wall time for an **empty** node to converge with a **full** one purely via anti-entropy: the full node is pre-loaded before it has any peer (nothing is broadcast eagerly), then the empty node seeds it and pulls the whole dataset through the range-diff protocol; timed until fingerprints match (drives #168). Loopback, i.e. RTT ≈ 0; `cold_sync_rtt` below prices the difference (**+1.0 × RTT**, flat in `N`).
-- **`gossip_fanout`** — bytes/datagrams *one node* sends for a single write, as peer count `N` grows (`2..128`, full-mesh-seeded, on an in-process `InMemoryNetwork` — no real sockets). `Replica::broadcast` (`src/replica.rs`) sends every local write to **all** known peers with no bound (only the separate, periodic WAN anti-entropy round is capped by `remote_fanout`), so this is expected, and confirmed, to be O(N) per node. Prints the exact datagram/byte count per write (deterministic, like `memory_footprint`) alongside the timed send-loop cost (drives #174's scaling gap). Also RTT ≈ 0; `gossip_fanout_rtt` prices that (**flat** — the send-side cost has no round trip to lengthen, unlike `gossip_propagation_rtt`; #187).
-- **`gossip_propagation`** — wall time from a write on one node to **every** other node observing it, as `N` grows (`2..32`, smaller range than `gossip_fanout` — see the caveat below). Unlike `gossip_fanout`, every node runs its real receive/reconcile loop throughout: the steady-state counterpart to `cold_sync`'s from-scratch convergence (drives #174's scaling gap). Also RTT ≈ 0; `gossip_propagation_rtt` prices that (**+0.5 × RTT** — one hop, not a chain).
-- **`broadcast_coalescing`** — datagrams/bytes the origin sends for one write burst, and the burst's convergence latency, `Config::coalesce_window` disabled against enabled (below, drives #187's "soften" half).
-- **`netem_calibration`**, **`cold_sync_rtt`**, **`gossip_propagation_rtt`**, **`gossip_fanout_rtt`** — the injected-RTT/loss lane. Its own section below.
-- **`durable_rejoin`** — two parts, own section below: `load` times reloading an `N`-entry `FileSnapshot` from disk alone; `snapshot`/`cold` compare a snapshot-resumed rejoin against a cold one on reconverge time **and** wire bytes (drives #172).
-
-## Re-measuring #47/#51/#52 (#28)
-
-#47/#51/#52 each carried an external-prototype evidence table predating this harness, disagreeing
-with `benches/system.rs`'s own numbers by up to ~60× — #28's own finding, across four confounds at
-once: key/value types (`u32 -> u32` vs the prototype's heap-indirected `String -> Vec`), scale (the
-sweep stopped at 100k, the prototype ran to 4M), write path (`just_insert` vs `insert_bulk`), and
-elapsed code (the prototype predates the workspace split). This section adds what #28 asked for —
-a heap-indirected type variant, a sweep reaching 1M, a `just_insert` counterpart, and a real
-per-entry heap-cost measurement — and reports what changed.
-
-**The size sweep** (`point_read`/`bulk_load`/`heap_footprint`'s `size_sweep()`) stays at
-`SIZES` (`10..100_000`) by default so a plain `cargo bench` stays fast; extend it with
-`RECONCILE_BENCH_SIZES`, a comma-separated override:
-
-```sh
-RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000 cargo bench --bench system -- point_read
-RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000,4000000 cargo bench --bench system -- bulk_load
-```
-
-**The heap-indirected type variant** — `point_read_heap`/`bulk_load_heap`/`heap_footprint`'s
-`String -> Vec<u8>` corpus, `corpus_heap` (`benches/system.rs`) — uses a 64 B value, one of #47's
-own headline dataset shapes, so its numbers are directly comparable to that issue's table rather
-than an arbitrary size.
-
-**The `just_insert` counterpart** — `bulk_load_just_insert` — lives in `benches/bench.rs`, not here:
-`just_insert` is a `reconcile_internal_testing` seam (AGENTS.md §6) this feature-gate-free binary
-cannot reach, the same reason `service_reconcile_rtt` lives there. Per-entry, no broadcast, at the
-same sizes as `bulk_load`:
+Some internal probes intentionally use the repository-only test cfg:
 
 ```sh
 RUSTFLAGS='--cfg reconcile_internal_testing' cargo bench --bench bench -- bulk_load_just_insert
-```
-
-### Results: `point_read`, `Copy` vs heap-indirected, out to 1M
-
-Measured on a 4-core sandboxed VM, release profile, `Seed::DEFAULT`'s deterministic corpus.
-`n=1000000` is a `--quick` sample (lower statistical confidence — the other rows are full-confidence
-Criterion samples); read a cross-row trend, not the last digit:
-
-| n | `ReplicatedMap<u32,u32>` | `HashMap` | `BTreeMap` | `ReplicatedMap<String,Vec<u8>>` | `HashMap` | `BTreeMap` |
-|---:|---:|---:|---:|---:|---:|---:|
-| 10 | 67.3 ns | 19.6 ns | 11.0 ns | 184 ns | 47.6 ns | 45.7 ns |
-| 100 | 86.9 ns | 18.8 ns | 13.5 ns | 292 ns | 48.2 ns | 55.6 ns |
-| 1 000 | 117 ns | 20.5 ns | 21.9 ns | 421 ns | 47.3 ns | 91.5 ns |
-| 10 000 | 164 ns | 19.0 ns | 31.6 ns | 576 ns | 48.9 ns | 144 ns |
-| 100 000 | 177 ns | 18.9 ns | 32.3 ns | 658 ns | 48.8 ns | 142 ns |
-| 1 000 000 | 220 ns | 19.0 ns | 27.2 ns | 814 ns | 46.9 ns | 108 ns |
-
-**The `Copy` ratio at 100k (~9.4× `HashMap`, ~5.5× `BTreeMap`) is already wider than #52's own
-in-repo table (~4.9×/~2.9×, `u32` at the same size)** — a different machine/run, not a regression;
-this file's convention throughout is that absolute numbers don't cross machines, only shapes and
-ratios do. The shape #52 draws its conclusion from — `ReplicatedMap` growing with `n` while both
-flat maps stay near-flat — holds at every size through 1M, `Copy` or heap-indirected.
-**Confound #1 (key/value types) is real, but modest next to the 60×**: the heap-indirected
-`ReplicatedMap` column runs 2.7–3.7× its `Copy` counterpart at the same `n` — string comparison
-during B-tree descent costs materially more than `u32` comparison — but even the heap-indirected
-column (814 ns at 1M) is nowhere near #52's quoted "≈20–50× a hash map" territory: at 1M it is
-~17× the heap-indirected `HashMap` column, past #52's already-revised ~5× but still well short of
-the prototype's headline. Type alone does not explain the original 60× gap; scale and elapsed code
-(#28's other two confounds) plausibly account for more of it than type does.
-
-### Results: `bulk_load`, `Copy` vs heap-indirected, `insert_bulk` vs `just_insert`, out to 1M
-
-Same run, same caveats (`n=1000000` is `--quick`):
-
-| n | `insert_bulk`, `u32,u32` | `insert_bulk`, `String,Vec<u8>` | `just_insert`, `u32,u32` (per-entry) |
-|---:|---:|---:|---:|
-| 10 | 454 Kelem/s | 175 Kelem/s | 520 Kelem/s |
-| 100 | 1 076 Kelem/s | 251 Kelem/s | 531 Kelem/s |
-| 1 000 | 1 176 Kelem/s | 251 Kelem/s | 388 Kelem/s |
-| 10 000 | 1 064 Kelem/s | 218 Kelem/s | 295 Kelem/s |
-| 100 000 | 899 Kelem/s | 194 Kelem/s | 235 Kelem/s |
-| 1 000 000 | 772 Kelem/s | 99 Kelem/s | 190 Kelem/s |
-
-**`just_insert`'s in-repo range (190–531 Kelem/s) lands squarely inside #51's own external-prototype
-range (~190–430k inserts/s)** — the closest match anywhere in this re-measurement pass, once the
-write path is held equal (both are per-entry, no-bulk-amortization inserts) even though the type
-pair still differs (`u32` here, `String -> Vec` there). **`insert_bulk` vs `just_insert`, same
-`u32,u32` type so the comparison isolates the write-path confound alone: the ratio is not constant**
-— 0.87× at `n=10` (bulk's own per-call setup dominates at that batch size, so bulk is *slower*
-per-entry than one-at-a-time there) rising to 4.06× at 1M. The amortization #51's proposal assumes
-is real, grows with batch size, and is already partly captured by the existing bulk path before any
-bottom-up build exists — but it is a curve, not a fixed multiplier, so a single headline ratio
-(#51's "~3–7×") understates it at large `n` and overstates it at small `n`. The heap-indirected
-`insert_bulk` column (99–251 Kelem/s) is not compared to `just_insert` here: that pair differs by
-both confounds (type *and* write path) at once, exactly the entanglement #28 flagged — isolating
-type alone needs a heap-indirected `just_insert`, not yet added (a natural follow-up, not required
-by #28's acceptance criteria). Every column here **declines past ~1k–10k** rather than holding
-`bulk_load`'s original flat-ish shape — consistent with `heap_footprint`'s finding below that
-per-entry heap cost is still climbing at those sizes, so cache and allocator pressure both worsen
-into the millions range this sweep newly reaches.
-
-### Results: `heap_footprint`, the real per-entry heap-cost measurement for #47
-
-Methodology, and its limits, are `heap_footprint`'s own doc comment (`benches/system.rs`) — read it
-before quoting this table: it is a **floor** on real RSS growth (requested, not granted, allocator
-bytes; no fragmentation or arena overhead), not an equal comparison to #47's `/usr/bin/time`-style
-headline. `Copy` (`u32 -> u32`, raw = 8 B/entry) isolates the tree's own structural overhead; the
-heap-indirected corpus uses `HEAP_VALUE_LEN` = 64 B (raw = key + value = 74 B/entry), one of #47's
-own dataset shapes, so the two are comparable:
-
-| n | `u32,u32` B/entry | overhead | `String,Vec<u8>` (64 B value) B/entry | overhead |
-|---:|---:|---:|---:|---:|
-| 10 | 0.0 B | — | 110 B | 1.48× |
-| 100 | 287 B | 35.8× | 579 B | 7.82× |
-| 1 000 | 317 B | 39.6× | 622 B | 8.41× |
-| 10 000 | 321 B | 40.1× | 629 B | 8.49× |
-| 100 000 | 322 B | 40.2× | 629 B | 8.51× |
-| 1 000 000 | 322 B | 40.2× | 630 B | 8.51× |
-
-Both columns settle by `n` = 10 000 and stay flat through 1M — consistent with #47's own "per-entry
-overhead is ~constant in value size" reading, now shown constant in `n` as well. `n` = 10's `Copy`
-row (exactly 0.0 B) is not measurement noise: an empty store's root is already one allocated `Node`
-whose `ArrayVec`s carry inline capacity for `MAX_CAPACITY` (11 in #47's own worked example) entries
-before a split allocates a second node — ten entries fit entirely inside that pre-existing root, so
-`load_bulk` grows nothing on the heap. `n=10`'s heap-indirected row is *not* zero (110 B) because
-each `String`/`Vec<u8>` value is its own heap allocation regardless of tree structure — this row
-isolates that from the tree's own per-node growth, visible only once `n` exceeds a node's capacity.
-
-**The heap-indirected floor (630 B/entry at 1M, 64 B values) lands close to #47's own headline for
-the same value size** — its "4M × 64 B: +2899 MiB, ~760 B/entry" row — the closest agreement
-anywhere in this pass, and in the direction the "floor, not ceiling" methodology predicts (630 <
-760: allocator rounding and fragmentation account for at least the remaining ~130 B). **The `Copy`
-floor (322 B/entry, `u32 -> u32`) is the harder number to reconcile**: #47's own analytical
-decomposition (`K = V = u64`, ~70% occupancy) put total structural overhead at ~90 B/entry — well
-under a third of this measurement, and re-scaling that estimate down to `u32`'s smaller raw
-keys/values would shrink its `keys`/`values` `ArrayVec` terms further, *widening* the gap rather
-than closing it (the two largest terms — the 32 B-per-element `hashes` cache and the `children`
-array — don't depend on `K`/`V` at all, so they can't close it either). Two live-heap-only
-measurements this pass cannot distinguish between: real occupancy is materially lower than the
-analytical model's
-~70% assumption (sequential ascending insertion is a plausible driver — B-tree splits under
-monotonic keys tend to leave the *previous* node full and the new one minimal, not both at the
-model's assumed fill), or the decomposition itself is missing a term. Both are #47's to resolve, not
-this benchmark's — see that issue for the re-triage this number feeds.
-
-## Broadcast coalescing (#187)
-
-```sh
-cargo bench --bench system -- broadcast_coalescing
-```
-
-`Replica::broadcast` sends one datagram per write per peer, immediately (`gossip_fanout` above).
-`Config::coalesce_window` (default `Duration::ZERO`, disabled) batches writes made within the
-window into one flush instead, collapsing same-key writes to the latest via `Entry::merge`
-first — see `Config::coalesce_window`'s own docs for the mechanism and the ordering/anti-entropy
-guarantees. This benchmark quantifies the trade: one burst of `COALESCING_WRITES` = 64 writes over
-`COALESCING_KEYS` = 16 distinct keys (so a coalescing window collapses same-key repeats as well as
-merely batching distinct ones), `N` = 8 full-mesh-seeded nodes, disabled against a 5 ms window.
-Convergence is *awaited* before either arm reports, not assumed — the printed traffic and the timed
-latency below are both from runs that actually reached the burst's final per-key state on every
-peer:
-
-| | disabled (`Duration::ZERO`) | 5 ms window | ratio |
-|---|---:|---:|---:|
-| datagrams sent by the origin | 448 | 7 | **64× fewer** |
-| bytes sent by the origin | 11 648 B | 2 807 B | **4.1× fewer** |
-| burst → full convergence | 768 µs | 6.41 ms | +5.6 ms |
-
-Both counts are exact per run (64 writes × 7 peers = 448 datagrams disabled; one flush × 7 peers = 7
-datagrams enabled) and stable across samples once past the first (a cold first sample pays the
-window before anything has been sent yet, so it flushes early against a still-filling buffer — see
-`target/criterion/broadcast_coalescing/*/raw.csv` for every sample). The byte reduction (4.1×) tracks
-the same-key collapse ratio almost exactly (64 writes ÷ 16 keys = 4×): eliminating 441 datagrams
-saves far more in per-datagram overhead (auth framing, UDP/IP headers this harness does not model)
-than in payload, since the *values* that must reach a peer are bounded below by the number of
-distinct keys either way. The latency row is `Config::coalesce_window`'s own documented trade,
-measured rather than assumed: the enabled arm's 6.41 ms is the 5 ms window plus flush/apply
-overhead, not a multiple of it — a burst that already spans the window (a slower producer) would pay
-less added latency than this back-to-back-writes worst case.
-
-## Gossip-scaling benchmark caveats
-
-`gossip_fanout` and `gossip_propagation` simulate `N` nodes as in-process tasks sharing one Tokio
-runtime and one OS thread pool, communicating over `InMemoryNetwork` rather than real UDP sockets —
-deliberately: real sockets risk port exhaustion and self-inflicted loopback packet loss/reordering
-at higher `N`, which would corrupt the traffic/latency measurement with retransmit noise unrelated to
-the protocol. The tradeoff is that past a few dozen–hundred simulated peers, the benchmark
-increasingly measures its own scheduler and lock contention (`peers`/`map` `RwLock`s) rather than
-genuine network behavior — `gossip_propagation`'s `N` range is kept smaller than `gossip_fanout`'s for
-exactly this reason (every node runs a live loop; `gossip_fanout` only exercises the send path).
-Nodes are full-mesh-seeded via `seed_peer` up front rather than left to discover peers through gossip,
-so both benchmarks isolate fan-out/propagation cost from peer-discovery convergence time (already
-covered separately by `cold_sync`).
-
-`gossip_propagation`'s write key is a counter that must live **outside** the routine Criterion calls
-per sample. Declared inside it, it restarts at zero every sample, so every sample after the first
-re-writes a key the cluster already holds, completes immediately, and reports the poll loop — which
-is what it did until the RTT lane made the discrepancy visible (a 25 ms one-way link that measured
-4 µs). Numbers from before that fix are not comparable.
-
-No comparable open-source gossip/SWIM library surveyed for this
-(chitchat, foca, memberlist) ships an automated, reproducible N-node scaling benchmark in-repo — the
-closest real precedent is HashiCorp's one-off [Consul 66k-node scale test](https://www.hashicorp.com/en/blog/consul-scale-test-report-to-observe-gossip-stability),
-a real-hardware exercise, not a runnable harness. These two benchmarks are closer to establishing a
-methodology than following one.
-
-## The `durable_rejoin` benchmark
-
-```sh
-cargo bench --bench system -- 'durable_rejoin/load'      # disk-reload time alone, n = 10..100 000
-cargo bench --bench system -- 'durable_rejoin/snapshot'  # snapshot-resumed rejoin: time + bytes
-cargo bench --bench system -- 'durable_rejoin/cold'      # cold rejoin: time + bytes, as `cold_sync`
-```
-
-Answers [#172](https://github.com/Akvize/reconcile-rs/issues/172), whose own numbers motivated
-[#174](https://github.com/Akvize/reconcile-rs/issues/174): rejoining a 51 200-key / 50 MiB grid
-with ongoing churn during downtime took 0.52 s / 0.76 MiB from a local snapshot against 4.6 s /
-56.3 MiB cold — measured once, out of repo, and therefore hearsay (#174's own framing). This target
-reproduces that comparison's *shape* with a seeded, in-repo harness instead — the magnitudes below
-are not expected to match #172's one-off numbers (different corpus, different churn model), only
-their direction.
-
-**`load`** — `Persistence::load` alone, deserializing an `N`-entry `FileSnapshot` from disk
-(`SIZES`, `10..100 000`). Isolates the local-I/O component from the network component below; the
-snapshot is written once in setup, outside the timed region.
-
-**`snapshot` vs `cold`** — the network-catchup component, at `n` = 2 000 / 10 000 / 100 000. A
-survivor `A` is loaded with `n − REJOIN_CHURN` entries, snapshotted to disk (via
-`ReplicatedMap::snapshot_now`), then given `REJOIN_CHURN` (100, fixed across `n` — the claim under
-test is that snapshot-rejoin cost tracks the *churn*, not the dataset, so holding it constant while
-`n` grows is what makes that visible) more entries **after** the snapshot — the delta a restarting
-node must catch up on. `snapshot` resumes the restarting node `B` from that on-disk snapshot via
-`ReplicatedMap::with_persistence` (disk load counted in the timed region — genuinely part of what a
-restart waits on) before `B` rejoins and catches up on the churn alone, over an in-process
-`InMemoryNetwork` as in `gossip_fanout`; `cold` starts `B` empty and pulls the whole `n`-entry
-dataset, exactly as `cold_sync`. Both report wall time (Criterion-timed) and total wire bytes (both
-peers' sends summed — nothing is lost on this transport, so that is also what was received; printed
-untimed once per size first, deterministic like `gossip_fanout`'s traffic report, then measured
-statistically by the timed groups).
-
-### Results
-
-Measured on a 4-core sandboxed VM, release profile, `Seed::DEFAULT`'s deterministic corpus:
-
-| `n` | `load` (disk only) |
-|---:|---:|
-| 10 | 1.64 µs |
-| 100 | 2.89 µs |
-| 1 000 | 13.1 µs |
-| 10 000 | 111 µs |
-| 100 000 | 1.38 ms |
-
-| `n` | snapshot time | snapshot bytes | cold time | cold bytes | bytes | time |
-|---:|---:|---:|---:|---:|---:|---:|
-| 2 000 | 3.46 ms | 5 686 B | 2.20 ms | 60 854 B | **10.7× fewer** | 1.6× slower |
-| 10 000 | 8.77 ms | 5 914 B | 11.52 ms | 308 356 B | **52.1× fewer** | 1.3× faster |
-| 100 000 | 84.6 ms | 7 516 B | 106.7 ms | 3 164 318 B | **421.0× fewer** | 1.3× faster |
-
-Bytes are flat in `n` for `snapshot` (bounded by the churn, not the dataset) and grow with it for
-`cold` — the O(1)-vs-O(n) shape #172's own numbers pointed at, now reproducible. **Wall time is not
-uniformly a win**: at `n` = 2 000 the snapshot path is *slower* despite moving 10.7× fewer bytes —
-two real synchronous disk round trips (the survivor's `snapshot_now`, the restarter's
-`with_persistence` load) cost more than the network saves at this size, and only the byte column,
-not the time column, is favorable there. The crossover sits between 2 000 and 10 000 entries on
-this hardware; past it, both columns favor the snapshot path.
-
-**Below `n` ≈ 2 000 at `REJOIN_CHURN` = 100 (churn ≥ 5% of the store), `snapshot`'s wall time
-becomes unreliable** — `n` = 1 000 was observed to consistently cost a full extra
-`Config::reconcile_interval` (≈ 1.00–1.002 s, `SyncState::rounds` one higher on one peer than the
-other) rather than converging on the first exchange. Consistent with, though not fully root-caused
-against, `try_claim_dump_slot`'s "one bulk dump in flight per peer, anything missed is picked up by
-the next round" throttle (`src/replica/pacing.rs`) — plausible when a churn this large a fraction of
-the store produces more than one dump-eligible range against the same peer in quick succession.
-Sidestepped here by keeping `n` large enough relative to `REJOIN_CHURN` rather than chased further,
-since diagnosing that throttle under small-store, large-churn-fraction rejoins is a separate
-question from #172's.
-
-## The injected-RTT / loss lane
-
-```sh
-cargo bench --bench system -- netem                    # calibration report only
-cargo bench --bench system -- cold_sync_rtt
-cargo bench --bench system -- gossip_propagation_rtt
-cargo bench --bench system -- gossip_fanout_rtt
-```
-
-Every other benchmark in this repository runs at RTT ≈ 0 and loss = 0, which prices the axis RBSR is
-good at (bytes) and zeroes the one it is worst at (`POSITIONING.md` §1.3: sequential round-trips). These
-four lanes are the instrument that answer [#280](https://github.com/Akvize/reconcile-rs/issues/280)
-and, for `gossip_fanout_rtt`, the RTT-sweep half of
-[#187](https://github.com/Akvize/reconcile-rs/issues/187)'s measurement arm (#280 shipped
-`cold_sync_rtt`/`gossip_propagation_rtt`; `gossip_fanout` itself had no RTT-swept counterpart until
-now).
-
-`gossip::netem` (the `netem` feature) is a seeded `Transport` decorator — one-way delay, jitter, loss, reordering,
-configurable per **directed** link — over the same `InMemoryNetwork` `gossip_propagation` uses. Its
-module docs carry the model, the determinism guarantee and why it is bespoke rather than
-[`turmoil`](https://github.com/tokio-rs/turmoil) (short version: turmoil's clock is simulated and
-tick-quantized, so a Criterion sample inside it would report the simulator's arithmetic, and its
-`turmoil::net` shim would still need a `Transport` impl on top). No new dependency; `tests/netem.rs`
-tests it, including convergence over a 40 %-loss link.
-
-**Both `rtt=0ms` columns below are the same harness with a perfect link, not the loopback
-benchmarks** — the decorator, the pump and the in-memory fabric are in every lane, so a delta is the
-injected network and nothing else. Cross-harness it is not comparable: `cold_sync/1000` on real
-loopback UDP is 2.18 ms against `cold_sync_rtt/n=1000/rtt=0ms`'s 0.98 ms.
-
-### Calibration
-
-`netem_calibration` prints this before every run; read it first, because a delay lane that silently
-quantized to tokio's 1 ms timer resolution would look like a protocol result. Measured on a 4-core
-Xeon @ 2.10 GHz, seed `0x5eed0280`:
-
-| lane | injected one-way | observed mean | lane | configured | realized |
-|---|---:|---:|---|---:|---:|
-| `rtt=0ms` | 0 | 39 µs | `loss=0.1%` | 0.100 % | 0.110 % |
-| `rtt=0.1ms` | 50 µs | 70 µs | `loss=1%` | 1.000 % | 0.940 % |
-| `rtt=1ms` | 500 µs | 536 µs | | | |
-| `rtt=10ms` | 5 ms | 5.22 ms | | | |
-| `rtt=50ms` | 25 ms | 25.30 ms | | | |
-
-So the harness floor is ≈ 39 µs per one-way delivery and the injected delay is faithful from 50 µs
-up. That floor is the resolution of every number below.
-
-### Results: what RTT ≈ 0 was hiding
-
-| benchmark | rtt=0ms | 0.1 ms | 1 ms | 10 ms | 50 ms | delta vs rtt=0 |
-|---|---:|---:|---:|---:|---:|---|
-| `cold_sync_rtt/n=1000` | 984 µs | 1.07 ms | 2.05 ms | 11.50 ms | 51.50 ms | **+1.01 × RTT** (52× at 50 ms) |
-| `cold_sync_rtt/n=10000` | 11.53 ms | 11.48 ms | 12.48 ms | 22.38 ms | 62.48 ms | **+1.02 × RTT** (5.4× at 50 ms) |
-| `gossip_propagation_rtt/N=8` | 103 µs | 140 µs | 595 µs | 5.33 ms | 25.69 ms | **+0.50 × RTT** (250× at 50 ms) |
-
-Both deltas are constants in RTT, and both are integer numbers of one-way hops:
-
-- **A write propagates in one hop, not a chain.** `Replica::broadcast` sends every local write to
-  every known peer directly, so `gossip_propagation` costs exactly RTT/2 — flat in `N`, and
-  unaffected by `POSITIONING.md`'s O(log n)-rounds argument, which is about *reconciliation*, not gossip.
-- **Cold sync costs exactly one round trip, whatever the dataset size.** Not O(log n): an empty peer
-  has nothing to refine. Its outer range differs, the answer is the whole dataset, and the exchange
-  is two one-way hops — the empty node's initial ranges out, the values back. The `n=1000` and
-  `n=10000` rows add the same 1 × RTT to very different baselines.
-- **So `cold_sync` never exercised the O(log n) refinement chain**, at any RTT. That chain runs when
-  the difference is *small relative to the store* — the regime RBSR exists for. `benches/protocol.rs`
-  counts its rounds, and the rows above are what converts that count into seconds: **one protocol
-  round trip costs one RTT, measured, with no hidden multiplier**. Refinement depth, message count,
-  round trips and the resulting wall clock at 50 ms RTT, across n = 10³…10⁶ at `b` = 16 (`d` = 1, one
-  element missing; `POSITIONING.md` §2.2 draws the "worst family on latency" conclusion from this table
-  without repeating the numbers):
-
-  | quantity | n = 10³ | 10⁴ | 10⁵ | 10⁶ |
-  |---|---:|---:|---:|---:|
-  | `⌈log₁₆ n⌉` — refinement depth, the model | 3 | 4 | 5 | 5 |
-  | one-way messages, measured — incl. the opening exchange and the closing item transfer | 6 | 6 | 6 | 8 |
-  | round trips = half the row above | 3 | 3 | 3 | **4** |
-  | wall clock at 50 ms RTT | 150 ms | 150 ms | 150 ms | **200 ms** |
-
-  A single missing element in a 10⁶-entry store is therefore ~4 × RTT — ~200 ms at 50 ms RTT —
-  against 3.8 kB of traffic.
-- Pricing that end-to-end rather than by composition needs a difference the two peers disagree on
-  *without* disagreeing on timestamps, which only `just_insert`/`just_remove` can build. Those are
-  `reconcile_internal_testing` seams, and `system.rs` is deliberately feature-gate-free — so that
-  lane lives in the `bench` target instead, next to `service_reconcile`: `service_reconcile_rtt`,
-  below, is that lane, and its own results table adds the measured column to the one above.
-
-### Results: `gossip_fanout_rtt` is flat, confirming there is no round trip to price ([#187](https://github.com/Akvize/reconcile-rs/issues/187))
-
-Measured on a 4-core Xeon @ 2.80 GHz (a different machine from the table above, so read this
-subsection's numbers against each other, not against `cold_sync_rtt`/`gossip_propagation_rtt`'s),
-seed `0x5eed0280`, `--quick`:
-
-| `N=8` | rtt=0ms | 0.1 ms | 1 ms | 10 ms | 50 ms | loss=0.1% | loss=1% |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| datagrams / bytes sent by the origin | 7 / 196 B | 7 / 196 B | 7 / 196 B | 7 / 196 B | 7 / 196 B | 7 / 196 B | 7 / 196 B |
-| send-loop wall time | 27.0 µs | 23.9 µs | 23.9 µs | 28.9 µs | 35.5 µs | 33.6 µs | 28.5 µs |
-
-Both rows are flat: the datagram/byte count is exact and identical at every lane (as it is at RTT ≈ 0
-in plain `gossip_fanout`), and the timed row stays inside a ~12 µs band with no trend against RTT —
-in particular **no ~25 ms step at `rtt=50ms`**, the signature `gossip_propagation_rtt` shows at the
-same `N` (25.69 ms there, from the table above). That confirms the prediction stated on
-`gossip_fanout_rtt`'s own doc comment: `NetemTransport::send_to` enqueues (or drops, in the loss
-lanes) a datagram and returns immediately, before the injected delay elapses, so the origin's
-send-loop never waits on delivery — there is no round trip on this path for RTT to lengthen.
-`gossip_propagation_rtt`'s **+0.50 × RTT** is entirely a receive-side/observation cost, not a
-fan-out one; `Replica::broadcast`'s `O(N)` datagram cost (`gossip_fanout`, RTT ≈ 0 table above) and
-its RTT-independence (this table) are two separate findings, both now measured. This is the
-`gossip_fanout` half of #187's "the same across #280's RTT sweep" acceptance item; #280 shipped the
-`gossip_propagation`/`cold_sync` halves.
-
-### Results: loss, at `rtt=1ms`
-
-Superseded numbers (pre-#23, kept for the delta below): `gossip_propagation_rtt/N=8` at loss=1 %
-measured 100 ms, ~169× its no-loss baseline, because nothing retransmitted and the exchange was
-only repaired by the next `reconcile_interval` anti-entropy round (1 s by default). Re-measured on
-the same 4-core Xeon @ 2.10 GHz, seed `0x5eed0280`, one process covering both the RTT and loss
-sweeps together:
-
-| benchmark | no loss | loss=0.1% | loss=1% |
-|---|---:|---:|---:|
-| `cold_sync_rtt/n=1000` | 1.27 ms | 2.24 ms | 5.36 ms |
-| `cold_sync_rtt/n=10000` | 13.27 ms | 15.60 ms | 36.75 ms |
-| `gossip_propagation_rtt/N=8` | 113 µs | 1.44 ms | 11.97 ms |
-
-**A lost comparison round now costs `Config::repair_interval`, not `reconcile_interval`.**
-`Message::ConvergenceAck` (#23) acks a round that converges with nothing else to report, so an
-unanswered round — the signature of a lost datagram — is retried on `repair_interval` (150 ms by
-default: "comfortably above" the 0–50 ms RTT sweep, "comfortably below" `reconcile_interval`'s 1 s,
-`DEFAULT_REPAIR_INTERVAL`'s own docs) instead of waiting out the background sweep. The mean is
-`P(any datagram of the exchange lost) × ~150 ms`: for `gossip_propagation_rtt`'s 7 receivers, 1 %
-loss is `1 − 0.99⁷ ≈ 6.8 %` → ~10.2 ms predicted against 11.97 ms measured; 0.1 % is `≈ 0.7 %` →
-~1.05 ms predicted against 1.44 ms measured. Both track the new, smaller constant; the wide
-confidence intervals persist (the distribution stays bimodal, not noisy) because the *repairing*
-round can itself lose a datagram, same as before.
-
-Operationally: **on a lossy path, `repair_interval` is now the latency knob, not RTT** — but at its
-150 ms default it dwarfs the RTT sweep's 50 ms top by only 3×, not the 20× `reconcile_interval`'s 1 s
-did; tuned down toward the RTT sweep's own floor (`Config::repair_interval`'s docs give the tuning
-trade-off), the gap narrows further.
-
-Every lane is seeded (`Seed::DEFAULT`, printed with the results) and the impairment stream per
-directed link replays exactly; what does not replay bit-for-bit is task interleaving on a
-multi-threaded runtime, so read these as reproducible to within the usual benchmark noise. Like
-every target here, the lane stays out of CI — compile-checked only.
-
-## `service_reconcile_rtt`: the refinement chain under injected RTT
-
-```sh
-cargo bench --bench bench -- service_reconcile_rtt
-cargo bench --bench bench -- 'service_reconcile_rtt/n=1000000/d=1000'   # one n/d slice
-```
-
-Answers [#461](https://github.com/Akvize/reconcile-rs/issues/461), closing the gap the lane above
-states outright: every RTT lane there is `cold_sync_rtt` (d = n, the empty-peer case, one round
-trip) or `gossip_propagation_rtt` (one hop); neither exercises the O(log n) *refinement chain* the
-counted table below models. This lane does: composes `ReplicatedMap::new_with_transport`,
-`netem::NetemTransport` and the existing `rtt_sweep()` (`system.rs`'s, duplicated per
-`rtt_sweep`'s own docs) with `just_insert`/`just_remove` — the `reconcile_internal_testing` seams
-that build a genuine content difference without a timestamp race, which is why this lane lives
-here and not in the feature-gate-free `system.rs`.
-
-Per `(n, rtt)`: one peer loads the `n`-entry corpus, the other starts empty and pulls it via
-cold-sync (`service_reconcile_rtt`'s own docs explain why — an earlier design where both peers
-loaded independently hit a real `NetemTransport`-specific non-convergence at larger `n`, unrelated
-to the protocol). Once settled, every sample `just_remove`s the `d` chosen keys (scattered or
-clustered — the same two layouts `benches/protocol.rs` sweeps), triggers a round, polls until the
-peer reflects the removal, then `just_insert`s them back and repeats — so a sample times one full
-remove-then-restore cycle, two content differences, not one. `d = 0` has no keys to remove; its
-round is timed via a receive-counting transport instead, since a root-fingerprint match makes the
-responder reply with nothing at all (`RecvCountingTransport`'s own docs).
-
-### Results: `d = 0`, the baseline every sketch must not regress
-
-| n | rtt=0ms | 0.1 ms | 1 ms | 10 ms | 50 ms | delta vs rtt=0 |
-|---:|---:|---:|---:|---:|---:|---|
-| 10³ | 4.8 µs | 55.4 µs | 507 µs | 5.01 ms | 25.01 ms | **+0.50 × RTT** |
-| 10⁴ | 6.5 µs | 55.5 µs | 508 µs | 5.01 ms | 25.02 ms | **+0.50 × RTT** |
-| 10⁵ | 5.0 µs | 56.0 µs | 508 µs | 5.01 ms | 25.02 ms | **+0.50 × RTT** |
-| 10⁶ | 8.3 µs | 55.5 µs | 509 µs | 5.01 ms | 25.03 ms | **+0.50 × RTT** |
-
-Flat at exactly **+0.50 × RTT across all four decades of `n`** — one one-way hop, not a round
-trip, matching `RecvCountingTransport`'s docs (a root match makes the responder answer with
-nothing, so only the initiator's own send is observable) and the injected-RTT lane's own
-`gossip_propagation_rtt` row above, also exactly one hop. The `rtt=0ms` column is harness-floor
-noise (single-digit µs, like the calibration table above) and does not grow with `n` either. This
-is the number any sketch replacing full refinement is judged against: it cannot be *worse* than
-one silent hop, whatever `n` is.
-
-### Results: delta vs RTT, per `(n, d)` — the clean cells
-
-Slope of measured wall clock against RTT (endpoints `rtt=0ms`/`rtt=50ms`), same format as the
-table above, for every `(n, d, clustering)` cell whose ten samples agree to within 30% at every
-RTT — see below for the cells this excludes and why. Every `d > 0` cell here is one full
-remove-then-restore cycle — two content-difference resolutions, not one — so it is not directly
-the counted table's per-pull unit; see the next section for that comparison:
-
-| n | d = 1 (scattered) | d = 10 (scattered/clustered) | d = 100 (scattered/clustered) | d = 1000 (scattered/clustered) |
-|---:|---:|---:|---:|---:|
-| 10³ | +5.01 × RTT | +5.01 × RTT / +5.01 × RTT | +5.01 × RTT / +5.01 × RTT | +5.00 × RTT / +4.99 × RTT |
-| 10⁴ | +7.01 × RTT | +7.02 × RTT / +7.01 × RTT | +7.04 × RTT / +7.01 × RTT | past capacity (below) / +7.00 × RTT |
-| 10⁵ | +7.11 × RTT | +7.11 × RTT / +7.06 × RTT | past capacity (below) / +7.13 × RTT | past capacity (below) / +7.05 × RTT |
-| 10⁶ | not stable past rtt=1ms (below) | | | |
-
-**Every clean coefficient is flat in `d`, at a fixed `n`** — 10³ costs ≈ 5.0 × RTT whether `d` is 1
-or 1000, scattered or clustered; 10⁴–10⁵ cost ≈ 7.0–7.1 × RTT the same way. This is the O(log n)
-model directly confirmed: round trips depend on the *depth* the refinement chain must descend to
-isolate the difference, not on how many differences there are, provided the differing ranges still
-resolve within the chain's normal recursion. Going from 10³ to 10⁴ costs **+2.0 × RTT** more, and
-10⁴ to 10⁵ essentially nothing further (+0.0–0.1 × RTT) — see below for how that steps against the
-counted table.
-
-### Results: measured vs counted round trips
-
-Adding a measured column to the counted table above (`d = 1`, one element missing, `b = 16`).
-This lane's own unit is *two* content-difference resolutions (remove, then restore) rather than
-the counted table's one pull, so the measured round-trip count halves what the raw coefficient
-above states, to compare like with like:
-
-| quantity | n = 10³ | 10⁴ | 10⁵ | 10⁶ |
-|---|---:|---:|---:|---:|
-| round trips, counted (`⌈log₁₆ n⌉`-derived, existing table) | 3 | 3 | 3 | **4** |
-| round trips, measured (`d=1` scattered coefficient ÷ 2, this lane) | 2.5 | 3.5 | 3.6 | not stable (below) |
-| wall clock at 50 ms RTT, measured | 250.4 ms | 350.6 ms | 355.8 ms | not stable (below) |
-
-**The measured chain steps up a size earlier than the counted one predicts, then flattens where
-the counted model still expects it to hold flat.** The counted table's *round trips* row (not its
-`⌈log₁₆ n⌉` depth row, which already steps at every size below 10⁶) holds at 3 from n = 10³
-through 10⁵, stepping to 4 only at 10⁶; measured round trips already sit at 3.5–3.6 by 10⁴–10⁵ — a
-full round trip's worth of difference the counted model does not place until a decade or two
-later, then barely move between 10⁴ and 10⁵ where the counted model is also flat. Read
-literally, #185's own "4 round trips ≈ 200 ms at n = 10⁶" figure is **not confirmed as stated**:
-every size below 10⁶ already costs more measured round trips than the counted model's flat "3"
-implies, and 10⁶ itself is not a stable single number at all (below) — measured against a moving,
-sometimes much larger, target rather than a clean step to 4. This does not *contradict* `POSITIONING.md`
-§1.3's "worst family on latency" takeaway — it reinforces it: the O(log n) round-trip count the
-counted model predicts is a floor this lane already exceeds below 10⁶, and at 10⁶ the round-trip
-count stops being a fixed function of `n` at all (below), which is a strictly worse property for
-the latency-sensitive profile than the counted model states, not a better one. No re-derivation of
-the takeaway itself is needed; the counted table's specific numbers are now superseded by this
-lane's measurements as the more accurate source.
-
-### Results: past a fixed-capacity sketch — `d` scattered widely enough to defeat range compression
-
-Some `(n, d)` scattered cells do not converge on one round trip the way every cell above does. A
-standalone repro (bypassing Criterion, with tracing) confirmed this is real, not a harness
-artifact: `d = 1, 10` always converge on the first `start_reconciliation` at every `n` measured,
-and the *clustered* layout at the same `d` (one contiguous block, whatever its size) also always
-converges in one round — only a **scattered** difference past some size, relative to `n`, plateaus
-part-way and needs a handful of explicit retriggers to fully resolve
-(`trigger_and_converge`'s own docs). Each retrigger is a real, counted round trip, so the total
-*is* the measurement, and the threshold moves with `n`: `d = 1000` scattered is the only affected
-cell at n = 10⁴, but `d = 100` scattered is *also* affected by n = 10⁵ — consistent with a
-fixed-capacity sketch (#185's own "past a 256-cell sketch's capacity" framing for this grid)
-being overwhelmed at a roughly constant *count* of scattered differences relative to the tree's
-leaf width at that `n`, not at a constant fraction of `n`:
-
-| n, d (scattered) | rtt=0ms | rtt=0.1ms | rtt=1ms | rtt=10ms | rtt=50ms |
-|---|---:|---:|---:|---:|---:|
-| 10⁴, d=1000 | 60.0 s | 30.0 s | 30.0 s | 30.1 s | 30.3 s |
-| 10⁵, d=100 | 30.0 s | 9.2 ms | 15.9 ms | 83.9 ms | 368.2 ms |
-| 10⁵, d=1000 | 270.0 s | 105.0 s | 60.0 s | 28.6 s | 1.9 s |
-| 10⁶, d=100 | 30.7 s | 303.6 ms | 111.6 ms | 346.4 ms | 969.8 ms |
-| 10⁶, d=1000 | 372.5 s | 126.9 s | 99.0 s | 72.0 s | 2.7 s |
-
-**Higher RTT often costs *less* wall clock here, the opposite of every clean cell above.** `d =
-1000` scattered drops monotonically as RTT rises at every `n` — 270 s down to 1.9 s at n = 10⁵.
-This is not the network getting faster: each retrigger only fires after a fixed poll deadline
-elapses on the *previous* one, so a higher injected RTT gives that same fixed deadline more real
-time for the in-flight round to make progress on its own before the deadline gives up and pays for
-another full retrigger — fewer retriggers, even though each round trip now individually costs
-more. The `d = 100`/n = 10⁵ row shows the same effect over a narrower range (30 s at `rtt=0` down
-to single-digit milliseconds by `rtt=0.1ms`, since one retrigger avoided is a much larger fraction
-of a cheaper baseline). Cost here is dominated by *how many retriggers are needed*, not by RTT
-itself, unlike every cell in the tables above.
-
-### Results: `n = 10⁶` — the round-trip count stops being a fixed function of `n`
-
-Below 10⁶, every `(n, d, clustering)` cell not in the table above reproduces to within 30% across
-all ten samples at every RTT (`clean` in the second table). At `n = 10⁶`, that stops being true
-for most cells past `rtt = 1 ms`, including ones with no scattered-capacity issue at any smaller
-`n` — `d = 1` scattered, `d = 10` clustered, `d = 1000` clustered all included, not just the
-already-flagged `d = 100`/`d = 1000` scattered cells:
-
-| n=10⁶, d (clustering) | rtt=0ms | rtt=0.1ms | rtt=1ms | rtt=10ms | rtt=50ms |
-|---|---:|---:|---:|---:|---:|
-| d=1 (scattered) | [0.18, 1.11, 2.97] ms | [0.91, 5.04, 13.3] ms | 7.40 ms (tight) | [70.8, 351, 913] ms | [351, 809, 1490] ms |
-| d=10 (clustered) | [0.40, 2.58, 6.92] ms | [1.18, 14.7, 41.9] ms | 7.68 ms (tight) | 71.3 ms (tight) | [352, 1235, 2435] ms |
-| d=1000 (clustered) | 8.55 ms (tight) | 9.14 ms (tight) | [13.8, 73.1, 192] ms | 77.9 ms (tight) | [358, 903, 1991] ms |
-
-(bracketed cells are `[min, mean, max]` across the ten samples; "tight" cells still agree to
-within a few percent.) Every affected cell is bimodal, not noisy in the ordinary sense — some
-samples take the fast, single-round path every smaller `n` takes unconditionally, others need one
-or more retriggers, and which one a given sample lands on is not predictable from `(n, d,
-clustering, rtt)` alone at this size. The likely mechanism: this lane's fixed, wall-clock poll
-deadline (`converge`'s docs) was sized against smaller-`n` round costs; at `n = 10⁶` a single
-genuine round trip's own processing cost (larger aggregates, larger comparison batches) already
-consumes enough of that budget that ordinary scheduling variance occasionally tips a sample into
-needing a retrigger where a smaller `n` never would. **This is itself the headline result for
-`n = 10⁶`: not a specific worse coefficient, but the loss of a stable one at all** — a strictly
-harder property for the latency-sensitive profile to reason about than the counted table's flat
-round-trip count of 4 implies, and further evidence against, not for, the counted model's numbers
-being the load-bearing ones going forward (previous section).
-
-### Determinism
-
-Same seed, same discipline as the lane above (`Seed::DEFAULT`, `NetemTransport`), plus its own:
-the retry loops (`MAX_BUILD_ATTEMPTS`, `MAX_ROUND_RETRIGGERS`) poll for actual convergence — never
-a fixed sleep. The `n = 10⁶` bimodality above is not scheduler noise in the sense of being
-irreproducible: repeated runs at a fixed `(n, rtt)` land on the same *mix* of fast/retriggered
-samples, and the "past a fixed-capacity sketch" table's numbers reproduce to within a few percent
-run over run — the nondeterminism is in which of the ten Criterion samples takes the slow path
-this run, not in whether the underlying behavior recurs.
-
-## `service_reconcile_interval`: recovery through the real idle timeout
-
-```sh
-cargo bench --bench bench -- service_reconcile_interval
-```
-
-`service_reconcile_rtt` above fixes `reconcile_interval` at 3600 s specifically to disable the
-`run()` idle timeout and substitute its own manual retrigger (`trigger_and_converge`, a 15 s
-cadence) — every round timed there is one `start_reconciliation` call this benchmark makes on
-purpose. This lane does the opposite: `reconcile_interval` is the swept axis, and after the
-initial divergence nothing calls `start_reconciliation` again — recovery can only come from the
-real idle timeout (`src/replica/run.rs`, re-read every loop iteration, so
-`ReplicatedMap::set_reconcile_interval` retunes it without rebuilding the pair). Fixed at
-`n = 10_000` (RTT is not injected here — that axis is `service_reconcile_rtt`'s), two `(d,
-clustering)` cases: `d = 10` scattered, a single-round case at this `n`, against `d = 1000`
-scattered — [#516](https://github.com/Akvize/reconcile-rs/issues/516)'s own repro, a divergence
-one round does not fully resolve because a `differences` batch that loses the per-peer dump-slot
-race (`try_claim_dump_slot`, `src/replica/pacing.rs`) is silently dropped rather than requeued.
-
-### Results
-
-| `reconcile_interval` | `d=10` (one round) | `d=1000` (#516) | multiplier |
-|---:|---:|---:|---:|
-| 10 ms | 10.7 ms | 42.4 ms | **4.2×** |
-| 100 ms | 101.6 ms | 313.8 ms | **3.1×** |
-| 1000 ms | 1001.5 ms | 3018.5 ms | **3.0×** |
-
-`d = 10` costs almost exactly **one** `reconcile_interval`, at every value swept — confirming the
-idle timeout, not any per-round network cost, is what a single-round divergence waits on: nothing
-retriggers `start_reconciliation` before the timer itself fires. `d = 1000` costs **3–4×** that —
-several idle-timeout cycles, not one, converging toward 3× as `reconcile_interval` grows past the
-cost of the recovery work itself (the multiplier is highest at the shortest interval swept, where
-that per-round work is a larger fraction of the cycle). This is the real, per-mechanism cost of
-#516's dropped-batch race: not a fixed number of extra round trips, but a fixed number of *whole
-`reconcile_interval` cycles* — so **`reconcile_interval` is a multiplier on the bug's cost, not
-merely a cadence knob**. Doubling `reconcile_interval` roughly doubles how long a `d = 1000`-shaped
-divergence takes to fully heal, regardless of RTT: at every RTT `service_reconcile_rtt` sweeps
-(0–50 ms), `reconcile_interval`'s default 1 s alone dwarfs it by 20–100×, the same conclusion the
-loss lane above draws for a lost datagram.
-
-## The `protocol` benchmark
-
-```sh
-cargo bench --bench protocol            # cost tables + the timed drive loops
-cargo bench --bench protocol -- --quick
-
-# The printed tables only (no timed group): give Criterion a filter that matches no benchmark id.
-cargo bench --bench protocol -- 'no_such_benchmark'
-```
-
-`reconciliation_cost` prints, for each `(n, d, clustering)` under the shipped default policy
-(`FixedFanOut`, `b` = 16), **total wire bytes** — the refinement traffic plus the values the IDLIST
-outcomes ship — at four value payload sizes (8 / 64 / 512 / 4096 B), then the breakdown under it:
-refinement bytes (bincode, the same encoder the real transport uses), advertised `RangeAggregate`s,
-one-way messages, datagrams, IP fragments, the largest single message, the IDLIST ranges and the
-elements they ship, and the local `Aggregate`/`Rank`/`Select` counts summed over both peers.
-Deterministic, so it is printed rather than timed — like `system`'s `memory_footprint`, whose
-payload-size axis it borrows. The timed `reconciliation_drive` group alongside it measures the
-local CPU cost of driving a whole run, the quantity arXiv:2603.19820 models as `T_loc`.
-
-One drive prices every value size: the payload is not read by any SKIP/IDLIST/SPLIT decision, so
-only the per-element price moves with it. The harness checks that rather than assuming it —
-`payload_size_does_not_move_the_trace` reconciles the same case over `u64`, 8-byte and 4 KB values
-and compares every decision before a table is printed.
-
-The widest single round at d = 1 is 50 781 B (inside the 65 507-byte datagram ceiling, ~35 IP
-fragments at a 1500-byte MTU, any one of which loses the whole round); at d = 100 over 10⁶ elements
-it reaches 160 908 B over 3 300 ranges, i.e. three datagrams and ~189 fragments —
-`send_messages_paced` chunks past the ceiling rather than failing.
-
-The default's own evidence (why `b` = 16, why not `SqrtFanOut` or an enumeration threshold) lives in
-`POSITIONING.md` §2.2 and `rbsr/src/policy.rs`'s rustdoc, not here — this target measures the shipped
-default against itself as the code changes, not against alternatives.
-
-The split rule itself is pinned by unit tests in `rbsr/src/protocol.rs`
-(`default_split_fan_out_is_constant_at_sixteen`, `sqrt_fan_out_is_still_the_square_root_of_the_range_size`,
-`split_children_partition_the_parent_range`), so changing the *default* fails CI rather than
-silently changing every cluster's bandwidth profile — this benchmark quantifies such a change, it
-does not guard it. `split_children_partition_the_parent_range` is policy-independent and must hold
-under any fan-out rule.
-
-## The `contention` benchmark
-
-```sh
-cargo bench --bench contention             # printed report + Criterion groups
-cargo bench --bench contention -- --quick
-
-# The printed report only (no timed group): give Criterion a filter that matches no benchmark id.
-cargo bench --bench contention -- 'no_such_benchmark'
-
-# The counted, machine-independent half needs the test-only seam it reads (#330, AGENTS.md §6).
 RUSTFLAGS='--cfg reconcile_internal_testing' cargo bench --bench contention -- 'no_such_benchmark'
-
-# Every parameter is an environment variable, so other hardware and other sweeps need no source
-# edit (#456), and `CONTENTION_RAW=1` emits one line per trial for pooling across invocations.
-CONTENTION_WRITERS=1,2,4,8,16,32,64,128 CONTENTION_TRIALS=30 CONTENTION_RAW=1 \
-  cargo bench --bench contention -- 'no_such_benchmark'
 ```
 
-Answers [#445](https://github.com/Akvize/reconcile-rs/issues/445) and
-[#455](https://github.com/Akvize/reconcile-rs/issues/455), feeding
-[#359](https://github.com/Akvize/reconcile-rs/issues/359)/[#454](https://github.com/Akvize/reconcile-rs/issues/454):
-the RSOS contract (`rsos/src/fingerprint_tree_map.rs`) must answer `Aggregate(l, u)` in `O(log n)`,
-which means every insert writes the composable summary on every node from the leaf to the root — a
-write to the hottest node in the tree, on every insert, by construction. Today that cost is
-invisible: `src/replicated_map.rs` already serialises every writer behind one global `RwLock`, so the
-root write costs nothing beyond the lock itself. This target isolates the two by running the
-identical `N`-writer harness over two arms, both behind one shared `parking_lot::RwLock<_>` of the
-exact shape `src/replica.rs`'s `map: Arc<RwLock<FingerprintTreeMap<K, V>>>` uses:
+The latter form runs the contention target's printed/counted report while filtering out timed
+Criterion groups.
 
-- **`fingerprint_tree_map`** — `RwLock<FingerprintTreeMap<u64, u64>>`, the real contract.
-- **`btree_map`** — `RwLock<BTreeMap<u64, u64>>`, the no-aggregate control: same lock, same insert
-  shape, no root-path summary to maintain.
+## Reproducibility
 
-Both arms pre-fill the map to 100 000 entries outside the timed region (an empty map has no root
-path worth contending on, which would understate the RSOS arm's cost), then spawn `N` writer threads
-that each insert 20 000 fresh, disjoint keys — one `write()` acquisition per key, the same shape a
-gossip receipt or a local write takes today — starting together via a `Barrier` so the timed region
-is genuinely concurrent rather than staggered by thread-spawn latency.
+Benchmark corpora use deterministic seeds where randomness matters. That makes one harness run
+repeatable; it does **not** make wall-clock measurements portable across machines.
 
-### Method
+Use these rules when comparing results:
 
-Reproducible from this section alone; the harness source adds no step that is not stated here.
+- compare ratios/shapes on the same machine and build before comparing absolute nanoseconds;
+- do not treat a `--quick` point as having the same statistical confidence as a full Criterion run;
+- for concurrent benchmarks, keep writer count relative to the physical core count explicit;
+- do not infer network behavior from loopback-only timing when an injected-RTT/loss lane exists;
+- distinguish counted quantities (messages, ranges, aggregate writes) from wall-clock timing.
 
-**The counted half** is deterministic and carries no hardware caveat. `rsos::counters` (behind
-`--cfg reconcile_internal_testing`) counts every write of a node's cached `Aggregate`, at the single setter every
-maintenance path in `rsos` routes through. One single-threaded, untimed pass over a 100 000-entry
-map brackets 4 096 fresh inserts, and then 4 096 overwrites of existing keys, between two counter
-snapshots and divides. `BTreeMap` scores zero by construction — it performs the same descent with no
-summary to keep — so this is the contract's own work, priced in operations rather than in one
-machine's nanoseconds.
-
-**The timed half** is wall-clock and stays so on purpose: lock waiting *is* elapsed time, and no
-counted proxy exists for it. What #455 replaced is how it is estimated.
-
-| | |
-|---|---|
-| Repetition | 30 trials per `(N, arm)`, after 3 discarded warm-up trials at the widest `N` |
-| Pairing | both arms measured back to back inside one trial, so a machine-wide disturbance moves both and divides out |
-| Arm order | alternated between trials, so each `N` gets each order exactly half the time; the harness reports a bootstrap test for a residual order effect |
-| Trial order | every `(N, trial)` of the whole sweep executed in one seeded shuffle, **not** `N` by `N` |
-| Interval | 95% percentile bootstrap (10 000 resamples, fixed seed) on the mean — not a `t` interval, since throughput is bounded below and left-tailed |
-| Comparison | bootstrap interval on a *difference of means*; two intervals overlapping is not a test, an interval on their difference is |
-
-The shuffled trial order is load-bearing, not hygiene. Running one `N`'s trials consecutively makes
-the block of wall-clock they occupy part of the treatment: a co-tenant spike or a thermal excursion
-lasting tens of seconds lands entirely on whichever `N` held the floor, and is then reported as a
-property of that `N`. Two 30-trial sweeps built the `N`-by-`N` way disagreed here by more than either
-one's interval admitted — 0.32 against 0.57 for the same ratio at `N = 2`, intervals disjoint.
-Interleaving spreads any such episode across all `N`, converting that bias into variance the
-intervals report honestly.
-
-**The experimental unit is the invocation, not the trial.** Trials inside one process share a
-machine phase, so an interval computed from them is silent about drift between processes — which on
-shared hardware is the larger term. Publishable numbers therefore pool several invocations and
-resample **invocations** (a cluster bootstrap), never trials:
+For larger structure sweeps, `system` accepts a comma-separated size override:
 
 ```sh
-for i in 1 2 3; do
-  CONTENTION_RAW=1 cargo bench --bench contention -- 'no_such_benchmark' > run$i.txt
-done
-# Each `[contention-raw]` line is `writers,fingerprint_ops_per_sec,btree_ops_per_sec,fingerprint_first`.
-# Pool: group trials by invocation; for each of 10 000 resamples draw len(invocations) invocations
-# with replacement, take every trial of each, and record the mean; report the 2.5th and 97.5th
-# percentiles of those means.
+RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000 \
+  cargo bench --bench system -- point_read
 ```
 
-**Which statistic answers which question.** Three are reported, and they are not interchangeable:
+## `system`: public-API behavior
 
-| statistic | what it is | what it can answer |
-|---|---|---|
-| per-arm throughput | ops/s, system-wide | how fast this machine goes; not portable (#281) |
-| ratio, `X_fp / X_btree` | paired per trial | the contract's share of the cost *as the lock currently taxes it* |
-| **delta, `1/X_fp − 1/X_btree`** | paired per trial, ns/insert | the contract's **own** cost, with the lock term cancelled — an upper bound, exact at `N = 1` |
+The system target covers the operational questions a caller sees.
 
-Delta is the one to read. Behind one exclusive lock each arm's system-wide seconds-per-insert is its
-own critical section plus whatever an acquisition costs at that `N`: `1/X_arm = S_arm + H(N)`. The
-lock term is near-common to both arms — same lock, same acquisition pattern — so subtracting
-reciprocal throughputs cancels it and leaves `S_fp − S_btree`, bounded from above (the model
-section states exactly how near-common, and which way the residue points). The ratio moves when
-*either* term moves and never says which; delta bounds one.
+| group | question |
+|---|---|
+| `point_read` / `point_read_heap` | point-read latency as the map grows |
+| `bulk_load` / `bulk_load_heap` | bulk insertion throughput |
+| `memory_footprint` / `heap_footprint` | dated-value and real heap cost per entry |
+| `cold_sync` | empty-node convergence from a populated peer |
+| `gossip_fanout` | origin-side datagrams/bytes as peer count grows |
+| `gossip_propagation` | time until every peer observes a write |
+| `broadcast_coalescing` | eager-write batching trade-off |
+| injected RTT/loss groups | how propagation/reconciliation changes away from loopback |
+| `durable_rejoin` | snapshot-assisted restart vs cold rejoin |
 
-### Results
+### Current baseline shape
 
-Measured on a 4-core KVM guest (Intel Xeon @ 2.80 GHz, 1 thread/core, 15 GiB), `RUSTFLAGS` unset,
-release profile. Timed figures pool **3 invocations × 30 trials** per point, cluster-bootstrapped
-per the recipe above. The timed half was measured **without** the `--cfg`, so no counter runs
-inside a timed region.
+The important current findings are shapes, not portable absolute timings:
 
-**Counted** — identical on any machine, and exactly reproducible run to run:
+- `FingerprintTreeMap` point reads remain logarithmic; the gap to `HashMap` widens with `n`.
+- a cold sync is dominated by transferring the dataset/difference, while a snapshot-assisted
+  rejoin transfers only the post-snapshot delta;
+- injected RTT adds approximately one RTT to a multi-round anti-entropy convergence and about half
+  an RTT to a one-hop eager propagation path;
+- origin-side eager broadcast fan-out grows with the number of contacted peers.
 
-| quantity | `FingerprintTreeMap` | `BTreeMap` |
-|---|---:|---:|
-| cached aggregates written per fresh insert | 6.76 | 0 |
-| cached aggregates written per overwrite | 6.80 | 0 |
+Re-run the target on the machine/configuration being evaluated before using an absolute number for
+capacity planning.
 
-Both figures are the tree's root-path length at this size. The overwrite figure is exactly that —
-one cached aggregate per level, which `rsos`'s own test asserts against an independently walked
-depth. The fresh-insert figure also carries the node refreshes a split occasions and the particular
-path a tail-appended key descends; at this size the two land within 1% of each other.
+## `protocol`: RBSR cost
 
-**This figure does not rest on trusting the seam.** It is the root-path length of a B-tree of order
-6 holding 100 000 entries, which anyone can derive from those two published numbers without running
-anything. `rsos::counters` verifies it against the code actually executed — a check on the
-implementation, not the only route to the number — which is why the result stands even though the
-counter itself is behind a test-only feature.
+`protocol` drives `rsos` + `rbsr` directly, without sockets or the facade. It measures the
+shipped default refinement policy (`FixedFanOut`, `b = 16`) across:
 
-**Timed**, mean [95% cluster-bootstrap interval]:
+- store size `n`;
+- symmetric-difference size `d`;
+- scattered vs clustered differences;
+- stored-value sizes.
 
-| writers (`N`) | `fingerprint_tree_map` ops/s | `btree_map` ops/s | ratio (fp/btree) | delta ns/insert |
-|---:|---:|---:|---:|---:|
-| 1 | 2 888 103 [2 823 536, 2 957 004] | 9 762 176 [9 563 855, 10 020 359] | 0.298 [0.297, 0.299] | 258 [240, 288] |
-| 2 | 1 649 710 [1 605 323, 1 673 716] | 4 069 999 [3 964 525, 4 144 117] | 0.457 [0.425, 0.509] | 362 [320, 384] |
-| 4 | 1 403 681 [1 327 699, 1 451 446] | 3 408 950 [3 142 353, 3 598 838] | 0.421 [0.388, 0.465] | 417 [377, 465] |
-| 8 | 964 143 [872 760, 1 011 022] | 3 231 527 [2 970 987, 3 429 929] | 0.301 [0.255, 0.341] | 733 [652, 859] |
-| 16 | 845 546 [725 670, 926 593] | 2 800 533 [2 495 550, 3 114 095] | 0.310 [0.233, 0.376] | 837 [675, 1 065] |
+The primary byte quantity is total payload bytes: refinement traffic plus enumerated values.
+Messages/ranges/datagrams and RSOS-query counts remain separate because byte totals do not price a
+round trip or local CPU work.
 
-Differences against the uncontended point, as bootstrap intervals — an interval excluding 0 is a
-real move at 95%:
+One protocol drive is reused across value sizes only because the harness verifies that payload size
+does not change refinement decisions; only the encoded cost of an enumerated value changes.
 
-| `N` | `delta(N) − delta(1)` | | `ratio(N) − ratio(1)` | |
-|---:|---:|---|---:|---|
-| 2 | +104 ns [+73, +143] | grows | +0.159 [+0.128, +0.210] | diluted |
-| 4 | +159 ns [+89, +224] | grows | +0.123 [+0.091, +0.167] | diluted |
-| 8 | +475 ns [+365, +619] | grows | +0.003 [−0.042, +0.043] | indistinguishable |
-| 16 | +579 ns [+387, +825] | grows | +0.012 [−0.063, +0.077] | indistinguishable |
+This target does **not** compare alternative refinement policies or external reconciliation
+implementations. Comparative algorithm research belongs outside this engineering benchmark.
 
-**The sweep confined to the core count.** Past `N = 4` this machine is oversubscribed, and
-oversubscription has its own mechanism that mimics the one under study: a thread can be preempted
-*while holding the lock*, stalling every other writer for a scheduler quantum, and the probability of
-being preempted mid-section scales with how long that section is — which is longer for the RSOS arm
-by construction. That would inflate `delta` at `N = 8` and `N = 16` without the contract being
-responsible. So the sweep is also run confined to `N ≤ 4`, where every writer has a core:
+## `contention`: write-side RSOS cost
 
-| writers (`N`) | delta ns/insert | `delta(N) − delta(1)` | | ratio to `delta(1)` |
-|---:|---:|---:|---|---:|
-| 1 | 238 [230, 249] | — | | 1.00× |
-| 2 | 364 [327, 427] | +126 [+89, +191] | grows | 1.53× |
-| 3 | 415 [414, 416] | +177 [+166, +186] | grows | 1.74× |
-| 4 | 402 [391, 411] | +164 [+154, +176] | grows | 1.69× |
+The RSOS contract buys cheap range summaries by maintaining a cached aggregate on every node of the
+root path. `contention` measures the write cost of that requirement against a plain `BTreeMap`
+behind the same `parking_lot::RwLock`.
 
-`delta` grows **1.7× with no oversubscription anywhere in the sweep**, every difference interval
-clear of zero, and the `N = 3` estimate lands within ±1 ns across three independent invocations. The
-growth is therefore not an artefact of running more threads than cores. It does appear to flatten
-between `N = 3` and `N = 4`; the further rise to 3.2× at `N = 16` in the table above sits entirely in
-the oversubscribed regime and **cannot be separated from preemption-while-holding-lock on this
-machine**.
+It has two halves:
 
-### What this answers for #359
+1. a deterministic counter reports cached-aggregate writes per insert/overwrite;
+2. a paired timed sweep measures throughput as writer count rises.
 
-At `N = 1` there is no lock contention at all, so `FingerprintTreeMap` running at 0.298× a bare
-`BTreeMap`'s throughput under the identical lock is the RSOS contract's own per-insert cost, alone:
-258 ns, buying the 6.76 cached-aggregate writes the counted half prices — an interval, not a reading
-of two runs.
+The control uses the same lock/acquisition pattern so the comparison isolates as much of the data
+structure's additional critical-section work as practical.
 
-The fingerprint/btree **ratio** is flat across the sweep (0.298 at `N = 1`, 0.310 at `N = 16`), and
-that flatness carries no information about either arm: both terms grow, and a ratio of two terms
-growing together is flat for that reason. With the lock's common cost cancelled, `delta` runs 258 ns
-at `N = 1` to 837 ns at `N = 16` — **3.2× across the sweep, every step's interval excluding zero**.
+### Interpreting the timed result
 
-Read at the right scope, **1.7× under full subscription is the defensible figure**; the 3.2× is an
-upper bound on an upper bound, its second half confounded by oversubscription. `delta` bounds the gap
-from above rather than pinning it (the model section below says why), so whether all of the 1.7× is
-the contract's own cost or part is a differential lock effect is **bounded here, not decided** —
-deciding it needs each arm's parking behaviour measured directly. A mechanism consistent with the
-growth, and its prediction for many-core hardware, is
-[#457](https://github.com/Akvize/reconcile-rs/issues/457)'s.
-
-### A model for the curve, and where it breaks ([#457](https://github.com/Akvize/reconcile-rs/issues/457))
-
-Nothing below names `FingerprintTreeMap`. It applies to any structure whose per-operation critical
-section is longer than a baseline's, under any global lock — an RSOS is one instance.
-
-**Assumptions, stated so they can be attacked.** `N` writers in a closed loop: acquire one exclusive
-lock, do the whole operation inside it, release, immediately retry. No think time, so the lock is a
-single server that is always busy for `N ≥ 1`, and system-wide seconds per operation is the critical
-section plus what an acquisition costs at that writer count:
+Do not use the raw ratio alone. Both arms pay lock/scheduler costs that change with writer count.
+The useful paired statistic is the difference in reciprocal throughput:
 
 ```text
-1/X_arm(N) = S_arm(N) + H(N)
+delta = 1 / X_fingerprint - 1 / X_btree
 ```
 
-`H` is a property of the lock and the contention level — handoff, park/unpark, moving the lock word
-between cores — not of what runs inside it. Both arms use the same lock type and the same
-acquisition pattern, so take `H` to be common to them. That idealization is the whole reason `delta`
-works — subtracting reciprocal throughputs cancels `H` and leaves `S_fp − S_btree` — and it is the
-one the next paragraph puts under strain.
+At one writer there is no contention, so `delta(1)` is the cleanest estimate of the extra
+critical-section cost. Above one writer it is an upper bound if the longer RSOS critical section
+also changes parking behavior.
 
-No distribution is assumed for the service time. The model is an identity at saturation, not a
-stochastic queue: with zero think time the server is busy whenever a writer exists, so mean
-throughput is the reciprocal of mean per-operation time regardless of how that time is distributed.
-What is held fixed is the store size, the key and value types and the operation mix; only `N` varies.
+On machines where writer count exceeds physical cores, preemption while holding the lock becomes a
+separate confound. Conclusions about many-core scaling therefore require points with `N <= cores`.
 
-**The textbook prediction, first, because it fails informatively.** Take the closed-loop model at
-face value with no per-acquisition cost — `H(N) = 0` — and it predicts throughput *flat* in `N` for
-both arms: one server, always busy, so `X(N) = X(1)`. Measured against that:
+For publishable/reviewable contention numbers, pool independent invocations rather than treating
+trials inside one process as independent machine phases. `CONTENTION_RAW=1` emits per-trial data
+for that purpose.
 
-| writers (`N`) | augmented, predicted | measured | | control, predicted | measured | |
-|---:|---:|---:|---:|---:|---:|---:|
-| 2 | 2 888 103 | 1 649 710 | −43% | 9 762 176 | 4 069 999 | −58% |
-| 4 | 2 888 103 | 1 403 681 | −51% | 9 762 176 | 3 408 950 | −65% |
-| 8 | 2 888 103 | 964 143 | −67% | 9 762 176 | 3 231 527 | −67% |
-| 16 | 2 888 103 | 845 546 | −71% | 9 762 176 | 2 800 533 | −71% |
+## What the suite does not claim
 
-Both arms fall far below it, and by `N = 16` they fall by the *same proportion*. A term that costs
-both arms the same fraction of their throughput is a term they share — which is `H(N)`, and which is
-large. That is the licence for the rest of this section: `H` is too big to ignore and too
-lock-specific to model honestly, so the design cancels it instead of predicting it.
+- Absolute timings are not portable across hardware.
+- Loopback numbers are not WAN numbers.
+- A benchmark against `BTreeMap` or `HashMap` is a component/control comparison, not a claim
+  that `reconcile-rs` replaces those structures.
+- The harness does not establish that RBSR beats Negentropy, RIBLT, AELMDB or another external
+  implementation unless that implementation is actually run under a comparable workload.
+- The repository does not run benchmarks in CI; benchmark regressions require an intentional local
+  measurement campaign.
 
-**Where that assumption is weakest, and which way it cuts.** `H` is not *exactly* common to the two
-arms. A longer critical section makes a waiter more likely to exhaust its spin and park, and parking
-costs more than spinning, so the arm with the longer section — the RSOS one — plausibly pays a
-slightly larger `H`. Then `delta = (S_fp − S_btree) + (H_fp − H_btree)` and, since that second term
-is non-negative, **delta is an upper bound on the contract's own cost, and its growth an upper bound
-on that cost's growth.** Two things keep this from dissolving the result: at `N = 1` nothing parks,
-so `delta(1)` is clean and the null's one parameter is measured where the assumption holds exactly;
-and the bound has a sign, so "the contract's own cost grows with `N`" survives as a bounded claim
-even if some of the 3.2× belongs to the lock. Turning the bound into a point estimate needs the
-parking behaviour of each arm measured directly, which this harness does not do.
+## Adding or changing a benchmark
 
-**The null.** Suppose `S_fp − S_btree` is a constant: the contract does a fixed amount of extra work
-per operation, and contention only piles lock time on top. Then measuring that constant where
-nothing confounds it — `delta` at `N = 1`, 258 ns — predicts the RSOS arm from the control arm
-everywhere else, with no further fitting:
+A benchmark belongs here when it answers a question about code this repository ships. Keep research
+parameter searches and alternative unshipped policies in the research repository instead.
 
-```text
-X_fp_predicted(N) = 1 / ( 1/X_btree(N) + 258 ns )
-```
+When adding a measurement:
 
-One parameter, fitted at one point, extrapolated to the rest. A residual is therefore a statement
-about the model, not an artefact of fitting. The harness prints this comparison itself.
-
-| writers (`N`) | predicted `X_fp` | measured `X_fp` | residual | `delta(N) / delta(1)` |
-|---:|---:|---:|---:|---:|
-| 2 | 1 985 308 | 1 649 710 | −16.9% | 1.40× |
-| 4 | 1 813 745 | 1 403 681 | −22.6% | 1.62× |
-| 8 | 1 762 266 | 964 143 | −45.3% | 2.84× |
-| 16 | 1 625 818 | 845 546 | −48.0% | 3.24× |
-
-**The model does not fit, and the way it misses is the result.** The residual is negative at every
-`N` and grows monotonically: the constant-cost null over-predicts the RSOS arm by 17% at `N = 2` and
-by 48% at `N = 16`. `delta` rises 3.2× across the sweep, with #455's difference intervals putting
-every step of that rise outside zero.
-
-Stated exactly, what the data rules out is a *conjunction*: that the contract's extra work per
-operation is constant in `N` **and** that the lock costs both arms the same. One of the two fails.
-Everything below argues the first is the one that fails, and says what would show it.
-
-**A mechanism consistent with it.** The two arms differ in what they *write*, not only in how much
-they compute. Maintaining a range-summarizable aggregate means writing one cache line per level of
-the root path on every operation — the same lines for every writer, since every root path ends at
-the same root. Written lines must be held exclusively, so each handoff to a different core costs a
-coherence miss per root-path node. The control arm writes its leaf and, rarely, a split; its
-per-operation footprint of *written* shared lines is far smaller and far less likely to be the line
-another core just took. So `S_fp` should grow with the number of distinct cores that touch the root
-path, while `S_btree` barely moves — which is the sign and shape of the residual above.
-
-This is a mechanism the data is consistent with, not one this benchmark isolates: distinguishing
-coherence traffic from other `N`-dependent effects needs hardware counters, which is its own piece of
-work and not one #457 claims to have done.
-
-**What it predicts, and how to falsify it.** If coherence on the written root path is the term that
-grows, then hardware with more cores — and more so across sockets or NUMA nodes, where a handoff
-crosses an interconnect — should make it grow *faster*. Concretely, on a machine with `C ≥ 16` real
-cores, `delta(C) / delta(1)` measured **with `N ≤ C`** should exceed the 1.69× this machine reaches at
-`N = 4`. A flat or shrinking `delta` ratio there refutes the mechanism, and `delta` constant in `N`
-would restore the null.
-
-That is a sharper requirement than "sweep further", and it is the one
-[#456](https://github.com/Akvize/reconcile-rs/issues/456) has to meet: sweeping to `N = 128` on a
-16-core machine would spend most of its points 8× oversubscribed and reproduce exactly the confound
-that makes this machine's `N = 8` and `N = 16` unusable. The regime worth buying hardware for is
-**many writers each holding a core**, not many threads sharing a few.
-
-**What it means for [#271](https://github.com/Akvize/reconcile-rs/issues/271).** The lock is not
-merely hiding a fixed tax that removing it would expose unchanged. Part of the contract's cost is
-*created* by sharing the root path across writers, so a design that keeps a single hot root — with
-or without a lock — carries a term that grows with writer count. Structures that avoid it do so by
-not having every writer touch the same node: path copying, per-writer deltas reconciled later, or a
-root chain left deliberately uncollapsed, which is what AB-tree does
-([#446](https://github.com/Akvize/reconcile-rs/issues/446)).
-
-**Comparability caveat (#281).** The timed half is not deterministic — throughput is wall-clock, so
-it inherits scheduler noise the way the RTT lane above does. Both arms run in the same process, on
-the same hardware, in the same invocation, so arm-against-arm at a given `N` is what it supports;
-absolute ops/s is specific to the machine that produced it. Everything past `N = 4` is also past this
-machine's core count, which is exactly why [#456](https://github.com/Akvize/reconcile-rs/issues/456)
-exists. The counted half carries none of this — that is the point of having it.
-
-## Not covered yet
-
-- **External comparisons** (e.g. point-read vs Redis over loopback) are intentionally out of scope here to keep the default `cargo bench` dependency-light. They belong behind an optional, non-CI Cargo feature in a follow-up.
-- **No other reconciliation implementation has ever been run in this harness** — not Negentropy, not RIBLT, not AELMDB. This is the *algorithm-family* half of the row above, and it is a separate gap with a separate consequence: every comparison these benchmarks support is `reconcile-rs` against `reconcile-rs` (policy against policy, `b` against `b`, RTT lane against RTT lane). Where `POSITIONING.md` §1.3 and §2.2 place this crate beside another family, the other family's numbers are **quoted from its paper**, on other hardware and sometimes in another cost model. That is enough to orient a design choice and not enough to support "X beats Y", which `POSITIONING.md` §1.3 states at the table. [#174](https://github.com/Akvize/reconcile-rs/issues/174) dropped the external-comparison criterion deliberately (version drift, cross-process flakiness, CI weight); reinstating it is the prerequisite for any like-for-like claim, and is a decision, not an omission. [#362](https://github.com/Akvize/reconcile-rs/issues/362) reinstates the half those three reasons do not reach — the *counted* columns against Negentropy, from a committed fixture pinning its commit SHA, with no timing, no build dependency and no CI.
-- The `img/perf-*.png` graphs in the repo root are produced out-of-band from the `bench` target's Criterion output; regenerating them is a manual step (there is no committed plotting pipeline).
+1. state the unit and experimental question in the benchmark file's module docs;
+2. make corpora deterministic where possible;
+3. keep counted and timed quantities distinct;
+4. document hardware-sensitive caveats next to the interpretation;
+5. do not add the timed benchmark to CI — compile-checking remains the CI contract.
