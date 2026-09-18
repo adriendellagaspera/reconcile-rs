@@ -21,8 +21,8 @@
 //! `lift(&k, &v)` is total on `X` because a map assigns one value per key. A set-only RSOS is
 //! `V = ()`. Two values under one key therefore differ in fingerprint but agree in count.
 //!
-//! Positioning, competitors, and the open design axes (generic summary monoid, persistence):
-//! `POSITIONING.md` §2.2/§2.4, `ARCHITECTURE.md` §7.
+//! Positioning, competitors, and the durable design context are documented in
+//! `POSITIONING.md` §2.2/§2.4 and `ARCHITECTURE.md` §7.
 //!
 //! | Def. 3.9 operation | [`Rsos`] trait method | [`FingerprintTreeMap`] inherent method |
 //! |---|---|---|
@@ -43,7 +43,7 @@
 #![deny(missing_docs)]
 
 pub mod aggregate;
-// Public only under `--cfg reconcile_internal_testing` (#330, AGENTS.md §6), which a dependent's
+// Public only under `--cfg reconcile_internal_testing` (AGENTS.md §6), which a dependent's
 // build cannot set — so this is a seam no consumer can reach and 1.0 never freezes. See the
 // module's own docs.
 #[cfg(reconcile_internal_testing)]
