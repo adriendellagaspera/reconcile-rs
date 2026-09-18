@@ -45,7 +45,7 @@ use std::net::SocketAddr;
 use metrics_exporter_prometheus::PrometheusBuilder;
 
 /// Why installing the Prometheus recorder failed. Opaque wrapper over the
-/// `metrics-exporter-prometheus` crate's own error (#297): a public signature naming it directly
+/// `metrics-exporter-prometheus` crate's own error: a public signature naming it directly
 /// would force every dependent onto this crate's exact exporter version for a type they only ever
 /// propagate, never match on. The underlying error is reachable through
 /// [`std::error::Error::source`].
@@ -124,7 +124,7 @@ mod tests {
             body.contains("reconcile_prometheus_test_total"),
             "expected the recorded metric's name in the rendered body: {body}"
         );
-        // `install_recorder` calls `observability::describe()` (#27): a mutant collapsing that
+        // `install_recorder` calls `observability::describe()`: a mutant collapsing that
         // call to a no-op would still pass the assertion above (a bare, undescribed counter
         // renders fine) but drop every `# HELP` line — assert on one directly. The exporter only
         // emits a `# HELP` line for a metric that also has a recorded sample, hence the increment.
