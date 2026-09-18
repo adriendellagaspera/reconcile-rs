@@ -28,13 +28,11 @@
 //! | comparison value `f_Y` (Def. 3.6) | a [`RangeAggregate`]'s whole [`rsos::Aggregate`] — equality on `(fingerprint, size)`, never the fingerprint alone |
 //! | Algorithm 1's `t` and `b` | the two knobs of a [`RefinementPolicy`] |
 //!
-//! The default [`FixedFanOut`] takes `b` as written (16, Negentropy's) and replaces `t` with four
-//! special cases listed on [`SqrtFanOut`], so the family's published bounds describe it. Dropping
-//! `t` is a measured choice rather than an omission: an enumerated element costs more on this wire
-//! than the refinement any threshold saves — in *total* bytes. In refinement bytes, advertised
-//! ranges and one-way messages `t` = 2b wins at every measured `(n, d)`, so the choice is
-//! conditional on the value size and the link, both crossovers measured on
-//! [`EnumerateBelowThreshold`] (#468).
+//! The default [`FixedFanOut`] uses `b = 16` with small-range enumeration cutoffs. The
+//! engineering benchmark in `benches/protocol.rs` prices that shipped default in total bytes,
+//! messages, ranges and local RSOS queries; it does not maintain a comparative policy leaderboard.
+//! [`SqrtFanOut`] and [`EnumerateBelowThreshold`] remain public alternatives for callers whose
+//! workload justifies a different local refinement policy.
 //!
 //! **Cut offsets are randomized per session** (Meyer §5.1): [`protocol_round`]'s injected `rng`
 //! shifts which of a split's children absorbs the one block a fixed stride does not divide evenly,
@@ -45,7 +43,7 @@
 //! different policies converge, so swapping one is a behaviour change, never a wire break.
 //! [`protocol_round_with_policy`] takes the seam; [`FixedFanOut`] (default), [`SqrtFanOut`]
 //! (`⌊√m⌋`, `Θ(√n)` communication, `Θ(log log n)` rounds) and [`EnumerateBelowThreshold`]
-//! (Algorithm 1 as written) ship, priced against each other in `benches/protocol.rs`.
+//! (Algorithm 1 as written) ship as local choices.
 //!
 //! [`RsosView`] is four of Def. 3.9's five queries -- `Enumerate` stays with the caller, see the
 //! IDLIST row above -- blanket-implemented for
