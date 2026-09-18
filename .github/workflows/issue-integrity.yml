@@ -126,6 +126,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Exercise issue-label invariants against fixtures
+        run: bash ./scripts/test-check-issue-triage.sh
       - name: Open issues must satisfy .github/labels.tsv's invariants
         env:
           GH_TOKEN: ${{ github.token }}

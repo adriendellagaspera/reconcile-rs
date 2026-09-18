@@ -145,7 +145,7 @@ note() {
     printf '  #%-5s · %s\n' "$1" "$2"
 }
 
-while IFS=$'\t' read -r number kinds areas statuses unknown blocked_ok fresh title; do
+while IFS="$(printf '\t')" read -r number kinds areas statuses needs_triage unknown blocked_ok fresh title; do
     [ -n "$number" ] || continue
 
     # Within the grace window every finding below downgrades to a note. One `if` rather than a
@@ -162,15 +162,14 @@ while IFS=$'\t' read -r number kinds areas statuses unknown blocked_ok fresh tit
         continue
     fi
 
-    # Untriaged is a legitimate state; it is simply not one you may also claim to have
-    # classified. Rules 1 and 2 resume the moment it leaves.
-    if [ "$kinds" -eq 0 ] && [ "$areas" -eq 0 ]; then
-        untriaged_state=true
+    # Untriaged is an explicit status, not something inferred from missing classification.
+    # It is mutually exclusive with C-/A- classification; every other status requires both.
+    if [ "$needs_triage" = "needs-triage" ]; then
+        [ "$kinds" -eq 0 ] ||
+            $say "$number" "S-needs-triage carries $kinds C- label(s), expected 0 — $title"
+        [ "$areas" -eq 0 ] ||
+            $say "$number" "S-needs-triage carries $areas A- label(s), expected 0 — $title"
     else
-        untriaged_state=false
-    fi
-
-    if ! $untriaged_state; then
         [ "$kinds" -eq 1 ] || $say "$number" "$kinds C- labels, expected exactly 1 — $title"
         [ "$areas" -ge 1 ] || $say "$number" "no A- label — $title"
     fi
@@ -198,6 +197,7 @@ done < <(
           ([.labels[].name | select(startswith("C-"))] | length),
           ([.labels[].name | select(startswith("A-"))] | length),
           ([.labels[].name | select(startswith("S-"))] | length),
+          (if ([.labels[].name] | index("S-needs-triage")) then "needs-triage" else "-" end),
           ([.labels[].name | select(. as $n | $known | index($n) | not)] | length),
           (if ([.labels[].name] | index("S-blocked"))
            then (if ((.body // "") | test("(?i)(?:" + $kw + ")[ \t:*_`]*#[0-9]+")) then "ok"
