@@ -70,7 +70,7 @@ pub struct ReadReplicaMap<K, V> {
     /// The value-only tree mirroring the dated store. Its range fingerprints are timestamp-less by
     /// construction (see [`State`]), matching a dated peer's value-only projection.
     ///
-    /// `ArcSwap`, not `RwLock` (#34, mirroring `Replica`'s `Inner::map`/`Inner::projection`): a
+    /// `ArcSwap`, not `RwLock`, mirroring `Replica`'s `Inner::map`/`Inner::projection`: a
     /// reader `load_full()`s an owned `Arc` with no lock at all. The one writer (`integrate`)
     /// serializes through [`write_lock`](Self::write_lock).
     tree: Arc<ArcSwap<FingerprintTreeMap<K, State<V>>>>,
@@ -106,15 +106,14 @@ pub struct ReadReplicaMap<K, V> {
     /// How often the discovery task (when configured) resolves the peer set.
     discovery_interval: Duration,
     /// Reconciliation rounds completed since construction — see [`sync_state`](Self::sync_state).
-    /// Shared across clones, mirroring [`ReplicatedMap`](crate::ReplicatedMap)'s `round` (#30).
+    /// Shared across clones, mirroring [`ReplicatedMap`](crate::ReplicatedMap)'s round counter.
     round: Arc<AtomicU64>,
     /// When the most recently completed reconciliation round started, or `None` before the first
     /// one. Shared across clones.
     last_round_at: Arc<RwLock<Option<Instant>>>,
     /// The background idle timeout: how long [`run`](Self::run) waits for inbound activity before
     /// re-initiating a round. Sourced from [`Config::reconcile_interval`], live-retunable via
-    /// [`set_reconcile_interval`](Self::set_reconcile_interval) (#30 — previously a private,
-    /// unconfigurable constant).
+    /// [`set_reconcile_interval`](Self::set_reconcile_interval).
     reconcile_interval: Arc<RwLock<Duration>>,
 }
 
@@ -142,7 +141,7 @@ impl<K, V> Clone for ReadReplicaMap<K, V> {
     }
 }
 
-/// #294: `ReadReplicaMap` mints no timestamps and runs no bulk-transfer/cross-net-throttle
+/// `ReadReplicaMap` mints no timestamps and runs no bulk-transfer/cross-net-throttle
 /// machinery, so several `Config` fields that matter to a dated [`ReplicatedMap`] have no effect
 /// here. A non-default value silently doing nothing is a trap — warn once, at construction,
 /// rather than leave it silent.
@@ -181,8 +180,7 @@ fn warn_on_ignored_config_fields(config: &Config) {
     }
     if !ignored.is_empty() {
         warn!(
-            "ReadReplicaMap ignores these Config fields, set here to a non-default value: {}. \
-             See #294.",
+            "ReadReplicaMap ignores these Config fields, set here to a non-default value: {}.",
             ignored.join(", ")
         );
     }
@@ -203,7 +201,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// # Panics
     ///
     /// If `config.cluster_key` is `None` without also setting
-    /// [`Config::with_insecure_no_key`] — see #325.
+    /// [`Config::with_insecure_no_key`].
     pub async fn new(config: Config) -> io::Result<Self> {
         crate::replica::check_port_is_nonzero(&config)?;
         // The read replica keeps the OS default socket buffer sizes (`None`/`None`) rather than
@@ -225,7 +223,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// # Panics
     ///
     /// If `config.cluster_key` is `None` without also setting
-    /// [`Config::with_insecure_no_key`] — see #325.
+    /// [`Config::with_insecure_no_key`].
     ///
     /// ```
     /// use std::sync::Arc;
@@ -254,7 +252,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         warn_on_ignored_config_fields(&config);
         // The primary key derives the value tree's lift exactly as it does on the dated peer. The
         // receive-only rotation key affects authentication only; mixed primaries can exchange
-        // values but have different summaries until the primary rollout completes (#118).
+        // values but have different summaries until the primary rollout completes.
         let lift_key = config
             .cluster_key
             .as_ref()
@@ -314,7 +312,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
 
     /// Register or refresh a known dated peer at runtime — the `&self` counterpart of
     /// [`with_seed`](Self::with_seed), and what a discovery source feeds in. Mirrors
-    /// [`ReplicatedMap::seed_peer`](crate::ReplicatedMap::seed_peer) (#30).
+    /// [`ReplicatedMap::seed_peer`](crate::ReplicatedMap::seed_peer).
     pub fn seed_peer(&self, peer: IpAddr) {
         self.peers.write().insert(peer, Instant::now());
     }

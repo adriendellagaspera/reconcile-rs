@@ -83,9 +83,7 @@ pub(super) fn backoff_delay(attempt: u32) -> Duration {
 /// Entries cloned per `Arc` snapshot re-load while building a persisted snapshot
 /// (`Self::persist_snapshot`).
 ///
-/// Predates #34's move from `RwLock` to `ArcSwap`: chunking used to bound how long one
-/// continuous read-lock acquisition could stall a writer. A writer never blocks on a reader under
-/// `ArcSwap` at all, so that motivation is gone, but the resulting snapshot is still not a single
+/// Chunking bounds temporary clone work, but the resulting snapshot is not a single
 /// linearizable instant — a fresh `load_full()` between chunks can observe a write concurrent
 /// with an earlier chunk — which is no different from what the gossip protocol itself already
 /// reconciles range-by-range, and each individual entry is still read atomically
@@ -248,7 +246,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         match self.persistence.save(&state) {
             Ok(()) => {
                 *self.last_snapshot_at.write() = Some(Instant::now());
-                // Only a *successful* write clears the pending count (#46): a failed write must
+                // Only a *successful* write clears the pending count: a failed write must
                 // keep its changes counted, or a threshold-gated periodic wakeup could go quiet
                 // on a backend that is failing every attempt.
                 self.engine.reset_change_count();
@@ -273,7 +271,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// the shape the periodic background task and [`run`](super::ReplicatedMap::run)'s shutdown
     /// flush both want.
     ///
-    /// Named `persist_snapshot`, not `snapshot` (#34): that name now belongs to the public,
+    /// Named `persist_snapshot`, not `snapshot`: that name belongs to the public,
     /// in-memory `Arc` snapshot ([`ReplicatedMap::snapshot`](super::ReplicatedMap::snapshot)) —
     /// an unrelated concept that happens to share the word.
     pub(super) fn persist_snapshot(&self) {
@@ -297,7 +295,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Periodically snapshot the full store state to the persistence backend, waking every
     /// [`Config::snapshot_interval`](super::Config::snapshot_interval) — or never, if that is
-    /// `None` (#46) — and, on each wakeup, actually writing only once
+    /// `None` — and, on each wakeup, actually writing only once
     /// [`Config::snapshot_change_threshold`](super::Config::snapshot_change_threshold) changes
     /// have landed since the last snapshot, so an idle node does zero snapshot IO.
     pub(super) async fn snapshot_periodically(&self) {

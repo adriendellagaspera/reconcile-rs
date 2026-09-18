@@ -30,7 +30,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         Some(ValueRef(Snapshot::Projected(state)))
     }
 
-    /// A zero-copy `Arc` snapshot of the value-only tree as it stands right now (#34): `rsos`'s
+    /// A zero-copy `Arc` snapshot of the value-only tree as it stands right now: `rsos`'s
     /// `iter`/`range` borrow straight from it, with no lock held and no lifetime tied back to
     /// `self`. Entries are the raw [`State`] wire representation, tombstones included — a caller
     /// wanting only live values checks [`State::as_value`] itself.
@@ -88,7 +88,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
 
     /// Deprecated alias for [`value_fingerprint`](Self::value_fingerprint) — the name collided
     /// with [`ReplicatedMap::fingerprint`](crate::ReplicatedMap::fingerprint), which includes the
-    /// timestamp and so never equals this one between converged peers (#294).
+    /// timestamp and so never equals this one between converged peers.
     #[deprecated(since = "1.0.0", note = "renamed to `value_fingerprint`")]
     pub fn fingerprint<R: RangeBounds<K>>(&self, range: R) -> Fingerprint {
         self.value_fingerprint(range)

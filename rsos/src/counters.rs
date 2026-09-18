@@ -8,7 +8,7 @@
 
 //! Deterministic counters for the work the RSOS contract mandates, on both of its paths: the
 //! *counted* half of the write-cost question `benches/contention.rs` can only put in wall-clock
-//! terms (#455, #457), and the read-side descent `Aggregate(l, u)` actually performs.
+//! terms, and the read-side descent `Aggregate(l, u)` actually performs.
 //!
 //! # Why counted
 //!
@@ -39,7 +39,7 @@
 //!
 //! # Cost when disabled
 //!
-//! Off unless `--cfg reconcile_internal_testing` is in `RUSTFLAGS` (#330, AGENTS.md §6). The call
+//! Off unless `--cfg reconcile_internal_testing` is in `RUSTFLAGS` (AGENTS.md §6). The call
 //! sites carry no `#[cfg]`: they call `record_aggregate_update`, which is this module's live one or
 //! its empty-bodied one, chosen by `cfg` here rather than at each call site.
 //!
@@ -160,7 +160,7 @@ mod disabled {
     pub(crate) fn record_aggregate_early_exit() {}
 }
 
-/// The counted half of the write-cost question (#455, #457): This module claims to report
+/// The counted half of the write-cost question: this module claims to report
 /// how many cached aggregates an operation maintains. These pin that claim to an independently
 /// computed property of the tree, so a counter that drifts — double-counting, missing a
 /// maintenance path, or straying onto the read path — fails rather than quietly reporting a

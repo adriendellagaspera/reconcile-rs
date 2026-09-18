@@ -26,7 +26,7 @@ pub(crate) enum Snapshot<K, V> {
 
 /// A snapshot-backed reference to a live value.
 ///
-/// #34: owns a persistent-node handle rather than a lock. A `ValueRef` may therefore be held
+/// Owns a persistent-node handle rather than a lock. A `ValueRef` may therefore be held
 /// indefinitely, including across a write on the same map: the write forks a shared node before
 /// mutating it and this handle continues to observe the version in which it was created. The
 /// initial lookup is `O(log n)`; dereferencing the resulting handle is `O(1)`.

@@ -6,25 +6,17 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Node-id collision detection (#24).
+//! Node-id collision detection.
 //!
 //! A random 64-bit `NodeId` is unique only probabilistically
-//! ([`NodeId`](crate::clock::NodeId)'s docs carry the bound). When two nodes do draw the same id
-//! and write the same key in the same clock tick, both writes carry the *identical*
-//! [`Timestamp`], and [`Entry::merge`] -- `max` over what is then no longer a total order --
-//! keeps each side's own value on each side. The two never converge, and each keeps re-offering
-//! its version forever: a silent divergence livelock.
+//! ([`NodeId`](crate::clock::NodeId)'s docs carry the bound). If two nodes share an id and write
+//! the same key at the same HLC instant, both writes carry the identical [`Timestamp`] while
+//! holding different content. LWW can no longer order them, so each side could otherwise retain
+//! its own value indefinitely.
 //!
-//! What is detected here is that exact state, at the merge where it first becomes observable,
-//! rather than a proxy for it at startup. An announce-and-listen probe was the shape #24
-//! sketched; it needs a sender identity on the wire, which this protocol has no field for -- the
-//! only additive slots are the two tags #463 reserved, and spending one of two on a diagnostic
-//! buys a *heuristic* ("nobody answered in 200 ms") where this buys the fault itself.
-//!
-//! Equal stamps with unequal content is the collision and essentially nothing else: a peer
-//! echoing back a write of ours carries the same stamp *and* the same content, so it does not
-//! trip. The digest is computed only once stamps compare equal, which for distinct ids requires
-//! the same node, same physical millisecond and same counter -- i.e. effectively never.
+//! The exact observable signature is therefore equal stamps with unequal content, checked at the
+//! merge where it matters. Re-delivery of the same write has equal stamp *and* equal content and
+//! does not trip the detector; the content digest is computed only after the stamps compare equal.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

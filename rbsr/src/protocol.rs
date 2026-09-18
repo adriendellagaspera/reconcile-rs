@@ -189,8 +189,8 @@ where
 ///
 /// A `Split` this policy returns for a range of more than one local element is trusted to narrow
 /// it ([`RefinementPolicy`]'s progress law); one that would not is converted to an `Enumerate`
-/// instead of reaching the fan-out below, whatever policy produced it (`ARCHITECTURE.md` §5
-/// invariant 13, #420) — the driver stays liveness-safe even against a policy that breaks the
+/// instead of reaching the fan-out below, whatever policy produced it (`ARCHITECTURE.md` §5,
+/// invariant 13) — the driver stays liveness-safe even against a policy that breaks the
 /// law, at the cost of an immediate IDLIST for the ranges where it does.
 ///
 /// ```

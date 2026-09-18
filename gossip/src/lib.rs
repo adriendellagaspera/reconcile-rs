@@ -46,7 +46,7 @@ pub use discovery::{
 };
 pub use transport::{InMemoryNetwork, InMemoryTransport, Transport, UdpTransport};
 
-// #297: re-exported so a public signature naming one of these types (`RandomProbe::new`'s
+// Re-exported so a public signature naming one of these types (`RandomProbe::new`'s
 // `parking_lot`/`rand` parameters, `Config::nets`' `ipnet::IpNet`, `UdpTransport::new`/`socket`'s
 // `tokio::net::UdpSocket`, `Transport`'s `#[async_trait]`) never forces a dependent onto an
 // independently-versioned copy of the crate that type comes from — the version dependents see is

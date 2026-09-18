@@ -24,8 +24,8 @@
 //! [`LiftKey`] closes that gap for a keyed lift: `BLAKE3_keyed(K, …)` reduces grinding to breaking
 //! the PRF instead of ~2³¹ offline evaluations, since the attacker no longer knows the hash they
 //! must invert (Clarke et al., ASIACRYPT 2003). This closes the gap only for holders of the key —
-//! a cluster running unkeyed (no [`LiftKey`] configured, matching every unauthenticated
-//! deployment, README "Security model") is exactly as Wagner-breakable as before; keying is
+//! a cluster running unkeyed (no [`LiftKey`] configured, as in the facade's explicit
+//! unauthenticated mode) is exactly as Wagner-breakable as before; keying is
 //! `reconcile`'s responsibility, derived from the shared cluster key already required for datagram
 //! authentication (`ClusterKey::derive_lift_key` — `gossip` — is never referenced here: `rsos`
 //! stays domain-pure, AGENTS.md §9, and takes only the derived 32 bytes).
@@ -70,7 +70,7 @@ use crate::encoding;
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Fingerprint(pub [u64; 4]);
 
-// ARCHITECTURE.md §5 invariant 1 (#382): serializing through `[u8; 32]` rather than `[u64; 4]`
+// ARCHITECTURE.md §5 invariant 1: serializing through `[u8; 32]` rather than `[u64; 4]`
 // avoids bincode's per-limb varint length byte, in any `serde` backend. Deliberately a wire
 // break — see `tests/wire_format.rs`'s golden vector. Does not touch `rsos::encoding` (§6),
 // which already encodes every integer at fixed width.

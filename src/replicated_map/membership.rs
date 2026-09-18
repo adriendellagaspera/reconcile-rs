@@ -110,7 +110,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.engine.bulk_dumps_in_flight_count()
     }
 
-    /// Number of write-broadcast tasks currently in flight (#83). The same count backs the
+    /// Number of write-broadcast tasks currently in flight. The same count backs the
     /// `reconcile_broadcasts_in_flight` gauge and [`Backpressure`](super::Backpressure).
     ///
     /// Exposed for integration-test assertions under `cfg(reconcile_internal_testing)`.

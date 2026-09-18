@@ -83,7 +83,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// # Panics
     ///
     /// If `config.cluster_key` is `None` without also setting
-    /// [`Config::with_insecure_no_key`] — see #325.
+    /// [`Config::with_insecure_no_key`]; see `SECURITY.md` for the keyless trust boundary.
     pub async fn new(config: Config) -> io::Result<Self> {
         // Default adapter for the `Clock` port: the chrono-backed Hybrid Logical Clock. This is the
         // only place the engine names a concrete clock; everything else goes through `dyn Clock`.
@@ -114,7 +114,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// # Panics
     ///
     /// If `config.cluster_key` is `None` without also setting
-    /// [`Config::with_insecure_no_key`] — see #325.
+    /// [`Config::with_insecure_no_key`]; see `SECURITY.md` for the keyless trust boundary.
     pub async fn new_with_clock(config: Config, clock: Arc<dyn Clock>) -> io::Result<Self> {
         let transport = Self::bind_udp(&config).await?;
         Ok(Self::build(config, transport, clock, false))
@@ -174,7 +174,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // independent BLAKE3-derived subkey. The receive-only rotation key deliberately does not
         // alter this tree's lift; peers on different primaries can exchange authenticated values
         // during rollout, but their range summaries differ until the primary rollout completes
-        // (#118). `None` keeps the unkeyed lift used by explicit insecure mode.
+        // during rotation. `None` keeps the unkeyed lift used by explicit insecure mode.
         let lift_key = config
             .cluster_key
             .as_ref()
@@ -199,8 +199,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                      updates and poison the cluster via last-write-wins, and any host inside the \
                      configured nets will eventually receive the ENTIRE DATASET via paced diff \
                      dumps once RandomProbe discovers it. Set Config::with_cluster_key on every \
-                     node, or restrict the network to a trusted underlay. See ARCHITECTURE.md §8 \
-                     finding F3."
+                     node, or restrict the network to a trusted underlay. See SECURITY.md."
                 );
             }
         }
@@ -210,7 +209,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 warn!(
                     "bulk_send_rate {rate} B/s is below the {MIN_BULK_SEND_RATE} B/s floor and \
                      would wedge a peer's bulk dump for an effectively unbounded sleep; clamping \
-                     up to the floor. See #331."
+                     up to the floor."
                 );
                 MIN_BULK_SEND_RATE
             } else {

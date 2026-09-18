@@ -13,7 +13,7 @@ use crate::bounds::Value;
 /// One reason a [`try_insert`](super::ReplicatedMap::try_insert)/
 /// [`try_update`](super::ReplicatedMap::try_update) write can be
 /// [`WriteRejected`](super::WriteRejected): the value's encoded size exceeds
-/// [`Config::max_value_size`](super::Config::max_value_size) (#82).
+/// [`Config::max_value_size`](super::Config::max_value_size).
 ///
 /// The infallible [`insert`](super::ReplicatedMap::insert)/[`update`](super::ReplicatedMap::update)
 /// never consult `max_value_size` and so never reject on it — see their docs.
@@ -40,7 +40,7 @@ impl std::error::Error for ValueTooLarge {}
 
 /// Encode `value` the same way the send path does ([`gossip::bincode::encode`], the codec
 /// `replica::pacing` frames every message with) and, when `max_value_size` is set, reject it
-/// before the caller's write reaches any local state — #82's write-time counterpart to the
+/// before the caller's write reaches any local state — the write-time counterpart to the
 /// send-time drop `replica::pacing` already logs and counts (`VALUES_OVERSIZED_TOTAL`) once a key
 /// like this can never converge on any peer.
 pub(super) fn check_value_size<V: Value>(

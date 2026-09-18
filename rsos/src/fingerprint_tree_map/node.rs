@@ -31,7 +31,7 @@ pub(crate) struct Node<K, V> {
     /// when it is actually shared (refcount > 1); an unshared child is mutated in place, no
     /// clone.
     ///
-    /// The outer `Option` is itself `Box`-indirected (#47): an inline `ArrayVec` here would cost
+    /// The outer `Option` is itself `Box`-indirected: an inline `ArrayVec` here would cost
     /// every leaf — the large majority of nodes — a full `MAX_CAPACITY + 1`-element array's worth
     /// of stack space it never uses just to represent "no children". Boxed, `None` is a null
     /// pointer and a leaf carries no more than that.

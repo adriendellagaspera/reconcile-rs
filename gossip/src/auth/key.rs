@@ -29,8 +29,7 @@ impl ClusterKey {
     /// Parse a cluster key from `2 * KEY_LEN` (64) hex characters, case-insensitive.
     ///
     /// The one parse this type exists to own — see AGENTS.md §4 — rather than every caller
-    /// hand-rolling `u8::from_str_radix` over byte pairs (as, until #286, `examples/k8s/main.rs`
-    /// did for `RECONCILE_CLUSTER_KEY`).
+    /// hand-rolling `u8::from_str_radix` over byte pairs.
     pub fn from_hex(hex: &str) -> Result<Self, ClusterKeyError> {
         if hex.len() != KEY_LEN * 2 {
             return Err(ClusterKeyError::WrongHexLength(hex.len()));
@@ -156,7 +155,7 @@ impl Authenticator {
     }
 
     /// Build an authenticator from an optional [`Keys`] (a primary key to seal with, plus
-    /// prior keys still accepted on the verify path — #285/#137) and whether to encrypt.
+    /// prior keys still accepted on the verify path) and whether to encrypt.
     ///
     /// # Errors
     ///

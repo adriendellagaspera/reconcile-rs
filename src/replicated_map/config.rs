@@ -28,7 +28,7 @@ pub(super) const DEFAULT_BULK_SEND_RATE: usize = 32 * 1024 * 1024;
 /// Floor on a configured [`Config::bulk_send_rate`]. Below this, [`pace`](crate::replica::pace)
 /// holds the per-peer in-flight mark across a sleep long enough to be effectively unbounded,
 /// silently wedging that peer's sync for the duration of the dump. A value under the floor is
-/// clamped up to it, with a warning — see #331.
+/// clamped up to it, with a warning.
 pub(crate) const MIN_BULK_SEND_RATE: usize = 1024 * 1024;
 
 /// Default `SO_SNDBUF`/`SO_RCVBUF` request (see [`Config::recv_buffer_size`]). 8 MiB: the kernel
@@ -49,14 +49,14 @@ pub(super) const DEFAULT_REPAIR_INTERVAL: Duration = Duration::from_millis(150);
 /// bounds total in-flight snapshot memory.
 pub(super) const DEFAULT_MAX_CONCURRENT_BULK_DUMPS: usize = 4;
 
-/// Default cap on concurrent write-broadcast tasks (see [`Config::max_concurrent_broadcasts`],
-/// #83) — the egress-side counterpart of [`DEFAULT_MAX_CONCURRENT_BULK_DUMPS`]. A broadcast task
+/// Default cap on concurrent write-broadcast tasks (see [`Config::max_concurrent_broadcasts`]) —
+/// the egress-side counterpart of [`DEFAULT_MAX_CONCURRENT_BULK_DUMPS`]. A broadcast task
 /// is far cheaper than a bulk dump (a small message batch, not a whole-range snapshot), so the
 /// default budget is generous: high enough that ordinary write bursts never trip it, while still
 /// bounding unbounded task growth under sustained overload.
 pub(super) const DEFAULT_MAX_CONCURRENT_BROADCASTS: usize = 1024;
 
-/// Default [`Config::snapshot_change_threshold`] (#46): a periodic snapshot tick writes as soon
+/// Default [`Config::snapshot_change_threshold`]: a periodic snapshot tick writes as soon
 /// as at least one change has landed since the last snapshot, matching the historical
 /// unconditional-write behavior for any node that isn't fully idle.
 pub(super) const DEFAULT_SNAPSHOT_CHANGE_THRESHOLD: usize = 1;
@@ -81,8 +81,8 @@ pub const MAX_NETS: usize = 8;
 /// )
 /// .unwrap();
 ///
-/// // The `with_*` builders chain -- see README "Security model" for why a real deployment
-/// // always sets a cluster key (`with_insecure_no_key()` is the explicit opt-out, not this).
+/// // The `with_*` builders chain. Real deployments normally set a cluster key;
+/// // `with_insecure_no_key()` is the explicit opt-out.
 /// let config = Config::new(4242)
 ///     .with_net("10.1.0.0/16".parse().unwrap())?
 ///     .with_cluster_key(key);
@@ -143,8 +143,8 @@ pub struct Config {
     /// supported way to open the window is [`with_cluster_key_rotation`](Self::with_cluster_key_rotation).
     pub(crate) rotation_key: Option<ClusterKey>,
     /// Explicit, loudly-named opt-in to run with [`cluster_key`](Self::cluster_key) unset. Default
-    /// `false`. Set only through [`with_insecure_no_key`](Self::with_insecure_no_key) — see #325 and
-    /// README "Security model" for exactly what a keyless prober receives.
+    /// `false`. Set only through [`with_insecure_no_key`](Self::with_insecure_no_key); see
+    /// `SECURITY.md` for the keyless trust boundary.
     pub insecure_no_key: bool,
     /// Identity of this node: the tie-break in the HLC total order. Random at startup when
     /// `None`.
@@ -158,7 +158,7 @@ pub struct Config {
     /// How long the loop waits for inbound activity before initiating a round: the **background**
     /// anti-entropy cadence (default 1 s). Local writes broadcast immediately, independent of it.
     ///
-    /// This is *not* the loss-recovery path (#23): a datagram dropped in flight is retried on
+    /// This is *not* the loss-recovery path: a datagram dropped in flight is retried on
     /// [`repair_interval`](Self::repair_interval), an RTT-scale timer decoupled from this one —
     /// see its docs. Lowering `reconcile_interval` buys faster *discovery* of a peer that has
     /// sent nothing at all (newly joined, or genuinely diverged), not faster loss repair.
@@ -166,8 +166,8 @@ pub struct Config {
     /// Floor it at roughly a few × RTT. Shortening it further does not converge faster on its
     /// own: the diff is multi-round-trip regardless, and this node's own idle timer would
     /// otherwise fire between a holder's paced datagrams mid-transfer and re-issue a full diff
-    /// over ranges still in flight. A receiver-side guard (#85, `akvize/reconcile-rs#178`) now
-    /// suppresses exactly that: a peer this node has heard a dated `EntryUpdate` batch from
+    /// over ranges still in flight. A receiver-side guard suppresses exactly that: a peer this
+    /// node has heard a dated `EntryUpdate` batch from
     /// within [`repair_interval`](Self::repair_interval) is left out of this round's targets, on
     /// the working assumption that a recent sender is still legitimately sending. That makes
     /// `repair_interval` the practical floor below which re-amplification can still occur — set
@@ -181,7 +181,7 @@ pub struct Config {
     pub reconcile_interval: Duration,
     /// How long an outstanding comparison round or a just-completed bulk transfer waits for
     /// activity from that peer before this node retries it (default 150 ms) — the RTT-scale
-    /// repair timer #23 adds so a single dropped datagram is not left to
+    /// repair timer ensures a single dropped datagram is not left to
     /// [`reconcile_interval`](Self::reconcile_interval)'s background sweep to rediscover.
     ///
     /// An `EntryFingerprint` round that finds a real difference is answered with real content,
@@ -204,14 +204,14 @@ pub struct Config {
     /// plus at most one bulk transfer per peer, keeps a cold sync ≈ the dataset size. Below this
     /// rate's own [`repair_interval`](Self::repair_interval) (rate low enough that consecutive
     /// datagrams of the same transfer are spaced further apart than that), the *receiver's*
-    /// idle-timeout guard (#85, see [`reconcile_interval`](Self::reconcile_interval)'s docs) can
+    /// idle-timeout guard (see [`reconcile_interval`](Self::reconcile_interval)'s docs) can
     /// lapse mid-transfer and reopen the same re-initiation, since pacing only guards the sender
     /// against a *concurrent* dump to the same peer. Only the bulk dump is paced; comparisons,
     /// acks and broadcasts go immediately.
     ///
     /// A nonzero value below 1 MiB/s is clamped up to it, with a warning: below that floor, the
     /// per-peer in-flight mark is held across an effectively unbounded sleep, silently wedging
-    /// that peer's sync for the duration of the dump — see #331.
+    /// that peer's sync for the duration of the dump.
     pub bulk_send_rate: Option<usize>,
     /// `SO_RCVBUF` request in bytes, default 8 MiB; `None` leaves the OS default.
     ///
@@ -244,7 +244,7 @@ pub struct Config {
     /// allocating; the peer's next diff round retries.
     pub max_concurrent_bulk_dumps: usize,
     /// Maximum concurrently in-flight write-broadcast tasks, across every local write that needs
-    /// to propagate (default 1024, #83) — bounds the egress side
+    /// to propagate (default 1024) — bounds the egress side
     /// ([`ReplicatedMap::insert`](super::ReplicatedMap::insert)/
     /// [`update`](super::ReplicatedMap::update)/[`insert_bulk`](super::ReplicatedMap::insert_bulk))
     /// the way [`max_concurrent_bulk_dumps`](Self::max_concurrent_bulk_dumps) bounds the ingress
@@ -252,7 +252,7 @@ pub struct Config {
     ///
     /// At the budget, `insert`/`update`/`insert_bulk` skip *only* the eager broadcast for that
     /// call — the local write always applies, and periodic reconciliation
-    /// ([`reconcile_interval`](Self::reconcile_interval))/repair (#23) recovers the missed push,
+    /// ([`reconcile_interval`](Self::reconcile_interval))/repair recovers the missed push,
     /// the same bounded cost an already-tolerated lost datagram is.
     /// [`ReplicatedMap::try_insert`](super::ReplicatedMap::try_insert)/
     /// [`try_update`](super::ReplicatedMap::try_update) instead reject the whole call with
@@ -267,7 +267,7 @@ pub struct Config {
     /// discarded.
     ///
     /// `None` disables the periodic background task entirely — no wakeup, no snapshot IO, ever,
-    /// until an explicit [`snapshot_now`](super::ReplicatedMap::snapshot_now) call (#46).
+    /// until an explicit [`snapshot_now`](super::ReplicatedMap::snapshot_now) call.
     ///
     /// Each wakeup still only writes if at least
     /// [`snapshot_change_threshold`](Self::snapshot_change_threshold) changes (local writes,
@@ -282,8 +282,8 @@ pub struct Config {
     pub snapshot_interval: Option<Duration>,
     /// Minimum number of changes (local writes, gossip-applied remote updates, and tombstone GC
     /// removals, each counted once) since the last snapshot before a periodic
-    /// [`snapshot_interval`](Self::snapshot_interval) wakeup actually writes one (default `1`,
-    /// #46). At the default, any single change is enough — a fully idle node between wakeups does
+    /// [`snapshot_interval`](Self::snapshot_interval) wakeup actually writes one (default `1`).
+    /// At the default, any single change is enough — a fully idle node between wakeups does
     /// zero snapshot IO, matching the historical always-write behavior for any node that isn't
     /// idle. Raising it trades a larger post-restart replay window for fewer writes under bursty
     /// traffic. Never consulted by [`snapshot_now`](super::ReplicatedMap::snapshot_now), which
@@ -296,7 +296,7 @@ pub struct Config {
     /// may have skewed before this node stops trusting it verbatim.
     pub max_clock_drift: ClockDrift,
     /// How long a local write waits, batched with any other writes, before the accumulated batch
-    /// is broadcast to peers as one send loop instead of one broadcast per write (#187). Default
+    /// is broadcast to peers as one send loop instead of one broadcast per write. Default
     /// [`Duration::ZERO`]: no coalescing — every write broadcasts immediately, the historical
     /// behavior.
     ///
@@ -304,7 +304,7 @@ pub struct Config {
     /// |---|---|
     /// | latency vs window | peers observe a write up to `coalesce_window` later than with immediate broadcast; a few ms buys far fewer datagrams under a write burst |
     /// | ordering / HLC | same-key writes inside one window collapse to the greatest [`Timestamp`](crate::clock::Timestamp) via [`Entry::merge`](crate::entry::Entry::merge) — the same total order the wire protocol already resolves conflicts with; a value's own stamp is never altered, only when it reaches the wire |
-    /// | anti-entropy | this delays only the **eager** push; a coalesced batch lost in transit is retried on [`repair_interval`](Self::repair_interval) (#23), with the periodic RBSR sweep ([`reconcile_interval`](Self::reconcile_interval)) as the final backstop |
+    /// | anti-entropy | this delays only the **eager** push; a coalesced batch lost in transit is retried on [`repair_interval`](Self::repair_interval), with the periodic RBSR sweep ([`reconcile_interval`](Self::reconcile_interval)) as the final backstop |
     ///
     /// Only the write that finds the pending batch empty spawns the detached flush task, so a
     /// write that joins an already-scheduled window does not itself need an ambient Tokio runtime
@@ -314,7 +314,7 @@ pub struct Config {
     pub coalesce_window: Duration,
     /// Optional ceiling on a single value's encoded size, in bytes (default `None`, no ceiling) —
     /// checked at write time by [`try_insert`](super::ReplicatedMap::try_insert)/
-    /// [`try_update`](super::ReplicatedMap::try_update) (#82), returning
+    /// [`try_update`](super::ReplicatedMap::try_update), returning
     /// [`WriteRejected::TooLarge`](super::WriteRejected::TooLarge) before any local state changes.
     ///
     /// An *application-chosen* cap, independent of the wire protocol's own hard ceiling (`65507 -`

@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! RTT-scale repair for a lost comparison-round, ack, or bulk-transfer datagram (#23).
+//! RTT-scale repair for a lost comparison-round, ack, or bulk-transfer datagram.
 //!
 //! Before this, the only thing that ever re-issued a comparison round was
 //! [`start_reconciliation`](super::Replica::start_reconciliation)'s own idle timeout —
@@ -19,8 +19,8 @@
 //! [`Message::ConvergenceAck`](super::Message::ConvergenceAck). What still falls back to a bounded
 //! retry is a datagram — the original round or its ack — genuinely lost in flight, not a
 //! converged round going unacknowledged by protocol design: small and bounded either way, the
-//! same order of magnitude as the existing per-round tombstone-ack resend, not the bulk-transfer
-//! amplification akvize/reconcile-rs#168/#177 fixed.
+//! same order of magnitude as the existing per-round tombstone-ack resend rather than a full
+//! bulk-transfer retry.
 
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
@@ -97,7 +97,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Periodically retry any comparison round that has gone unanswered for
     /// [`repair_interval`](super::Inner::repair_interval) — the mechanism that decouples loss
-    /// repair from `reconcile_interval`'s background cadence (#23). Runs forever; driven
+    /// repair from `reconcile_interval`'s background cadence. Runs forever; driven
     /// alongside the receive loop by [`run`](Self::run).
     pub(super) async fn repair_periodically(&self) {
         let mut send_buf = Vec::new();

@@ -6,12 +6,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Broadcast coalescing (#187): batch local writes made within
+//! Broadcast coalescing: batch local writes made within
 //! [`coalesce_window`](crate::replicated_map::Config::coalesce_window) of each other into one
 //! flush instead of one broadcast per write, collapsing same-key writes to the greatest
 //! [`Timestamp`] via [`Entry::merge`] before anything reaches the wire. Disabled by default
 //! (`coalesce_window == Duration::ZERO`): every write flushes immediately, byte-for-byte the
-//! pre-#187 behavior — see [`Replica::queue_broadcast`].
+//! immediate-broadcast behavior — see [`Replica::queue_broadcast`].
 
 use std::hash::Hash;
 use std::time::Duration;

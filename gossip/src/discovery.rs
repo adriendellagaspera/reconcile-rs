@@ -34,7 +34,7 @@ use crate::gen_ip::probe_targets;
 /// A [`Discovery::discover`] failure. Boxed rather than an associated type on [`Discovery`], so
 /// `Arc<dyn Discovery>` (`src/replica.rs`, `src/replicated_map.rs`) stays a single concrete type
 /// across implementors with unrelated failure modes (`DnsDiscoveryError` vs. `Infallible`) — the
-/// erasure #287 asked for, without giving up the trait object every call site relies on.
+/// erasure keeps the trait object usable without forcing one shared concrete error type.
 pub type DiscoveryError = Box<dyn StdError + Send + Sync>;
 
 /// The future returned by [`Discovery::discover`]. Boxed rather than `async_trait`, so the port

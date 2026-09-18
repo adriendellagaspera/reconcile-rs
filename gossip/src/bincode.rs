@@ -19,7 +19,7 @@ use std::fmt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-/// Why [`encode`] failed. Opaque wrapper over the external `bincode` crate's error (#297): a
+/// Why [`encode`] failed. Opaque wrapper over the external `bincode` crate's error: a
 /// public signature naming `::bincode::Error` directly would force every dependent onto this
 /// crate's exact `bincode` version for a type they never construct or match on — `encode` only
 /// fails when `T`'s `Serialize` implementation does, so callers observe this as `Debug`/`Display`

@@ -9,7 +9,7 @@
 //! Centralized observability helpers: the one place the `#[cfg(feature = "metrics")]` gate lives.
 //! Each helper is an `#[inline]` no-op when the feature is off.
 //!
-//! Metric names are public, stable constants in [`crate::metrics`] (#27) — this module only
+//! Metric names are public, stable constants in [`crate::metrics`] — this module only
 //! records against them.
 
 #[cfg(feature = "metrics")]
@@ -74,7 +74,7 @@ mod imp {
         counter!(DATAGRAMS_DROPPED_TOTAL, "reason" => reason).increment(1);
     }
 
-    /// A write hit the `max_concurrent_broadcasts` egress budget (#83). `path` is `"eager"`
+    /// A write hit the `max_concurrent_broadcasts` egress budget. `path` is `"eager"`
     /// (`insert`/`update`/`insert_bulk`: the write applied, only its broadcast was skipped) or
     /// `"try"` (`try_insert`/`try_update`: the whole call was rejected).
     #[inline]

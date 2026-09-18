@@ -25,7 +25,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     ///
     /// # Deadlock
     ///
-    /// `callback` runs while the write lock is held (#34: a dedicated mutex, not the map lock a
+    /// `callback` runs while the write lock is held (a dedicated mutex, not the map lock a
     /// reader also takes). Calling a write method (`insert`, `update`, another `get_mut`, …) from
     /// `callback` self-deadlocks — the mutex is not reentrant. A pure read (`get`, `for_each`, …)
     /// no longer takes this lock at all and is safe to call from `callback`.
@@ -67,11 +67,11 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Mutate `k` in place **only when live**, re-stamping it; returns the re-stamped entry, or
     /// `None` if `k` was absent/tombstoned. Atomic against the reconciliation loop. Never
     /// broadcasts — the caller decides how, since [`try_update`](Self::try_update) needs a slot
-    /// claimed *before* this runs (#83), unlike [`mutate_live`](Self::mutate_live)'s callers.
+    /// claimed *before* this runs, unlike [`mutate_live`](Self::mutate_live)'s callers.
     ///
     /// The shared core of [`mutate_live`](Self::mutate_live) and [`try_update`](Self::try_update).
     /// `validate` sees the mutated value — while the write lock is still held, before it is stored
-    /// — and can reject it (#82): a rejection leaves the map/projection exactly as they were,
+    /// — and can reject it: a rejection leaves the map/projection exactly as they were,
     /// since the clones the mutation ran against are simply dropped, never stored.
     /// [`mutate_live`](Self::mutate_live) passes a `validate` that never rejects.
     pub(super) fn mutate_live_checked<F: FnOnce(&mut V)>(
@@ -169,12 +169,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.mutate_live(k, f)
     }
 
-    /// Fallible counterpart of [`update`](Self::update) (#83): claims a
+    /// Fallible counterpart of [`update`](Self::update): claims a
     /// [`max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts) egress slot
     /// **before** even checking whether `k` is live, so a call is all-or-nothing the way
     /// [`ReplicatedMap::try_insert`](super::ReplicatedMap::try_insert) is — never a mutation that
     /// then silently fails to broadcast. Also checks the mutated value's encoded size against
-    /// [`Config::max_value_size`](super::Config::max_value_size) (#82), before it is stored.
+    /// [`Config::max_value_size`](super::Config::max_value_size), before it is stored.
     /// Always sends immediately, bypassing coalescing, for the same reason `try_insert` does.
     ///
     /// # Errors
