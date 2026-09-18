@@ -283,8 +283,8 @@ stays lean:
   - `reconcile_entries_current` — live (non-tombstone) entries.
   - `reconcile_tombstones_current` — outstanding tombstones not yet garbage-collected.
   - `reconcile_bulk_dumps_in_flight` — bulk anti-entropy dumps in flight.
-  - `reconcile_broadcasts_in_flight` — write-broadcast tasks in flight (#83, see
-    [Write backpressure](#write-backpressure)).
+  - `reconcile_broadcasts_in_flight` — write-broadcast tasks in flight (see
+    [Operational tuning](#operational-tuning)).
   - `reconcile_persistence_failures_current` — consecutive snapshot failures since the last
     success; `0` while healthy (see [Persistence](#persistence)).
 - `metrics-prometheus` — additionally provides `reconcile::prometheus` to install a Prometheus
