@@ -341,125 +341,73 @@ full derivations, sweeps and citations live in the linked issues and `benches/RE
    actually differ instead of streaming a whole fixed partition.
 6. **Rust-native, in-process, embeddable**: a real ecosystem niche (mature equivalents = JVM).
 
-### 2.4 The design axes of a *true* SOTA RSOS
+### 2.4 Design axes
 
-These are the axes along which an RSOS is judged against the state of the art — the **design
-target** for a structure of this family ("persistent RSOS with a secure, generic fingerprint").
-They are described here as durable design goals; each item cites the issue carrying its live
-status, so this section never needs an edit when that status changes.
+The durable design axes for an RSOS in this family are below. They describe the engineering target,
+not the project backlog; current implementation decisions belong in
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) §7 and open work belongs in the issue tracker.
 
-**P0 — Correctness of the structure itself:**
-1. **Secure and wide fingerprint**: replace the 64-bit XOR with a **≥256-bit, non-GF(2)-linear**
-   combiner (hash-then-add mod 2²⁵⁶, MSet-Mu-Hash/LtHash) or *keyed*. XOR = self-inverse + linear →
-   craftable collisions (Gaussian elimination ~2 s even in 256-bit) + birthday at 2³². The path
-   taken by Negentropy. **This is the criterion that separates a toy structure from a SOTA one**
-   (cf. F6, [#111](https://github.com/Akvize/reconcile-rs/issues/111)) — but width alone settles
-   only the *honest* model: modular addition at 256 bits stays Wagner-breakable against a writer with
-   no cluster key. The keyed-lift fix (`rsos::LiftKey`) landed in
-   [#337](https://github.com/Akvize/reconcile-rs/issues/337) (this fork: issue #19) for holders of
-   the key; the insider residual it leaves is `ARCHITECTURE.md` §7's reopened question. The
-   ECMH alternative (Fix B, no key required) was benchmarked end-to-end against it in
-   [#80](https://github.com/adriendellagaspera/reconcile-rs/issues/80): on `benches/protocol.rs`'s
-   harness, an off-the-shelf-Ristretto combiner leaves `reconciliation_cost` (bytes, messages,
-   convergence decisions) byte-for-byte unchanged — both fingerprints are 32 bytes and agree
-   wherever the multisets do — but drives `reconciliation_drive`'s wall-clock `T_loc` to
-   **~1.2–1.6 × 10³× slower**, an order of magnitude past #19's own 67×–126× *primitive* figure,
-   let alone the ~2.4× literature figure for an optimized binary curve. Fix A stands.
-2. **Decouple "empty" from "hash==0"** (`size==0`) — otherwise the structure can claim "converged"
-   while having lost data. (cf. F1, [#106](https://github.com/Akvize/reconcile-rs/issues/106))
-3. **Stable, versioned hash as a wire contract** (pinned SipHash/xxHash/BLAKE3 + golden-vector).
-   (cf. F8, [#111](https://github.com/Akvize/reconcile-rs/issues/111))
+| axis | target | current shape |
+|---|---|---|
+| summary security | wide, non-GF(2)-linear and keyed where an adversary can write values | 256-bit BLAKE3 lift, additive aggregate; keyed from the cluster key when configured |
+| empty/equality semantics | emptiness decided by cardinality, comparisons use count + fingerprint | `Aggregate { size, fingerprint }` |
+| canonical bytes | stable application-independent encoding | `rsos::encoding`, not `std::hash::Hash` |
+| query cost | logarithmic rank/select/range summary | cached aggregate per B-tree node |
+| snapshots | cheap immutable read views | persistent COW nodes behind `Arc`/`ArcSwap` |
+| summary generality | reusable range-summary algebra | deliberately concrete in the 1.x API; generic monoid remains a future-major question |
+| reconciliation | range refinement whose transport cost tracks the difference | RBSR with local `RefinementPolicy`, fixed fan-out default |
+| conflicts | deterministic convergent merge | HLC + node-id total order, LWW register |
+| deletion | no resurrection after local timeout alone | tombstones + causal-stability acknowledgements |
+| hostile input | authenticated-before-decode, bounded allocation/state | shared-key auth/replay plus explicit peer/message/value bounds |
+| write scalability | avoid unnecessary work on the hot root path | eager cached aggregates remain the main write-side cost |
+| durability | restart without relearning the whole state | snapshot persistence; incremental persistence remains a separate engineering concern |
 
-**P1 — Generality (what makes it a *structure*, not a special case):**
-4. **Generic summary over a monoid**: today `rsos` hardwires its range summary to the 256-bit additive
-   `Fingerprint` (`ARCHITECTURE.md` §7, tracked as `BYOLiftingMonoid`); generalizing to `RSOS<M: Monoid>`
-   also enables sum/min/max/count and sketches. Enables **embedding a sketch in the leaves** (hybrid
-   RBSR + a leaf sketch) to break the O(log n) RTT cost (§2.2). **Waived to 2.0** —
-   [#298](https://github.com/Akvize/reconcile-rs/issues/298), decision recorded in `ARCHITECTURE.md` §7.
-5. **Fully expose the RSOS contract**: `rank`/`select`/`range` are `pub` on the standalone `rsos`
-   crate's `FingerprintTreeMap` ([`ARCHITECTURE.md`](./ARCHITECTURE.md) §3.2), a reusable generic
-   building block independent of `reconcile`. Lazy and double-ended iterators
-   [#92](https://github.com/Akvize/reconcile-rs/issues/92), naming freezes
-   [#291](https://github.com/Akvize/reconcile-rs/issues/291).
+#### Why the fingerprint is keyed
 
-**P2 — Durability & distributed properties carried by the structure:**
-6. **Persistence / content-addressing** *(the big gap vs prolly/AELMDB)*: (a) snapshot+WAL including
-   tombstones, or (b) a persistent **copy-on-write** tree, which is what buys *structural sharing* —
-   an untouched subtree keeps its node, so its cached aggregate survives untouched.
-   **Node content-addressing** is a further step layered on that, and what it adds is *cross-version
-   identity* (versioning, diff between snapshots, incremental cold start), not the sharing itself;
-   the two are separable and priced separately.
-   [#271](https://github.com/Akvize/reconcile-rs/issues/271) tracks the epic; its build-vs-adopt call
-   against LMDB/AELMDB is settled in its own body, content addressing parked separately on
-   [#188](https://github.com/Akvize/reconcile-rs/issues/188).
-7. **Conflict metadata in the value**: HLC + total tie-break `(timestamp, node_id)`; ideally
-   **pluggable CRDT** values; versioned tombstones with **causal-stability GC**. (cf. F4
-   [#109](https://github.com/Akvize/reconcile-rs/issues/109), F5
-   [#110](https://github.com/Akvize/reconcile-rs/issues/110)) — pluggable CRDT deferred, no trigger
-   fired: [#184](https://github.com/Akvize/reconcile-rs/issues/184), decision recorded in
-   `ARCHITECTURE.md` §7.
-8. **Write cost under concurrency** *(the axis the family's cost models omit)*: answering
-   `Aggregate(l, u)` in O(log n) requires an up-to-date summary on every node from leaf to root, so
-   **every insert writes the root** — a contention point the contract creates, not an implementation
-   defect. arXiv:2603.19820 §7.1 scopes its evaluation to single-machine with no concurrency, and no
-   RBSR work prices it. The prior art sits outside the line: **AB-tree** (Zhao–Xie–Li,
-   `doi:10.14778/3538598.3538606`, VLDB 15(9) 2022) sheds the contention by storing inexact weights,
-   which a sound SKIP cannot. Measurements, model and confounds: `benches/README.md`'s `contention`
-   target, [#359](https://github.com/Akvize/reconcile-rs/issues/359).
+A 256-bit additive multiset fingerprint is strong against accidental collision but is still an
+algebraic object: a writer who knows the lift can search for cancelling changes. When a cluster key
+is configured, `ClusterKey::derive_lift_key` makes the element lift secret from outsiders while
+keeping the cached additive aggregate and its `O(log n)` update/query behavior.
 
-**P3 — What makes it *believed* to be SOTA:**
-9. **Property-testing + fuzzing as a foundation**: `proptest` vs `BTreeMap` oracle +
-   `check_invariants`, and especially **the convergence property** (two random trees → diff loop →
-   identical state + ranges = true symmetric difference, under reordered/duplicated/dropped
-   messages). The category standard (`merkle-search-tree` is fuzz-tested). (cf. F11,
-   [#113](https://github.com/Akvize/reconcile-rs/issues/113))
-10. **First-class adversarial robustness**: segment-bound validation, allocation bounds, bounded
-   fan-out — to hold up against hostile peers (the MST/Willow use case).
-   [#284](https://github.com/Akvize/reconcile-rs/issues/284) (RSOS contract),
-   [#230](https://github.com/Akvize/reconcile-rs/issues/230) (oversize values),
-   [#150](https://github.com/Akvize/reconcile-rs/issues/150) (bounded `peers` map).
+This does not protect against a malicious holder of the shared cluster key. That boundary follows
+from the authentication model itself; [`SECURITY.md`](./SECURITY.md) is canonical for it.
 
-### 2.4.1 Open research questions
+#### Why the tree keeps eager summaries
 
-Where this repository can test a claim the published work leaves open. None is a 1.0 gate; the
-claim, the method and the numbers live in the issue, never here.
+RBSR needs a range aggregate cheaply enough that a reconciliation round does not scan the range it
+is trying to summarize. `FingerprintTreeMap` therefore updates cached summaries on the write path
+and reads them on the reconciliation path. The trade is intentional: reads and reconciliation gain
+predictable logarithmic work while writers touch the root path.
 
-| Question | Issue |
-|---|---|
-| Is the refinement tree's comparison count sensitive to the *ordered shape* of the difference, and does the `(b, B)` pair matter? | [#353](https://github.com/Akvize/reconcile-rs/issues/353) |
-| What is the false-convergence rate at reduced fingerprint width, and do the two layers scale as predicted? | [#355](https://github.com/Akvize/reconcile-rs/issues/355) |
-| Post-#257 the comparison-map width is a security question, not a bandwidth one — price it in both models | [#357](https://github.com/Akvize/reconcile-rs/issues/357) |
-| Can any path fold one multiset element twice, and what does that cost the summary? | [#358](https://github.com/Akvize/reconcile-rs/issues/358) |
-| The contract writes the root on every insert (P2 item 8 above). Where does that bind? | [#359](https://github.com/Akvize/reconcile-rs/issues/359) |
+The contention benchmark exists to measure that cost rather than pretending it disappears. Its
+methodology belongs in [`benches/README.md`](./benches/README.md).
 
-Results that closed a question rather than opening one, one line each:
+#### Why persistence and content addressing are separate axes
 
-| Result | Record |
-|---|---|
-| A divergence-adaptive fan-out is confined to the count, and the count is blind exactly where the exact-count guarantee has already run out (§2.1). **Not built.** | [#318](https://github.com/Akvize/reconcile-rs/issues/318), `rbsr/src/policy.rs` |
-| Re-ordering the store does not rescue that signal: only a leading-component reorder makes a divergence visible, so relocation is the lever and injectivity of `π` is not. | [#360](https://github.com/Akvize/reconcile-rs/issues/360) |
-| The multidimensional extension is a **no-go** on paper: `arXiv:2603.19820v1` §8 asks for a theory of balancing *and* summarization beyond one dimension, and the two part company — balancing breaks at one line of its Algorithm 2 and recovers, while the box `Aggregate` of its Def. 3.9 meets an unconditional cell-probe floor. The obstruction is the summary, not the dimension; the protocol side transports verbatim. | [#360](https://github.com/Akvize/reconcile-rs/issues/360), [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7 |
-| `Comparison` no longer hands a policy the fingerprint at all — narrowed to `span()`/`remote_size()`/`agrees()` — so a non-narrowing split is structurally unspellable rather than merely bounded. | [#352](https://github.com/Akvize/reconcile-rs/issues/352) |
-| A hash-derived split rule does not exceed the union bound; it breaks the protocol's termination guarantee instead. | [#356](https://github.com/Akvize/reconcile-rs/issues/356) |
-| An N-party fleet buys no redundancy from retries when it is converged but for one divergence (§2.2) — closed by derivation, not by the measurement campaign it proposed. | [#354](https://github.com/Akvize/reconcile-rs/issues/354) |
+Persistent COW nodes provide structural sharing between in-memory versions: unchanged subtrees keep
+their allocation and cached aggregate. Content addressing would add stable identity across
+versions/processes and could support incremental durable structures, but it is not required for the
+snapshot-read model itself.
 
-**SOTA target by axis:**
+#### Why a leaf sketch is not part of this crate
 
-| Axis | SOTA target |
-|---|---|
-| Summary | ≥256-bit non-linear/keyed, **generic (monoid)** |
-| Empty vs hash | emptiness/equality decided on `size`, never on the fingerprint |
-| Hash | fixed, versioned hash as a wire contract |
-| Backend | **persistent RSOS**, ideally content-addressed |
-| Algo | **hybrid RBSR + a leaf sketch** for single-shot latency; which sketch is open, and incremental maintainability — not communication optimality — is the selection criterion |
-| Writes | aggregate maintenance that does not serialise every writer on the root |
-| Conflicts | HLC + deterministic total tie-break / pluggable CRDT |
-| Deletions | causal-stability GC (no resurrection) |
-| Confidence | property tests + convergence fuzzing against an oracle |
+A single-shot sketch such as an IBLT attacks a different trade-off from range refinement: it can
+remove round trips when the symmetric difference is within its capacity, but needs its own sizing,
+failure and maintenance model. Comparative sketch/policy research belongs outside the engineering
+crate until it produces a tested design with a clear integration contract.
 
-**In one sentence:** the FingerprintTreeMap starts from the **right skeleton** — an RSOS, the design validated by
-2026 research, with a real differentiator (value-based diff that removes the need for
-history-independence). The remaining distance to a *true* SOTA structure is along the axes above; the
-structural ones (secure/generic fingerprint, persistence/content-addressing, property-testing
-foundation) belong to the structure itself, while conflicts, GC and robustness belong to the
-surrounding system.
+#### Capacity boundary
+
+The core is fully replicated and in-memory. That gives it its strongest property — every read is
+local and requires no external datastore — and also fixes its capacity ceiling at one node's RAM.
+Larger-than-one-node datasets therefore require partial replication/sharding above this layer rather
+than a transparent disk backend that would preserve full replication while losing local-memory
+economics.
+
+#### What the benchmarks can establish
+
+The committed harness measures this implementation's structure, protocol and system behavior under
+controlled workloads. It can establish internal scaling shapes, regressions and trade-offs. It does
+not establish a universal ranking against another implementation unless that implementation is run
+under a like-for-like harness. External papers remain context, not benchmark results for this code.
+
