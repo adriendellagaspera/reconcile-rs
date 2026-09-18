@@ -114,7 +114,7 @@ pub enum Decision {
     /// element (`span() <= 1`), terminating only because the peer refines it. For `span() > 1`
     /// that argument is [`RefinementPolicy`]'s progress law, not the driver's to assume: a
     /// `Split` that violates it is converted to an [`Enumerate`](Decision::Enumerate) instead of
-    /// reaching the fan-out below (`ARCHITECTURE.md` §5 invariant 13, #420).
+    /// reaching the fan-out below (`ARCHITECTURE.md` §5 invariant 13).
     Split(SplitStride),
 }
 
