@@ -138,7 +138,7 @@ impl<K: std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for FingerprintTree
 /// key order. Returned by [`FingerprintTreeMap::range`].
 ///
 /// Named `ItemRange`, not `Range`: the latter would collide with [`std::ops::Range`], which this
-/// type's own generic parameter `R` is frequently instantiated with. Frozen (#291).
+/// type's own generic parameter `R` is frequently instantiated with. The public name is stable.
 ///
 /// ```
 /// use rsos::FingerprintTreeMap;
