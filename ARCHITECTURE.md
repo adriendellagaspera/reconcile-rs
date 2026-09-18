@@ -579,186 +579,58 @@ re-exchange indefinitely. It shipped before any release tag for exactly that rea
 
 ## 7. Extension points
 
-The Meyer/Willow-ecosystem reference implementation
-(`github.com/earthstar-project/range-reconcile`) documents three "Bring Your Own …" extension
-points: `BYOTransport` (realized — `Transport`, §3.2), `BYOLiftingMonoid`, `BYOEncoding`.
+Extension points are added only when a second real consumer earns the abstraction. The current
+architecture therefore keeps several seams deliberately closed rather than publishing speculative
+traits before 1.0.
 
-Every extension point this crate has considered, its standing, and where the reasoning lives. The
-bullets below are that reasoning — this table is the lookup, not a summary that could drift from it.
-
-| extension point | status | reasoning |
+| extension point | current decision | revisit when |
 |---|---|---|
-| `Transport` (`BYOTransport`) | **realized** | §3.2 — two implementations, one load-bearing for tests |
-| A public `Encoding` port (`BYOEncoding`) | **deliberately absent** | one implementation, no test-driven second consumer; reintroducing it later is additive |
-| `BYOLiftingMonoid` | **decided: out of scope for 1.x, a 2.0 topic** | undetermined bound (`Group` vs `Monoid`), and `type Summary` has no additive path after 1.0 |
-| A multidimensional (product-order) RSOS | **decided: no-go** | below |
-| Pluggable per-value conflict resolution | **decided: deferred**, no trigger yet | below |
-| A leaf sketch (IBLT) beside the RBSR chain | **decided: out of scope for this crate** | untested algorithm — research, not engineering this crate ships |
-| Partial replication / sharding | **the only surviving answer to capacity pressure** | below |
-| Defense against a correlated false SKIP | **decided: option A ships, B re-priced at #337** | below |
-| An alternative/side-channel transport past the datagram ceiling | **decided: stay UDP-only, no trigger fired** | below |
+| `Transport` | **realized** — UDP plus the in-memory test transport | already justified by two implementations (§3.2) |
+| public `Encoding` port | **absent** — the wire has one canonical implementation | a second codec/format has a concrete consumer |
+| generic lifting monoid | **deferred to a future major** — `Aggregate` remains count + `Fingerprint` | a real summary type determines whether the bound should be `Monoid` or `Group` |
+| multidimensional RSOS | **rejected** for this design | new theory removes the range-aggregation cost that breaks the O(log n) target |
+| pluggable value conflict resolution | **deferred** — LWW remains the value contract | a concrete converging value type cannot be expressed by key decomposition |
+| leaf sketch beside RBSR | **out of this crate** | research produces a tested design suitable for the engineering repository |
+| partial replication / sharding | **future grid-layer concern** | capacity must exceed one node's RAM while preserving local-read economics |
+| correlated false-SKIP defense | **keyed lift + per-session cut randomisation ship** | the residual cluster-key-holder threat needs an additional measured mitigation |
+| alternate transport for oversized values | **rejected for the current niche** | a demonstrated workload cannot decompose values into smaller keys |
 
-- **A public `Encoding` port** is deliberately absent: `Transport` earns its port because it has two
-  real implementations and `InMemoryTransport` is load-bearing for tests without real sockets; wire
-  encoding has exactly one implementation and no test-driven need for a second. Reintroducing it
-  later is additive — bincode becomes the default behind the trait — so the cost of waiting for a
-  real second consumer is low.
-- **`BYOLiftingMonoid`** — the generic summary ([`POSITIONING.md`](./POSITIONING.md) §2.4 P1-4). **Decided: out of
-  scope for 1.x, a 2.0 topic** ([#298](https://github.com/Akvize/reconcile-rs/issues/298)).
-  `Rsos::aggregate`/`RsosView::aggregate` keep the concrete `(usize, Fingerprint)` for the whole 1.x
-  line; `lift`/`combine`/`neutral` stays the vocabulary if it is revisited.
+### Generic summaries
 
-  Not "low value" — **undetermined shape**. `M` needs a bound and neither candidate wins without an
-  instance to judge against:
+`rsos::Rsos` deliberately exposes the concrete `Aggregate { size, fingerprint }` in the 1.x
+surface. Generalising it needs an associated summary type, and the useful bound is still unresolved:
+a group preserves today's cheap subtraction on deletion; a monoid admits summaries such as min/max
+but requires recomputation up the path. Waiting costs a future major version and is preferable to
+freezing the wrong public trait now. The positioning context is
+[`POSITIONING.md`](./POSITIONING.md) §2.4.
 
-  | bound | keeps | costs |
-  |---|---|---|
-  | `M: Group` | today's `remove`: subtract, O(log n) along one root→leaf path | excludes `min`/`max` — no inverse |
-  | `M: Monoid` | Def. 3.5's bound; admits `min`/`max` | every removal recomputes each ancestor from its children, ~B× on that path |
+### Conflict-resolution seam
 
-  Unlike the other two entries, the cost of waiting is **a major version, accepted**: `rsos::Rsos` is
-  re-exported into `reconcile`'s public API (`src/lib.rs`) and associated-type defaults are unstable,
-  so `type Summary` has no additive path after 1.0. `rbsr`'s `RangeAggregate` is *not* the binding
-  constraint — `rbsr` stays 0.x (#308) and `M = Fingerprint` moves no wire bytes. The rejected
-  alternative (sealing `Rsos`, which keeps every option open at the cost of third-party backends) is
-  argued on #298.
-- **A multidimensional (product-order) RSOS** — reconciling *boxes* in `δ > 1` dimensions instead of
-  intervals in one ([#360](https://github.com/Akvize/reconcile-rs/issues/360)). **Decided: no-go.**
-  Balancing (Algorithm 2's rank-cut) has a known `δ = 2` replacement (He–Munro–Nicholson range
-  selection), but the aggregate summary Def. 3.9 needs does not: box-range aggregation's cell-probe
-  lower bound (`Ω((lg n / lg lg n)²)`, worst-case and amortized+randomized) sits at or above that
-  selection's best known cost, so no `δ > 1` RSOS stays `O(lg n)` — the concrete `δ = 2` lift (a
-  dynamic 2D range tree, the direct extension of `FingerprintTreeMap`) costs ~20–30× `T_loc` and
-  space at `n` = 10⁶–10⁹. Full argument, citations and the position-map corollary ("relocation, not
-  injectivity, is the fix"): [#360](https://github.com/Akvize/reconcile-rs/issues/360) and
-  [`POSITIONING.md`](./POSITIONING.md) §2.4.1 — written up separately as a preprint responding to
-  arXiv:2603.19820 §8, deliberately not versioned here.
-- **Pluggable per-value conflict resolution** — CRDT values beyond LWW-Register
-  ([#184](https://github.com/Akvize/reconcile-rs/issues/184)). **Decided: deferred**, no trigger has
-  fired.
+The current system is an LWW register with HLC ordering (§4). A pluggable merge seam is not added
+until a real value type needs it. Large collections should normally be represented as many keys
+instead of one CRDT-shaped value; [README "Modelling sets"](README.md#modelling-sets) explains why
+that preserves fine-grained reconciliation and reuses tombstone GC.
 
-  | Trigger | Would mean |
-  |---|---|
-  | a converging counter | the one genuinely inexpressible gap under LWW |
-  | an opaque third-party CRDT document as `V` | strongest case for a merge seam, gated on staying under the datagram ceiling (#230) |
+### Capacity boundary
 
-  Blocked on stable Rust having no cheap opt-in (a defaultable `merge` is specialization,
-  nightly-only) and the datagram ceiling turning a CRDT's own growth into a correctness cliff
-  (#230). The add-wins set — the most-requested CRDT — is already free via key-encoding, no new
-  machinery required: see [README "Modelling sets"](README.md#modelling-sets) for the encoding, its
-  per-element diff/tombstone/datagram-ceiling rationale, and how it differs from textbook add-wins
-  (#231). That encoding is a large part of why this seam is affordable to leave deferred. Full
-  reasoning, the five-edge cost breakdown and the ranked shortlist: #184.
-- **A leaf sketch (IBLT) beside the RBSR chain** — the single-shot candidate `POSITIONING.md` §1.3/§2.2
-  weighs against refinement. **Decided: out of scope for this crate**, and both open questions with
-  it — the global-sidecar vs per-range shape
-  ([#11](https://github.com/adriendellagaspera/reconcile-rs/issues/11) (closed)) and the ranking
-  against the loss term that dominates before RTT does
-  ([#12](https://github.com/adriendellagaspera/reconcile-rs/issues/12) (closed)). Neither is pursued
-  here: the algorithm is untested, so it is research rather than engineering this crate ships.
-  `RoundOutcome` therefore gains no `sketch_ranges` field, and no store-wide structure is written on
-  every insert.
-- **Partial replication / sharding** — the only surviving answer to capacity pressure
-  ([#186](https://github.com/Akvize/reconcile-rs/issues/186)). A pluggable `Storage` backend
-  (on-disk / LSM / content-addressed) was evaluated as an alternative and **rejected permanently**:
-  larger-than-RAM and full replication are in direct tension — a node holding everything but
-  spilling to disk on read destroys the crate's one unambiguous advantage (`POSITIONING.md` §1.4). Proposal
-  and staging: #186.
-- **Defense against a correlated false SKIP** — whether to spend anything on the residual #354
-  establishes: a false SKIP is a function of the *content pair*, so a converged fleet replays one
-  verdict forever instead of resampling it
-  ([#471](https://github.com/Akvize/reconcile-rs/issues/471)). **Decided: option A ships; option B
-  is re-priced at #337's landing.** The two mechanisms cover disjoint parts of the refinement tree,
-  which is why this is one decision and not two:
+Full replication is intentional: every node serves reads locally from RAM. A generic disk-backed
+`Storage` port would keep the full-replication ceiling while sacrificing that advantage, so it is
+not the capacity strategy. If the working set must exceed one node, the architectural direction is a
+separate partial-replication/grid layer rather than silently turning the core map into a disk store.
 
-  | | A — per-session boundary randomisation | B — periodic root refinement |
-  |---|---|---|
-  | covers | every range **below** the outer one — the accidental collision and the slice-targeted plant | the **outer** range — the total plant, decided before any boundary is drawn |
-  | steady-state cost | none: child bounds travel anyway; wire format, comparison map and policy contract untouched | `~√n/k` extra ranges per round, paid forever (~10/round at `n` = 10⁶, `k` = 100) |
-  | verdict | **taken** — implementation tracked in [#502](https://github.com/Akvize/reconcile-rs/issues/502): injected RNG seam, invariant 10 re-asserted under shifted cuts | **reopened at #337's landing** (this fork: issue #19) — before, the proportionate answer to a plant was keying the lift itself; now that it is keyed (`rsos::LiftKey`, `ClusterKey::derive_lift_key`), the residual adversary is the *insider* a cluster key cannot exclude (every honest peer derives the identical subkey, so #354's fleet-correlation finding applies to an insider's plant unchanged), and B needs re-pricing against exactly that — not yet done |
+### False-SKIP threat model
 
-  Salting `ϕ` itself is **rejected up front**, and is not a third option: it decorrelates sessions
-  by destroying the cached subtree summary, which is the `O(log n)` `Aggregate` the RSOS contract
-  exists to provide. A's seam is in the driver (cut points), not in `RefinementPolicy`, so §5
-  invariant 12 is untouched; invariant 10 is the one a shifted cut can break.
+The shipped defenses cover two different layers. A cluster key derives the keyed RSOS lift, so a
+party without the key cannot precompute a cancelling fingerprint plant. Per-session cut
+randomisation changes child boundaries below the outer range. A cluster-key holder still knows the
+lift key, and the outer range has no boundary to randomise; an additional periodic-root-refinement
+scheme would therefore need its own measured justification before being added. The operational
+security contract is canonical in [`SECURITY.md`](SECURITY.md).
 
-  The interim residual — a total plant was Wagner-craftable without peer credentials while the lift
-  was unkeyed, and permanent per #354 — is closed for anyone but a cluster-key holder as of issue
-  #19; see [README "Security model"](README.md#security-model) for exactly what keying does and
-  does not buy, and for the insider residual B would need to re-price. If B is ever taken it is
-  taken **with** A, never instead: B forces a descent once per `k` rounds, and A is what keeps that
-  forced descent from being cancelled against in advance — deterministic child boundaries would hand
-  the planter the next level's constraints. Collision taxonomy and full pricing: #471.
-- **An alternative/side-channel transport past the datagram ceiling** — whether the value-size
-  ceiling (`65507 -` authentication overhead, README "Value-size ceiling") is worth relaxing by
-  adding a second `Transport` adapter or a fragmentation/side-channel scheme
-  ([#94](https://github.com/adriendellagaspera/reconcile-rs/issues/94)). **Decided: stay UDP-only,
-  no trigger fired.** Three candidates, priced against this crate's own niche
-  (`POSITIONING.md` §1.2/§1.4 — small, frequently-changing values: flags, routing tables, presence,
-  config) rather than against a large-blob workload this crate does not target:
+### Datagram ceiling
 
-  | | Stream (TCP/QUIC) `Transport` | Fragmentation over UDP | Side-channel / pointer |
-  |---|---|---|---|
-  | keeps | nothing of invariant 5/11's shape | invariants 5 and 11 verbatim, per fragment | invariants 5/11 for the pointer; the value itself leaves their scope |
-  | costs | a connection lifecycle layered on `Discovery`'s unauthenticated-until-datagram peer set (§5 invariant 6) — the masterless, connectionless fan-out `POSITIONING.md` §1.4 is built on | a fragment-count adversarial-bounding equivalent to `MAX_MESSAGES_PER_DATAGRAM`, and multiplies one value's per-attempt loss probability by its fragment count, in exactly the large-*n* regime `POSITIONING.md` §1.3/[#336](https://github.com/Akvize/reconcile-rs/issues/336) already flags as dominating RTT | a second channel or external store — the Redis-shaped dependency this crate exists to avoid (`POSITIONING.md` §1.1/§1.4), and it duplicates #186's already-accepted answer to capacity pressure without touching the same memory ceiling |
-  | verdict | rejected — breaks §5 invariant 6's membership model, not merely invariants 5/11's framing | rejected — the least invasive candidate, but the ceiling it lifts (large single values) sits outside the niche `POSITIONING.md` frames the whole crate around, and raising it works against the memory/write-amplification ceiling §1.2 already names as the crate's weak spot | rejected — contradicts the "no external store" pitch this crate is *for* |
+The protocol stays one-datagram UDP. Stream transport, application fragmentation and side-channel
+blob storage all add lifecycle or reliability machinery that conflicts with the small-value,
+embedded-replication niche. The supported mitigation is to keep values small, optionally enforce an
+application ceiling with `Config::max_value_size`, and decompose large collections across keys.
 
-  Invariants 5 and 11 are therefore **unchanged**: authentication still runs on one raw datagram
-  before any decode, and the version byte still lives inside that same datagram — no fragment
-  header, connection frame, or pointer indirection is introduced. The existing, additive mitigation
-  stays the recommended path: `Config::max_value_size` + `try_insert`/`try_update` (#82) gives a
-  synchronous rejection instead of a silent one, and README "Modelling sets" already documents
-  splitting a large composite across many small keys, which removes the ceiling structurally for
-  exactly the workloads (sets, maps, lists) most likely to grow past it. Revisiting this decision
-  needs a trigger, the same discipline the CRDT seam above uses:
-
-  | Trigger | Would mean |
-  |---|---|
-  | a demonstrated workload whose values cannot be key-split (an atomic binary blob, not a decomposable composite) | the strongest case for fragmentation specifically, still priced against the loss-multiplication cost above |
-  | a deployment that already terminates TLS/mTLS per peer and wants gossip to ride the same connections | revisits the stream candidate under a materially different cost (no new connection-lifecycle machinery to build) |
-
----
-
-## 8. Audit history
-
-Resolution status of every finding (`Fxx`) from the original code audit (commit `64f1ebf`).
-✅ resolved · ◐ partial · ◯ open. A later 2026-06 adversarial audit filed further findings as
-[#195](https://github.com/Akvize/reconcile-rs/issues/195)–[#205](https://github.com/Akvize/reconcile-rs/issues/205)
-and a 2026-08-10 public-API audit as
-[#282](https://github.com/Akvize/reconcile-rs/issues/282)–[#299](https://github.com/Akvize/reconcile-rs/issues/299),
-both tracked under [issue #206](https://github.com/Akvize/reconcile-rs/issues/206), which owns their
-current status; this table is the historical record of the first, closed audit only.
-
-| # | Severity | Finding | Status | Resolution |
-|---|----------|---------|--------|-------------------|
-| F1 | Critical | `hash==0` sentinel → silent divergence | ✅ | #106 — emptiness/equality decided on `size`, not `hash` |
-| F2 | Critical | panic on malformed UDP → remote DoS | ✅ | #107 — malformed datagrams dropped (`warn!`+`return`) |
-| F3 | Critical | unauthenticated + attacker-controlled timestamp | ✅ | #108 — per-datagram keyed MAC, verified before deserialize (opt-in key) |
-| F4 | Critical | tombstone resurrection (60 s wall-clock GC) | ✅ | #109 — GC gated on causal stability (§5 inv. 6) |
-| F5 | High | physical-clock LWW (lossy + non-commutative) | ✅ | #110 — Hybrid Logical Clock + total order (§4, §5 inv. 2) |
-| F6 | High | 64-bit XOR fingerprint (weak, craftable) | ✅ | #111 — 256-bit additive BLAKE3 (§5 inv. 1). The replacement is itself craftable by a **writing** adversary (Wagner's balance problem over ℤ/2²⁵⁶ — `rbsr/tests/wagner_false_convergence.rs`), tracked separately as [#337](https://github.com/Akvize/reconcile-rs/issues/337) |
-| F7 | High | crafted `RangeAggregate` → panic/underflow | ✅ | #112 — bound validation: an inverted range is rejected before indexing (`rbsr/src/protocol.rs`) |
-| F8 | High | `DefaultHasher` unstable on the wire | ✅ | #111 + `rsos::encoding` (§6) — wire fingerprint is BLAKE3 over an owned canonical byte encoding |
-| F9 | High | UDP amplification / reflection | ◐ | mitigated by #108 (auth) + #106; rate-limiting / path validation still open |
-| F10 | High | IP-scan discovery, O(N²) membership | ◐ | `Discovery` port + `DnsDiscovery` (§3.2) lands a cloud-native path; bounded-fan-out membership (SWIM/HyParView) still open — [#147](https://github.com/Akvize/reconcile-rs/issues/147)/[#190](https://github.com/Akvize/reconcile-rs/issues/190) |
-| F11 | High | no property-testing / fuzzing | ✅ | #113 — `tests/proptest_fingerprint_tree_map/`, `tests/fuzz_packets.rs` |
-| F12 | Medium | debug `println!` in the hot path | ✅ | #113 — removed |
-| F13 | Medium | panic-only API (no `Result`) | ✅ | #148 — fallible `new` constructors; no network send can panic the run loops |
-| F14 | Medium | `pre_insert` hook under the write-lock (net path) | ✅ | #149 — hook runs outside the write lock on both paths, regression-tested |
-| F15 | Medium | no persistence | ✅ | #122 — pluggable `Persistence` (`InMemory`, `FileSnapshot`) |
-| F16 | Medium | loopback benches + README inconsistency | ✅ | [#280](https://github.com/Akvize/reconcile-rs/issues/280) — seeded delay/loss/reordering `Transport` decorator, RTT sweep and loss lane; numbers in `benches/README.md` |
-| F17 | Medium/Low | maturity signals | ✅ | clippy clean; MSRV declared (`rust-version = "1.85"`, pinned CI lane) — [#189](https://github.com/Akvize/reconcile-rs/issues/189) |
-| F18 | Medium | resource exhaustion (`peers` map, bincode bomb) | ✅ | per-datagram message/segment caps (#151); `peers` map bounded by `Config::max_peers` (default 1024) — [#150](https://github.com/Akvize/reconcile-rs/issues/150) |
-| F19 | Low | dependency hygiene | ✅ | bincode `with_limit` (#151); `overflow-checks = true` + `cargo deny` CI lane — [#312](https://github.com/Akvize/reconcile-rs/issues/312) |
-
-**Score:** 17 resolved · 2 partial (F9, F10) · 0 open. All Critical resolved; all but one High
-resolved or mitigated. Live release-readiness status (the 2026-06 and 2026-08-10 audits, and every
-open maturity/roadmap item) is tracked by the `v1.0.0` milestone and
-[issue #206](https://github.com/Akvize/reconcile-rs/issues/206); this table does not duplicate it.
-
----
-
-*For how this architecture was reached — the crate-by-crate extraction, the trait dissolutions, the
-type-safety passes over `Timestamp`/`AdmittedTime` — see `git log` and the closed PRs against
-[issue #138](https://github.com/Akvize/reconcile-rs/issues/138); this document describes the
-destination, not the path.*
