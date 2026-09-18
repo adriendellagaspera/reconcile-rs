@@ -209,7 +209,7 @@ copy-on-write B+-tree addressed by page number.
     injectivity alone. Truncating a count-folding hash (Negentropy) trades the probability-1 half
     away entirely; comparing `(count, Σ mod 2^τ)` would keep it for the price of a varint. The same
     boundary bounds any policy that keys off the count delta, which is why a divergence-adaptive
-    fan-out was not built ([§2.4.1](#241-open-research-questions)).
+    fan-out was not built (§2.4).
 - The remaining delta the other way is **persistence**: AELMDB is LMDB-backed (memory-mapped,
   durable); FingerprintTreeMap is in-memory only. **The structure's SOTA in this niche = "persistent
   RSOS with a secure fingerprint" — persistence is the gap that remains.**
