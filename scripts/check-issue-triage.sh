@@ -145,7 +145,280 @@ note() {
     printf '  #%-5s · %s\n' "$1" "$2"
 }
 
-while IFS=$'\t' read -r number kinds areas statuses unknown blocked_ok fresh title; do
+while IFS=
+    [ -n "$number" ] || continue
+
+    # Within the grace window every finding below downgrades to a note. One `if` rather than a
+    # branch at each call site: whichever rule an issue trips in its first hour, the answer is the
+    # same -- say so, do not fail on it.
+    if [ "$fresh" = "fresh" ]; then
+        say=note
+    else
+        say=report
+    fi
+
+    if [ "$statuses" -ne 1 ]; then
+        $say "$number" "$statuses S- labels, expected exactly 1 — $title"
+        continue
+    fi
+
+    # Untriaged is an explicit status, not something inferred from missing classification.
+    # It is mutually exclusive with C-/A- classification; every other status requires both.
+    if [ "$needs_triage" = "needs-triage" ]; then
+        [ "$kinds" -eq 0 ] ||
+            $say "$number" "S-needs-triage carries $kinds C- label(s), expected 0 — $title"
+        [ "$areas" -eq 0 ] ||
+            $say "$number" "S-needs-triage carries $areas A- label(s), expected 0 — $title"
+    else
+        [ "$kinds" -eq 1 ] || $say "$number" "$kinds C- labels, expected exactly 1 — $title"
+        [ "$areas" -ge 1 ] || $say "$number" "no A- label — $title"
+    fi
+
+    [ "$unknown" -eq 0 ] || $say "$number" "$unknown label(s) absent from $LABELS_FILE — $title"
+
+    # Three states, not two. "bare" is a #NNN somewhere in the body with no keyword in front of
+    # it — enough for rule 4 as originally written, and useless to rule 6, which cannot tell a
+    # blocker from a "Part of", a "Related:" or a number in a sentence. That is how the #271
+    # cluster sat blocked on a discharged design call with nothing to notice it.
+    #
+    # Both tiers fail. `bare` noted rather than failed while the backlog it postdated was annotated;
+    # that drained on 2026-08-15 (the eleven then-open S-blocked issues), so the distinction is now
+    # only in the message — a bare reference and no reference are different mistakes to fix.
+    case "$blocked_ok" in
+        ok) ;;
+        bare) $say "$number" "S-blocked names #NNN but not as 'blocked by #NNN' — rule 6 cannot read it — $title" ;;
+        *)  $say "$number" "S-blocked with no #NNN blocker in the body — $title" ;;
+    esac
+done < <(
+    jq -r --arg known "$known" --arg kw "$BLOCKER_KEYWORDS" --arg grace "$grace_cutoff" '
+        ($known | split("\n")) as $known |
+        .[] |
+        [ .number,
+          ([.labels[].name | select(startswith("C-"))] | length),
+          ([.labels[].name | select(startswith("A-"))] | length),
+          ([.labels[].name | select(startswith("S-"))] | length),
+          (if ([.labels[].name] | index("S-needs-triage")) then "needs-triage" else "-" end),
+          ([.labels[].name | select(. as $n | $known | index($n) | not)] | length),
+          (if ([.labels[].name] | index("S-blocked"))
+           then (if ((.body // "") | test("(?i)(?:" + $kw + ")[ \t:*_`]*#[0-9]+")) then "ok"
+                 elif ((.body // "") | test("#[0-9]+")) then "bare"
+                 else "missing" end)
+           else "ok" end),
+          (if (.createdAt // "") >= $grace then "fresh" else "-" end),
+          .title
+        ] | @tsv
+    ' <<<"$issues"
+)
+
+# --- Rule 6: a named gate that has already been satisfied ---------------------------------
+# Needs one lookup per distinct referenced issue, so references are collected first and each
+# number resolved at most once. Skipped without `gh` — in fixture mode there is nothing to
+# resolve against, and guessing would be worse than not checking.
+declare -A REF_STATE
+ref_state() {
+    local n=$1
+    if [ -z "${REF_STATE[$n]:-}" ]; then
+        REF_STATE[$n]=$(gh issue view "$n" --repo "$REPO" --json state --jq .state 2>/dev/null || echo UNKNOWN)
+    fi
+    printf '%s' "${REF_STATE[$n]}"
+}
+
+if command -v gh >/dev/null 2>&1; then
+    while IFS=$'\t' read -r number which refs title; do
+        [ -n "$number" ] || continue
+        [ "$refs" = "-" ] && continue
+
+        open_left=0
+        closed_refs=""
+        unresolved=""
+        for r in $refs; do
+            case "$(ref_state "$r")" in
+                CLOSED)  closed_refs="$closed_refs #$r" ;;
+                UNKNOWN) unresolved="$unresolved #$r" ;;
+                *)       open_left=$((open_left + 1)) ;;
+            esac
+        done
+
+        # "Cannot tell" is its own outcome. Folding it into "open" — which is what comparing
+        # against CLOSED used to do — buries the issue silently and permanently: a number that
+        # never resolves (deleted, transferred, a typo, another repository) reads as a blocker
+        # that is always still open, so the rule can never fire on that issue again and says
+        # nothing about why.
+        [ -z "$unresolved" ] || note "$number" "$which references$unresolved, which resolve to no issue in $REPO — state unknown, rule 6 skipped — $title"
+        [ -z "$unresolved" ] || continue
+
+        [ -n "$closed_refs" ] || continue
+
+        if [ "$which" = "S-blocked" ]; then
+            # Only when nothing in the blocker set is still open. Which set that is was decided
+            # above: the annotated one when the body named it, every reference otherwise.
+            [ "$open_left" -eq 0 ] || continue
+            report "$number" "S-blocked, but every issue it references is closed —$closed_refs — $title"
+        else
+            report "$number" "S-parked on$closed_refs, which is closed — the stated gate is met — $title"
+        fi
+    done < <(
+        # `-` rather than an empty refs field, because IFS=$'\t' makes tab an *IFS whitespace*
+        # character: bash collapses runs of it, so an empty middle field silently shifts every
+        # column after it and the title lands in `refs`. The rules above never emit an empty
+        # field, which is why the same `read` has been safe there.
+        jq -r --arg kw "$BLOCKER_KEYWORDS" '
+            def refs_all: [ (.body // "") | scan("#([0-9]+)") | .[0] ] | unique;
+            # One keyword, then the whole run of numbers it introduces — "blocked by #273, #274 and
+            # #275" names three blockers, and reading only the first is worse than reading none: the
+            # rule would fire the moment #273 closed, while #274 and #275 were still open. The run
+            # stops at the first thing that is not another #NNN, so "blocked by #276, which #277
+            # supersedes" still yields #276 alone.
+            def refs_annotated: [ (.body // "")
+                | scan("(?i)(?:" + $kw + ")[ \t:*_`]*((?:#[0-9]+(?:[ \t]*(?:,|and|&|/)[ \t]*)?)+)")
+                | .[0] | scan("#([0-9]+)") | .[0] ] | unique;
+            def field: join(" ") | if . == "" then "-" else . end;
+            .[]
+            | . as $i
+            | ([$i.labels[].name]) as $l
+            | if ($l | index("S-blocked")) then
+                  # Annotated blockers win when present; the all-references tier is the fallback
+                  # for a body that named no blocker in a machine-readable form.
+                  [ $i.number, "S-blocked",
+                    (($i | refs_annotated) as $named
+                     | (if ($named | length) > 0 then $named else ($i | refs_all) end) | field),
+                    $i.title ]
+              elif ($l | index("S-parked")) then
+                  [ $i.number, "S-parked", (($i | refs_annotated) | field), $i.title ]
+              else empty end
+            | @tsv
+        ' <<<"$issues"
+    )
+fi
+
+# --- Rule 7: a closed issue still carrying unticked acceptance boxes -----------------------
+# The tracker's unit of reference is the issue number, so anything finer is invisible to every
+# mechanism here. An issue that bundles separable work therefore cannot be half-closed
+# *legibly*: closing it discharges the whole number, including the parts nobody did.
+#
+# Measured on 2026-08-15: #355 carried three arms, one landed, and it was closed `completed`
+# with three unticked boxes and a bolded paragraph saying the other two remained open. #356 was
+# blocked on one of those two, could only name the issue, and read as unblocked.
+#
+# This does not forbid bundling — that is a judgement about how to write an issue. It makes the
+# half-close loud, which is the damage. The fix at the source is sub-issues: one number each,
+# closing one does not close the others, and a dependency becomes expressible.
+#
+# Scoped to issues closed `completed`. `not_planned` is the other close, and it is not a half-close:
+# it says the work is not happening here, so an unticked box is the accurate record of exactly that
+# -- ticking it would claim work nobody did, which is the failure the `BOXES_SINCE` note above
+# refuses for the historical tail on the same grounds. Measured on 2026-08-24: the eight-issue
+# sketch/IBLT cluster (#10-#13, #17, #22, #25, #45) closed `not_planned` on a rescope, and rule 7
+# failed every run afterwards with no honest fix available to it.
+# Only an explicit `NOT_PLANNED` is excluded -- a missing or null `stateReason` still gets checked,
+# since "cannot tell" is not "exempt" (the same reading rule 6's UNKNOWN branch applies).
+#
+# Bounded by `BOXES_SINCE` (declared above with the reason). ISO-8601 sorts lexicographically, so a
+# date-only cutoff compares directly against `closedAt`'s full timestamp — no date arithmetic, and
+# nothing to get wrong across the `date` implementations §3's SLA block already has to straddle.
+if [ -n "${CLOSED_ISSUES_JSON:-}" ]; then
+    closed=$(cat "$CLOSED_ISSUES_JSON")
+elif [ -z "${ISSUES_JSON:-}" ] && command -v gh >/dev/null 2>&1; then
+    closed=$(gh issue list --repo "$REPO" --state closed --limit 500 \
+        --json number,title,body,closedAt,stateReason)
+else
+    closed=""
+fi
+
+if [ -n "$closed" ]; then
+    while IFS=$'\t' read -r number open_boxes title; do
+        [ -n "$number" ] || continue
+        report "$number" "closed with $open_boxes unticked acceptance box(es) — split it, or tick them — $title"
+    done < <(
+        jq -r --arg since "$BOXES_SINCE" '
+            .[]
+            | . as $i
+            | select(((.stateReason // "") | ascii_upcase) != "NOT_PLANNED")
+            | select((.closedAt // "") >= $since)
+            | ([ (.body // "") | scan("(?m)^[ \t]*[-*][ \t]+\\[[ ]\\]") ] | length) as $open
+            | select($open > 0)
+            | [ $i.number, $open, $i.title ] | @tsv
+        ' <<<"$closed"
+    )
+
+    # The tail is a count, not a list: naming each of them every run would bury the window's
+    # findings under history that is, by construction, never going to change.
+    historical=$(jq --arg since "$BOXES_SINCE" '
+        [ .[] | select(((.stateReason // "") | ascii_upcase) != "NOT_PLANNED")
+              | select((.closedAt // "") < $since)
+              | select(([ (.body // "") | scan("(?m)^[ \t]*[-*][ \t]+\\[[ ]\\]") ] | length) > 0) ]
+        | length' <<<"$closed")
+    [ "$historical" -eq 0 ] ||
+        echo "  · $historical issue(s) closed before $BOXES_SINCE carry unticked boxes — predate the rule, not gated"
+fi
+
+# --- Rule 8: every sub-issue closed, parent still open -------------------------------------
+# The mirror of rule 7, and the reason sub-issues are the recommended shape rather than merely
+# an allowed one: once work is split across numbers, "is the parent done" becomes a query
+# instead of a memory. `C-tracking-issue` makes it airtight — `.github/labels.tsv` defines it as
+# carrying no work of its own, so an open one with every child closed is a contradiction, not a
+# judgement call. For any other parent the residual work may be real, so that one only notes.
+#
+# `sub_issues_summary` rides on the REST issue object; `gh issue list --json` does not expose
+# it, hence the separate call. If the field is absent — older API, or a repository without the
+# feature — the rule says so and skips, rather than reading a missing count as zero.
+if [ -z "${ISSUES_JSON:-}" ] && command -v gh >/dev/null 2>&1; then
+    parents=$(gh api "repos/$REPO/issues?state=open&per_page=100" --paginate 2>/dev/null \
+        | jq -s 'add // [] | map(select(.pull_request == null))' 2>/dev/null || echo '[]')
+
+    if [ "$(jq '[.[] | select(has("sub_issues_summary"))] | length' <<<"$parents")" -eq 0 ]; then
+        echo "  · sub_issues_summary absent from the REST payload — rule 8 skipped, not passed"
+    else
+        while IFS=$'\t' read -r number tracking total title; do
+            [ -n "$number" ] || continue
+            if [ "$tracking" = "tracking" ]; then
+                report "$number" "C-tracking-issue open with all $total sub-issues closed — it carries no work of its own — $title"
+            else
+                note "$number" "open with all $total sub-issues closed — check whether anything of its own is left — $title"
+            fi
+        done < <(
+            jq -r '
+                .[]
+                | . as $i
+                | (.sub_issues_summary // {}) as $s
+                | select(($s.total // 0) > 0 and ($s.completed // 0) == $s.total)
+                | [ $i.number,
+                    (if ([$i.labels[].name] | index("C-tracking-issue")) then "tracking" else "-" end),
+                    $s.total,
+                    $i.title ] | @tsv
+            ' <<<"$parents"
+        )
+    fi
+fi
+
+total=$(jq 'length' <<<"$issues")
+untriaged=$(jq '[.[] | select([.labels[].name] | index("S-needs-triage"))] | length' <<<"$issues")
+
+echo
+printf '  %d open issues, %d awaiting triage, %d violation(s), %d note(s)\n' \
+    "$total" "$untriaged" "$violations" "$notes"
+
+if [ -n "${TRIAGE_SLA_DAYS:-}" ] && [ "$untriaged" -gt 0 ]; then
+    cutoff=$(date -u -d "${TRIAGE_SLA_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null ||
+        date -u -v-"${TRIAGE_SLA_DAYS}"d +%Y-%m-%dT%H:%M:%SZ)
+    stale=$(jq -r --arg cutoff "$cutoff" '
+        [.[] | select(([.labels[].name] | index("S-needs-triage")) and .createdAt < $cutoff)]
+        | map("#\(.number) \(.title)") | .[]' <<<"$issues")
+    if [ -n "$stale" ]; then
+        echo >&2
+        echo "  awaiting triage for more than ${TRIAGE_SLA_DAYS} days:" >&2
+        echo "$stale" | sed 's/^/    /' >&2
+        violations=$((violations + $(wc -l <<<"$stale")))
+    fi
+fi
+
+if [ "$violations" -gt 0 ]; then
+    echo >&2
+    echo "check-issue-triage: $violations issue(s) do not satisfy .github/labels.tsv's invariants." >&2
+    echo "Fix the labels, or change the taxonomy in that file and say why in the commit." >&2
+    exit 1
+fi
+\t' read -r number kinds areas statuses needs_triage unknown blocked_ok fresh title; do
     [ -n "$number" ] || continue
 
     # Within the grace window every finding below downgrades to a note. One `if` rather than a
