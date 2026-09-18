@@ -590,7 +590,7 @@ traits before 1.0.
 | generic lifting monoid | **deferred to a future major** — `Aggregate` remains count + `Fingerprint` | a real summary type determines whether the bound should be `Monoid` or `Group` |
 | multidimensional RSOS | **rejected** for this design | new theory removes the range-aggregation cost that breaks the O(log n) target |
 | pluggable value conflict resolution | **deferred** — LWW remains the value contract | a concrete converging value type cannot be expressed by key decomposition |
-| leaf sketch beside RBSR | **out of this crate** | research produces a tested design suitable for the engineering repository |
+| leaf sketch beside RBSR | **out of this crate** — decision records #11/#12 | research produces a tested design suitable for the engineering repository |
 | partial replication / sharding | **future grid-layer concern** | capacity must exceed one node's RAM while preserving local-read economics |
 | correlated false-SKIP defense | **keyed lift + per-session cut randomisation ship** | the residual cluster-key-holder threat needs an additional measured mitigation |
 | alternate transport for oversized values | **rejected for the current niche** | a demonstrated workload cannot decompose values into smaller keys |
