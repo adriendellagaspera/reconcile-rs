@@ -52,7 +52,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let do_remote = round % remote_interval == 0;
         let known = self.get_peers();
 
-        // "What is the state now" gauges (#27): refreshed once per round rather than at every
+        // "What is the state now" gauges: refreshed once per round rather than at every
         // mutation — cheap at this cadence, and a gauge scraped periodically gains nothing from a
         // finer-grained update.
         let live_tombstones_len = self.live_tombstones.read().len();
@@ -103,9 +103,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // Piggyback causal-stability ack resends for the tombstones we hold.
         self.resend_held_tombstone_acks(send_buf, round);
 
-        // #85: drop any target whose paced bulk transfer to us might still legitimately be in
+        // Drop any target whose paced bulk transfer to us might still legitimately be in
         // progress -- re-initiating a full comparison mid-transfer only re-diffs and re-sends
-        // ranges it is already sending, doubling traffic (akvize/reconcile-rs#178) instead of
+        // ranges it is already sending, doubling traffic instead of
         // converging any faster. See `receiving_bulk_from`'s docs.
         let repair_interval = *self.repair_interval.read();
         let now = Instant::now();
@@ -130,7 +130,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             {
                 warn!("failed to send reconciliation initiation to {peer}: {err}; continuing");
             }
-            // #23: if this round finds a real difference, `peer`'s reply (a SPLIT child, an
+            // If this round finds a real difference, `peer`'s reply (a SPLIT child, an
             // `EntryUpdate` batch) clears this the moment it arrives (`run`'s receive loop). A
             // round that resolves to a pure SKIP gets an explicit `ConvergenceAck` instead; see
             // `Message`'s docs.
@@ -215,8 +215,8 @@ fn live_entry_count(total_entries: usize, tombstones: usize) -> usize {
 
 /// Whether a peer's most recently received dated bulk-update batch is recent enough that
 /// [`start_reconciliation`](Replica::start_reconciliation) should leave it out of this round's
-/// targets — the receiver-side guard against re-initiating a full diff mid-transfer (#85,
-/// akvize/reconcile-rs#178). `None` (never received one, or its entry was never set) is never
+/// targets — the receiver-side guard against re-initiating a full diff mid-transfer. `None`
+/// (never received one, or its entry was never set) is never
 /// "still receiving".
 fn still_receiving_bulk(
     last_received: Option<Instant>,
