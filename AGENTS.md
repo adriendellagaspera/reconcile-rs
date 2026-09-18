@@ -156,7 +156,6 @@ durable decisions. They do not preserve the sequence of issues/PRs that produced
 Upgrade actions belong in `MIGRATING.md`, release history in `CHANGELOG.md`, and implementation
 chronology in the issue/PR/git history. An issue that remains open is rewritten when its scope
 changes instead of accumulating dated re-triage sections.
-
 **Every fact lives in exactly one place; everywhere else links to it.** A restatement is a second
 copy that drifts, and the drifted copy is read as true. Hence **prose is the last resort**, in docs
 and in code comments alike: prefer a mermaid diagram (`ARCHITECTURE.md` §2/§3 is the model), a table,
