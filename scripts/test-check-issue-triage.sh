@@ -10,13 +10,13 @@ run_case() {
     local payload=$3
     local fixture
     fixture=$(mktemp)
-    trap 'rm -f "$fixture"' RETURN
     printf '%s\n' "$payload" >"$fixture"
 
     set +e
     output=$(ISSUES_JSON="$fixture" TRIAGE_GRACE_MINUTES=0 "$CHECK" 2>&1)
     status=$?
     set -e
+    rm -f "$fixture"
 
     if [ "$expected" = pass ]; then
         if [ "$status" -ne 0 ]; then
