@@ -21,8 +21,8 @@ use crate::FingerprintTreeMap;
 
 use super::{send_messages_to, Message, Replica, SendPorts, PEER_EXPIRATION};
 
-/// Broadcast-egress budget was exhausted when [`Replica::try_insert`] attempted to claim a slot
-/// (#83). Crate-internal signal carrying no state of its own — the public
+/// Broadcast-egress budget was exhausted when [`Replica::try_insert`] attempted to claim a slot.
+/// Crate-internal signal carrying no state of its own — the public
 /// [`Backpressure`](crate::replicated_map::Backpressure) error
 /// [`ReplicatedMap::try_insert`](crate::replicated_map::ReplicatedMap::try_insert)/
 /// [`try_update`](crate::replicated_map::ReplicatedMap::try_update) build from it reads the
@@ -31,7 +31,7 @@ use super::{send_messages_to, Message, Replica, SendPorts, PEER_EXPIRATION};
 /// the read are not atomic with each other anyway.
 pub(crate) struct BroadcastBudgetExhausted;
 
-/// RAII counter-decrement for the global concurrent-broadcast budget (#83). Mirrors
+/// RAII counter-decrement for the global concurrent-broadcast budget. Mirrors
 /// [`pacing::BulkDumpCountGuard`](super::pacing::BulkDumpCountGuard): decrements the shared atomic
 /// on `Drop`, so a panicking or aborted send task cannot wedge the budget below its true capacity.
 pub(crate) struct BroadcastCountGuard {
@@ -103,7 +103,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Claim one of the [`max_concurrent_broadcasts`](super::Inner::max_concurrent_broadcasts)
-    /// egress slots, or `None` if the budget is exhausted (#83). Mirrors
+    /// egress slots, or `None` if the budget is exhausted. Mirrors
     /// [`Replica::try_claim_dump_slot`]'s compare-exchange loop, without that one's per-peer half
     /// — a write-broadcast task fans out to every peer at once, there is no per-peer slot to also
     /// hold.
@@ -128,7 +128,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         })
     }
 
-    /// Write-broadcast tasks currently in flight — the depth gauge #83 asks for. Also backs
+    /// Write-broadcast tasks currently in flight. Also backs
     /// [`Backpressure`](crate::replicated_map::Backpressure)'s `in_flight` field.
     pub(crate) fn broadcasts_in_flight(&self) -> usize {
         self.broadcasts_in_flight.load(Ordering::Acquire)
@@ -145,11 +145,11 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// does not block on the network. The low-level send primitive both the immediate path and
     /// the coalescing flush ([`queue_broadcast`](Self::queue_broadcast)) reduce to.
     ///
-    /// Bounded by [`max_concurrent_broadcasts`](super::Inner::max_concurrent_broadcasts) (#83): at
+    /// Bounded by [`max_concurrent_broadcasts`](super::Inner::max_concurrent_broadcasts): at
     /// the budget, this skips spawning the task entirely rather than queuing it — the write this
     /// call follows has already applied locally, so nothing is lost, only the eager push is
     /// delayed to the next [`reconcile_interval`](super::Inner::reconcile_interval) round or
-    /// [`repair_interval`](super::Inner::repair_interval) retry (#23), exactly the bounded cost an
+    /// [`repair_interval`](super::Inner::repair_interval) retry, exactly the bounded cost an
     /// already-tolerated lost datagram is. A caller that wants to *know* egress is falling behind
     /// rather than rely on that backstop uses [`try_insert`](Self::try_insert) instead, which
     /// rejects the whole call up front.
@@ -178,7 +178,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let transport = Arc::clone(&self.transport);
         let authenticator = self.authenticator.clone();
         let sender_counter = Arc::clone(&self.sender_counter);
-        // #23: a plain `Update` triggers no reply of its own, so this specific write cannot
+        // A plain `Update` triggers no reply of its own, so this specific write cannot
         // itself cancel the pending retry early -- only unrelated traffic from the same peer, or
         // the bounded timeout in `retry_due_repairs`, resolves it. An accepted, bounded cost (see
         // `Message`'s docs), not a bug. Cloning the whole engine (an `Arc` bump) rather than more
@@ -199,7 +199,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 let peer = SocketAddr::new(addr, port);
                 send_messages_to(&messages, &ports, &peer, &mut send_buf).await;
                 // Watch for a reply within `repair_interval`; a lost broadcast would otherwise
-                // only be rediscovered by the next full `reconcile_interval` round (#23).
+                // only be rediscovered by the next full `reconcile_interval` round.
                 repair_engine.note_pending_repair(addr);
             }
         });
@@ -211,7 +211,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         ret
     }
 
-    /// Fallible counterpart of [`insert`](Self::insert) (#83): claims a
+    /// Fallible counterpart of [`insert`](Self::insert): claims a
     /// [`max_concurrent_broadcasts`](super::Inner::max_concurrent_broadcasts) egress slot
     /// **before** touching the map, so a call either fully applies — locally and broadcast — or
     /// not at all, never a write with a silently-skipped broadcast the way `insert` accepts.
