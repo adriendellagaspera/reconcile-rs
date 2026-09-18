@@ -27,7 +27,6 @@ use gossip::gen_ip::gen_ip;
 
 use super::ReadReplicaMap;
 
-
 /// The wire value type, named only so the shared [`Message`] enum has a concrete `Update` payload
 /// — which a read replica ignores, storing no dated value.
 type WireDated<V> = Entry<Timestamp, V>;
