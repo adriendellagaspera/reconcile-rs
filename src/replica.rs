@@ -233,7 +233,7 @@ pub(crate) struct Inner<K, V> {
     /// before any per-sender state is allocated when the membership set reaches this size.
     max_peers: PeerCap,
     /// How long a write waits, batched with any other writes, before the accumulated batch is
-    /// broadcast as one send loop (#187). [`Duration::ZERO`] (the default) disables coalescing —
+    /// broadcast as one send loop. [`Duration::ZERO`] (the default) disables coalescing —
     /// every write flushes immediately, see [`Replica::queue_broadcast`]. Shared so it can be
     /// retuned at runtime.
     coalesce_window: Arc<RwLock<Duration>>,
@@ -254,26 +254,26 @@ pub(crate) struct Inner<K, V> {
 
 /// One atomic message of the reconciliation protocol.
 ///
-/// Variant order is the wire tag order: the **dated** channel is 0-2
-/// (`EntryFingerprint`/`EntryUpdate`/`TombstoneAck`), the **state-only** channel read replicas use
-/// is 3-4, tag 5 is [`ConvergenceAck`](Message::ConvergenceAck) (#23, consuming one of the two
-/// wire tags #463 reserved for exactly this), and 6 is the one remaining
-/// [`reserved`](Message::Reserved6) skippable slot. A node that does not know a tag past 6 still
-/// fails to deserialize and drops the whole datagram, which the receive loop tolerates. Landing
-/// `ConvergenceAck` at tag 5 needed `WIRE_VERSION` bumped 2 → 3 (`gossip::auth::WIRE_VERSION`) —
-/// pre-1.0, that is a normal minor-version release carrying a breaking wire change
-/// (`CHANGELOG.md`/`MIGRATING.md`; `akvize/reconcile-rs#382` did the same for `Fingerprint`'s
-/// encoding), not a coordinated live-migration mechanism: `akvize/reconcile-rs#309` is the wire
-/// version byte's own origin (`ARCHITECTURE.md` §5 invariant 11), and its consequence — a
-/// mismatched peer's whole datagram rejected, no accepted-version window — is what makes *any*
-/// `WIRE_VERSION` bump a full-drain, no-mixed-versions rollout once real clusters exist, same as
-/// every prior bump. Consuming the one tag still reserved (6), or adding a seventh, needs another
-/// such bump (`ARCHITECTURE.md` §5 invariant 14).
+/// Variant order is the wire tag order:
 ///
-/// The naming axis is the domain's own structural split ([`Entry`] carries a `stamp`, [`State`]
-/// does not — `ARCHITECTURE.md` §5 invariant 8): the dated channel fingerprints/updates the `map`
-/// tree of `Entry<Timestamp, V>`, the state-only channel fingerprints/updates the `projection`
-/// tree of bare `State<V>`. `V` is the dated value, `P` its timestamp-less projection.
+/// | tag | channel | variant |
+/// |---:|---|---|
+/// | 0 | dated | [`EntryFingerprint`](Message::EntryFingerprint) |
+/// | 1 | dated | [`EntryUpdate`](Message::EntryUpdate) |
+/// | 2 | dated | [`TombstoneAck`](Message::TombstoneAck) |
+/// | 3 | state-only | [`StateFingerprint`](Message::StateFingerprint) |
+/// | 4 | state-only | [`StateUpdate`](Message::StateUpdate) |
+/// | 5 | dated | [`ConvergenceAck`](Message::ConvergenceAck) |
+/// | 6 | reserved | [`Reserved6`](Message::Reserved6) |
+///
+/// Unknown tags beyond this enum fail deserialization and the receive loop drops the datagram.
+/// Assigning a real shape to the reserved tag, or otherwise changing the wire shape, requires the
+/// compatibility treatment documented in `MIGRATING.md`; `gossip::auth::WIRE_VERSION` is the
+/// strict protocol-version gate.
+///
+/// The two channels follow the domain split in `ARCHITECTURE.md` §5 invariant 8: the dated
+/// channel operates on `Entry<Timestamp, V>`; the state-only channel operates on the timestamp-less
+/// `State<V>` projection used by read replicas.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
     /// A range and its aggregate over the dated `map` (an `Entry<Timestamp, V>` tree), for the
@@ -296,15 +296,13 @@ pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
     StateUpdate((K, P)),
     /// Acknowledges an `EntryFingerprint` round that converged with nothing to send back: every
     /// active range the peer sent was already a match, so `rbsr::protocol_round` itself emits no
-    /// reply for it (#23). Sent from [`handle_messages`](Replica::handle_messages) whenever a
+    /// reply for it. Sent from [`handle_messages`](Replica::handle_messages) whenever a
     /// round produces neither a refined `EntryFingerprint` nor a difference to dump. Carries no
     /// payload — `rbsr` is deliberately stateless (no session/exchange IDs), and at most one
     /// repair is ever pending per peer ([`pending_repairs`](Inner::pending_repairs)), so "an ack
-    /// arrived at all" is everything its clearing needs to know. Consumes wire tag 5, formerly a
-    /// `Reserved5` variant of this same shape as [`Reserved6`](Message::Reserved6) below; that
-    /// other reservation is unaffected and still opaque bytes.
+    /// arrived at all" is everything its clearing needs to know.
     ConvergenceAck,
-    /// The one remaining reserved wire tag (#463): never sent by this version, opaque
+    /// The one remaining reserved wire tag: never sent by this version, opaque
     /// length-prefixed bytes on decode so a *future* version's real message at this tag still
     /// decodes on *this* one — [`handle_messages`](Replica::handle_messages) ignores it rather
     /// than failing the whole datagram, which is exactly what a tag past 6 does today. Consumes
@@ -333,11 +331,6 @@ pub(crate) use membership::derive_local_net;
 pub(crate) use pacing::send_messages_paced;
 pub(crate) use pacing::{send_messages_to, send_to_retry, SendPorts};
 
-// `pub(crate)` (not private): `tests::next_ephemeral_test_port` is reused by other files' own
-// test modules (replicated_set.rs, read_replica_set.rs, read_replica_map.rs,
-// replicated_map's own test modules), which reach it as
-// `crate::replica::tests::next_ephemeral_test_port`. This is the only test-only content this
-// production file carries — a visibility marker on its own test submodule, no test code or
-// symbol imported into it.
+// Shared test helpers used by sibling test modules; production code remains in the modules above.
 #[cfg(test)]
 pub(crate) mod tests;
