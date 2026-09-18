@@ -173,17 +173,18 @@ impl Config {
     /// Explicit, loudly-named opt-in to run with no [`cluster_key`](Self::cluster_key) at all.
     ///
     /// Without either this or [`with_cluster_key`](Self::with_cluster_key), construction refuses
-    /// to proceed (#325): [`RandomProbe`](crate::discovery::RandomProbe) answers any host inside
-    /// the configured [`nets`](Self::nets), so a stranger squatting one IP eventually receives the
-    /// **entire dataset**, unauthenticated, via paced diff dumps — see README "Security model".
-    /// Call this only when the network is a trusted underlay the cluster fully controls.
+    /// to proceed: [`RandomProbe`](crate::discovery::RandomProbe) answers any host inside the
+    /// configured [`nets`](Self::nets), so a stranger squatting one IP eventually receives the
+    /// **entire dataset**, unauthenticated, via paced diff dumps. Call this only when the network
+    /// is a trusted underlay the cluster fully controls; `SECURITY.md` is canonical for the
+    /// trust boundary.
     #[must_use]
     pub fn with_insecure_no_key(mut self) -> Self {
         self.insecure_no_key = true;
         self
     }
 
-    /// Guard for #325: `cluster_key: None` without the explicit `insecure_no_key` opt-in is a
+    /// `cluster_key: None` without the explicit `insecure_no_key` opt-in is a
     /// construction-time error, not a silent unauthenticated run. Shared by every engine
     /// constructor (`Replica`, `ReadReplicaMap`) so none of them can bypass it.
     ///
@@ -230,7 +231,7 @@ impl Config {
         self
     }
 
-    /// Set [`max_concurrent_broadcasts`](Config::max_concurrent_broadcasts) (default 1024, #83).
+    /// Set [`max_concurrent_broadcasts`](Config::max_concurrent_broadcasts) (default 1024).
     #[must_use]
     pub fn with_max_concurrent_broadcasts(mut self, max: usize) -> Self {
         self.max_concurrent_broadcasts = max;
@@ -238,7 +239,7 @@ impl Config {
     }
 
     /// Set [`snapshot_interval`](Config::snapshot_interval) (default `Some(5 s)`). `None`
-    /// disables the periodic background snapshot task entirely (#46) — only an explicit
+    /// disables the periodic background snapshot task entirely — only an explicit
     /// [`ReplicatedMap::snapshot_now`](super::super::ReplicatedMap::snapshot_now) call writes a
     /// snapshot from then on.
     #[must_use]
@@ -247,7 +248,7 @@ impl Config {
         self
     }
 
-    /// Set [`snapshot_change_threshold`](Config::snapshot_change_threshold) (default `1`, #46).
+    /// Set [`snapshot_change_threshold`](Config::snapshot_change_threshold) (default `1`).
     #[must_use]
     pub fn with_snapshot_change_threshold(mut self, threshold: usize) -> Self {
         self.snapshot_change_threshold = threshold;
@@ -273,7 +274,7 @@ impl Config {
 
     /// Set [`max_value_size`](Config::max_value_size) (default `None`, no ceiling). Checked only
     /// by [`ReplicatedMap::try_insert`](crate::ReplicatedMap::try_insert)/
-    /// [`try_update`](crate::ReplicatedMap::try_update) (#82) —
+    /// [`try_update`](crate::ReplicatedMap::try_update) —
     /// [`insert`](crate::ReplicatedMap::insert)/[`update`](crate::ReplicatedMap::update) are
     /// unaffected either way.
     #[must_use]
