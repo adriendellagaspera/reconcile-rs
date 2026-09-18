@@ -15,7 +15,7 @@ use tracing::{debug, instrument, trace, warn};
 use crate::bounds::{Key, Value};
 use crate::observability;
 
-use super::{PeerCap, Replica, BUFFER_SIZE};
+use super::{admit_datagram, DatagramRejection, PeerCap, Replica, BUFFER_SIZE};
 
 impl PeerCap {
     pub(crate) fn new(max_peers: usize) -> Self {
@@ -77,82 +77,62 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         warn!("Buffer too small for message, discarded");
                         observability::record_datagram_dropped("too_large");
                     } else {
-                        // Authenticate the datagram *before* any deserialization. Only a cleared
-                        // `Payload` can reach `handle_messages`; a missing or invalid tag is
-                        // dropped silently (trace-only, to avoid attacker-driven log flooding).
-                        match self.authenticator.open(&recv_buf[..size]) {
-                            Some(payload) => {
-                                // Reject a differently-versioned peer with a distinguishable,
-                                // counted reason — never confused with "malformed" or "bad_mac".
-                                // Runs on already-authenticated bytes (a forged version claim is
-                                // rejected the same way a forged payload is), but ahead of every
-                                // other per-sender bookkeeping below.
-                                let payload = match payload.check_version() {
-                                    Ok(payload) => payload,
-                                    Err(version) => {
-                                        trace!(
-                                            "dropped datagram from {peer}: wire version {version} \
-                                             != {}",
-                                            gossip::auth::WIRE_VERSION
-                                        );
-                                        observability::record_datagram_dropped("version");
-                                        continue;
-                                    }
-                                };
-                                let sender = peer.ip();
-                                // If this sender is new and membership is at capacity, drop before
-                                // allocating any per-sender state (replay filter, peers map,
-                                // membership). Placed ahead of the replay filter so a capped-out
-                                // sender never gets an entry there either. Known senders bypass it.
-                                let (is_known, current_len) = {
-                                    let guard = self.members.read();
-                                    (guard.contains(&sender), guard.len())
-                                };
-                                if !self.max_peers.admits(is_known, current_len) {
-                                    trace!(
-                                        "dropped datagram from {peer}: peer cap reached \
-                                         ({current_len}/{})",
-                                        self.max_peers.max()
-                                    );
-                                    observability::record_datagram_dropped("peer_cap");
-                                    continue;
-                                }
-                                // A no-op in unauthenticated mode: the filter was built disabled.
-                                let (seq, stamp) = (payload.seq, payload.stamp);
-                                let Some(payload) =
-                                    payload.verify_replay(&self.replay_filter, sender)
-                                else {
-                                    trace!(
-                                        "dropped replayed or stale datagram from {peer}: \
-                                         seq={seq} stamp={stamp}"
-                                    );
-                                    observability::record_datagram_dropped("replay");
-                                    continue;
-                                };
-                                // #23: hearing anything at all from `sender` -- whatever it
-                                // actually contains -- means our own last send to it very likely
-                                // arrived (or, if it did not, `sender`'s own reciprocal traffic is
-                                // independently carrying the same repair). Clear any pending
-                                // retry for it before dispatch rather than after, so content in
-                                // *this* datagram that itself warrants a fresh repair (a bulk
-                                // update batch, see `dispatch::handle_messages`) is not
-                                // immediately undone by this same clear.
-                                self.pending_repairs.write().remove(&sender);
-                                let spoke_dated =
-                                    self.handle_messages(payload, peer, &mut send_buf).await;
-                                // Only accepted datagrams register a sender, so a spoofed host
-                                // cannot become a member and block GC forever. A sender that spoke
-                                // only the value-only channel is a read replica: it never acks
-                                // tombstones, so it must never join `members` either.
-                                if spoke_dated {
-                                    self.peers.write().insert(sender, Instant::now());
-                                    self.members.write().insert(sender);
-                                }
-                            }
-                            None => {
+                        let sender = peer.ip();
+                        let payload = match admit_datagram(
+                            &self.authenticator,
+                            &self.replay_filter,
+                            self.max_peers,
+                            sender,
+                            || {
+                                // Full replicas count causal-stability members; the closure is
+                                // called only after authentication and wire-version validation.
+                                let guard = self.members.read();
+                                (guard.contains(&sender), guard.len())
+                            },
+                            &recv_buf[..size],
+                        ) {
+                            Ok(payload) => payload,
+                            Err(DatagramRejection::Authentication) => {
                                 trace!("dropped datagram from {peer}: missing or invalid MAC");
                                 observability::record_datagram_dropped("bad_mac");
+                                continue;
                             }
+                            Err(DatagramRejection::Version(version)) => {
+                                trace!(
+                                    "dropped datagram from {peer}: wire version {version} != {}",
+                                    gossip::auth::WIRE_VERSION
+                                );
+                                observability::record_datagram_dropped("version");
+                                continue;
+                            }
+                            Err(DatagramRejection::PeerCap { current_len, max }) => {
+                                trace!(
+                                    "dropped datagram from {peer}: peer cap reached ({current_len}/{max})"
+                                );
+                                observability::record_datagram_dropped("peer_cap");
+                                continue;
+                            }
+                            Err(DatagramRejection::Replay { seq, stamp }) => {
+                                trace!(
+                                    "dropped replayed or stale datagram from {peer}: seq={seq} stamp={stamp}"
+                                );
+                                observability::record_datagram_dropped("replay");
+                                continue;
+                            }
+                        };
+                        // #23: hearing anything at all from `sender` -- whatever it actually
+                        // contains -- means our own last send to it very likely arrived (or, if it
+                        // did not, the peer's reciprocal traffic carries the same repair). Clear
+                        // the prior retry before dispatch so a bulk batch in this datagram can
+                        // schedule a fresh repair without this clear immediately undoing it.
+                        self.pending_repairs.write().remove(&sender);
+                        let spoke_dated =
+                            self.handle_messages(payload, peer, &mut send_buf).await;
+                        // Only accepted datagrams register a sender. Value-only senders are read
+                        // replicas and never join causal-stability membership.
+                        if spoke_dated {
+                            self.peers.write().insert(sender, Instant::now());
+                            self.members.write().insert(sender);
                         }
                     }
                 }
