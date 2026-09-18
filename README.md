@@ -290,7 +290,7 @@ stays lean:
 - `metrics-prometheus` — additionally provides `reconcile::prometheus` to install a Prometheus
   recorder and either serve a `/metrics` endpoint or render the exposition text yourself. Binding
   it to `0.0.0.0` (as in the example below, and in the `examples/k8s/` manifests) exposes it on
-  every interface — see [Metrics endpoint exposure](#metrics-endpoint-exposure):
+  every interface — see [`SECURITY.md`](SECURITY.md) for the exposure boundary:
 
 ```rust,no_run
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
