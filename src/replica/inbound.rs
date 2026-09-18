@@ -13,6 +13,20 @@ use gossip::replay::{ReplayFilter, Seq, Stamp};
 
 use super::PeerCap;
 
+impl PeerCap {
+    pub(crate) fn new(max_peers: usize) -> Self {
+        PeerCap(max_peers)
+    }
+
+    pub(crate) fn admits(self, known: bool, current_len: usize) -> bool {
+        known || current_len < self.0
+    }
+
+    pub(crate) fn max(self) -> usize {
+        self.0
+    }
+}
+
 /// Why an inbound datagram did not clear the common authentication/admission gate.
 ///
 /// Logging and metrics stay with the caller because full replicas and read replicas expose
