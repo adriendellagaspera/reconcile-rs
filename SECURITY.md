@@ -2,28 +2,93 @@
 
 ## Supported versions
 
-Only the latest published `0.x` release of `reconcile` (and its published dependencies `rsos`,
-`rbsr`, `lww-register`, `reconcile-gossip`) receives security fixes. There is no long-term-support
-branch before `1.0.0` — see the
-[`v1.0.0` milestone](https://github.com/Akvize/reconcile-rs/milestone/2) and
-[issue #206](https://github.com/Akvize/reconcile-rs/issues/206) for the release plan.
+Only the latest published `0.x` release of `reconcile` and its published workspace dependencies
+receive security fixes. There is no long-term-support branch before 1.0.
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities privately via GitHub's
-[private vulnerability reporting](https://github.com/adriendellagaspera/reconcile-rs/security/advisories/new)
-(repository Security tab → "Report a vulnerability") rather than a public issue.
+Report suspected vulnerabilities privately through GitHub private vulnerability reporting
+(repository **Security → Report a vulnerability**) rather than a public issue.
 
-We aim to acknowledge a report within 5 business days, and will keep you updated as we investigate
-and fix it.
+We aim to acknowledge a report within 5 business days and keep the reporter updated during
+investigation and remediation.
+
+## Threat model
+
+`reconcile-rs` is a fully replicated, eventually-consistent system over UDP. Every accepted peer
+can eventually receive the whole dataset. Network reachability is therefore a trust boundary, not
+just a routing detail.
+
+### Unauthenticated mode
+
+Authentication is disabled only through the explicit
+`Config::with_insecure_no_key()` opt-in. Without a cluster key:
+
+- any host able to reach the protocol port can forge updates or tombstones;
+- a captured datagram can be replayed;
+- speculative discovery can disclose data to a reachable host in a configured network;
+- the RSOS fingerprint lift is unkeyed, so a malicious writer can target the additive fingerprint
+  construction.
+
+Use this mode only on a trusted underlay that already supplies the required isolation. Construction
+without either a cluster key or the explicit insecure opt-in is rejected.
+
+Remote timestamps are still bounded before they influence the local HLC/tombstone-expiry clock, but
+that does not authenticate the value: a forged far-future timestamp can still win LWW ordering.
+
+### Shared cluster key
+
+`Config::with_cluster_key(ClusterKey)` enables:
+
+- per-datagram MAC authentication before message deserialization;
+- per-sender replay protection using authenticated sequence/stamp metadata;
+- a keyed RSOS fingerprint lift derived independently from the same secret.
+
+The default MAC backend is keyed BLAKE3 (`mac-blake3`); `mac-hmac` selects HMAC-SHA256. Every node
+in one cluster must use compatible authentication settings.
+
+The shared key proves cluster membership, not peer identity. Any holder can impersonate another
+holder, and there is no forward secrecy. Deployments requiring per-peer identity or forward secrecy
+must provide it in the surrounding network/security layer.
+
+### Payload confidentiality
+
+With the `encryption` feature,
+`Config::with_cluster_key(key).with_encryption()` uses XChaCha20-Poly1305 authenticated encryption
+for datagram payloads. Authentication/replay checks and decryption happen before protocol message
+handling.
+
+Encryption does not change the trust model: it still uses the shared cluster secret and provides no
+per-peer identity or forward secrecy.
+
+### Fingerprint security boundary
+
+Range reconciliation uses a 256-bit additive fingerprint. The cluster key derives a separate keyed
+lift key, preventing an attacker who does not know the secret from precomputing a cancelling
+fingerprint plant. Per-session cut randomisation also changes refinement boundaries below the outer
+range.
+
+A cluster-key holder knows the lift key, so the keyed construction does not defend against a
+malicious insider with that secret. The outer range also has no child boundary to randomise. These
+are documented residuals of the shared-secret model, not properties provided by the MAC.
+
+## Replay protection
+
+Authenticated modes carry a monotonically increasing sender sequence number and wall-clock stamp
+inside the protected region. Receivers reject duplicates, stale/out-of-window sequences and stamps
+outside the configured freshness window.
+
+The replay filter is per peer and bounded by the configured peer cap. Forgetting/decommissioning a
+peer must not accidentally turn replayed traffic into fresh traffic; changes to peer lifecycle must
+preserve that invariant.
 
 ## Cluster-key rotation
 
-Provision cluster keys through the deployment's secret source (for example an environment-injected
-secret, a Kubernetes `Secret`, or a secret manager), never source control. During rotation, every
-node needs both the old and new secret available until the old key is retired.
+Provision keys through the deployment's secret source (for example an injected secret or secret
+manager), never source control. During rotation every node needs both secrets until the old one is
+retired.
 
-Rotate in three cluster-wide phases, completing each phase on every node before starting the next:
+Rotate in three cluster-wide phases:
 
 | phase | configuration | sends with | accepts |
 |---|---|---|---|
@@ -31,33 +96,47 @@ Rotate in three cluster-wide phases, completing each phase on every node before 
 | switch | `with_cluster_key_rotation(new, old)` | new | new + old |
 | retire | `with_cluster_key(new)` | new | new |
 
-After the retire phase, remove the old secret from the deployment and secret manager. There is no
-key identifier or epoch on the wire: a receiver in the rotation window verifies against its primary
-key and then its one fallback key. The same window applies to MAC authentication and, when enabled,
-authenticated encryption.
+Complete each phase across the fleet before starting the next. After retirement, remove the old
+secret from the deployment and secret manager.
 
-The primary cluster key also derives the keyed RSOS fingerprint lift. Therefore peers on different
-primaries can authenticate and exchange values during the switch phase, but equal datasets have
-different range fingerprints until the fleet agrees on one primary; anti-entropy may temporarily
-re-diff and re-send unchanged data. Keep the mixed-primary phase short. Issue #118 tracks whether a
-future multi-summary/key-id design is warranted; it is not required for authentication continuity.
+The primary key also derives the RSOS lift key. During the switch phase, nodes on different
+primaries can authenticate each other but compute different fingerprints for equal datasets, so
+anti-entropy can temporarily re-diff/re-send unchanged content. Keep the mixed-primary phase short.
 
-The `zeroize` feature wipes `ClusterKey` bytes owned by the library on drop, including both keys in
-a rotation window. It cannot wipe the caller's original environment variable, file contents, or
-secret-manager response buffer; those remain the application's responsibility.
+The `zeroize` feature wipes `ClusterKey` bytes owned by the library on drop, including both keys
+in a rotation window. It cannot wipe the caller's original environment variable, file contents,
+secret-manager response buffer, or decrypted application payloads.
+
+## Wire-version compatibility
+
+Every datagram carries a protocol version, protected by MAC/AEAD when keyed. There is no
+accepted-version window: peers on different wire versions reject each other's datagrams.
+
+Treat a wire-version change as a coordinated cluster upgrade rather than a rolling mixed-version
+deployment. `MIGRATING.md` records release-specific compatibility actions.
+
+## Operational requirements
+
+- Keep the gossip UDP port reachable only by intended cluster participants.
+- Use a cluster key unless the surrounding network is explicitly trusted as the authentication
+  boundary.
+- Prefer the `encryption` feature when payload confidentiality is required and the underlay does
+  not already provide it.
+- Size `Config::max_peers` for the intended fleet; unknown senders are rejected before
+  per-sender state allocation once the cap is reached.
+- Use `Config::max_value_size` / fallible writes when applications need synchronous rejection
+  before an oversized value reaches the UDP send path.
+- Coordinate wire-version upgrades and key-rotation phases cluster-wide.
 
 ## Scope
 
-In scope: memory-safety bugs, authentication/MAC bypass, an unauthenticated node able to corrupt or
-exfiltrate data beyond what is already documented below, panics reachable from untrusted network
-input, and any behavior contradicting the README's "Security model" section.
+In scope: memory-safety bugs, authentication/MAC/AEAD bypass, replay-protection failures,
+unauthenticated corruption or exfiltration beyond the documented insecure mode, panics reachable
+from untrusted network input, and behavior contradicting this threat model.
 
-Out of scope — documented design choices, not bugs:
+Out of scope when behaving as documented:
 
-- UDP reconciliation is **unauthenticated by default**; a shared cluster key is opt-in and required
-  to close this (README "Security model", AGENTS.md §8).
-- The cluster key is a single shared secret: no per-peer identity, no forward secrecy (issues #135,
-  #136).
-- UDP source addresses are spoofable — a property of the transport, not this crate.
-
-See the README's [Security model](README.md#security-model) section for the full threat model.
+- unauthenticated operation after explicit `with_insecure_no_key()`;
+- lack of per-peer identity or forward secrecy under the shared-key design;
+- UDP source-address spoofability as a transport property;
+- a malicious holder of the shared cluster key having the authority described above.
