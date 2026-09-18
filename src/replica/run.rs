@@ -15,7 +15,7 @@ use tracing::{debug, instrument, trace, warn};
 use crate::bounds::{Key, Value};
 use crate::observability;
 
-use super::{admit_inbound, InboundRejection, PeerCap, Replica, BUFFER_SIZE};
+use super::{admit_inbound, InboundRejection, Replica, BUFFER_SIZE};
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Drive the gossip and reconciliation loops forever.
@@ -108,8 +108,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         // Clear the old retry before dispatch so this datagram can schedule a fresh
                         // repair without having that new entry immediately removed.
                         self.pending_repairs.write().remove(&sender);
-                        let spoke_dated =
-                            self.handle_messages(payload, peer, &mut send_buf).await;
+                        let spoke_dated = self.handle_messages(payload, peer, &mut send_buf).await;
                         // Only a sender that spoke the dated channel joins causal-stability
                         // membership; value-only read replicas never gate tombstone GC.
                         if spoke_dated {
@@ -126,6 +125,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::replica::PeerCap;
 
     /// `max()` reflects the constructed value — its only call site today is a `trace!` format
     /// string, so nothing else in the crate would catch a mutant hardcoding a constant return.
