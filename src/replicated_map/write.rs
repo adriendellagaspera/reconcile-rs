@@ -112,7 +112,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// A single encoded `(key, entry)` must fit `65507 - authentication overhead` bytes: the send
     /// path packs messages into datagrams but never fragments one. Above that the key **never
     /// converges on any peer**, visible only as a `warn!` and `VALUES_OVERSIZED_TOTAL` on the send
-    /// path — this method itself never rejects it (#82); [`try_insert`](Self::try_insert) does.
+    /// path — this method itself never rejects it; [`try_insert`](Self::try_insert) does.
     ///
     /// # Panics
     ///
@@ -294,8 +294,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Delete every live entry for which `keep` returns `false`, as broadcast tombstones. Keys
     /// where `keep` returns `true` are retained. `keep` runs over an `Arc` snapshot rather than
-    /// under any lock (#34), so calling back into a write method from it no longer risks a
-    /// self-deadlock the way it did before #34; keep it cheap and side-effect free regardless.
+    /// under any lock, so calling back into a write method from it cannot self-deadlock on the
+    /// map lock; keep it cheap and side-effect free regardless.
     ///
     /// # Panics
     ///
