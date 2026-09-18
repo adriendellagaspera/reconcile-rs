@@ -126,7 +126,7 @@ exclude_globs = ["benches/**", "examples/**"]
 # finite assertion (the same argument the two exclusions above already make): the loop's bound is
 # exactly what this mutation removes, not something a caller-side check could restore.
 #
-# `read_replica_map/membership.rs:72:53` (`replace < with <=` in `peers`'s -- renamed from
+# `read_replica_map/membership.rs:71:53` (`replace < with <=` in `peers`'s -- renamed from
 # `get_peers` by #30, same line -- `instant.elapsed() < PEER_EXPIRATION` retain predicate) differs
 # from every mutant above: it is not equivalent (the two operators genuinely disagree, for one
 # instant, at the exact expiration boundary) and not a hang -- it is provably untestable without
@@ -149,7 +149,7 @@ exclude_globs = ["benches/**", "examples/**"]
 # falls. No test capturing log output exists in this codebase, and none should be added just to
 # pin an operator that gates nothing but which log line fires.
 #
-# `replica/construct.rs:209:33` (`replace < with <=` in `build`'s bulk-send-rate clamp,
+# `replica/construct.rs:208:33` (`replace < with <=` in `build`'s bulk-send-rate clamp,
 # `if rate > 0 && rate < MIN_BULK_SEND_RATE { warn!(...); MIN_BULK_SEND_RATE } else { rate }`)
 # is equivalent at exactly this one operator: `<` and `<=` disagree only when `rate ==
 # MIN_BULK_SEND_RATE`, and at that point clamping to the floor and leaving `rate` unclamped
@@ -188,7 +188,7 @@ exclude_re = [
     # surfaced a gap the gate was already structurally incapable of closing. Exercising this backend
     # for real needs `--no-default-features --features mac-hmac`, which this gate does not run.
     "impl Mac for HmacSha256Mac",
-    "read_replica_map/membership\\.rs:72:53: replace < with <=",
+    "read_replica_map/membership\\.rs:71:53: replace < with <=",
     "read_replica_map/write\\.rs:221:36: replace != with ==",
     "fingerprint_tree_map/query\\.rs:(37|47):29:",
     "fingerprint_tree_map/query\\.rs:61:19: replace \\+= with \\*=",
@@ -203,7 +203,7 @@ exclude_re = [
     "protocol/rank\\.rs:117:43: replace \\|\\| with &&",
     "protocol/rank\\.rs:117:62: replace != with ==",
     "protocol/rank\\.rs:118:49: replace != with ==",
-    "replica/construct\\.rs:209:33: replace < with <=",
+    "replica/construct\\.rs:208:33: replace < with <=",
     "replica/repair\\.rs:118:36: replace > with >=",
 ]
 
