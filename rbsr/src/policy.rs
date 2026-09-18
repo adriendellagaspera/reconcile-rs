@@ -49,7 +49,7 @@ pub use sqrt_fan_out::SqrtFanOut;
 ///
 /// No keys, no bounds, no store — a policy decides *how* to refine a range, never *which*.
 ///
-/// # Law: no fingerprint-derived decisions (#352)
+/// # Law: no fingerprint-derived decisions
 ///
 /// The skip rule's soundness bound unions a per-comparison collision probability over the ranges
 /// an execution compares — legal only because those ranges are cut by `Select`
@@ -63,7 +63,7 @@ pub use sqrt_fan_out::SqrtFanOut;
 /// so the violation is structurally unspellable from a default build rather than merely
 /// discouraged. `local_for_testing`/`remote_for_testing` (only compiled in under `--cfg
 /// reconcile_internal_testing`, so not linkable from this doc comment) reopen exactly that seam
-/// under that cfg — for a dependent crate's own oracle-*coupled* probe policies (#529), never for
+/// under that cfg — for oracle-*coupled* probe policies used by repository tests, never for
 /// a shipped one in this crate.
 ///
 /// ```
@@ -123,14 +123,14 @@ pub enum Decision {
 /// A **purely local decision, never a wire contract** (`ARCHITECTURE.md` §3.1): peers running
 /// different policies converge. A policy must therefore never be advertised or negotiated.
 ///
-/// # Law: eventual progress (#420)
+/// # Law: eventual progress
 ///
 /// Whenever [`Comparison::span`] is greater than one, `decide` must return a
 /// [`Decision::Split`] whose stride is strictly less than the span — a real cut, not the
 /// single-child identity split [`Decision::Split`]'s docs carve out for `span() <= 1`. Every
 /// shipped policy holds this (pinned by `tests/shipped_policies_always_progress.rs`); the
-/// oracle-coupled probe (#356) does not — a content-determined stride can land a range on a fixed
-/// point that never shrinks. Measurements: `ARCHITECTURE.md` §5 invariant 13.
+/// an oracle-coupled probe can violate it — a content-determined stride can land a range on a fixed
+/// point that never shrinks. The protocol invariant is recorded in `ARCHITECTURE.md` §5.
 ///
 /// Breaking the law no longer hangs the driver: `protocol_round_with_policy` converts a
 /// non-progressing `Split` into an `Enumerate` rather than trusting a plugged-in policy to hold
@@ -147,13 +147,6 @@ pub enum Decision {
 /// | [`EnumerateBelowThreshold`] | the paper's `\|X ∩ [l, u)\| ≤ t` | a constant `b` |
 ///
 /// Costs: `benches/protocol.rs`. Default and the evidence for it: `POSITIONING.md` §2.2.
-///
-/// # A fourth policy considered, and not shipped
-///
-/// A fan-out keyed off the `span`/`remote_size` delta was considered and rejected: that delta is
-/// zero on the regime that matters most (same key set, differing values, e.g. an LWW register in
-/// steady state), so such a policy would reproduce the default there and differ from it only where
-/// the win is already small. Decision record: `POSITIONING.md` §2.4.1.
 ///
 /// # Implementing your own
 ///

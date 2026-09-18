@@ -1,43 +1,14 @@
 [workspace]
-# Workspace split (migration step 6, Steps A–C). In dependency order:
-#   rsos          — data structure + range fingerprint (`FingerprintTreeMap`, the `Aggregate`
-#                   bundle, the `Rsos<K>` trait)
-#   rbsr          — Range-Based Set Reconciliation over any `rsos` backend (`RsosView<K>`)
-#   lww-register  — the LWW-Register CRDT domain (`Entry`/`State`, `Timestamp`/`Clock`,
-#                   `Persistence`, `Key`/`Value`), infrastructure-free
-#   gossip        — the network adapter layer (`Transport`, wire encoding, `Authenticator`,
-#                   replay protection, `Discovery`); deliberately independent of `lww-register`
-#   .             — the `reconcile` facade: `ReplicatedMap` and `ReadReplicaMap` over the
-#                   `pub(crate)` `Replica` engine (private: carries the causal-stability
-#                   bookkeeping, and keeps `rbsr` off the public surface — #308,
-#                   ARCHITECTURE.md §3.2), the
-#                   file-backed `Persistence` adapter (`src/snapshot.rs`), observability and the
-#                   `HlcClock` adapter; depends on all four and re-exports their public types, so
-#                   `reconcile::*` keeps resolving for existing consumers.
-# The split briefly carried a sixth member, `snapshot`. It was folded back into this package
-# (`src/snapshot.rs`) as a deliberate follow-up: one type, no standalone reuse value, no separate
-# published identity to earn — see ARCHITECTURE.md §2.
-#   devkit        — dev/bench-only infra (bootstrap statistics, the reconciliation-cost driver, the
-#                   N-writer contention harness) shared between `benches/protocol.rs` and
-#                   `benches/contention.rs` rather than duplicated. Never published (#524).
-# See ARCHITECTURE.md §2 for the crate/module map.
+# Workspace dependency map and crate responsibilities: ARCHITECTURE.md §2.
 members = ["rsos", "rbsr", "lww-register", "gossip", "devkit", "."]
 resolver = "2"
 
 [package]
 name = "reconcile"
-# #34's ValueRef<'a, V> -> ValueRef<K, V> is a breaking change to a still-0.x crate: SemVer treats
-# a minor bump as the major boundary pre-1.0, which is what lets `cargo semver-checks` (required
-# since v0.4.0 published, AGENTS.md §11) accept it against the crates.io baseline. No publish
-# happens from this bump alone -- that's `.github/workflows/tags.yml`, fired by a `v*` tag.
 version = "0.5.0"
 edition = "2021"
-# See #189. Floor forced by the dependency graph, not this crate's own API surface: `blake3 1.8.5
-# -> cpufeatures 0.3.0` needs edition 2024, stabilized in 1.85. A library aims for the floor, not
-# whatever the latest stdlib convenience happens to need — `u32::is_multiple_of` (1.87) briefly
-# pushed this to 1.87 before being rewritten as `% == 0` in `src/replica/run.rs` and
-# `gossip/src/netem/`. `clippy::incompatible_msrv` (implied by -Dwarnings, AGENTS.md §3) is what
-# actually catches a raise, silent or not; a pinned-toolchain CI lane (#189) is still unlanded.
+# Dependency floor: blake3 -> cpufeatures requires Rust 1.85. `clippy::incompatible_msrv`
+# prevents source changes from silently raising it.
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 description = "A reconciliation storage service to sync a key-value map over multiple instances"
@@ -57,18 +28,14 @@ exclude = [
     "POSITIONING.md",
 ]
 
-# docs.rs builds default features only by default; this renders every feature-gated item (with its
-# "available on crate feature X" badge) instead of hiding mac-hmac/zeroize/encryption/metrics/
-# metrics-prometheus/dns-hickory entirely (#189).
+# Render every feature-gated public item on docs.rs, not only the default feature set.
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [profile.release]
 debug = true
-# Decision recorded on #312: a silent-wraparound bug in release is worse than a panic — it
-# manifests as a divergent fingerprint the reconciliation protocol cannot explain, not as a
-# bounded, alertable liveness event.
+# Fingerprint/count arithmetic must fail loudly rather than wrap into unexplained divergence.
 overflow-checks = true
 
 [[bench]]
@@ -91,32 +58,27 @@ harness = false
 # `BTreeMap` control, each behind one shared `parking_lot::RwLock` — isolates the RSOS contract's
 # mandatory root-path write on every insert from the cost of the lock that already serialises
 # writers in `src/replicated_map.rs`. Drives `rsos` directly; no internal seam, so no feature gate.
-# #445, #359.
 [[bench]]
 name = "contention"
 harness = false
 
 [features]
 default = ["mac-blake3"]
-# Per-datagram MAC authentication and payload confidentiality moved to the `gossip` crate together
-# with `auth.rs`, so the five entries below are **unification entries**: enabling one here enables
-# the identically-named feature on `gossip`, which owns the `cfg`s and the optional dependencies.
-# Semantics are unchanged — exactly one MAC backend is used at build time, `mac-blake3` takes
-# precedence if both are enabled, and the build fails if neither is (`gossip/src/auth.rs`).
-# (BLAKE3 itself is always pulled in: it backs the range fingerprint, see the `rsos` crate.)
+# Facade feature names forward to `gossip`, which owns auth/encryption implementation and cfgs.
+# Exactly one MAC backend is used; `mac-blake3` takes precedence when both are enabled.
 mac-blake3 = ["gossip/mac-blake3"]
 mac-hmac = ["gossip/mac-hmac"]
 # Wipe the cluster key from memory on drop (defense in depth).
 zeroize = ["gossip/zeroize"]
 # Per-datagram payload confidentiality via authenticated encryption (AEAD).
 # When enabled, `Config::with_encryption` upgrades the keyed protocol from a
-# plaintext-payload MAC to XChaCha20-Poly1305 over the same cluster key. See
-# `gossip/src/auth.rs` and issue #96. Note this one is both forwarded *and* read locally:
+# plaintext-payload MAC to XChaCha20-Poly1305 over the same cluster key. This one is both
+# forwarded *and* read locally:
 # `replica.rs` and `replicated_map.rs` still carry their own `#[cfg(feature = "encryption")]` arms.
 encryption = ["gossip/encryption"]
 # Emit runtime metrics via the `metrics` facade. Off by default: when disabled, every
 # metric call site compiles to a no-op (see `src/observability.rs`), so the default build
-# keeps its lean dependency footprint. Stays on this crate — `observability.rs` did not move.
+# keeps its lean dependency footprint.
 metrics = ["dep:metrics"]
 # Install a Prometheus recorder and expose a `/metrics` HTTP endpoint (see
 # `src/prometheus.rs`). Pulls the exporter's HTTP listener stack; opt-in only. Implies
@@ -127,13 +89,8 @@ metrics-prometheus = ["metrics", "dep:metrics-exporter-prometheus"]
 # `DnsDiscovery` uses the system resolver via `tokio::net::lookup_host` and needs no extra crate.
 dns-hickory = ["gossip/dns-hickory"]
 
-# #330: `crate::testing` (re-exports of `pub(crate)` reconciliation internals, for the external
-# integration-test oracles) used to be gated behind a normal Cargo feature of this name — reachable
-# by any dependent's `Cargo.toml`, which would have frozen it into the public surface at 1.0. It is
-# now reached only via `--cfg reconcile_internal_testing` (AGENTS.md §6), which a dependent's build
-# cannot set. `check-cfg` below is what stops that `#[cfg(...)]` from tripping `unexpected_cfgs`
-# under `-Dwarnings`; `rbsr`'s own `Cargo.toml` carries the identical declaration for the same
-# reason (its `RangeAggregate::for_testing` seam, read directly by `tests/wire_format.rs`).
+# Repository-only integration-test seams use a cfg rather than a Cargo feature so dependents cannot
+# opt into and freeze them as public API. Declare the cfg for `unexpected_cfgs` checking.
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(reconcile_internal_testing)"] }
 

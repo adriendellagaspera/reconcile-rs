@@ -88,11 +88,8 @@ a read takes no read lock and an in-flight reader never blocks a writer.
 - `snapshot()` (`value_snapshot()` on `ReplicatedMap`) returns an `O(1)` `Arc` snapshot whose
   `iter()`/`range()` borrow keys and values directly, with no lock held during the scan.
 
-The trade-off is measured rather than assumed: after removing an avoidable second lookup,
-`ReplicatedMap::get` measured 57.224 ns at 100k entries versus 47.758 ns before the persistent core
-(+19.8%) on the same runner. Tree-level mutation and cold-sync costs stayed within roughly 10–14%
-of the mutate-in-place baseline. See [`ARCHITECTURE.md`](ARCHITECTURE.md) §2.2 for the mechanism and
-[issue #29](https://github.com/adriendellagaspera/reconcile-rs/issues/29) for the measurement record.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) §2.2 for the snapshot/structural-sharing model and
+[`benches/README.md`](benches/README.md) for the current measurement methodology.
 
 ## Modelling sets
 
@@ -142,27 +139,21 @@ list, a document) that would otherwise be reshipped whole on any change — not 
 [`ARCHITECTURE.md`](ARCHITECTURE.md) §7 for why this is also part of why a pluggable CRDT `Resolve`
 seam stays deferred.
 
-**This is the current scope boundary, not a workaround standing in for a missing feature.** Every
-set sharing the one store's tree means one anti-entropy cadence and one fingerprint for everything
-in it — a `(set_id, element)` collision domain, not an isolated collection with its own fingerprint
-or conflict policy. Several independently-typed named collections, each with its own policy and
-anti-entropy isolation, is [#191](https://github.com/Akvize/reconcile-rs/issues/191) (parked, part
-of [#193](https://github.com/Akvize/reconcile-rs/issues/193)'s future `reconcile-grid` layer) —
-deliberately out of this crate's lean core, not an oversight in this encoding.
+**Scope boundary.** Every set sharing one store also shares its anti-entropy cadence, fingerprint
+and conflict policy. Independently typed/named collections and partial replication belong to a
+higher grid layer; this crate intentionally remains one fully replicated map/set engine.
 
 ## Documentation
 
-- The [`v1.0.0` milestone](https://github.com/Akvize/reconcile-rs/milestone/2) and
-  [issue #206](https://github.com/Akvize/reconcile-rs/issues/206) — live correctness/security/release
-  status. **Start here for "where things stand".**
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — the crate/module map, the ports & adapters (hexagonal)
-  design, domain types and their rationale, the load-bearing invariants, and (§8) the resolution
-  history of the original code audit's findings.
-- [`POSITIONING.md`](POSITIONING.md) — where this crate sits in the landscape: the niche, the
-  competitor audit, and the design axes an RSOS is judged on. Durable background; carries no status.
-- [`CHANGELOG.md`](CHANGELOG.md) — what changed release to release.
-- [`MIGRATING.md`](MIGRATING.md) — upgrading from `0.2.1`, the last pre-workspace-split release.
-- [`SECURITY.md`](SECURITY.md) — supported versions and how to report a vulnerability privately.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — crate/module boundaries, ports, domain types, invariants
+  and durable architecture decisions.
+- [`SECURITY.md`](SECURITY.md) — the canonical threat model, key management/rotation, replay and
+  wire-upgrade security requirements.
+- [`POSITIONING.md`](POSITIONING.md) — the niche, competitor context and durable design axes.
+- [`benches/README.md`](benches/README.md) — how to reproduce and interpret the benchmark suite.
+- [`MIGRATING.md`](MIGRATING.md) — actions required when upgrading across incompatible releases.
+- [`CHANGELOG.md`](CHANGELOG.md) — release history.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — development environment and verification gates.
 
 ## MSRV
 
@@ -171,160 +162,23 @@ deliberately out of this crate's lean core, not an oversight in this encoding.
 
 ## Security model
 
-> **By default, the UDP reconciliation protocol is _unauthenticated_.** Any host that can send a
-> UDP datagram to the port can forge an update — including one with a year-9999 timestamp that
-> wins against every legitimate write forever, or a forged tombstone that deletes a key — and the
-> poison propagates to the whole cluster through last-write-wins. UDP source addresses are
-> spoofable, so this is anonymous.
+A cluster must choose one of two trust modes explicitly:
 
-Beyond forgery, an unauthenticated node also **discloses** its data: [`RandomProbe`], the default
-discovery mechanism, answers any host inside the configured `nets`, and once discovered, a peer
-receives the **entire dataset** over time via paced anti-entropy diff dumps — no forged datagram
-required, just an IP inside the cluster's network. Because of this, `Config::cluster_key: None`
-without also calling [`Config::with_insecure_no_key`] is refused at construction time (`Replica`/
-`ReadReplicaMap` panic with a message pointing back here) rather than silently running that way; call
-`with_insecure_no_key()` only when the network itself is a trusted underlay the cluster fully
-controls.
+- `Config::with_cluster_key(key)` authenticates datagrams before deserialization, enables
+  per-sender replay protection and derives the keyed RSOS fingerprint lift.
+- `Config::with_insecure_no_key()` opts into unauthenticated operation for a trusted underlay.
+  Without either choice, construction is rejected.
 
-Two consequences of a far-future stamp are bounded even without a key, because neither depends on
-trusting the sender. The stamp cannot pin this node's Hybrid Logical Clock into the future — a
-remote reading more than `MAX_CLOCK_DRIFT` (1 hour by default; retune with
-`Config::with_max_clock_drift`) ahead of local physical time is clamped before
-it reaches the clock state — and it cannot postpone a tombstone's expiry indefinitely, because the
-wall-clock instant the expiry wheel ages a tombstone from is derived from the stored stamp through
-that same bound. Both log a `warn!`, and the tombstone case also increments
-`reconcile_tombstone_stamp_bounded_total` (with the `metrics` feature). The stamp itself is stored
-exactly as received, so it still *wins* the last-write-wins comparison: only a cluster key stops
-that.
+The optional `encryption` feature adds XChaCha20-Poly1305 payload confidentiality. The trust model
+remains one shared cluster secret: there is no per-peer identity or forward secrecy.
 
-To close this vector, provide a shared 32-byte cluster secret on **every** node:
+Wire versions are strict rather than negotiated, so a wire-format change requires a coordinated
+cluster upgrade. Cluster keys can be rotated without disabling authentication through the staged
+two-key receive window.
 
-```rust
-let secret_hex: String = /* same secret on all nodes, e.g. loaded from your secret manager */;
-let key = ClusterKey::from_hex(&secret_hex).expect("cluster key must be 64 hex characters");
-let config = Config::new(8080).with_cluster_key(key);
-let store = ReplicatedMap::new(config).await.unwrap();
-```
-
-With a key set, every outgoing datagram is framed with a per-datagram keyed MAC over its payload,
-and every incoming datagram is **verified before deserialization**; datagrams with a missing or
-invalid tag are silently dropped. When no key is set, the store logs a loud warning at startup and
-runs unauthenticated.
-
-The MAC primitive is selected at build time via Cargo features: `mac-blake3` (default, keyed
-BLAKE3) or `mac-hmac` (HMAC-SHA256). All nodes in a cluster must share the identical key **and** be
-built with the same backend. The key itself is a [`ClusterKey`], never a bare `[u8; 32]`, at every
-public boundary — `Config::cluster_key`, `Config::with_cluster_key`, `Authenticator::new` — so it
-cannot land in a stray unwrapped copy a caller forgot to protect.
-
-**What the `zeroize` feature covers, precisely.** It wipes the 32 key bytes on `Drop` for every
-`ClusterKey`: the one inside the running `Authenticator`, and every transient copy along the way
-(`Config::cluster_key`, a `with_cluster_key(key)` argument once moved in, `ClusterKey::from_hex`'s
-local buffer). `Config` is deliberately not `Clone`-and-forget `Copy` — a `Copy` type cannot carry
-the `Drop` this needs, so every `ClusterKey`-holding value is wiped exactly once, when it is
-actually dropped, not left as an orphaned stack copy. What it does **not** cover: the caller's own
-source of the key (an env var `String`, a file's contents, a `[u8; 32]` literal before it is wrapped
-in `ClusterKey::new`/`from_hex`) is the caller's to protect, and the **decrypted AEAD plaintext**
-(`encryption` feature) is never zeroized in either configuration — only the key that produced it.
-
-**Fingerprint collisions — the censorship residual.** Reconciliation compares 256-bit additive
-range fingerprints. Against an *accidental* collision that width is ample; against an adversary who
-can influence stored values it is not: the additive combiner is Wagner-breakable, and a successful
-*total plant* — a crafted value set whose fingerprint delta vanishes on every range containing it —
-makes two honest replicas report convergence while genuinely differing, permanently and silently
-(#354): anti-entropy replays that verdict at every meeting rather than retrying it. Per-session
-boundary randomisation (#502, decision recorded in [`ARCHITECTURE.md`](ARCHITECTURE.md) §7) defends
-every range below the outer one; the outer range has no boundaries to randomise.
-
-**Setting a cluster key now also keys the fingerprint lift** (#19, migrated from
-`akvize/reconcile-rs#337`): every `Fingerprint` is computed with `blake3::keyed_hash` under a subkey
-independently derived from the same cluster key (`ClusterKey::derive_lift_key`, BLAKE3
-`derive_key`-separated from the MAC's own use of it), so a plant must be ground against a hash the
-attacker cannot compute without the key — closing the residual above for anyone who does not hold
-it. This is *not* a consequence of the MAC above: the MAC authenticates datagrams in transit, it
-does not by itself touch how a fingerprint is computed. It also does not close the residual for a
-cluster key **holder** — every honest peer derives the identical subkey from the identical cluster
-key, so an insider's plant is exactly as craftable as before (#354's fleet-correlation finding
-applies unchanged); that residual is unaddressed pending `ARCHITECTURE.md` §7's reopened
-periodic-root-refinement question. Running with `Config::with_insecure_no_key()` gets none of this:
-with no cluster key there is nothing to derive a lift key from, so the lift stays unkeyed and this
-residual is exactly as open as the forgery risk above.
-
-**Upgrading an authenticated cluster is a coordinated rollout, not a rolling one, for this reason
-too**: a node computes fingerprints for its own dataset independently, from live data, so a peer on
-old (unkeyed) code and a peer on new (keyed) code compute different fingerprints for identical
-content and never converge — safely (every range reports different, nothing is lost or corrupted)
-but wastefully — until every node in the cluster is upgraded. This is the same posture "Wire
-versioning" below already asks of an authenticated cluster; it is not a new constraint, just a new
-reason for it.
-
-### Confidentiality (encryption)
-
-By default the keyed mode authenticates a **plaintext** payload. With the `encryption` Cargo
-feature, `Config::with_encryption()` upgrades it to authenticated **encryption**: each datagram is
-framed as `nonce || ciphertext || tag` with [XChaCha20-Poly1305] over the same 32-byte cluster key,
-and is decrypted-and-verified before deserialization.
-
-```rust
-// requires the `encryption` feature
-let config = Config::new(8080).with_cluster_key(key).with_encryption();
-```
-
-This reuses the cluster key as the AEAD key (so `with_cluster_key` is still required, and all nodes
-must enable encryption together), draws a fresh random 192-bit nonce per datagram, and adds 40 bytes
-of overhead (24-byte nonce + 16-byte tag).
-
-**Scope.** The MAC mode provides message integrity and authenticity; the `encryption` mode adds
-confidentiality on top. Setting a cluster key also enables **per-sender replay protection**: every
-datagram carries a monotonically increasing sequence number and a sender wall-clock stamp inside the
-authenticated region, and the receiver rejects duplicates, stale out-of-window sequences, and stamps
-that deviate from local physical time by more than the freshness window
-([`Config::with_freshness_window`], default 5 minutes). Without a cluster key there is **no** replay
-protection at all — a captured datagram can be re-injected later to re-poison membership or
-re-deliver stale data.
-
-Still out of scope in every mode: a peer allow-list, per-peer identity, and forward secrecy. The
-trust model stays a single shared secret. Mutual peer authentication and forward secrecy would
-require a handshake (TLS/Noise), which is intentionally out of scope; if you need them, run the
-protocol over a trusted/encrypted underlay.
-
-[XChaCha20-Poly1305]: https://docs.rs/chacha20poly1305
-
-### Wire versioning
-
-Every datagram carries a 1-byte wire-protocol version, inside the authenticated/encrypted region
-in keyed modes — so a forged version claim is rejected the same way a forged payload is — and
-present even when unauthenticated, since that is the default. There is currently **no accepted
-version window**: a peer running a different `reconcile` wire version is rejected outright, with a
-distinguishable, countable reason (`reconcile_datagrams_dropped_total{reason="version"}`, with the
-`metrics` feature) rather than being silently misread or indistinguishable from a malformed or
-forged datagram. A mixed-version cluster (a rolling upgrade, for instance) does not converge for
-the pairs that disagree until every node is rebuilt against the same wire version — plan upgrades
-as a coordinated rollout, not a rolling one. #309 landed the version byte itself and deliberately
-did not build an accepted-version window; whether one is worth building later is undecided.
-
-Wire tags 5 and 6 were reserved, skippable message slots (#463): a datagram carrying a message at
-one of these tags decodes on an older version even though nothing there sent one yet, and a future
-version's real message at either tag decodes on an older version too, ignored rather than failing
-the whole datagram. Tag 5 has since been consumed by `ConvergenceAck` (#23, `WIRE_VERSION` bumped
-`2` → `3`) — a comparison round that converges with nothing else to report; tag 6 remains the one
-reservation still open. What the mechanism buys is narrow and does not extend past these two tags —
-it is not a capability-negotiation mechanism, not a version window, and not a way to add a message
-type without a coordinated rollout of its own: once a tag's real shape ships, that tag's
-reservation is consumed, and the wire version byte above still governs everything the message
-shape itself changes.
-
-### Metrics endpoint exposure
-
-> **`reconcile::prometheus::serve` binds whatever address you give it — every example in this
-> README, in `src/prometheus.rs`'s doc comments, and in the `examples/k8s/` manifests uses
-> `0.0.0.0:9000` for concreteness, i.e. all interfaces.** The `/metrics` endpoint is not a secret —
-> it carries operational metrics (peer/gossip counts, round timing, byte and datagram totals,
-> failure counters), not cluster data — but binding all-interfaces exposes that operational surface
-> to anything that can reach the port, same as any other unauthenticated HTTP listener. In
-> production, bind to a private/internal interface (e.g. the pod IP, not `0.0.0.0`) or restrict
-> reachability with a network policy / firewall rule, the same way you would for any other
-> `/metrics` endpoint.
+The complete and canonical threat model — including malicious-key-holder limits, replay semantics,
+key rotation, `zeroize` scope and metrics-endpoint exposure — is [`SECURITY.md`](SECURITY.md).
+Release-specific wire compatibility actions live in [`MIGRATING.md`](MIGRATING.md).
 
 ## Persistence
 
@@ -429,14 +283,14 @@ stays lean:
   - `reconcile_entries_current` — live (non-tombstone) entries.
   - `reconcile_tombstones_current` — outstanding tombstones not yet garbage-collected.
   - `reconcile_bulk_dumps_in_flight` — bulk anti-entropy dumps in flight.
-  - `reconcile_broadcasts_in_flight` — write-broadcast tasks in flight (#83, see
-    [Write backpressure](#write-backpressure)).
+  - `reconcile_broadcasts_in_flight` — write-broadcast tasks in flight (see
+    [Operational tuning](#operational-tuning)).
   - `reconcile_persistence_failures_current` — consecutive snapshot failures since the last
     success; `0` while healthy (see [Persistence](#persistence)).
 - `metrics-prometheus` — additionally provides `reconcile::prometheus` to install a Prometheus
   recorder and either serve a `/metrics` endpoint or render the exposition text yourself. Binding
   it to `0.0.0.0` (as in the example below, and in the `examples/k8s/` manifests) exposes it on
-  every interface — see [Metrics endpoint exposure](#metrics-endpoint-exposure):
+  every interface — see [`SECURITY.md`](SECURITY.md) for the exposure boundary:
 
 ```rust,no_run
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -456,146 +310,23 @@ in your dependency's `features`).
 
 ## Operational tuning
 
-### Gossip socket buffers
+The defaults target a small, low-latency cluster. The main controls are:
 
-The gossip UDP socket requests a multi-MiB send/receive buffer by default (8 MiB; see
-`Config::recv_buffer_size` / `send_buffer_size`). The stock OS default holds only a handful of
-full-size datagrams, so a bulk or cold-sync burst can overrun the kernel **receive** buffer and the
-excess is dropped *inside the kernel*, before the application sees it.
-
-The kernel clamps the request to its maximum, so the default helps only as far as the OS allows. On
-Linux, raise the ceiling (and persist it in `/etc/sysctl.d/`) to let the buffer grow:
-
-```sh
-sysctl -w net.core.rmem_max=8388608   # 8 MiB; match Config::recv_buffer_size
-sysctl -w net.core.wmem_max=8388608
-```
-
-To check whether the kernel is dropping datagrams at the socket buffer, watch the `RcvbufErrors`
-counter (it should stay flat):
-
-```sh
-grep -A1 '^Udp:' /proc/net/snmp        # the RcvbufErrors column
-```
-
-Set either field to `None` to leave the inherited OS default untouched.
-
-### Reconciliation interval floor
-
-`Config::reconcile_interval` (default 1 s) has a floor — roughly a few × RTT. A receiver-side guard
-(#85) suppresses the mid-bulk-transfer re-amplification a too-low interval used to cause for any
-peer heard from recently, making `Config::repair_interval` (default 150 ms) the practical floor
-below which it can still occur; steady-state idle chatter to any peer outside that window still
-balloons regardless. The full mechanism is documented on `Config::reconcile_interval` and
-`Config::bulk_send_rate` themselves.
-
-### Broadcast coalescing
-
-Full replication broadcasts every write to every known peer immediately (issue #187): fine for
-occasional writes, but a burst — a hot key, a batch of unrelated inserts arriving close together —
-pays one datagram per write per peer, `O(writes × N)` cluster-wide. `Config::coalesce_window`
-(default `Duration::ZERO`, disabled) batches writes made within the window into one flush instead:
-
-```rust
-use std::time::Duration;
-use reconcile::replicated_map::Config;
-
-let config = Config::new(8080)
-    .with_insecure_no_key()
-    .with_coalesce_window(Duration::from_millis(5)); // batch a burst into far fewer datagrams
-```
-
-| constraint | detail |
+| concern | configuration |
 |---|---|
-| latency vs window | peers observe a write up to `coalesce_window` later than with immediate broadcast — a few ms buys far fewer datagrams under a burst |
-| ordering / HLC | same-key writes inside one window collapse to the greatest `Timestamp` (last-write-wins, the same total order the wire protocol already resolves conflicts with); a value's own stamp is never altered, only when it reaches the wire |
-| anti-entropy | this delays only the **eager** push; a coalesced batch lost in transit is retried on `repair_interval` (#23), with the periodic RBSR sweep (`reconcile_interval`) as the final backstop |
+| background anti-entropy cadence | `reconcile_interval` |
+| loss/repair latency | `repair_interval` |
+| cross-network cadence/fan-out | `remote_interval`, `remote_fanout` |
+| cold-sync pacing | `bulk_send_rate` |
+| UDP socket buffering | `recv_buffer_size`, `send_buffer_size` |
+| eager-write batching | `coalesce_window` |
+| peer/state bounds | `max_peers`, `max_concurrent_bulk_dumps`, `max_concurrent_broadcasts` |
+| application value ceiling | `max_value_size` |
+| persistence cadence | `snapshot_interval`, `snapshot_change_threshold` |
 
-Only the write that finds the pending batch empty spawns the detached flush task, so it needs an
-ambient Tokio runtime the same way every propagating write does (see `ReplicatedMap::insert`'s `#
-Panics`); a write that joins an already-scheduled window returns without touching the reactor.
-Retunable live via `set_coalesce_window` (below).
-
-### Value-size ceiling
-
-A single encoded `(key, entry)` must fit `65507 - authentication overhead` bytes: the send path
-packs messages into datagrams but never fragments one. A value past that ceiling is silently
-accepted by `insert`/`update` — it is dropped only later, on the send path (a `warn!` and the
-`reconcile_values_oversized_total` counter), so the key never converges on any peer and the caller
-that wrote it never finds out synchronously (#82).
-
-`Config::max_value_size` (default `None`, no ceiling) closes that gap for a caller willing to opt
-in: set it, then write through `try_insert`/`try_update` instead of `insert`/`update` to get a
-`WriteRejected::TooLarge` back immediately, before the write reaches any local state — the same
-fallible pair the next section's write-broadcast backpressure also reaches for:
-
-```rust
-use reconcile::replicated_map::Config;
-
-let config = Config::new(8080)
-    .with_insecure_no_key()
-    .with_max_value_size(4096); // reject a write whose encoded value exceeds 4 KiB
-```
-
-`insert`/`update`/`get_mut`/`upsert` never consult `max_value_size` — setting it changes nothing
-for a caller that keeps using them; only `try_insert`/`try_update` check it.
-
-Whether the ceiling itself is worth relaxing (a stream transport, UDP fragmentation, or a
-side-channel for oversized values) was priced and decided against for this crate's niche: see
-[`ARCHITECTURE.md`](ARCHITECTURE.md) §7 "An alternative/side-channel transport past the datagram
-ceiling" (issue #94).
-
-### Write backpressure
-
-Every propagating write spawns a detached task that fans the message out to every known peer
-(issue #83). Before #83 that fan-out was unbounded: nothing capped how many such tasks could be in
-flight at once, and nothing told a caller egress was falling behind. `Config::max_concurrent_broadcasts`
-(default 1024) bounds it, mirroring how `Config::max_concurrent_bulk_dumps` already bounds the
-cold-sync (ingress) side:
-
-```rust
-use reconcile::replicated_map::Config;
-
-let config = Config::new(8080)
-    .with_insecure_no_key()
-    .with_max_concurrent_broadcasts(256); // lower the egress budget from its default 1024
-```
-
-**Block vs. reject, decided:** at the budget, `insert`/`update`/`insert_bulk` keep their infallible
-signatures and never fail — they skip *only* that call's eager broadcast, and periodic
-reconciliation (`reconcile_interval`) or repair (#23) recovers it, the same bounded cost an
-already-tolerated lost datagram is. A caller that wants to *know* egress is falling behind rather
-than rely on that backstop reaches for the additive `try_insert`/`try_update` instead: both claim
-an egress slot **before** touching the map, so a call either fully applies (locally and broadcast)
-or not at all, returning `Err(WriteRejected::Backpressure(Backpressure { in_flight, max_in_flight
-}))` — never a write with a silently-skipped broadcast. Both always send immediately, bypassing
-`coalesce_window` batching, and require the same ambient Tokio runtime `insert` does — on the
-success path only; a rejection (size or backpressure) never touches the reactor.
-
-```rust,no_run
-# use std::sync::Arc;
-use reconcile::{replicated_map::{Config, WriteRejected}, InMemoryNetwork, ReplicatedMap};
-
-# #[tokio::main]
-# async fn main() {
-let network = InMemoryNetwork::new();
-let transport = Arc::new(network.bind("127.0.0.1:8080".parse().unwrap()));
-let store = ReplicatedMap::<String, i32>::new_with_transport(
-    Config::default().with_insecure_no_key(),
-    transport,
-);
-
-match store.try_insert("a".to_string(), 1) {
-    Ok(previous) => { /* applied and broadcast */ let _ = previous; }
-    Err(WriteRejected::TooLarge(err)) => { /* value too big; see "Value-size ceiling" */ let _ = err; }
-    Err(WriteRejected::Backpressure(err)) => { /* egress budget exhausted; retry, buffer, or drop */ let _ = err; }
-}
-# }
-```
-
-The current depth is the `reconcile_broadcasts_in_flight` gauge (below); rejections/skips are
-`reconcile_broadcast_backpressure_total`, labeled `path` (`"eager"` for the infallible skip,
-`"try"` for a `try_insert`/`try_update` rejection on backpressure).
+All runtime-retunable counterparts are documented on `ReplicatedMap`. For measured RTT/loss,
+cold-sync and contention behavior, use [`benches/README.md`](benches/README.md) rather than copying
+benchmark conclusions into configuration documentation.
 
 ## Read replica (`ReadReplicaMap`)
 
@@ -776,55 +507,19 @@ the published crate.
 
 ## FingerprintTreeMap
 
-The protocol's core is `FingerprintTreeMap` (in the standalone `rsos` crate): `O(log n)` access,
-insertion and removal, plus `O(log n)` cumulated range-aggregate queries — the cumulated fingerprint
-of all key-value pairs between two keys. The fingerprint is a 256-bit BLAKE3-per-element hash
-combined by addition modulo 2²⁵⁶ (`rsos/src/fingerprint.rs`), computed over `rsos`'s own canonical
-byte encoding (`rsos/src/encoding.rs`, not `std::hash::Hash`, whose byte sequences Rust does not
-promise to keep stable) — chosen for collision resistance and cross-version wire stability.
+`FingerprintTreeMap` is the `rsos` crate's ordered, range-summarizable B-tree. It provides normal
+ordered-map access plus `O(log n)` rank/select and range-`Aggregate` queries used by RBSR.
 
-> **Wire break (pre-0.3).** A node on this code and a node on an earlier release never agree on a
-> range fingerprint and will re-exchange indefinitely without converging. Not a rolling upgrade:
-> stop the cluster, upgrade every node, restart. Snapshots are unaffected in content.
+Each element is canonically encoded and lifted into a 256-bit BLAKE3-based additive fingerprint;
+each node caches its subtree aggregate. The tree is persistent through `Arc` structural sharing,
+so cloning a map is an `O(1)` snapshot and a write copy-on-writes only the changed path.
 
-This independently matches [Range-Based Set Reconciliation](https://arxiv.org/abs/2212.13567)
-(Aljoscha Meyer, 2023). The reconciliation algorithm lives in the standalone `rbsr` crate, written
-against a small read-only backend trait (`rbsr::RsosView`) rather than `FingerprintTreeMap`
-directly, so it runs over any store that can answer the four range/order-statistics queries it
-needs. Crate map, dependency graph and rationale: [`ARCHITECTURE.md`](ARCHITECTURE.md) §2. Publish
-status of the five crates: the `v1.0.0` milestone and issue #206.
+The reconciliation algorithm itself lives in the independent `rbsr` crate and talks to stores
+through `RsosView`; it is not coupled to `FingerprintTreeMap` as a concrete backend.
 
-Our B-tree implementation stays within a factor 2 of the standard library's `BTreeMap`, at the cost
-of the extra invariants a fingerprint-carrying tree must maintain:
-
-| Benchmark | | Result |
-|---|---|---|
-| Insert N elements into an empty tree | ![](img/perf-fill.png) | Throughput tracks `BTreeMap` within ⅓–½ across the N range. |
-| Insert (then remove) 1 element in a tree of size N | ![](img/perf-insert.png) | 80 ns → 700 ns as N goes from 10 to 1,000,000. |
-| Remove (then restore) 1 element in a tree of size N | ![](img/perf-remove.png) | 100 ns → 800 ns over the same range. |
-| Compute 1 cumulated hash over a random range in a tree of size N | ![](img/perf-hash.png) | 30 ns → 1,200 ns over the same range. |
-
-All axes are logarithmic. Room for improvement remains, but network delays dominate in practice by
-orders of magnitude.
-
-### Point-read latency
-
-`FingerprintTreeMap::get` walks the tree, so a point read is `O(log n)` against a flat `HashMap`'s
-`O(1)` — a gap that widens, not flattens, as the tree grows (#52):
-
-| n | `ReplicatedMap<u32, u32>` vs `HashMap` | `ReplicatedMap<String, Vec<u8>>` vs `HashMap` |
-|---:|---:|---:|
-| 100,000 | 9.4× | 13.5× |
-| 1,000,000 | 11.6× | 17.4× |
-
-Full sizes, the `BTreeMap` column and methodology: [`benches/README.md`](benches/README.md)
-"Re-measuring #47/#51/#52" (#28). A feature-gated secondary hash index for `O(1)` point reads was
-considered and parked rather than built: it would roughly double per-key memory, in direct tension
-with the memory-reduction work in #47, to win a ratio that only matters at hash-map-bound read
-rates none of this crate's stated use cases (["When to use this"](#when-to-use-this)) reach — the
-bar `FingerprintTreeMap` is built to beat is a network round trip to an external store, not an
-in-process hash map. Even the widest measured point above (814 ns at 1M, heap-indirected) is two to
-three orders of magnitude under that bar, loopback included.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) §2/§5/§6 for structure and invariants,
+[`POSITIONING.md`](POSITIONING.md) for the design context, and
+[`benches/README.md`](benches/README.md) for current performance measurements.
 
 ## ReplicatedMap
 
@@ -878,36 +573,10 @@ RTT-scale timer (default 150 ms), rather than waiting for the next anti-entropy 
 
 ## Testing and coverage
 
-The crate is covered by unit, integration, property-based and documentation tests. Run the whole
-suite with (see AGENTS.md §3 for the exact CI invocations, including the two feature-set variants):
+CI runs formatting, documentation-structure/budget checks, domain-boundary checks, clippy/build,
+nextest, doctests, benchmark compilation, packaging, dependency policy, public-API/semver checks,
+coverage and in-diff mutation testing.
 
-```sh
-cargo install cargo-nextest
-cargo nextest run --workspace   # unit + integration tests, process-isolated, retries flaky failures
-cargo test --doc --workspace    # documentation examples only — nextest doesn't run these
-```
-
-A test passing is not the same as it detecting a bug: `./scripts/check-mutation-gate.sh` injects
-faults into the lines a change touches and requires the suite to catch them (CI:
-`.github/workflows/mutants.yml`, config: `.cargo/mutants.toml`; rationale in CONTRIBUTING.md).
-
-Code coverage is measured on every CI run with
-[`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) and reported to
-[Codecov](https://codecov.io/gh/adriendellagaspera/reconcile-rs) (see the coverage badge at
-the top). Two tiers, both on overall project coverage (`codecov.yml`, AGENTS.md §7): a
-non-blocking `warning` status below 100%, and a blocking `minimum` status below 90%. Per-PR patch
-coverage stays informational — a coverage number, delta or absolute, isn't trusted to gate an
-individual change here; that's the mutation gate's job (above). To reproduce locally:
-
-```sh
-cargo install cargo-llvm-cov
-cargo llvm-cov --workspace --all-features            # text summary in the terminal
-cargo llvm-cov --workspace --all-features --html     # browsable HTML report under target/llvm-cov/html
-```
-
-`--all-features` is required, not optional, despite `mac-blake3`/`mac-hmac` being mutually
-exclusive at runtime: exactly one backend compiles in either way (`mac-blake3` takes precedence),
-so this measures the same MAC backend a default-features run would. What actually needs
-`--all-features` is the integration tests, which build against `--cfg reconcile_internal_testing`-gated
-seams (AGENTS.md §6) and fail to compile without both that `--cfg` and `--all-features` — `cargo
-llvm-cov --workspace` alone errors on this crate. This matches CI's own coverage job exactly.
+For local development, link the repository hooks and let them run the same tiered checks. The exact
+commands and why each gate exists are canonical in [`AGENTS.md`](AGENTS.md) §3 and
+[`CONTRIBUTING.md`](CONTRIBUTING.md); do not maintain a second copy here.
