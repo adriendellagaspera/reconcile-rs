@@ -539,7 +539,7 @@ fn mesh_with<T: Transport>(
                 .with_net("127.0.0.1/8".parse().unwrap())
                 .unwrap()
                 .with_insecure_no_key();
-            ReplicatedMap::<u32, u32>::new_with_transport(config, Arc::new(transport))
+            ReplicatedMap::<u32, u32>::new_with_transport(config, Arc::new(transport)).expect("valid configuration")
         })
         .collect();
     (stores, addrs)
@@ -618,7 +618,7 @@ fn build_mesh_coalescing(
                 .unwrap()
                 .with_insecure_no_key()
                 .with_coalesce_window(window);
-            ReplicatedMap::<u32, u32>::new_with_transport(config, Arc::new(transport))
+            ReplicatedMap::<u32, u32>::new_with_transport(config, Arc::new(transport)).expect("valid configuration")
         })
         .collect::<Vec<_>>();
     full_mesh_seed(&stores, &addrs);

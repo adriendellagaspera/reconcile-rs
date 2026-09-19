@@ -67,11 +67,11 @@ async fn start_reconciliation_actually_drives_a_round() {
     let a = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(a_ip),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
-    );
+    ).expect("valid configuration");
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
-    );
+    ).expect("valid configuration");
     // Inserted before either peer is known, so the live broadcast on `insert` reaches nobody —
     // convergence below can only come from the round-based comparison `start_reconciliation`
     // drives, not from the immediate push every `insert` also performs.
@@ -161,11 +161,11 @@ async fn replay_filter_len_reflects_the_engine_replay_filter() {
     let a = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(a_ip),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
-    );
+    ).expect("valid configuration");
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
-    );
+    ).expect("valid configuration");
     a.engine
         .peers
         .write()
@@ -218,11 +218,11 @@ async fn bulk_dumps_in_flight_count_reflects_a_dump_actually_in_progress() {
     let a = ReplicatedMap::<i32, Vec<u8>>::new_with_transport(
         cfg(a_ip),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
-    );
+    ).expect("valid configuration");
     let b = ReplicatedMap::<i32, Vec<u8>>::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
-    );
+    ).expect("valid configuration");
     a.engine
         .peers
         .write()
@@ -310,14 +310,14 @@ async fn set_remote_interval_actually_retunes_the_cross_network_cadence() {
             .unwrap()
             .with_reconcile_interval(Duration::from_millis(5)),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
-    );
+    ).expect("valid configuration");
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
         ephemeral_config()
             .with_listen_addr(b_ip)
             .with_port(port)
             .with_reconcile_interval(Duration::from_millis(5)),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
-    );
+    ).expect("valid configuration");
     // Inserted before either peer is known, so the live broadcast on `insert` reaches nobody —
     // only the round-based comparison can deliver it, which is what `remote_interval` gates.
     a.insert(7, 42);
@@ -396,14 +396,14 @@ async fn set_remote_fanout_actually_retunes_the_cross_network_sample_size() {
             .unwrap()
             .with_reconcile_interval(Duration::from_millis(5)),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
-    );
+    ).expect("valid configuration");
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
         ephemeral_config()
             .with_listen_addr(b_ip)
             .with_port(port)
             .with_reconcile_interval(Duration::from_millis(5)),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
-    );
+    ).expect("valid configuration");
     // Inserted before either peer is known, so the live broadcast on `insert` reaches nobody —
     // only the round-based comparison can deliver it, which is what `remote_fanout` gates. B
     // never learns of A as a peer (only A -> B is seeded): B must never independently pull from
@@ -470,11 +470,11 @@ async fn set_reconcile_interval_actually_retunes_the_round_cadence() {
     let a = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(a_ip),
         Arc::new(net_fabric.bind(SocketAddr::new(a_ip, port))),
-    );
+    ).expect("valid configuration");
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(b_ip),
         Arc::new(net_fabric.bind(SocketAddr::new(b_ip, port))),
-    );
+    ).expect("valid configuration");
     // Retuned before `run()` ever starts, so it is already in effect the first time the round
     // loop consults it (right after the unconditional round-0 call `run()` always makes, which
     // never honors `reconcile_interval` at all — retuning *after* that first wait has already
@@ -555,11 +555,11 @@ async fn set_coalesce_window_actually_delays_the_broadcast() {
     let a = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(a_ip),
         Arc::new(net_fabric.bind(SocketAddr::new(a_ip, port))),
-    );
+    ).expect("valid configuration");
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(b_ip),
         Arc::new(net_fabric.bind(SocketAddr::new(b_ip, port))),
-    );
+    ).expect("valid configuration");
 
     let task_a = tokio::spawn(a.clone().run(CancellationToken::new()));
     let task_b = tokio::spawn(b.clone().run(CancellationToken::new()));
