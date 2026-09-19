@@ -215,6 +215,11 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// (behind the `metrics` feature) plus [`on_persistence_error`](Self::on_persistence_error) on
     /// failure.
     fn snapshot_inner(&self) -> io::Result<()> {
+        // Concurrent snapshots must not each retire the other's pending change count.
+        let _snapshot_guard = self.snapshot_lock.lock();
+        // Count only changes committed before collection began. A write racing the
+        // chunked collection remains pending (possibly causing one redundant flush).
+        let counted_before_capture = self.engine.change_count();
         let mut entries: DatedEntries<K, V> = Vec::new();
         let mut cursor: Option<K> = None;
         loop {
@@ -249,7 +254,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
                 // Only a *successful* write clears the pending count: a failed write must
                 // keep its changes counted, or a threshold-gated periodic wakeup could go quiet
                 // on a backend that is failing every attempt.
-                self.engine.reset_change_count();
+                self.engine.retire_change_count(counted_before_capture);
                 self.persistence_consecutive_failures
                     .store(0, Ordering::Relaxed);
                 observability::record_persistence_success();
