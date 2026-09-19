@@ -144,23 +144,9 @@ impl<K, V> Node<K, V> {
             let mid_key = self.keys.pop().unwrap();
             let mid_value = self.values.pop().unwrap();
             let to_insert = if index <= mid {
-                self.insert(
-                    index,
-                    key,
-                    value,
-                    right_child,
-                    diff_fp,
-                    lift_key,
-                )
+                self.insert(index, key, value, right_child, diff_fp, lift_key)
             } else {
-                right_sibling.insert(
-                    index - mid - 1,
-                    key,
-                    value,
-                    right_child,
-                    diff_fp,
-                    lift_key,
-                )
+                right_sibling.insert(index - mid - 1, key, value, right_child, diff_fp, lift_key)
             };
             assert!(to_insert.is_none());
             assert!(!self.keys.is_empty());
