@@ -187,19 +187,12 @@ impl Config {
     /// `cluster_key: None` without the explicit `insecure_no_key` opt-in is a
     /// construction-time error, not a silent unauthenticated run. Shared by every engine
     /// constructor (`Replica`, `ReadReplicaMap`) so none of them can bypass it.
-    ///
-    /// # Panics
-    ///
-    /// If `cluster_key` is `None` and `insecure_no_key` is `false`.
-    pub(crate) fn check_key_or_insecure_opt_in(&self) {
-        assert!(
-            self.cluster_key.is_some() || self.insecure_no_key,
-            "Config::cluster_key is None: every peer this node ever discovers (any host inside \
-             the configured nets) would receive the entire dataset, unauthenticated, via paced \
-             diff dumps. Set Config::with_cluster_key, or opt in explicitly with \
-             Config::with_insecure_no_key() if the network is a trusted underlay. See README \
-             \"Security model\"."
-        );
+    pub(crate) fn check_key_or_insecure_opt_in(&self) -> Result<(), ConfigError> {
+        if self.cluster_key.is_some() || self.insecure_no_key {
+            Ok(())
+        } else {
+            Err(ConfigError::MissingSecurityMode)
+        }
     }
 
     /// Set an explicit node identity for the HLC tie-break; must be distinct per node.
