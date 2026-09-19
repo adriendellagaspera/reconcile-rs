@@ -49,3 +49,12 @@ impl From<io::Error> for ConstructionError {
         Self::Io(error)
     }
 }
+
+impl From<ConstructionError> for io::Error {
+    fn from(error: ConstructionError) -> Self {
+        match error {
+            ConstructionError::Io(error) => error,
+            ConstructionError::Config(error) => io::Error::new(io::ErrorKind::InvalidInput, error),
+        }
+    }
+}
