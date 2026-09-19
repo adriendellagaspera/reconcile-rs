@@ -297,10 +297,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Retire only changes counted before a successful snapshot started collecting.
     /// A writer that committed during collection or save remains pending.
     pub(crate) fn retire_change_count(&self, counted: usize) {
-        let _ = self.changes_since_snapshot.fetch_update(
-            Ordering::AcqRel,
-            Ordering::Acquire,
-            |now| Some(now.saturating_sub(counted)),
-        );
+        let _ =
+            self.changes_since_snapshot
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |now| {
+                    Some(now.saturating_sub(counted))
+                });
     }
 }
