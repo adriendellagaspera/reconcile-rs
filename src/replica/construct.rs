@@ -28,7 +28,7 @@ use crate::bounds::{Key, Value};
 use crate::clock::{Clock, HlcClock, NodeId, Timestamp};
 use crate::discovery::{Discovery, RandomProbe};
 use crate::entry::{Entry, State};
-use crate::replicated_map::{Config, MIN_BULK_SEND_RATE};
+use crate::replicated_map::{Config, ConfigError, ConstructionError, MIN_BULK_SEND_RATE};
 use crate::transport::{Transport, UdpTransport};
 use crate::FingerprintTreeMap;
 use gossip::auth;
@@ -80,11 +80,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// If the socket cannot be bound to `(config.listen_addr, config.port)`, or if
     /// `config.port == 0` — see [`Config::port`]'s docs.
     ///
-    /// # Panics
-    ///
-    /// If `config.cluster_key` is `None` without also setting
-    /// [`Config::with_insecure_no_key`]; see `SECURITY.md` for the keyless trust boundary.
-    pub async fn new(config: Config) -> io::Result<Self> {
+    /// Returns `ConfigError::MissingSecurityMode` through `ConstructionError` if neither
+    /// authenticated mode nor the explicit keyless opt-in was selected.
+    pub async fn new(config: Config) -> Result<Self, ConstructionError> {
         // Default adapter for the `Clock` port: the chrono-backed Hybrid Logical Clock. This is the
         // only place the engine names a concrete clock; everything else goes through `dyn Clock`.
         let node_id_is_random = config.node_id.is_none();
@@ -94,7 +92,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let clock: Arc<dyn Clock> =
             Arc::new(HlcClock::new(node_id).with_max_clock_drift(config.max_clock_drift));
         let transport = Self::bind_udp(&config).await?;
-        Ok(Self::build(config, transport, clock, node_id_is_random))
+        Ok(Self::build(config, transport, clock, node_id_is_random)?)
     }
 
     /// Construct an engine over the default [`UdpTransport`], but a caller-supplied [`Clock`]
@@ -111,20 +109,24 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// If the socket cannot be bound to `(config.listen_addr, config.port)`, or if
     /// `config.port == 0` — see [`Config::port`]'s docs.
     ///
-    /// # Panics
-    ///
-    /// If `config.cluster_key` is `None` without also setting
-    /// [`Config::with_insecure_no_key`]; see `SECURITY.md` for the keyless trust boundary.
-    pub async fn new_with_clock(config: Config, clock: Arc<dyn Clock>) -> io::Result<Self> {
+    /// Returns `ConfigError::MissingSecurityMode` through `ConstructionError` if neither
+    /// authenticated mode nor the explicit keyless opt-in was selected.
+    pub async fn new_with_clock(
+        config: Config,
+        clock: Arc<dyn Clock>,
+    ) -> Result<Self, ConstructionError> {
         let transport = Self::bind_udp(&config).await?;
-        Ok(Self::build(config, transport, clock, false))
+        Ok(Self::build(config, transport, clock, false)?)
     }
 
     /// Construct an engine over a caller-supplied [`Transport`], with the default clock.
     ///
     /// Infallible: the only fallible step in [`new`](Self::new) is binding the UDP socket, which
     /// the caller has already done (or does not need to do at all).
-    pub(crate) fn with_transport(config: Config, transport: Arc<dyn Transport>) -> Self {
+    pub(crate) fn with_transport(
+        config: Config,
+        transport: Arc<dyn Transport>,
+    ) -> Result<Self, ConfigError> {
         let node_id_is_random = config.node_id.is_none();
         let node_id = config
             .node_id
@@ -142,7 +144,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         config: Config,
         transport: Arc<dyn Transport>,
         clock: Arc<dyn Clock>,
-    ) -> Self {
+    ) -> Result<Self, ConfigError> {
         Self::build(config, transport, clock, false)
     }
 
@@ -168,8 +170,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         transport: Arc<dyn Transport>,
         clock: Arc<dyn Clock>,
         node_id_is_random: bool,
-    ) -> Self {
-        config.check_key_or_insecure_opt_in();
+    ) -> Result<Self, ConfigError> {
+        config.check_key_or_insecure_opt_in()?;
         // The primary key closes the Wagner-grinding gap on the range fingerprint too, via an
         // independent BLAKE3-derived subkey. The receive-only rotation key deliberately does not
         // alter this tree's lift; peers on different primaries can exchange authenticated values
@@ -239,7 +241,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let rng = Arc::new(RwLock::new(StdRng::from_entropy()));
         let probe: Arc<dyn Discovery> =
             Arc::new(RandomProbe::new(Arc::clone(&nets), Arc::clone(&rng)));
-        Replica {
+        Ok(Replica {
             inner: Arc::new(Inner {
                 map: Arc::new(ArcSwap::new(Arc::new(map))),
                 projection: Arc::new(ArcSwap::new(Arc::new(projection))),
@@ -287,6 +289,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 coalesce_pending: Arc::new(RwLock::new(HashMap::new())),
                 changes_since_snapshot: Arc::new(AtomicUsize::new(0)),
             }),
-        }
+        })
     }
 }
