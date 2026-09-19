@@ -50,17 +50,17 @@ fn ephemeral_config() -> Config {
     }
 }
 
-/// #377: `insert`/`remove` report prior presence, `contains` reports current presence, and
-/// bulk/`len`/`is_empty` track the same membership.
+/// `insert` matches `std::collections::HashSet::insert`; `remove` reports prior presence,
+/// while `contains` reports current presence.
 #[tokio::test]
 async fn insert_remove_contains_and_bulk_agree_on_membership() {
     let set = ReplicatedSet::<i32>::new(ephemeral_config()).await.unwrap();
 
     assert!(set.is_empty());
     assert!(!set.contains(&1));
-    assert!(!set.insert(1)); // wasn't present
+    assert!(set.insert(1)); // newly inserted
     assert!(set.contains(&1));
-    assert!(set.insert(1)); // already present, idempotent
+    assert!(!set.insert(1)); // already present, idempotent
     assert_eq!(set.len(), 1);
 
     set.insert_bulk(&[2, 3]);

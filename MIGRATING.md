@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+### Store constructors now return typed security errors
+
+Omitting both `Config::with_cluster_key` and `Config::with_insecure_no_key` now returns
+`ConstructionError::Config(ConfigError::MissingSecurityMode)` instead of panicking (#127).
+All public `ReplicatedMap`, `ReadReplicaMap`, `ReplicatedSet` and `ReadReplicaSet`
+constructors use `Result<_, ConstructionError>`; `new_with_transport` is now fallible even
+though no socket binding is performed. With a valid configuration the store and protocol behave
+as before. Example for an injected transport:
+
+```rust
+// Before
+let store = ReplicatedMap::<K, V>::new_with_transport(config, transport);
+// After
+let store = ReplicatedMap::<K, V>::new_with_transport(config, transport)?;
+```
+
+For UDP constructors, replace explicit `io::Result<Store>` return types with
+`Result<Store, ConstructionError>`, or convert the error using
+`io::Error::from` to preserve an `io::Result` boundary. I/O failures remain available as
+`ConstructionError::Io(error)`; the security opt-in is still mandatory.
+
+### `ReplicatedSet::insert` now matches `HashSet::insert`
+
+`ReplicatedSet::insert` now returns `true` when the call adds a new member and `false` when
+the member was already present, matching `std::collections::HashSet::insert` (#126). The old
+meaning was inverted:
+
+```rust
+// Before: true meant "already present".
+assert!(!set.insert(key.clone()));
+assert!(set.insert(key.clone()));
+
+// After: true means "newly inserted".
+assert!(set.insert(key.clone()));
+assert!(!set.insert(key));
+```
+
+`remove` is unchanged: it returns `true` when the member was present and removed.
+
 ### `Config::with_net`/`with_nets` now return `Result`
 
 `Config::with_net`/`with_nets` (#97, ARCHITECTURE.md §5 invariant 15) used to panic past
