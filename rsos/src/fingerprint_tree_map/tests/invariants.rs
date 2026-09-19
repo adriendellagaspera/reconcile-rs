@@ -170,3 +170,23 @@ fn check_invariants_catches_an_undersized_non_root_node() {
 
     map.check_invariants();
 }
+
+#[test]
+fn cloned_version_keeps_its_aggregate_across_cacheless_cow_mutations() {
+    let mut current: FingerprintTreeMap<u64, u64> = (0..200).map(|k| (k, k * 10)).collect();
+    let retained = current.clone();
+    let retained_aggregate = retained.aggregate(..);
+
+    current.insert(50, 999);
+    current.remove(&75);
+    current.with_mut(&125, |value| *value.expect("125 is present") += 1);
+
+    current.check_invariants();
+    retained.check_invariants();
+
+    assert_eq!(retained.get(&50), Some(&500));
+    assert_eq!(retained.get(&75), Some(&750));
+    assert_eq!(retained.get(&125), Some(&1250));
+    assert_eq!(retained.aggregate(..), retained_aggregate);
+    assert_ne!(current.aggregate(..), retained_aggregate);
+}
