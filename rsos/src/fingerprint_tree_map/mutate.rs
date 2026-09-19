@@ -47,12 +47,11 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                         // shared with an older retained version -- unshared, it mutates in place.
                         let (mut to_insert, diff_fp, ret) =
                             aux(Arc::make_mut(&mut children[index]), key, value, lift_key);
-                        if let Some((key, value, fingerprint, right_child)) = to_insert {
+                        if let Some((key, value, right_child)) = to_insert {
                             to_insert = node.insert(
                                 index,
                                 key,
                                 value,
-                                fingerprint,
                                 Some(right_child),
                                 diff_fp,
                                 lift_key,
@@ -68,7 +67,6 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                             index,
                             key,
                             value,
-                            fingerprint,
                             None,
                             fingerprint,
                             lift_key,
@@ -85,7 +83,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
             self.lift_key.as_ref(),
         );
         // if we still have things to insert at the root, we need to create a new root
-        if let Some((key, value, _fingerprint, right_child)) = to_insert {
+        if let Some((key, value, right_child)) = to_insert {
             let new_root = Arc::new(Node::new());
             let old_root = std::mem::replace(&mut self.root, new_root);
             let mut children = ArrayVec::new();
