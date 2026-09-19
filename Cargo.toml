@@ -62,6 +62,11 @@ harness = false
 name = "contention"
 harness = false
 
+# #46 manual full-snapshot write-amplification and restart baseline (CSV, no Criterion).
+[[bench]]
+name = "snapshot_write_amplification"
+harness = false
+
 [features]
 default = ["mac-blake3"]
 # Facade feature names forward to `gossip`, which owns auth/encryption implementation and cfgs.
