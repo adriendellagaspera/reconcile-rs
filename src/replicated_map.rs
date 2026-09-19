@@ -28,6 +28,7 @@ use crate::transport::Transport;
 
 mod backpressure;
 mod config;
+mod construction_error;
 mod discovery;
 mod membership;
 mod mutate;
@@ -39,6 +40,7 @@ mod write;
 pub use backpressure::{Backpressure, WriteRejected};
 pub(crate) use config::MIN_BULK_SEND_RATE;
 pub use config::{Config, ConfigError, MAX_NETS};
+pub use construction_error::ConstructionError;
 #[cfg(test)]
 pub(crate) use discovery::MemberPresence;
 pub use discovery::NotAuthoritative;
@@ -155,7 +157,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn new(config: Config) -> io::Result<Self> {
+    pub async fn new(config: Config) -> Result<Self, ConstructionError> {
         let snapshot_interval = config.snapshot_interval;
         let snapshot_change_threshold = config.snapshot_change_threshold;
         Ok(Self::from_engine(
@@ -168,9 +170,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Create a `ReplicatedMap` over a caller-supplied [`Transport`] instead of the default UDP
     /// one — a different datagram transport, or a lossy one to test convergence under adversity.
     ///
-    /// Infallible: the caller has already done the one fallible step, binding. An unreliable
-    /// transport cannot violate an invariant, since the protocol already assumes loss, duplication
-    /// and reordering — unlike an injected [`Clock`](crate::Clock)
+    /// The caller has already done the I/O binding step; configuration validation remains
+    /// fallible. An unreliable transport cannot violate an invariant, since the protocol already
+    /// assumes loss, duplication and reordering — unlike an injected [`Clock`](crate::Clock)
     /// ([`new_with_clock`](Self::new_with_clock)'s docs cover what a non-conformant one breaks).
     ///
     /// ```rust,no_run
@@ -181,16 +183,20 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// let store = ReplicatedMap::<String, String>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .unwrap();
     /// ```
-    pub fn new_with_transport(config: Config, transport: Arc<dyn Transport>) -> Self {
+    pub fn new_with_transport(
+        config: Config,
+        transport: Arc<dyn Transport>,
+    ) -> Result<Self, ConstructionError> {
         let snapshot_interval = config.snapshot_interval;
         let snapshot_change_threshold = config.snapshot_change_threshold;
-        Self::from_engine(
-            Replica::<K, V>::with_transport(config, transport),
+        Ok(Self::from_engine(
+            Replica::<K, V>::with_transport(config, transport)?,
             snapshot_interval,
             snapshot_change_threshold,
-        )
+        ))
     }
 
     /// Create a `ReplicatedMap` over the default UDP transport, but a caller-supplied
@@ -248,7 +254,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     pub async fn new_with_clock(
         config: Config,
         clock: Arc<dyn crate::clock::Clock>,
-    ) -> io::Result<Self> {
+    ) -> Result<Self, ConstructionError> {
         let snapshot_interval = config.snapshot_interval;
         let snapshot_change_threshold = config.snapshot_change_threshold;
         Ok(Self::from_engine(
