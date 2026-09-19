@@ -9,6 +9,7 @@
 mod aggregate;
 mod basic;
 mod bulk;
+mod footprint;
 mod invariants;
 mod keyed_lift;
 mod owned_ref;
