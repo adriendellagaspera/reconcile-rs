@@ -196,9 +196,19 @@ async fn physically_collected_tombstone_is_not_replayed_after_restart() {
     store.just_insert(17, 1);
     store.just_remove(&17);
     store.snapshot_now().unwrap();
-    assert!(store.engine.map.load_full().get(&17).unwrap().is_tombstone());
+    assert!(store
+        .engine
+        .map
+        .load_full()
+        .get(&17)
+        .unwrap()
+        .is_tombstone());
     assert!(store.engine.gc_remove(&17).is_some());
-    assert_eq!(store.engine.change_count(), 1, "physical delete was not tracked");
+    assert_eq!(
+        store.engine.change_count(),
+        1,
+        "physical delete was not tracked"
+    );
     store.engine.forget_tombstone(&17);
     store.snapshot_now().unwrap();
 
