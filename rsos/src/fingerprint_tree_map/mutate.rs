@@ -32,10 +32,9 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
         ) -> (InsertionTuple<K, V>, Fingerprint, Option<V>) {
             match node.keys.binary_search(&key) {
                 Ok(index) => {
-                    let old_fp = node.fingerprints[index];
-                    let new_fp = lift_with(lift_key, &key, &value);
+                    let old_fp = lift_with(lift_key, &node.keys[index], &node.values[index]);
+                    let new_fp = lift_with(lift_key, &node.keys[index], &value);
                     let diff_fp = new_fp - old_fp;
-                    node.fingerprints[index] = new_fp;
                     // A value overwritten in place: the element count is unchanged, so the
                     // delta composed in is a zero-size aggregate carrying the fingerprint shift.
                     node.compose_into_subtree(Aggregate::new(0, diff_fp));
@@ -56,6 +55,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                                 fingerprint,
                                 Some(right_child),
                                 diff_fp,
+                                lift_key,
                             )
                         } else {
                             let added = usize::from(ret.is_none());
@@ -65,7 +65,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                     } else {
                         let fingerprint = lift_with(lift_key, &key, &value);
                         let to_insert =
-                            node.insert(index, key, value, fingerprint, None, fingerprint);
+                            node.insert(index, key, value, fingerprint, None, fingerprint, lift_key);
                         (to_insert, fingerprint, None)
                     }
                 }
@@ -78,7 +78,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
             self.lift_key.as_ref(),
         );
         // if we still have things to insert at the root, we need to create a new root
-        if let Some((key, value, fingerprint, right_child)) = to_insert {
+        if let Some((key, value, _fingerprint, right_child)) = to_insert {
             let new_root = Arc::new(Node::new());
             let old_root = std::mem::replace(&mut self.root, new_root);
             let mut children = ArrayVec::new();
@@ -87,9 +87,8 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
             let root = Arc::make_mut(&mut self.root);
             root.keys.push(key);
             root.values.push(value);
-            root.fingerprints.push(fingerprint);
             root.children = Some(Box::new(children));
-            root.refresh_aggregate();
+            root.refresh_aggregate(self.lift_key.as_ref());
         }
         trace!(
             "Updated state after insertion; global fingerprint is now {}",
@@ -99,7 +98,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
     }
 }
 
-impl<K: Ord, V> FingerprintTreeMap<K, V> {
+impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
     /// Removes `key`, returning its value if it was present.
     pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
     where
@@ -107,50 +106,55 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
         V: Clone,
         Q: Ord + ?Sized,
     {
-        fn rightmost_child<K: Clone, V: Clone>(node: &mut Node<K, V>) -> (K, V, Fingerprint) {
+        fn rightmost_child<K: Serialize + Clone, V: Serialize + Clone>(
+            node: &mut Node<K, V>,
+            lift_key: Option<&LiftKey>,
+        ) -> (K, V, Fingerprint) {
             if let Some(children) = node.children.as_mut() {
-                let (k, v, fp) = rightmost_child(Arc::make_mut(children.last_mut().unwrap()));
+                let (k, v, fp) = rightmost_child(Arc::make_mut(children.last_mut().unwrap()), lift_key);
                 node.decompose_from_subtree(element(fp));
-                node.rebalance_after_deletion(node.keys.len());
+                node.rebalance_after_deletion(node.keys.len(), lift_key);
                 (k, v, fp)
             } else {
+                let last = node.keys.len() - 1;
+                let fp = lift_with(lift_key, &node.keys[last], &node.values[last]);
                 let k = node.keys.pop().unwrap();
                 let v = node.values.pop().unwrap();
-                let fp = node.fingerprints.pop().unwrap();
                 node.decompose_from_subtree(element(fp));
                 (k, v, fp)
             }
         }
         /// The fingerprint delta and the value removed at `key`, if present.
-        fn aux<K: Borrow<Q> + Clone, V: Clone, Q: Ord + ?Sized>(
+        fn aux<K: Serialize + Borrow<Q> + Clone, V: Serialize + Clone, Q: Ord + ?Sized>(
             node: &mut Node<K, V>,
             key: &Q,
+            lift_key: Option<&LiftKey>,
         ) -> (Fingerprint, Option<V>) {
             match node.keys.binary_search_by(|probe| probe.borrow().cmp(key)) {
                 Ok(index) => {
                     if let Some(children) = node.children.as_mut() {
-                        let (prev_k, prev_v, prev_fp) =
-                            rightmost_child(Arc::make_mut(&mut children[index]));
+                        let (prev_k, prev_v, _prev_fp) =
+                            rightmost_child(Arc::make_mut(&mut children[index]), lift_key);
+                        let fp = lift_with(lift_key, &node.keys[index], &node.values[index]);
                         node.keys[index] = prev_k;
                         let v = std::mem::replace(&mut node.values[index], prev_v);
-                        let fp = std::mem::replace(&mut node.fingerprints[index], prev_fp);
                         node.decompose_from_subtree(element(fp));
-                        node.rebalance_after_deletion(index);
+                        node.rebalance_after_deletion(index, lift_key);
                         (fp, Some(v))
                     } else {
+                        let fp = lift_with(lift_key, &node.keys[index], &node.values[index]);
                         node.keys.remove(index);
                         let v = node.values.remove(index);
-                        let fp = node.fingerprints.remove(index);
                         node.decompose_from_subtree(element(fp));
                         (fp, Some(v))
                     }
                 }
                 Err(index) => {
                     if let Some(children) = node.children.as_mut() {
-                        let (diff_fp, ret) = aux(Arc::make_mut(&mut children[index]), key);
+                        let (diff_fp, ret) = aux(Arc::make_mut(&mut children[index]), key, lift_key);
                         let removed = Aggregate::new(usize::from(ret.is_some()), diff_fp);
                         node.decompose_from_subtree(removed);
-                        node.rebalance_after_deletion(index);
+                        node.rebalance_after_deletion(index, lift_key);
                         (diff_fp, ret)
                     } else {
                         (Fingerprint::ZERO, None)
@@ -158,7 +162,7 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
                 }
             }
         }
-        let ret = aux(Arc::make_mut(&mut self.root), key).1;
+        let ret = aux(Arc::make_mut(&mut self.root), key, self.lift_key.as_ref()).1;
         trace!(
             "Updated state after removal; global fingerprint is now {}",
             self.root.subtree().fingerprint()
@@ -249,10 +253,6 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                 }
                 // key
                 let fingerprint = lift_with(lift_key, &node.keys[i], &node.values[i]);
-                assert_eq!(
-                    fingerprint, node.fingerprints[i],
-                    "per-element fingerprint cache invalid"
-                );
                 cum += element(fingerprint);
             }
             // child after last key
