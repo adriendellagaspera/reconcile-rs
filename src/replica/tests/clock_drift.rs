@@ -33,7 +33,8 @@ async fn config_max_clock_drift_reaches_the_constructed_clock() {
         .with_insecure_no_key()
         .with_max_clock_drift(ClockDrift::from_millis(50));
     let replica: Replica<i32, i32> =
-        Replica::with_transport(cfg, Arc::new(net.bind(SocketAddr::new(ip, port)))).expect("valid configuration");
+        Replica::with_transport(cfg, Arc::new(net.bind(SocketAddr::new(ip, port))))
+            .expect("valid configuration");
 
     let before = replica.clock_now();
     let far_future = Timestamp::new(

@@ -325,7 +325,8 @@ async fn a_replicated_map_converges_over_a_lossy_delayed_link() {
                 .with_reconcile_interval(Duration::from_millis(20))
                 .with_insecure_no_key(),
             Arc::new(transport),
-        ).expect("valid configuration");
+        )
+        .expect("valid configuration");
         (store, impairments)
     };
     let ((a, a_losses), (b, b_losses)) = (store(a_addr), store(b_addr));
