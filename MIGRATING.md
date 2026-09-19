@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+
+### `FingerprintTreeMap::aggregate`/`remove`/`retain` now require `Serialize`
+
+`FingerprintTreeMap` no longer stores a 32-byte fingerprint beside every key/value entry (#47).
+The tree keeps only subtree aggregates and re-lifts the small number of local separators/elements
+needed by mutation and partial-range operations. As a consequence, three methods that previously
+worked with merely ordered/clonable types now also require `K: Serialize, V: Serialize`:
+
+- `aggregate` (for range-boundary elements),
+- `remove`,
+- `retain` (because it removes rejected entries).
+
+Most users already satisfy these bounds: `insert`, `with_mut`, reconciliation, and persisted
+maps have always required serializable keys and values. A direct `rsos` caller using a
+non-serializable `FingerprintTreeMap<K, V>` can continue to use lookup/order operations such as
+`get`, `contains_key`, `rank`, `select`, `range`, `len`, and `clear`; to call the three
+methods above, implement or derive `serde::Serialize` for `K` and `V`.
+
+
 ### Store constructors now return typed security errors
 
 Omitting both `Config::with_cluster_key` and `Config::with_insecure_no_key` now returns
