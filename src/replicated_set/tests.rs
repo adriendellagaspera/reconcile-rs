@@ -184,15 +184,21 @@ async fn peers_and_members_reflect_a_converged_pair() {
             .with_port(port)
             .with_reconcile_interval(Duration::from_millis(20))
     };
-    let a = ReplicatedSet::<i32>(ReplicatedMap::new_with_transport(
-        cfg(a_ip),
-        Arc::new(net.bind(SocketAddr::new(a_ip, port))),
-    ))
+    let a = ReplicatedSet::<i32>(
+        ReplicatedMap::new_with_transport(
+            cfg(a_ip),
+            Arc::new(net.bind(SocketAddr::new(a_ip, port))),
+        )
+        .unwrap(),
+    )
     .with_seed(b_ip);
-    let b = ReplicatedSet::<i32>(ReplicatedMap::new_with_transport(
-        cfg(b_ip),
-        Arc::new(net.bind(SocketAddr::new(b_ip, port))),
-    ))
+    let b = ReplicatedSet::<i32>(
+        ReplicatedMap::new_with_transport(
+            cfg(b_ip),
+            Arc::new(net.bind(SocketAddr::new(b_ip, port))),
+        )
+        .unwrap(),
+    )
     .with_seed(a_ip);
 
     // `with_seed` above already registers the peer for gossip routing; membership is earned only
