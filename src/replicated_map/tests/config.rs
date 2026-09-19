@@ -40,6 +40,34 @@ async fn missing_security_mode_is_a_typed_construction_error() {
     ));
 }
 
+/// Injected transports cannot bypass the explicit security-mode requirement.
+#[test]
+fn injected_transport_constructors_reject_missing_security_mode() {
+    use std::sync::Arc;
+
+    use crate::transport::InMemoryNetwork;
+
+    let network = InMemoryNetwork::new();
+    let config = Config::default().with_port(8081);
+    let full = ReplicatedMap::<i32, i32>::new_with_transport(
+        config.clone(),
+        Arc::new(network.bind("127.0.0.1:8081".parse().unwrap())),
+    );
+    assert!(matches!(
+        full,
+        Err(ConstructionError::Config(ConfigError::MissingSecurityMode))
+    ));
+
+    let read = ReadReplicaMap::<i32, i32>::new_with_transport(
+        config,
+        Arc::new(network.bind("127.0.0.2:8081".parse().unwrap())),
+    );
+    assert!(matches!(
+        read,
+        Err(ConstructionError::Config(ConfigError::MissingSecurityMode))
+    ));
+}
+
 /// Construction errors retain their typed cause for callers traversing the standard error chain.
 #[test]
 fn construction_error_source_preserves_configuration_and_io_causes() {
