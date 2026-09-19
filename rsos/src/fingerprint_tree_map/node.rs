@@ -115,7 +115,6 @@ impl<K, V> Node<K, V> {
         index: usize,
         key: K,
         value: V,
-        fingerprint: Fingerprint,
         right_child: Option<Arc<Node<K, V>>>,
         diff_fp: Fingerprint,
         lift_key: Option<&LiftKey>,
@@ -144,13 +143,11 @@ impl<K, V> Node<K, V> {
             };
             let mid_key = self.keys.pop().unwrap();
             let mid_value = self.values.pop().unwrap();
-            let mid_fp = lift_with(lift_key, &mid_key, &mid_value);
             let to_insert = if index <= mid {
                 self.insert(
                     index,
                     key,
                     value,
-                    fingerprint,
                     right_child,
                     diff_fp,
                     lift_key,
@@ -160,7 +157,6 @@ impl<K, V> Node<K, V> {
                     index - mid - 1,
                     key,
                     value,
-                    fingerprint,
                     right_child,
                     diff_fp,
                     lift_key,
@@ -171,7 +167,7 @@ impl<K, V> Node<K, V> {
             assert!(!right_sibling.keys.is_empty());
             self.refresh_aggregate(lift_key);
             right_sibling.refresh_aggregate(lift_key);
-            Some((mid_key, mid_value, mid_fp, Arc::new(right_sibling)))
+            Some((mid_key, mid_value, Arc::new(right_sibling)))
         } else {
             self.keys.insert(index, key);
             self.values.insert(index, value);
