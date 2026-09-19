@@ -142,7 +142,11 @@ async fn metadata_only_decommission_and_ack_forget_remain_snapshot_pending() {
     assert_eq!(store.engine.change_count(), 0);
 
     store.engine.decommission_peer(peer);
-    assert_eq!(store.engine.change_count(), 2, "membership and ack removals were not tracked");
+    assert_eq!(
+        store.engine.change_count(),
+        2,
+        "membership and ack removals were not tracked"
+    );
     store.snapshot_now().unwrap();
     let restored = ReplicatedMap::<u32, u32>::new(ephemeral_config())
         .await
@@ -157,7 +161,13 @@ async fn metadata_only_decommission_and_ack_forget_remain_snapshot_pending() {
         .get(&1)
         .unwrap()
         .contains_key(&peer));
-    assert!(restored.engine.map.load_full().get(&1).unwrap().is_tombstone());
+    assert!(restored
+        .engine
+        .map
+        .load_full()
+        .get(&1)
+        .unwrap()
+        .is_tombstone());
 
     // Removing ack bookkeeping alone must be visible to the next generation,
     // without a corresponding dated-map modification.
