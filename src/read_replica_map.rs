@@ -23,7 +23,6 @@
 //! replica propagation leaves `get` returning a stale value.
 
 use std::collections::HashMap;
-use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
