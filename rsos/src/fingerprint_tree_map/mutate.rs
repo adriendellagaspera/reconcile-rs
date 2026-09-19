@@ -110,7 +110,6 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
     pub fn clear(&mut self) {
         self.root = Arc::new(Node::new());
     }
-
 }
 
 impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
