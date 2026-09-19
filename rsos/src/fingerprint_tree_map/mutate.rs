@@ -105,6 +105,16 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
     }
 }
 
+impl<K: Ord, V> FingerprintTreeMap<K, V> {
+    /// Removes every entry, resetting the tree to the same empty state [`new`](Self::new) produces
+    /// — except the configured lift key (if any), which `clear` preserves rather than dropping:
+    /// this tree stays keyed exactly as [`with_lift_key`](Self::with_lift_key) set it up.
+    pub fn clear(&mut self) {
+        self.root = Arc::new(Node::new());
+    }
+
+}
+
 impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
     /// Removes `key`, returning its value if it was present.
     pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
@@ -177,13 +187,6 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
             self.root.subtree().fingerprint()
         );
         ret
-    }
-
-    /// Removes every entry, resetting the tree to the same empty state [`new`](Self::new) produces
-    /// — except the configured lift key (if any), which `clear` preserves rather than dropping:
-    /// this tree stays keyed exactly as [`with_lift_key`](Self::with_lift_key) set it up.
-    pub fn clear(&mut self) {
-        self.root = Arc::new(Node::new());
     }
 
     /// Removes every entry for which `keep` returns `false`. `O(n log n)`: collect, then remove.
