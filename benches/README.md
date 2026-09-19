@@ -16,6 +16,7 @@ None of the benchmark targets execute in CI. CI only compile-checks them with
 | `system` | end-to-end behavior through the public `ReplicatedMap` API |
 | `protocol` | one complete RBSR reconciliation under the shipped default `FixedFanOut` policy |
 | `contention` | concurrent-writer cost of maintaining RSOS aggregates vs a `BTreeMap` control |
+| `snapshot_write_amplification` | #46: full-snapshot logical bytes, elapsed time and verified restart after changing d of n entries |
 
 The source-level module docs in each benchmark file define the exact corpus and measurement unit.
 When a detail here and the harness disagree, the harness is authoritative.
@@ -156,6 +157,51 @@ For publishable/reviewable contention numbers, pool independent invocations rath
 trials inside one process as independent machine phases. `CONTENTION_RAW=1` emits per-trial data
 for that purpose.
 
+## #46 / #47 pre-change baselines
+
+These probes describe the current post-#92 structure and the current whole-file
+persistence implementation; they do not predict the improvement of either change.
+Compare identical sizes, machine, compiler and commit configuration before/after.
+
+### #47: Rust node layout, occupancy, requested heap bytes
+
+The deliberately ignored unit probe inspects private `Node` fields without widening
+the public API:
+
+```sh
+RECONCILE_BASELINE_SIZES=10000,100000 cargo test -p rsos --lib node_occupancy -- --ignored --nocapture
+RECONCILE_BENCH_SIZES=10000,100000 cargo bench --bench system -- heap_footprint
+```
+
+`node_occupancy` reports exact Rust type layouts, node counts, occupancy and
+inline fingerprint reservation for serial insertion and `from_sorted_iter`.
+Reservation is not an RSS saving: alignment and allocator rounding matter.
+`heap_footprint` measures *requested live heap* through a counting allocator
+for both `u32/u32` and `String/Vec<u8>`; it excludes allocator bookkeeping,
+fragmentation, and process RSS. Add `1000000` only as a manual opt-in.
+
+### #46: full-snapshot rewrite vs n and d
+
+```sh
+RECONCILE_BASELINE_SIZES=10000,100000 \
+RECONCILE_BASELINE_DELTAS=0,1,100,1000 \
+RECONCILE_BASELINE_TRIALS=3 \
+  cargo bench --bench snapshot_write_amplification
+```
+
+The standalone target prints CSV: initial/rewrite elapsed time, snapshot-file
+bytes, rewrite/reference ratio and verified restart duration. Each trial
+uses a new directory, seeds n keys with 64-byte values, writes the reference,
+changes d distinct keys, explicitly calls `snapshot_now()`, then loads the
+result in a fresh map and asserts identical fingerprint, count and values.
+The d=0 case measures *explicit* `snapshot_now()`; the periodic idle threshold
+is a separate behavior. File length counts the logical encoded bytes written
+(not physical device I/O or allocator overhead). Elapsed time includes
+collection, serialization, file sync and rename. Report actual measurements
+instead of treating the expected approximately-1 rewrite ratio as a result.
+
+Neither probe executes in CI: the standalone target is compile-checked by
+the repository's existing `cargo bench --no-run` gate.
 ## What the suite does not claim
 
 - Absolute timings are not portable across hardware.
