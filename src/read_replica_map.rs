@@ -201,6 +201,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// Returns `ConfigError::MissingSecurityMode` through `ConstructionError` if neither
     /// authenticated mode nor the explicit keyless opt-in was selected.
     pub async fn new(config: Config) -> Result<Self, ConstructionError> {
+        config.check_key_or_insecure_opt_in()?;
         crate::replica::check_port_is_nonzero(&config)?;
         // The read replica keeps the OS default socket buffer sizes (`None`/`None`) rather than
         // reading `Config::recv_buffer_size`/`send_buffer_size`: it never bound a tuned socket, and
