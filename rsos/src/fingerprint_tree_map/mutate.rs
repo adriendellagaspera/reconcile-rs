@@ -48,14 +48,8 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                         let (mut to_insert, diff_fp, ret) =
                             aux(Arc::make_mut(&mut children[index]), key, value, lift_key);
                         if let Some((key, value, right_child)) = to_insert {
-                            to_insert = node.insert(
-                                index,
-                                key,
-                                value,
-                                Some(right_child),
-                                diff_fp,
-                                lift_key,
-                            )
+                            to_insert =
+                                node.insert(index, key, value, Some(right_child), diff_fp, lift_key)
                         } else {
                             let added = usize::from(ret.is_none());
                             node.compose_into_subtree(Aggregate::new(added, diff_fp));
@@ -63,14 +57,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                         (to_insert, diff_fp, ret)
                     } else {
                         let fingerprint = lift_with(lift_key, &key, &value);
-                        let to_insert = node.insert(
-                            index,
-                            key,
-                            value,
-                            None,
-                            fingerprint,
-                            lift_key,
-                        );
+                        let to_insert = node.insert(index, key, value, None, fingerprint, lift_key);
                         (to_insert, fingerprint, None)
                     }
                 }
