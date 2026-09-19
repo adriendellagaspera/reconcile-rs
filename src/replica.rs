@@ -246,9 +246,8 @@ pub(crate) struct Inner<K, V> {
     /// ([`Replica::just_insert`]/[`just_insert_bulk`](Replica::just_insert_bulk), the gossip
     /// bulk-apply path in `dispatch.rs`, [`Replica::gc_remove`]) — what
     /// [`Config::snapshot_change_threshold`](crate::replicated_map::Config::snapshot_change_threshold)
-    /// is compared against. Reset to `0` only on a successful snapshot write
-    /// (`replicated_map/persistence.rs`), never merely on a periodic wakeup, so a failed write
-    /// keeps its pending changes counted toward the next attempt.
+    /// is compared against. Successful snapshots retire only the pre-capture count, so
+    /// concurrent writes remain pending and failures retire nothing.
     changes_since_snapshot: Arc<AtomicUsize>,
 }
 
