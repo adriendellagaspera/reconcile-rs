@@ -118,3 +118,58 @@ async fn cloned_handles_do_not_overlap_backend_saves() {
     assert_eq!(backend.saved.lock().unwrap().len(), 2);
     assert_eq!(backend.max_in_flight.load(Ordering::Acquire), 1);
 }
+
+#[tokio::test]
+async fn metadata_only_decommission_and_ack_forget_remain_snapshot_pending() {
+    let backend = Arc::new(PausedSave::new(false));
+    let store = ReplicatedMap::<u32, u32>::new(ephemeral_config().with_snapshot_interval(None))
+        .await
+        .unwrap()
+        .with_persistence(backend.clone())
+        .unwrap();
+
+    store.just_insert(1, 10);
+    store.just_remove(&1);
+    store.just_insert(2, 20);
+    let peer = "127.0.0.9".parse().unwrap();
+    store.engine.members.write().insert(peer);
+    store
+        .engine
+        .tombstone_acks
+        .write()
+        .insert(1, std::collections::HashMap::from([(peer, 7)]));
+    store.snapshot_now().unwrap();
+    assert_eq!(store.engine.change_count(), 0);
+
+    store.engine.decommission_peer(peer);
+    assert_eq!(store.engine.change_count(), 2, "membership and ack removals were not tracked");
+    store.snapshot_now().unwrap();
+    let restored = ReplicatedMap::<u32, u32>::new(ephemeral_config())
+        .await
+        .unwrap()
+        .with_persistence(backend.clone())
+        .unwrap();
+    assert!(!restored.engine.members.read().contains(&peer));
+    assert!(!restored
+        .engine
+        .tombstone_acks
+        .read()
+        .get(&1)
+        .unwrap()
+        .contains_key(&peer));
+    assert!(restored.engine.map.load_full().get(&1).unwrap().is_tombstone());
+
+    // Removing ack bookkeeping alone must be visible to the next generation,
+    // without a corresponding dated-map modification.
+    store
+        .engine
+        .tombstone_acks
+        .write()
+        .insert(1, std::collections::HashMap::from([(peer, 7)]));
+    store.snapshot_now().unwrap();
+    store.engine.forget_tombstone(&1);
+    assert_eq!(store.engine.change_count(), 1);
+    store.snapshot_now().unwrap();
+    let last = backend.saved.lock().unwrap().last().unwrap().clone();
+    assert!(!last.tombstone_acks.contains_key(&1));
+}
