@@ -34,6 +34,7 @@ fn read_replica_with_key(
         None => config.with_insecure_no_key(),
     };
     ReadReplicaMap::new_with_transport(config, Arc::new(net.bind(SocketAddr::new(ip, port))))
+        .unwrap()
 }
 
 fn load(replica: &ReadReplicaMap<u32, u32>, entries: &[(u32, u32)]) {
