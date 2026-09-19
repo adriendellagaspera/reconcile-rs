@@ -51,11 +51,13 @@ async fn mixed_primary_replicated_maps_exchange_writes_during_rotation() {
         config(a_ip, old.clone(), new.clone()),
         Arc::new(network.bind(SocketAddr::new(a_ip, PORT))),
     )
+    .unwrap()
     .with_seed(b_ip);
     let b = ReplicatedMap::<u32, u32>::new_with_transport(
         config(b_ip, new, old),
         Arc::new(network.bind(SocketAddr::new(b_ip, PORT))),
     )
+    .unwrap()
     .with_seed(a_ip);
 
     let a_shutdown = CancellationToken::new();
@@ -87,11 +89,13 @@ async fn read_replica_accepts_the_other_primary_during_rotation() {
         config(dated_ip, old.clone(), new.clone()),
         Arc::new(network.bind(SocketAddr::new(dated_ip, PORT))),
     )
+    .unwrap()
     .with_seed(read_ip);
     let read = ReadReplicaMap::<u32, u32>::new_with_transport(
         config(read_ip, new, old),
         Arc::new(network.bind(SocketAddr::new(read_ip, PORT))),
     )
+    .unwrap()
     .with_seed(dated_ip);
 
     let shutdown = CancellationToken::new();
@@ -121,6 +125,7 @@ async fn retired_key_is_rejected_after_the_rotation_window_closes() {
             .with_cluster_key(old),
         Arc::new(network.bind(SocketAddr::new(old_ip, PORT))),
     )
+    .unwrap()
     .with_seed(new_ip);
     let settled_receiver = ReplicatedMap::<u32, u32>::new_with_transport(
         Config::new(PORT)
@@ -129,6 +134,7 @@ async fn retired_key_is_rejected_after_the_rotation_window_closes() {
             .with_cluster_key(new),
         Arc::new(network.bind(SocketAddr::new(new_ip, PORT))),
     )
+    .unwrap()
     .with_seed(old_ip);
 
     let old_shutdown = CancellationToken::new();
