@@ -37,6 +37,26 @@ fn ack_bytes(key: i32, version: u64) -> Vec<u8> {
     buf
 }
 
+async fn dispatch_ack(
+    eng: &Replica<i32, i32>,
+    peer: SocketAddr,
+    key: i32,
+    version: u64,
+) {
+    let bytes = ack_bytes(key, version);
+    let payload = auth::Authenticator::new(None, false)
+        .unwrap()
+        .open(&bytes)
+        .expect("unauthenticated open")
+        .check_version()
+        .expect("ack_bytes stamps the current wire version");
+    let payload = payload
+        .verify_replay(&eng.replay_filter, peer.ip())
+        .expect("unauthenticated mode is exempt from the replay check");
+    let mut send_buf = Vec::new();
+    eng.handle_messages(payload, peer, &mut send_buf).await;
+}
+
 /// An ack for a key that does not exist locally must not create any entry in
 /// `tombstone_acks`. Without the fix, `or_default()` allocates on every ack for
 /// an arbitrary key, enabling unbounded growth.
@@ -148,5 +168,45 @@ async fn ack_for_local_tombstone_is_recorded() {
         eng.tombstone_acks_len(),
         0,
         "forget_tombstone must clear tombstone_acks for the key"
+    );
+}
+
+
+#[tokio::test]
+async fn tombstone_ack_change_tracking_is_version_sensitive_and_idempotent() {
+    let eng = engine("127.0.0.99").await;
+    let key = 30;
+    let tombstone: Tombstoned = Entry::tombstone(Timestamp::new(
+        Hlc::new(PhysicalTime::from_millis(3), LogicalCounter::new(0)),
+        NodeId::new(0),
+    ));
+    let version = version_hash(&tombstone);
+    eng.just_insert(key, tombstone);
+
+    let already_counted = eng.change_count();
+    eng.retire_change_count(already_counted);
+    assert_eq!(eng.change_count(), 0);
+
+    let peer: SocketAddr = "127.0.0.100:9000".parse().unwrap();
+
+    dispatch_ack(&eng, peer, key, version).await;
+    assert_eq!(
+        eng.change_count(),
+        1,
+        "the first persisted ack must dirty the next snapshot generation"
+    );
+
+    dispatch_ack(&eng, peer, key, version).await;
+    assert_eq!(
+        eng.change_count(),
+        1,
+        "replaying the same ack version must be persistence-idempotent"
+    );
+
+    dispatch_ack(&eng, peer, key, version.wrapping_add(1)).await;
+    assert_eq!(
+        eng.change_count(),
+        2,
+        "replacing a persisted ack version must count as another metadata change"
     );
 }
