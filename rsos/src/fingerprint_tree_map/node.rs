@@ -146,7 +146,15 @@ impl<K, V> Node<K, V> {
             let mid_value = self.values.pop().unwrap();
             let mid_fp = lift_with(lift_key, &mid_key, &mid_value);
             let to_insert = if index <= mid {
-                self.insert(index, key, value, fingerprint, right_child, diff_fp, lift_key)
+                self.insert(
+                    index,
+                    key,
+                    value,
+                    fingerprint,
+                    right_child,
+                    diff_fp,
+                    lift_key,
+                )
             } else {
                 right_sibling.insert(
                     index - mid - 1,
