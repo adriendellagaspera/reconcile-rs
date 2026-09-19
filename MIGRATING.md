@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### `ReplicatedSet::insert` now matches `HashSet::insert`
+
+`ReplicatedSet::insert` now returns `true` when the call adds a new member and `false` when
+the member was already present, matching `std::collections::HashSet::insert` (#126). The old
+meaning was inverted:
+
+```rust
+// Before: true meant "already present".
+assert!(!set.insert(key.clone()));
+assert!(set.insert(key.clone()));
+
+// After: true means "newly inserted".
+assert!(set.insert(key.clone()));
+assert!(!set.insert(key));
+```
+
+`remove` is unchanged: it returns `true` when the member was present and removed.
+
 ### `Config::with_net`/`with_nets` now return `Result`
 
 `Config::with_net`/`with_nets` (#97, ARCHITECTURE.md §5 invariant 15) used to panic past
