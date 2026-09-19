@@ -258,7 +258,11 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
             }
         };
 
-        let old_fp = lift_with(self.lift_key.as_ref(), &node.keys[key_index], &node.values[key_index]);
+        let old_fp = lift_with(
+            self.lift_key.as_ref(),
+            &node.keys[key_index],
+            &node.values[key_index],
+        );
         let mut guard = Relift {
             root: Arc::make_mut(&mut self.root),
             path: KeyPath { descent, key_index },
