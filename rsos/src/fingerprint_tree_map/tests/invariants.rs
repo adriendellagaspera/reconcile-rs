@@ -6,27 +6,27 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::fingerprint::{lift, Fingerprint};
+use crate::aggregate::Aggregate;
+use crate::fingerprint::Fingerprint;
 
 use super::super::{FingerprintTreeMap, Node, MIN_CAPACITY};
 
-/// `check_invariants` only proves anything if it actually rejects a broken tree: tamper with a
-/// leaf's cached fingerprint directly (through the crate-internal `Node` fields tests.rs shares
-/// with the rest of `fingerprint_tree_map`) and require a panic.
+/// Corrupt an aggregate while leaving the entry intact: independent re-lifting must detect it.
 #[test]
-fn check_invariants_panics_on_a_corrupted_fingerprint_cache() {
+fn check_invariants_panics_on_a_corrupted_subtree_aggregate() {
     let mut tree: FingerprintTreeMap<u64, u64> = FingerprintTreeMap::new();
     tree.insert(1, 10);
     tree.insert(2, 20);
     tree.check_invariants();
 
-    std::sync::Arc::make_mut(&mut tree.root).fingerprints[0] += lift(&999u64, &999u64);
+    std::sync::Arc::make_mut(&mut tree.root)
+        .compose_into_subtree(Aggregate::new(0, Fingerprint([1, 0, 0, 0])));
 
     let panicked =
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tree.check_invariants())).is_err();
     assert!(
         panicked,
-        "check_invariants must reject a tampered fingerprint cache"
+        "check_invariants must reject a tampered subtree aggregate"
     );
 }
 
@@ -42,17 +42,18 @@ fn check_invariants_panics_on_an_underfull_non_root_node_on_the_rightmost_spine(
     let mut tree: FingerprintTreeMap<u64, u64> = (0..200).map(|k| (k, k)).collect();
     tree.check_invariants();
 
-    fn truncate_rightmost_leaf<K: Clone, V: Clone>(node: &mut Node<K, V>) {
+    fn truncate_rightmost_leaf<K: serde::Serialize + Clone, V: serde::Serialize + Clone>(
+        node: &mut Node<K, V>,
+    ) {
         if let Some(children) = node.children.as_mut() {
             truncate_rightmost_leaf(std::sync::Arc::make_mut(children.last_mut().unwrap()));
         } else {
             while node.keys.len() >= MIN_CAPACITY {
                 node.keys.pop();
                 node.values.pop();
-                node.fingerprints.pop();
             }
         }
-        node.refresh_aggregate();
+        node.refresh_aggregate(None);
     }
     truncate_rightmost_leaf(std::sync::Arc::make_mut(&mut tree.root));
 
@@ -132,17 +133,14 @@ fn with_mut_passes_the_callback_result_back() {
     tree.check_invariants();
 }
 
-/// Same fault as [`check_invariants_panics_on_a_corrupted_fingerprint_cache`] above, pinned to
-/// its specific panic message rather than a generic panic.
+/// A corrupted subtree summary must fail with the specific aggregate-invariant message.
 #[test]
-#[should_panic(expected = "per-element fingerprint cache invalid")]
-fn check_invariants_catches_a_corrupted_fingerprint_cache() {
+#[should_panic(expected = "subtree aggregate invariant violated")]
+fn check_invariants_catches_a_corrupted_subtree_aggregate() {
     let mut map: FingerprintTreeMap<i32, i32> = FingerprintTreeMap::new();
     map.insert(1, 10);
-    // Combining with a nonzero fingerprint always changes the value (group addition), so
-    // this is guaranteed to no longer match `lift(&1, &10)`.
     let root = std::sync::Arc::make_mut(&mut map.root);
-    root.fingerprints[0] = root.fingerprints[0].combine(Fingerprint([1, 0, 0, 0]));
+    root.compose_into_subtree(Aggregate::new(0, Fingerprint([1, 0, 0, 0])));
     map.check_invariants();
 }
 
@@ -165,11 +163,30 @@ fn check_invariants_catches_an_undersized_non_root_node() {
             while node.keys.len() >= MIN_CAPACITY {
                 node.keys.pop();
                 node.values.pop();
-                node.fingerprints.pop();
             }
         }
     }
     shrink_a_leaf(std::sync::Arc::make_mut(&mut map.root));
 
     map.check_invariants();
+}
+
+#[test]
+fn cloned_version_keeps_its_aggregate_across_cacheless_cow_mutations() {
+    let mut current: FingerprintTreeMap<u64, u64> = (0..200).map(|k| (k, k * 10)).collect();
+    let retained = current.clone();
+    let retained_aggregate = retained.aggregate(..);
+
+    current.insert(50, 999);
+    current.remove(&75);
+    current.with_mut(&125, |value| *value.expect("125 is present") += 1);
+
+    current.check_invariants();
+    retained.check_invariants();
+
+    assert_eq!(retained.get(&50), Some(&500));
+    assert_eq!(retained.get(&75), Some(&750));
+    assert_eq!(retained.get(&125), Some(&1250));
+    assert_eq!(retained.aggregate(..), retained_aggregate);
+    assert_ne!(current.aggregate(..), retained_aggregate);
 }

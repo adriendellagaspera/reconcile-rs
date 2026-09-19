@@ -54,8 +54,9 @@ struct KeyPath {
 struct Relift<'a, K: Serialize + Clone, V: Serialize + Clone> {
     root: &'a mut Node<K, V>,
     path: KeyPath,
-    key: &'a K,
     lift_key: Option<&'a LiftKey>,
+    /// Captured before the callback; no stored per-element fingerprint is needed.
+    old_fp: Fingerprint,
 }
 
 impl<K: Serialize + Clone, V: Serialize + Clone> Relift<'_, K, V> {
@@ -82,15 +83,12 @@ impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
             node: &mut Node<K, V>,
             descent: &[usize],
             key_index: usize,
-            key: &K,
             lift_key: Option<&LiftKey>,
+            old_fp: Fingerprint,
         ) -> Fingerprint {
             let delta = match descent.split_first() {
                 None => {
-                    let old_fp = node.fingerprints[key_index];
-                    let new_fp = lift_with(lift_key, key, &node.values[key_index]);
-                    node.fingerprints[key_index] = new_fp;
-                    new_fp - old_fp
+                    lift_with(lift_key, &node.keys[key_index], &node.values[key_index]) - old_fp
                 }
                 Some((&index, rest)) => repair(
                     Arc::make_mut(
@@ -98,8 +96,8 @@ impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
                     ),
                     rest,
                     key_index,
-                    key,
                     lift_key,
+                    old_fp,
                 ),
             };
             // Same shape as `mutate.rs`'s overwrite: the count is untouched, only the
@@ -111,8 +109,8 @@ impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
             self.root,
             &self.path.descent,
             self.path.key_index,
-            self.key,
             self.lift_key,
+            self.old_fp,
         );
     }
 }
@@ -258,11 +256,16 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
             }
         };
 
+        let old_fp = lift_with(
+            self.lift_key.as_ref(),
+            &node.keys[key_index],
+            &node.values[key_index],
+        );
         let mut guard = Relift {
             root: Arc::make_mut(&mut self.root),
             path: KeyPath { descent, key_index },
-            key,
             lift_key: self.lift_key.as_ref(),
+            old_fp,
         };
         let value = guard.value_mut();
         callback(Some(value))

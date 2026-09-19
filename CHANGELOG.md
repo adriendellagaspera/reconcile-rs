@@ -8,6 +8,12 @@ All notable changes to this project are documented here. Format follows
 
 ### Changed
 
+
+- **BREAKING**: `rsos::FingerprintTreeMap` no longer keeps a 32-byte fingerprint cache for every
+  entry (#47); only subtree aggregates remain cached. `aggregate`, `remove`, and `retain` now
+  require `K: Serialize, V: Serialize` so boundary/removed elements can be re-lifted on demand.
+  Lookup/order-only operations retain their previous bounds. See [MIGRATING.md](MIGRATING.md).
+
 - **BREAKING**: store constructors now return `replicated_map::ConstructionError`
   (#127), distinguishing `Config(ConfigError::MissingSecurityMode)` from `Io(io::Error)`
   instead of panicking when no security mode is selected. Injected-transport constructors

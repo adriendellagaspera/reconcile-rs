@@ -11,11 +11,12 @@ use std::sync::Arc;
 use arrayvec::ArrayVec;
 
 use crate::aggregate::Aggregate;
-use crate::fingerprint::Fingerprint;
+use crate::fingerprint::{lift_with, Fingerprint, LiftKey};
+use serde::Serialize;
 
 use super::{element, without, InsertionTuple, Side, MAX_CAPACITY, MIN_CAPACITY};
 
-/// A node's child pointers, indexed exactly like `keys`/`values`/`fingerprints` (one more entry
+/// A node's child pointers, indexed exactly like `keys`/`values` (one more entry
 /// than either, since `children[i]` sits between separator `i - 1` and separator `i`). Named
 /// mainly to keep [`Node::children`]'s type out of `clippy::type_complexity`'s way -- see that
 /// field's own doc for why it is additionally `Box`-indirected there.
@@ -25,7 +26,6 @@ pub(crate) type Children<K, V> = ArrayVec<Arc<Node<K, V>>, { MAX_CAPACITY + 1 }>
 pub(crate) struct Node<K, V> {
     pub(crate) keys: ArrayVec<K, MAX_CAPACITY>,
     pub(crate) values: ArrayVec<V, MAX_CAPACITY>,
-    pub(super) fingerprints: ArrayVec<Fingerprint, MAX_CAPACITY>,
     /// `Arc`, not `Box`, for each *element*: every child is potentially shared with an older
     /// retained version of the tree. A mutating descent forks a child via [`Arc::make_mut`] only
     /// when it is actually shared (refcount > 1); an unshared child is mutated in place, no
@@ -51,7 +51,6 @@ impl<K, V> Node<K, V> {
         Node {
             keys: ArrayVec::new(),
             values: ArrayVec::new(),
-            fingerprints: ArrayVec::new(),
             children: None,
             subtree: Aggregate::ZERO,
         }
@@ -94,10 +93,14 @@ impl<K, V> Node<K, V> {
 
     /// Recompute [`subtree`](Node::subtree) by composing own separators with each child's
     /// aggregate.
-    pub(super) fn refresh_aggregate(&mut self) {
+    pub(super) fn refresh_aggregate(&mut self, lift_key: Option<&LiftKey>)
+    where
+        K: Serialize,
+        V: Serialize,
+    {
         let mut aggregate = Aggregate::ZERO;
-        for fingerprint in self.fingerprints.iter() {
-            aggregate += element(*fingerprint);
+        for (key, value) in self.keys.iter().zip(self.values.iter()) {
+            aggregate += element(lift_with(lift_key, key, value));
         }
         if let Some(children) = self.children.as_ref() {
             for child in children.iter() {
@@ -112,10 +115,14 @@ impl<K, V> Node<K, V> {
         index: usize,
         key: K,
         value: V,
-        fingerprint: Fingerprint,
         right_child: Option<Arc<Node<K, V>>>,
         diff_fp: Fingerprint,
-    ) -> InsertionTuple<K, V> {
+        lift_key: Option<&LiftKey>,
+    ) -> InsertionTuple<K, V>
+    where
+        K: Serialize,
+        V: Serialize,
+    {
         assert_eq!(self.children.is_none(), right_child.is_none());
         if self.keys.is_full() {
             // Safe to split at any `self.keys.len() == MAX_CAPACITY` here: the `B.checked_sub(3)`
@@ -128,7 +135,6 @@ impl<K, V> Node<K, V> {
             let mut right_sibling = Node {
                 keys: ArrayVec::from_iter(self.keys.drain(mid + 1..)),
                 values: ArrayVec::from_iter(self.values.drain(mid + 1..)),
-                fingerprints: ArrayVec::from_iter(self.fingerprints.drain(mid + 1..)),
                 children: self
                     .children
                     .as_mut()
@@ -137,29 +143,20 @@ impl<K, V> Node<K, V> {
             };
             let mid_key = self.keys.pop().unwrap();
             let mid_value = self.values.pop().unwrap();
-            let mid_fp = self.fingerprints.pop().unwrap();
             let to_insert = if index <= mid {
-                self.insert(index, key, value, fingerprint, right_child, diff_fp)
+                self.insert(index, key, value, right_child, diff_fp, lift_key)
             } else {
-                right_sibling.insert(
-                    index - mid - 1,
-                    key,
-                    value,
-                    fingerprint,
-                    right_child,
-                    diff_fp,
-                )
+                right_sibling.insert(index - mid - 1, key, value, right_child, diff_fp, lift_key)
             };
             assert!(to_insert.is_none());
             assert!(!self.keys.is_empty());
             assert!(!right_sibling.keys.is_empty());
-            self.refresh_aggregate();
-            right_sibling.refresh_aggregate();
-            Some((mid_key, mid_value, mid_fp, Arc::new(right_sibling)))
+            self.refresh_aggregate(lift_key);
+            right_sibling.refresh_aggregate(lift_key);
+            Some((mid_key, mid_value, Arc::new(right_sibling)))
         } else {
             self.keys.insert(index, key);
             self.values.insert(index, value);
-            self.fingerprints.insert(index, fingerprint);
             self.compose_into_subtree(Aggregate::new(1, diff_fp));
             if let Some(right_child) = right_child {
                 assert!(self.children.is_some());
@@ -175,10 +172,10 @@ impl<K, V> Node<K, V> {
     /// Rotate one separator (and its adjacent child) from an over-full sibling into the
     /// underflowing child at `index`, restoring minimum occupancy. [`Side`] picks which sibling;
     /// the two cases are mirror images.
-    fn steal(&mut self, index: usize, side: Side)
+    fn steal(&mut self, index: usize, side: Side, lift_key: Option<&LiftKey>)
     where
-        K: Clone,
-        V: Clone,
+        K: Serialize + Clone,
+        V: Serialize + Clone,
     {
         let from_left = side == Side::Left;
         let children = self.children.as_mut().unwrap();
@@ -189,18 +186,12 @@ impl<K, V> Node<K, V> {
         };
         // take the boundary separator (k, v, h) from the sibling
         let sibling = Arc::make_mut(&mut children[sibling_index]);
-        let (k, v, h) = if from_left {
-            (
-                sibling.keys.pop().unwrap(),
-                sibling.values.pop().unwrap(),
-                sibling.fingerprints.pop().unwrap(),
-            )
+        let boundary = if from_left { sibling.keys.len() - 1 } else { 0 };
+        let h = lift_with(lift_key, &sibling.keys[boundary], &sibling.values[boundary]);
+        let (k, v) = if from_left {
+            (sibling.keys.pop().unwrap(), sibling.values.pop().unwrap())
         } else {
-            (
-                sibling.keys.remove(0),
-                sibling.values.remove(0),
-                sibling.fingerprints.remove(0),
-            )
+            (sibling.keys.remove(0), sibling.values.remove(0))
         };
         sibling.decompose_from_subtree(element(h));
         // take the boundary child from the sibling if any
@@ -217,19 +208,18 @@ impl<K, V> Node<K, V> {
             sibling.decompose_from_subtree(c.subtree());
         }
         // exchange the sibling's separator with the parent's separator
+        let parent_fp = lift_with(lift_key, &self.keys[sep_index], &self.values[sep_index]);
         let k = std::mem::replace(&mut self.keys[sep_index], k);
         let v = std::mem::replace(&mut self.values[sep_index], v);
-        let h = std::mem::replace(&mut self.fingerprints[sep_index], h);
+        let h = parent_fp;
         // move the separator into the current (underflowing) node, at the end facing the sibling
         let current = Arc::make_mut(&mut self.children.as_mut().unwrap()[index]);
         if from_left {
             current.keys.insert(0, k);
             current.values.insert(0, v);
-            current.fingerprints.insert(0, h);
         } else {
             current.keys.push(k);
             current.values.push(v);
-            current.fingerprints.push(h);
         }
         current.compose_into_subtree(element(h));
         // move the rotated child into the current node if any
@@ -244,19 +234,19 @@ impl<K, V> Node<K, V> {
         }
     }
 
-    pub(super) fn rebalance_after_deletion(&mut self, index: usize)
+    pub(super) fn rebalance_after_deletion(&mut self, index: usize, lift_key: Option<&LiftKey>)
     where
-        K: Clone,
-        V: Clone,
+        K: Serialize + Clone,
+        V: Serialize + Clone,
     {
         let children = self.children.as_mut().unwrap();
         if children[index].keys.len() >= MIN_CAPACITY {
             return;
         }
         if index > 0 && children[index - 1].keys.len() > MIN_CAPACITY {
-            self.steal(index, Side::Left);
+            self.steal(index, Side::Left, lift_key);
         } else if index + 1 < children.len() && children[index + 1].keys.len() > MIN_CAPACITY {
-            self.steal(index, Side::Right);
+            self.steal(index, Side::Right, lift_key);
         } else {
             let merge_into = if index > 0 {
                 index - 1
@@ -273,12 +263,11 @@ impl<K, V> Node<K, V> {
             let right_sibling = Arc::try_unwrap(children.remove(merge_into + 1))
                 .unwrap_or_else(|arc| (*arc).clone());
             let current = Arc::make_mut(&mut children[merge_into]);
+            let h = lift_with(lift_key, &self.keys[merge_into], &self.values[merge_into]);
             let k = self.keys.remove(merge_into);
             let v = self.values.remove(merge_into);
-            let h = self.fingerprints.remove(merge_into);
             current.keys.push(k);
             current.values.push(v);
-            current.fingerprints.push(h);
             current.compose_into_subtree(element(h));
             // Read before the moves below dismantle `right_sibling` field by field.
             let absorbed = right_sibling.subtree();
@@ -287,9 +276,6 @@ impl<K, V> Node<K, V> {
             }
             for v in right_sibling.values {
                 current.values.push(v);
-            }
-            for h in right_sibling.fingerprints {
-                current.fingerprints.push(h);
             }
             if let Some(child_children) = current.children.as_mut() {
                 for c in *right_sibling.children.unwrap() {

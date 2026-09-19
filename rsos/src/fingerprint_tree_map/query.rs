@@ -10,7 +10,9 @@ use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ops::{Bound, RangeBounds};
 
+use crate::fingerprint::{lift_with, LiftKey};
 use range_cmp::{RangeOrd, RangeOrdering};
+use serde::Serialize;
 
 use crate::aggregate::Aggregate;
 
@@ -22,12 +24,17 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
     /// [`Rsos::aggregate`](crate::Rsos::aggregate)'s realization.
     ///
     /// Takes the range by value, as [`range`](Self::range) does.
-    pub fn aggregate<R: RangeBounds<K>>(&self, range: R) -> Aggregate {
-        fn aux<'a, K: Ord, V, R: RangeBounds<K>>(
+    pub fn aggregate<R: RangeBounds<K>>(&self, range: R) -> Aggregate
+    where
+        K: Serialize,
+        V: Serialize,
+    {
+        fn aux<'a, K: Serialize + Ord, V: Serialize, R: RangeBounds<K>>(
             node: &'a Node<K, V>,
             range: &R,
             mut lower_bound: Option<&'a K>,
             upper_bound: Option<&K>,
+            lift_key: Option<&LiftKey>,
         ) -> Aggregate {
             crate::counters::record_aggregate_node_visit();
             let lower_bound_included = match range.start_bound() {
@@ -63,18 +70,18 @@ impl<K: Ord, V> FingerprintTreeMap<K, V> {
             while i < node.keys.len() && node.keys[i].rcmp(range) == RangeOrdering::Inside {
                 let cur_bound = Some(&node.keys[i]);
                 if let Some(children) = node.children.as_ref() {
-                    cum += aux(&children[i], range, lower_bound, cur_bound);
+                    cum += aux(&children[i], range, lower_bound, cur_bound, lift_key);
                 }
-                cum += element(node.fingerprints[i]);
+                cum += element(lift_with(lift_key, &node.keys[i], &node.values[i]));
                 lower_bound = cur_bound;
                 i += 1;
             }
             if let Some(children) = node.children.as_ref() {
-                cum += aux(&children[i], range, lower_bound, upper_bound);
+                cum += aux(&children[i], range, lower_bound, upper_bound, lift_key);
             }
             cum
         }
-        aux(&self.root, &range, None, None)
+        aux(&self.root, &range, None, None, self.lift_key.as_ref())
     }
 
     /// Position of `key` in the in-order sequence, or the position it would occupy after

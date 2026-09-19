@@ -41,7 +41,7 @@ fn report(n: usize, kind: &str, tree: &FingerprintTreeMap<u32, u32>) {
     let mut counts = Occupancy::default();
     visit(&tree.root, 1, &mut counts);
     assert_eq!(counts.elements, n);
-    let allocated_fingerprint_slots = counts.nodes * MAX_CAPACITY;
+    let key_slots = counts.nodes * MAX_CAPACITY;
     let child_array_bytes = (counts.nodes - counts.leaves) * size_of::<Children<u32, u32>>();
     println!(
         "{kind},{n},{},{},{},{},{:.4},{},{},{}",
@@ -49,9 +49,9 @@ fn report(n: usize, kind: &str, tree: &FingerprintTreeMap<u32, u32>) {
         counts.leaves,
         counts.max_depth,
         counts.elements,
-        counts.elements as f64 / allocated_fingerprint_slots as f64,
-        allocated_fingerprint_slots * size_of::<Fingerprint>(),
-        allocated_fingerprint_slots * size_of::<Fingerprint>() / n,
+        counts.elements as f64 / key_slots as f64,
+        0,
+        0,
         child_array_bytes
     );
 }

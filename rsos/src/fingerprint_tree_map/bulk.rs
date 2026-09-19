@@ -9,7 +9,7 @@
 //! [`FingerprintTreeMap::from_sorted_iter`]/[`from_sorted_iter_keyed`]: a one-pass, bottom-up
 //! bulk build from already-sorted, duplicate-free input -- the amortized alternative to `n`
 //! individual [`insert`](super::FingerprintTreeMap::insert) calls (#51). Every node's
-//! `fingerprints` and `subtree` cache is composed directly from the elements and children it is
+//! `subtree` aggregate is composed directly from the elements and children it is
 //! built with, once, rather than incrementally maintained across `n` splits.
 //!
 //! The tree this produces can differ in *shape* from one built via serial `insert` (this module
@@ -24,7 +24,7 @@ use std::sync::Arc;
 use arrayvec::ArrayVec;
 use serde::Serialize;
 
-use crate::fingerprint::{lift_with, LiftKey};
+use crate::fingerprint::LiftKey;
 
 use super::node::{Children, Node};
 use super::{FingerprintTreeMap, MAX_CAPACITY, MIN_CAPACITY};
@@ -79,9 +79,8 @@ fn build_level<K: Serialize + Ord + Clone, V: Serialize + Clone>(
         for (k, v) in items {
             node.keys.push(k.clone());
             node.values.push(v.clone());
-            node.fingerprints.push(lift_with(lift_key, k, v));
         }
-        node.refresh_aggregate();
+        node.refresh_aggregate(lift_key);
         return node;
     }
 
@@ -127,13 +126,12 @@ fn build_level<K: Serialize + Ord + Clone, V: Serialize + Clone>(
             let (k, v) = &items[cursor];
             node.keys.push(k.clone());
             node.values.push(v.clone());
-            node.fingerprints.push(lift_with(lift_key, k, v));
             cursor += 1;
         }
     }
     debug_assert_eq!(cursor, n, "bulk-build must consume every item exactly once");
     node.children = Some(Box::new(children));
-    node.refresh_aggregate();
+    node.refresh_aggregate(lift_key);
     node
 }
 

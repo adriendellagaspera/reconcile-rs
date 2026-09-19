@@ -46,7 +46,7 @@ const _: usize = B.checked_sub(3).expect(
      (MAX_CAPACITY == 3) a split at mid = 1 leaves a sibling with zero keys",
 );
 
-type InsertionTuple<K, V> = Option<(K, V, Fingerprint, Arc<Node<K, V>>)>;
+type InsertionTuple<K, V> = Option<(K, V, Arc<Node<K, V>>)>;
 
 /// Which sibling a [`Node::steal`] rotates a separator from.
 #[derive(Clone, Copy, PartialEq, Eq)]
