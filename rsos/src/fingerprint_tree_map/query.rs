@@ -10,9 +10,9 @@ use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ops::{Bound, RangeBounds};
 
+use crate::fingerprint::{lift_with, LiftKey};
 use range_cmp::{RangeOrd, RangeOrdering};
 use serde::Serialize;
-use crate::fingerprint::{lift_with, LiftKey};
 
 use crate::aggregate::Aggregate;
 
