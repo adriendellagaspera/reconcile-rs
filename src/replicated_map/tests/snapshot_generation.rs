@@ -61,13 +61,11 @@ impl Persistence<u32, u32> for PausedSave {
 #[tokio::test]
 async fn write_during_save_stays_pending_and_is_recovered_by_next_snapshot() {
     let backend = Arc::new(PausedSave::new(true));
-    let store = ReplicatedMap::<u32, u32>::new(
-        ephemeral_config().with_snapshot_interval(None),
-    )
-    .await
-    .unwrap()
-    .with_persistence(backend.clone())
-    .unwrap();
+    let store = ReplicatedMap::<u32, u32>::new(ephemeral_config().with_snapshot_interval(None))
+        .await
+        .unwrap()
+        .with_persistence(backend.clone())
+        .unwrap();
 
     store.just_insert(1, 10);
     let first = store.clone();
@@ -100,13 +98,11 @@ async fn write_during_save_stays_pending_and_is_recovered_by_next_snapshot() {
 #[tokio::test]
 async fn cloned_handles_do_not_overlap_backend_saves() {
     let backend = Arc::new(PausedSave::new(true));
-    let store = ReplicatedMap::<u32, u32>::new(
-        ephemeral_config().with_snapshot_interval(None),
-    )
-    .await
-    .unwrap()
-    .with_persistence(backend.clone())
-    .unwrap();
+    let store = ReplicatedMap::<u32, u32>::new(ephemeral_config().with_snapshot_interval(None))
+        .await
+        .unwrap()
+        .with_persistence(backend.clone())
+        .unwrap();
 
     store.just_insert(1, 10);
     let a = store.clone();
