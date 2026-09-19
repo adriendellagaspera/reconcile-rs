@@ -16,7 +16,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 use crate::bounds::{Key, Value};
 use crate::clock::NodeId;
@@ -100,6 +100,8 @@ where
     /// successfully. Shared across clones — the background snapshot task runs on a clone of the
     /// handle a caller queries [`sync_state`](Self::sync_state) through.
     last_snapshot_at: Arc<RwLock<Option<Instant>>>,
+    /// Serialize explicit, periodic and shutdown snapshots across cloned handles.
+    snapshot_lock: Arc<Mutex<()>>,
     /// Consecutive snapshot-write failures since the last success; `0` while healthy. Backs the
     /// `reconcile_persistence_failures_current` gauge (behind the `metrics` feature), but tracked
     /// unconditionally since [`on_persistence_error`] callers want it too.
@@ -131,6 +133,7 @@ where
             snapshot_interval: self.snapshot_interval,
             snapshot_change_threshold: self.snapshot_change_threshold,
             last_snapshot_at: self.last_snapshot_at.clone(),
+            snapshot_lock: self.snapshot_lock.clone(),
             persistence_consecutive_failures: self.persistence_consecutive_failures.clone(),
             persistence_error_hook: self.persistence_error_hook.clone(),
             last_successful_discovery_at: self.last_successful_discovery_at.clone(),
@@ -283,6 +286,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             snapshot_interval,
             snapshot_change_threshold,
             last_snapshot_at: Arc::new(RwLock::new(None)),
+            snapshot_lock: Arc::new(Mutex::new(())),
             persistence_consecutive_failures: Arc::new(AtomicUsize::new(0)),
             persistence_error_hook: Arc::new(|_: &io::Error| {}),
             last_successful_discovery_at: Arc::new(RwLock::new(None)),
