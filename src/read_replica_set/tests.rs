@@ -91,7 +91,7 @@ async fn value_fingerprint_and_its_deprecated_alias_reflect_converged_content() 
     )
     .await
     .expect("bind failed");
-    assert!(!dated.insert(7), "key 7 must be newly inserted");
+    assert!(dated.insert(7), "key 7 must be newly inserted");
 
     let replica = ReadReplicaSet::<i32>::new(
         Config::default()
@@ -206,7 +206,7 @@ async fn with_discovery_converges_without_with_seed() {
     )
     .await
     .expect("bind failed");
-    assert!(!dated.insert(9), "key 9 must be newly inserted");
+    assert!(dated.insert(9), "key 9 must be newly inserted");
 
     let replica = ReadReplicaSet::<i32>::new(
         Config::default()
@@ -260,7 +260,7 @@ async fn with_dns_discovery_converges_via_localhost_resolution() {
     )
     .await
     .expect("bind failed");
-    assert!(!dated.insert(11), "key 11 must be newly inserted");
+    assert!(dated.insert(11), "key 11 must be newly inserted");
 
     let replica = ReadReplicaSet::<i32>::new(
         Config::default()
