@@ -8,6 +8,9 @@ All notable changes to this project are documented here. Format follows
 
 ### Changed
 
+- **BREAKING**: `ReplicatedSet::insert` now matches `std::collections::HashSet::insert`
+  (#126): `true` means this call added a new member and `false` means it was already present.
+  The previous meaning was inverted. `remove` is unchanged. See [MIGRATING.md](MIGRATING.md).
 - **BREAKING**: `Config::snapshot_interval` is now `Option<Duration>` (#46, re-landing the
   configurability half of `akvize/reconcile-rs#218`, which never merged) — `None` disables
   `ReplicatedMap::run`'s periodic background snapshot task entirely, leaving only an explicit

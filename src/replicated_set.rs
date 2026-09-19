@@ -43,10 +43,9 @@ use rsos::Fingerprint;
 /// # async fn main() -> std::io::Result<()> {
 /// let set = ReplicatedSet::<String>::new(Config::new(8082).with_insecure_no_key()).await?;
 ///
-/// // Unlike std's `HashSet::insert`, `true` here means the key was *already* a member --
-/// // read it as "was present", the same sense `remove` and `contains` use.
-/// assert!(!set.insert("a".to_string())); // false: newly inserted
-/// assert!(set.insert("a".to_string())); // true: already a member
+/// // Matches `HashSet::insert`: true means this call added a new member.
+/// assert!(set.insert("a".to_string())); // newly inserted
+/// assert!(!set.insert("a".to_string())); // already a member
 /// assert!(set.contains(&"a".to_string()));
 /// assert!(set.remove(&"a".to_string())); // true: was a member
 /// assert!(!set.contains(&"a".to_string()));
@@ -172,14 +171,14 @@ impl<K: Key + Hash> ReplicatedSet<K> {
         self.0.is_empty()
     }
 
-    /// Add `key` as a member. Returns whether it was already present (idempotent either way).
+    /// Add `key` as a member. Returns `true` if this call added a new member.
     ///
     /// # Panics
     ///
     /// See [`ReplicatedMap::insert`] — the broadcast requires an ambient Tokio runtime.
     #[must_use]
     pub fn insert(&self, key: K) -> bool {
-        self.0.insert(key, ()).is_some()
+        self.0.insert(key, ()).is_none()
     }
 
     /// Add every key in `keys` as a member, one broadcast batch. See
