@@ -37,12 +37,7 @@ fn ack_bytes(key: i32, version: u64) -> Vec<u8> {
     buf
 }
 
-async fn dispatch_ack(
-    eng: &Replica<i32, i32>,
-    peer: SocketAddr,
-    key: i32,
-    version: u64,
-) {
+async fn dispatch_ack(eng: &Replica<i32, i32>, peer: SocketAddr, key: i32, version: u64) {
     let bytes = ack_bytes(key, version);
     let payload = auth::Authenticator::new(None, false)
         .unwrap()
@@ -170,7 +165,6 @@ async fn ack_for_local_tombstone_is_recorded() {
         "forget_tombstone must clear tombstone_acks for the key"
     );
 }
-
 
 #[tokio::test]
 async fn tombstone_ack_change_tracking_is_version_sensitive_and_idempotent() {
