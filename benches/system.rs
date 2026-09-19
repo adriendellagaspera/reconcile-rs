@@ -393,6 +393,71 @@ fn heap_footprint(c: &mut Criterion) {
     });
 }
 
+/// #47: requested live-heap growth from overwriting 1% of keys while retaining both
+/// dated and value-only pre-mutation snapshots. This isolates persistent-tree COW pressure
+/// from the steady-state baseline in heap_footprint. Each dataset is seeded *before* the
+/// measurement window; updates are also constructed beforehand. The first delta includes
+/// allocations of forked nodes still reachable from pinned snapshots. The second is the
+/// net delta after releasing them (not peak RSS). As with heap_footprint, the counting
+/// allocator reports requested bytes, not allocator metadata or resident pages.
+fn heap_footprint_cow(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+    for size in size_sweep().into_iter().filter(|&size| size >= 1_000) {
+        let changes = (size / 100).max(1);
+
+        let kvs = corpus(size);
+        let updates: Vec<_> = kvs
+            .iter()
+            .take(changes)
+            .map(|&(key, value)| (key, value ^ u32::MAX))
+            .collect();
+        let store = loaded_store(&rt, &[]);
+        store.load_bulk(&kvs);
+        let dated = store.snapshot();
+        let projection = store.value_snapshot();
+        let before = LIVE_BYTES.load(Ordering::Relaxed);
+        store.load_bulk(&updates);
+        let pinned = LIVE_BYTES.load(Ordering::Relaxed);
+        drop((dated, projection));
+        let released = LIVE_BYTES.load(Ordering::Relaxed);
+        println!(
+            "[heap_footprint_cow] u32 -> u32, n={size}, changed={changes}: \
+             pinned_delta={} B, after_release_delta={} B, pinned_per_changed={:.1} B",
+            pinned - before,
+            released - before,
+            (pinned - before) as f64 / changes as f64
+        );
+        drop((store, kvs, updates));
+
+        let kvs = corpus_heap(size, HEAP_VALUE_LEN);
+        let updates: Vec<_> = kvs
+            .iter()
+            .take(changes)
+            .map(|(key, value)| (key.clone(), vec![7; value.len()]))
+            .collect();
+        let store = loaded_store_heap(&rt, &[]);
+        store.load_bulk(&kvs);
+        let dated = store.snapshot();
+        let projection = store.value_snapshot();
+        let before = LIVE_BYTES.load(Ordering::Relaxed);
+        store.load_bulk(&updates);
+        let pinned = LIVE_BYTES.load(Ordering::Relaxed);
+        drop((dated, projection));
+        let released = LIVE_BYTES.load(Ordering::Relaxed);
+        println!(
+            "[heap_footprint_cow] String -> Vec<u8>, n={size}, changed={changes}: \
+             pinned_delta={} B, after_release_delta={} B, pinned_per_changed={:.1} B",
+            pinned - before,
+            released - before,
+            (pinned - before) as f64 / changes as f64
+        );
+        drop((store, kvs, updates));
+    }
+    c.bench_function("heap_footprint_cow::live_bytes", |b| {
+        b.iter(|| black_box(LIVE_BYTES.load(Ordering::Relaxed)));
+    });
+}
+
 /// A fresh, unique loopback address pair for one cold-sync iteration (avoids rebind collisions
 /// across Criterion's repeated samples). Both peers share the port; only the address differs.
 ///
@@ -1372,6 +1437,7 @@ criterion_group!(
     bulk_load_heap,
     memory_footprint,
     heap_footprint,
+    heap_footprint_cow,
     cold_sync,
     gossip_fanout,
     gossip_propagation,
