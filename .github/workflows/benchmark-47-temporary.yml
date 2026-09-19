@@ -1,0 +1,78 @@
+# One-off paired #47 experiment on the same runner. Not part of the permanent CI contract:
+# remove before merging PR #140; keep durable benchmark implementations on main.
+name: temporary #47 paired measurements
+
+on:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - '.github/workflows/benchmark-47-temporary.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: paired-47-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  paired-before-after:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    env:
+      RUSTFLAGS: -Dwarnings --cfg reconcile_internal_testing
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: before
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: after
+      - name: Run deterministic baseline and cacheless candidate on the same runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          {
+            echo "before=$(git -C before rev-parse HEAD)"
+            echo "after=$(git -C after rev-parse HEAD)"
+            rustc --version
+            cargo --version
+            uname -a
+            lscpu
+            free -h
+          } | tee reports/hardware.txt
+          for variant in before after; do
+            (
+              cd "$variant"
+              echo "=== $variant: private node layout/occupancy ==="
+              RECONCILE_BASELINE_SIZES=10000,100000 \
+                cargo test -p rsos --release --lib node_occupancy -- --ignored --nocapture \
+                2>&1 | tee "$GITHUB_WORKSPACE/reports/${variant}-occupancy.log"
+              echo "=== $variant: requested live heap + retained-snapshot COW ==="
+              RECONCILE_BENCH_SIZES=10000,100000 \
+                cargo bench --bench system -- heap_footprint --quick \
+                2>&1 | tee "$GITHUB_WORKSPACE/reports/${variant}-heap.log"
+              grep '^\[heap_footprint' "$GITHUB_WORKSPACE/reports/${variant}-heap.log" \
+                > "$GITHUB_WORKSPACE/reports/${variant}-heap-counts.txt"
+              for target in \
+                'FingerprintTreeMap::insert/FingerprintTreeMap::insert/10000' \
+                'FingerprintTreeMap::remove/FingerprintTreeMap::remove/10000' \
+                'FingerprintTreeMap::aggregate/10000'; do
+                echo "=== $variant: $target ==="
+                cargo bench --bench bench -- "$target" --quick \
+                  2>&1 | tee -a "$GITHUB_WORKSPACE/reports/${variant}-timings.log"
+              done
+            )
+          done
+      - name: Publish measured results and exact revisions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reconcile-47-paired-${{ github.run_id }}
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
