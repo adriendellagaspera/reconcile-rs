@@ -83,6 +83,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Returns `ConfigError::MissingSecurityMode` through `ConstructionError` if neither
     /// authenticated mode nor the explicit keyless opt-in was selected.
     pub async fn new(config: Config) -> Result<Self, ConstructionError> {
+        config.check_key_or_insecure_opt_in()?;
         // Default adapter for the `Clock` port: the chrono-backed Hybrid Logical Clock. This is the
         // only place the engine names a concrete clock; everything else goes through `dyn Clock`.
         let node_id_is_random = config.node_id.is_none();
@@ -115,6 +116,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         config: Config,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, ConstructionError> {
+        config.check_key_or_insecure_opt_in()?;
         let transport = Self::bind_udp(&config).await?;
         Ok(Self::build(config, transport, clock, false)?)
     }
@@ -144,8 +146,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         config: Config,
         transport: Arc<dyn Transport>,
         clock: Arc<dyn Clock>,
-    ) -> Result<Self, ConfigError> {
+    ) -> Self {
         Self::build(config, transport, clock, false)
+            .expect("test config must select an explicit security mode")
     }
 
     /// Bind the default [`UdpTransport`] for `config` and log the bound address.
