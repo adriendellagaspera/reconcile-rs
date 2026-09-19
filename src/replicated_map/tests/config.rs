@@ -9,24 +9,35 @@
 use std::time::Duration;
 
 use crate::{
-    replicated_map::{Config, ConfigError, MAX_NETS},
-    ReplicatedMap,
+    replicated_map::{Config, ConfigError, ConstructionError, MAX_NETS},
+    ReadReplicaMap, ReplicatedMap,
 };
 
 use super::ephemeral_config;
 
-/// #325: a `Config` with neither a cluster key nor the explicit insecure opt-in must refuse to
-/// build at all, rather than silently running unauthenticated — the whole point of the guard.
+/// Construction rejects an omitted security choice as a typed configuration error before any
+/// transport is bound. Full and read replicas share the same contract.
 #[tokio::test]
-#[should_panic(expected = "Config::cluster_key is None")]
-async fn missing_key_and_no_insecure_opt_in_panics_at_construction() {
-    let port = std::net::UdpSocket::bind("127.0.0.1:0")
-        .expect("OS should hand out an ephemeral port")
-        .local_addr()
-        .expect("a bound socket reports its own address")
-        .port();
-    let config = Config::default().with_port(port);
-    let _ = ReplicatedMap::<i32, i32>::new(config).await;
+async fn missing_security_mode_is_a_typed_construction_error() {
+    let config = Config::default().with_port(crate::replica::tests::next_ephemeral_test_port());
+
+    let full_error = match ReplicatedMap::<i32, i32>::new(config.clone()).await {
+        Ok(_) => panic!("missing security mode must be rejected"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        full_error,
+        ConstructionError::Config(ConfigError::MissingSecurityMode)
+    ));
+
+    let read_error = match ReadReplicaMap::<i32, i32>::new(config).await {
+        Ok(_) => panic!("missing security mode must be rejected"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        read_error,
+        ConstructionError::Config(ConfigError::MissingSecurityMode)
+    ));
 }
 
 /// The metering/buffer-size defaults are pinned to their documented values (32 MiB/s, 1 MiB
