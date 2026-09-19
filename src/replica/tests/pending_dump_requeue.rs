@@ -59,12 +59,12 @@ async fn wide_scattered_divergence_converges_on_a_single_round() {
         cfg(a_ip),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    ).expect("valid configuration");
+    );
     let b: Replica<u32, u32> = Replica::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(2))),
-    ).expect("valid configuration");
+    );
     a.peers.write().insert(b_ip, Instant::now());
     b.peers.write().insert(a_ip, Instant::now());
 

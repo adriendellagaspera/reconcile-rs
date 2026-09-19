@@ -73,7 +73,7 @@ fn engine_with_counter(
             .with_insecure_no_key(),
         Arc::clone(&counter) as Arc<dyn Transport>,
         Arc::new(ManualClock::new(NodeId::new(1))),
-    ).expect("valid configuration");
+    );
     a.peers.write().insert(peer_ip, Instant::now());
     (a, counter)
 }

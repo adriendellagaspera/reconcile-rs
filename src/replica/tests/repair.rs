@@ -101,12 +101,12 @@ async fn a_lost_round_initiation_is_repaired_within_repair_interval() {
             remaining: AtomicUsize::new(1),
         }),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    ).expect("valid configuration");
+    );
     let b: Replica<u32, u32> = Replica::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(2))),
-    ).expect("valid configuration");
+    );
     a.peers.write().insert(b_ip, Instant::now());
 
     a.just_insert(1, Entry::present(a.clock_now(), 42));
@@ -162,12 +162,12 @@ async fn a_converged_round_is_acked_without_riding_out_a_retry() {
         cfg(a_ip),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    ).expect("valid configuration");
+    );
     let b: Replica<u32, u32> = Replica::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(2))),
-    ).expect("valid configuration");
+    );
     a.peers.write().insert(b_ip, Instant::now());
 
     let mut send_buf = Vec::new();

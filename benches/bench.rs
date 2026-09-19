@@ -810,11 +810,11 @@ mod imp {
                         let store1 = ReplicatedMap::<u32, u32>::new_with_transport(
                             cfg(addr1),
                             Arc::new(transport1),
-                        );
+                        ).expect("valid benchmark configuration");
                         let store2 = ReplicatedMap::<u32, u32>::new_with_transport(
                             cfg(addr2),
                             Arc::new(transport2),
-                        );
+                        ).expect("valid benchmark configuration");
                         // Only `store1` is pre-loaded; `store2` starts empty and pulls the whole
                         // corpus via cold-sync — see `service_reconcile_rtt`'s docs for why
                         // (`cold_sync_rtt`'s own bootstrap, proven reliable across this same `n` ×
@@ -1029,11 +1029,11 @@ mod imp {
                 let store1 = ReplicatedMap::<u32, u32>::new_with_transport(
                     cfg(addr1),
                     Arc::new(network.bind(SocketAddr::new(addr1, port))),
-                );
+                ).expect("valid benchmark configuration");
                 let store2 = ReplicatedMap::<u32, u32>::new_with_transport(
                     cfg(addr2),
                     Arc::new(network.bind(SocketAddr::new(addr2, port))),
-                );
+                ).expect("valid benchmark configuration");
                 store1.insert_bulk(&key_values);
                 store1.seed_peer(addr2);
                 store2.seed_peer(addr1);

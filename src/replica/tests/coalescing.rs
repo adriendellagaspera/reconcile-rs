@@ -46,7 +46,7 @@ async fn same_key_writes_within_the_window_collapse_to_one_pending_entry() {
         cfg,
         Arc::new(net.bind(SocketAddr::new(ip, port))),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    ).expect("valid configuration");
+    );
 
     engine.insert(1, Entry::present(engine.clock_now(), 10));
     engine.insert(1, Entry::present(engine.clock_now(), 20));
@@ -90,7 +90,7 @@ async fn distinct_key_writes_within_the_window_flush_as_one_datagram() {
         cfg,
         Arc::new(net.bind(SocketAddr::new(sender_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    ).expect("valid configuration");
+    );
     let peer_transport = net.bind(SocketAddr::new(peer_ip, port));
     engine.peers.write().insert(peer_ip, Instant::now());
 
@@ -143,12 +143,12 @@ async fn converge_with_coalescing(entries: &[(u32, u32)]) -> BTreeMap<u32, u32> 
         cfg(a_ip, Duration::from_millis(5)),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    ).expect("valid configuration");
+    );
     let b: Replica<u32, u32> = Replica::new_with_transport(
         cfg(b_ip, Duration::ZERO),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(2))),
-    ).expect("valid configuration");
+    );
     // Only A is told about B: B must learn purely from receiving A's coalesced flushes.
     a.peers.write().insert(b_ip, Instant::now());
 

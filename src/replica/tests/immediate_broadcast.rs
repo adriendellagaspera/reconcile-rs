@@ -44,12 +44,12 @@ async fn insert_broadcasts_immediately_without_a_reconciliation_round() {
         cfg(a_ip),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    ).expect("valid configuration");
+    );
     let b: Replica<u32, u32> = Replica::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(2))),
-    ).expect("valid configuration");
+    );
 
     let ta = tokio::spawn(a.clone().run());
     let tb = tokio::spawn(b.clone().run());
@@ -104,12 +104,12 @@ async fn broadcast_update_pushes_immediately_without_a_reconciliation_round() {
         cfg(a_ip),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    ).expect("valid configuration");
+    );
     let b: Replica<u32, u32> = Replica::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(2))),
-    ).expect("valid configuration");
+    );
 
     let ta = tokio::spawn(a.clone().run());
     let tb = tokio::spawn(b.clone().run());
