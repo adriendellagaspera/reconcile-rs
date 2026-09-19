@@ -171,6 +171,7 @@ the public API:
 ```sh
 RECONCILE_BASELINE_SIZES=10000,100000 cargo test -p rsos --lib node_occupancy -- --ignored --nocapture
 RECONCILE_BENCH_SIZES=10000,100000 cargo bench --bench system -- heap_footprint
+RECONCILE_BENCH_SIZES=10000,100000 cargo bench --bench system -- heap_footprint_cow
 ```
 
 `node_occupancy` reports exact Rust type layouts, node counts, occupancy and
@@ -178,7 +179,11 @@ inline fingerprint reservation for serial insertion and `from_sorted_iter`.
 Reservation is not an RSS saving: alignment and allocator rounding matter.
 `heap_footprint` measures *requested live heap* through a counting allocator
 for both `u32/u32` and `String/Vec<u8>`; it excludes allocator bookkeeping,
-fragmentation, and process RSS. Add `1000000` only as a manual opt-in.
+fragmentation, and process RSS. `heap_footprint_cow` measures net extra requested
+heap bytes after overwriting 1% of keys while keeping the previous dated and
+value-only tree versions alive, then after releasing both snapshots. This is
+not peak RSS or the absolute size of those versions. Add `1000000` only as
+a manual opt-in.
 
 ### #46: full-snapshot rewrite vs n and d
 
