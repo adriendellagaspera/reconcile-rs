@@ -64,8 +64,15 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
                         (to_insert, diff_fp, ret)
                     } else {
                         let fingerprint = lift_with(lift_key, &key, &value);
-                        let to_insert =
-                            node.insert(index, key, value, fingerprint, None, fingerprint, lift_key);
+                        let to_insert = node.insert(
+                            index,
+                            key,
+                            value,
+                            fingerprint,
+                            None,
+                            fingerprint,
+                            lift_key,
+                        );
                         (to_insert, fingerprint, None)
                     }
                 }
@@ -111,7 +118,8 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
             lift_key: Option<&LiftKey>,
         ) -> (K, V, Fingerprint) {
             if let Some(children) = node.children.as_mut() {
-                let (k, v, fp) = rightmost_child(Arc::make_mut(children.last_mut().unwrap()), lift_key);
+                let (k, v, fp) =
+                    rightmost_child(Arc::make_mut(children.last_mut().unwrap()), lift_key);
                 node.decompose_from_subtree(element(fp));
                 node.rebalance_after_deletion(node.keys.len(), lift_key);
                 (k, v, fp)
@@ -151,7 +159,8 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
                 }
                 Err(index) => {
                     if let Some(children) = node.children.as_mut() {
-                        let (diff_fp, ret) = aux(Arc::make_mut(&mut children[index]), key, lift_key);
+                        let (diff_fp, ret) =
+                            aux(Arc::make_mut(&mut children[index]), key, lift_key);
                         let removed = Aggregate::new(usize::from(ret.is_some()), diff_fp);
                         node.decompose_from_subtree(removed);
                         node.rebalance_after_deletion(index, lift_key);
