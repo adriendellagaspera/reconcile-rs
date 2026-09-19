@@ -30,7 +30,7 @@ use crate::bounds::Key;
 use crate::clock::{NodeId, Timestamp};
 use crate::entry::Entry;
 use crate::persistence::Persistence;
-use crate::replicated_map::{Config, ConfigError, RunOutcome, SyncState};
+use crate::replicated_map::{Config, ConfigError, ConstructionError, RunOutcome, SyncState};
 use crate::{Discovery, ReplicatedMap};
 use rsos::Fingerprint;
 
@@ -69,7 +69,7 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     /// # Errors
     ///
     /// If the socket cannot be bound to `(config.listen_addr, config.port)`.
-    pub async fn new(config: Config) -> io::Result<Self> {
+    pub async fn new(config: Config) -> Result<Self, ConstructionError> {
         ReplicatedMap::new(config).await.map(ReplicatedSet)
     }
 

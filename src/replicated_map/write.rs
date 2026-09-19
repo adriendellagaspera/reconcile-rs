@@ -132,7 +132,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// let store = ReplicatedMap::<String, i32>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .expect("valid configuration");
     ///
     /// assert_eq!(store.insert("a".to_string(), 1), None); // nothing there before
     /// assert_eq!(store.insert("a".to_string(), 2), Some(1)); // returns the value it replaced
@@ -220,7 +221,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// let store = ReplicatedMap::<String, i32>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .expect("valid configuration");
     ///
     /// store.insert("a".to_string(), 1);
     /// assert_eq!(store.remove(&"a".to_string()), Some(1)); // returns the removed value

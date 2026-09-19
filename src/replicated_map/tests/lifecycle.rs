@@ -85,11 +85,13 @@ async fn peers_and_members_reflect_a_converged_pair() {
     let a = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(a_ip),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
-    );
+    )
+    .expect("valid configuration");
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
-    );
+    )
+    .expect("valid configuration");
     let a = a.with_seed(b_ip);
     let b = b.with_seed(a_ip);
 

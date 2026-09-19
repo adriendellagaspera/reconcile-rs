@@ -191,13 +191,15 @@ async fn read_replica_converges_with_dated_store_over_in_memory_transport() {
     let dated = ReplicatedMap::<String, String>::new_with_transport(
         config(dated_ip),
         Arc::new(network.bind(SocketAddr::new(dated_ip, port))),
-    );
+    )
+    .unwrap();
     // As with real sockets, only the read replica needs a seed: it drives the value-only channel
     // and the dated store answers reactively to the sender address.
     let read_replica = ReadReplicaMap::<String, String>::new_with_transport(
         config(read_replica_ip),
         Arc::new(network.bind(SocketAddr::new(read_replica_ip, port))),
     )
+    .unwrap()
     .with_seed(dated_ip);
 
     for i in 0..50 {

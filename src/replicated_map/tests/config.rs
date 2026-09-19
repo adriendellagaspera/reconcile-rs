@@ -9,24 +9,85 @@
 use std::time::Duration;
 
 use crate::{
-    replicated_map::{Config, ConfigError, MAX_NETS},
-    ReplicatedMap,
+    replicated_map::{Config, ConfigError, ConstructionError, MAX_NETS},
+    ReadReplicaMap, ReplicatedMap,
 };
 
 use super::ephemeral_config;
 
-/// #325: a `Config` with neither a cluster key nor the explicit insecure opt-in must refuse to
-/// build at all, rather than silently running unauthenticated — the whole point of the guard.
+/// Construction rejects an omitted security choice as a typed configuration error before any
+/// transport is bound. Full and read replicas share the same contract.
 #[tokio::test]
-#[should_panic(expected = "Config::cluster_key is None")]
-async fn missing_key_and_no_insecure_opt_in_panics_at_construction() {
-    let port = std::net::UdpSocket::bind("127.0.0.1:0")
-        .expect("OS should hand out an ephemeral port")
-        .local_addr()
-        .expect("a bound socket reports its own address")
-        .port();
-    let config = Config::default().with_port(port);
-    let _ = ReplicatedMap::<i32, i32>::new(config).await;
+async fn missing_security_mode_is_a_typed_construction_error() {
+    let config = Config::default().with_port(crate::replica::tests::next_ephemeral_test_port());
+
+    let full_error = match ReplicatedMap::<i32, i32>::new(config.clone()).await {
+        Ok(_) => panic!("missing security mode must be rejected"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        full_error,
+        ConstructionError::Config(ConfigError::MissingSecurityMode)
+    ));
+
+    let read_error = match ReadReplicaMap::<i32, i32>::new(config).await {
+        Ok(_) => panic!("missing security mode must be rejected"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        read_error,
+        ConstructionError::Config(ConfigError::MissingSecurityMode)
+    ));
+}
+
+/// Injected transports cannot bypass the explicit security-mode requirement.
+#[test]
+fn injected_transport_constructors_reject_missing_security_mode() {
+    use std::sync::Arc;
+
+    use crate::transport::InMemoryNetwork;
+
+    let network = InMemoryNetwork::new();
+    let config = Config::default().with_port(8081);
+    let full = ReplicatedMap::<i32, i32>::new_with_transport(
+        config.clone(),
+        Arc::new(network.bind("127.0.0.1:8081".parse().unwrap())),
+    );
+    assert!(matches!(
+        full,
+        Err(ConstructionError::Config(ConfigError::MissingSecurityMode))
+    ));
+
+    let read = ReadReplicaMap::<i32, i32>::new_with_transport(
+        config,
+        Arc::new(network.bind("127.0.0.2:8081".parse().unwrap())),
+    );
+    assert!(matches!(
+        read,
+        Err(ConstructionError::Config(ConfigError::MissingSecurityMode))
+    ));
+}
+
+/// Construction errors retain their typed cause for callers traversing the standard error chain.
+#[test]
+fn construction_error_source_preserves_configuration_and_io_causes() {
+    let configuration = ConstructionError::Config(ConfigError::MissingSecurityMode);
+    let source = std::error::Error::source(&configuration).expect("configuration cause");
+    assert_eq!(
+        source.downcast_ref::<ConfigError>(),
+        Some(&ConfigError::MissingSecurityMode)
+    );
+
+    let transport = ConstructionError::Io(std::io::Error::new(
+        std::io::ErrorKind::AddrInUse,
+        "transport binding failed",
+    ));
+    let source = std::error::Error::source(&transport).expect("transport cause");
+    let io_error = source
+        .downcast_ref::<std::io::Error>()
+        .expect("typed I/O cause");
+    assert_eq!(io_error.kind(), std::io::ErrorKind::AddrInUse);
+    assert_eq!(io_error.to_string(), "transport binding failed");
 }
 
 /// The metering/buffer-size defaults are pinned to their documented values (32 MiB/s, 1 MiB

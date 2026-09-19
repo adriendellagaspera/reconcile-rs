@@ -77,6 +77,7 @@ async fn start_reconciliation_wrapper_actually_transmits() {
             .with_listen_addr(read_replica_addr),
         Arc::new(net.bind(SocketAddr::new(read_replica_addr, port))),
     )
+    .unwrap()
     .with_seed(peer_addr);
 
     read_replica.start_reconciliation().await;

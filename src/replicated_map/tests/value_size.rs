@@ -32,6 +32,7 @@ fn store_with_ceiling(port: u16, max_value_size: usize) -> ReplicatedMap<String,
             .with_max_value_size(max_value_size),
         transport,
     )
+    .expect("valid configuration")
 }
 
 /// #82: `Config::max_value_size` is unset by default, so `try_insert` on a default `Config`
@@ -46,7 +47,8 @@ async fn try_insert_without_max_value_size_never_rejects() {
     let store = ReplicatedMap::<String, Vec<u8>>::new_with_transport(
         Config::default().with_insecure_no_key(),
         transport,
-    );
+    )
+    .expect("valid configuration");
     assert!(store.try_insert("a".to_string(), vec![0; 10_000]).is_ok());
 }
 
@@ -218,7 +220,8 @@ fn try_insert_checks_size_before_claiming_a_broadcast_slot() {
             .with_max_value_size(4)
             .with_max_concurrent_broadcasts(0),
         transport,
-    );
+    )
+    .expect("valid configuration");
 
     let err = store
         .try_insert("a".to_string(), vec![0; 100])
@@ -243,7 +246,8 @@ fn try_insert_reports_backpressure_when_size_is_fine_but_the_budget_is_not() {
             .with_max_value_size(4096)
             .with_max_concurrent_broadcasts(0),
         transport,
-    );
+    )
+    .expect("valid configuration");
 
     let err = store
         .try_insert("a".to_string(), vec![0; 3])

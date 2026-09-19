@@ -29,7 +29,7 @@ use crate::bounds::Key;
 use crate::discovery::Discovery;
 use crate::entry::State;
 use crate::read_replica_map::{ReadReplicaMap, ReadSyncState};
-use crate::replicated_map::Config;
+use crate::replicated_map::{Config, ConstructionError};
 use rsos::Fingerprint;
 
 /// A read-only replica of a replicated set; see the
@@ -62,7 +62,7 @@ impl<K: Key> ReadReplicaSet<K> {
     /// # Errors
     ///
     /// If the socket cannot be bound to `(config.listen_addr, config.port)`.
-    pub async fn new(config: Config) -> io::Result<Self> {
+    pub async fn new(config: Config) -> Result<Self, ConstructionError> {
         ReadReplicaMap::new(config).await.map(ReadReplicaSet)
     }
 

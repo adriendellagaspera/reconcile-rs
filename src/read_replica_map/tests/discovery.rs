@@ -69,6 +69,7 @@ fn with_discovery_and_interval_are_builders() {
     let transport = Arc::new(network.bind("127.0.9.70:1".parse().unwrap()));
     let read_replica =
         ReadReplicaMap::<i32, String>::new_with_transport(ephemeral_config(), transport)
+            .expect("valid configuration")
             .with_discovery(Arc::new(FakeDiscovery::new(vec![])))
             .with_discovery_interval(Duration::from_millis(42));
     assert!(read_replica.discovery.is_some());
@@ -83,6 +84,7 @@ fn with_dns_discovery_sets_a_discovery_source() {
     let transport = Arc::new(network.bind("127.0.9.71:1".parse().unwrap()));
     let read_replica =
         ReadReplicaMap::<i32, String>::new_with_transport(ephemeral_config(), transport)
+            .expect("valid configuration")
             .with_dns_discovery("my-service.default.svc.cluster.local", 8080);
     assert!(read_replica.discovery.is_some());
 }

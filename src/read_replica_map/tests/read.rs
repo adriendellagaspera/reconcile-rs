@@ -186,7 +186,8 @@ fn deprecated_fingerprint_alias_matches_value_fingerprint() {
     let read_replica = ReadReplicaMap::<i32, String>::new_with_transport(
         ephemeral_config(),
         Arc::new(crate::transport::InMemoryNetwork::new().bind("127.0.5.1:1".parse().unwrap())),
-    );
+    )
+    .expect("valid configuration");
     read_replica.integrate(vec![(1, State::Present("a".to_string()))]);
     assert_eq!(
         read_replica.fingerprint(..),

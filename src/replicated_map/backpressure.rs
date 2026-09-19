@@ -122,7 +122,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// let store = ReplicatedMap::<String, i32>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .expect("valid configuration");
     ///
     /// assert_eq!(store.try_insert("a".to_string(), 1), Ok(None));
     /// assert_eq!(store.try_insert("a".to_string(), 2), Ok(Some(1)));

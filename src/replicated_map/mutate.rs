@@ -154,7 +154,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// let store = ReplicatedMap::<String, i32>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .expect("valid configuration");
     ///
     /// // Absent: no race-free `get`-then-`insert` needed, `update` just reports it and does nothing.
     /// assert!(!store.update(&"a".to_string(), |v| *v += 1));
@@ -206,7 +207,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// let store = ReplicatedMap::<String, i32>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .expect("valid configuration");
     ///
     /// assert_eq!(store.try_update(&"a".to_string(), |v| *v += 1), Ok(false));
     ///
@@ -277,7 +279,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// let store = ReplicatedMap::<String, i32>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .expect("valid configuration");
     ///
     /// // Absent: the default is inserted as-is, `f` never runs.
     /// store.upsert("a".to_string(), 1, |v| *v += 100);
@@ -325,7 +328,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// let store = ReplicatedMap::<String, i32>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .expect("valid configuration");
     ///
     /// // Absent: `f` runs, its result is both inserted and returned.
     /// assert_eq!(store.get_or_insert_with(&"a".to_string(), || 1), 1);
