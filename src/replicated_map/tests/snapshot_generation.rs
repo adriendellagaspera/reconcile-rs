@@ -183,3 +183,39 @@ async fn metadata_only_decommission_and_ack_forget_remain_snapshot_pending() {
     let last = backend.saved.lock().unwrap().last().unwrap().clone();
     assert!(!last.tombstone_acks.contains_key(&1));
 }
+
+#[tokio::test]
+async fn physically_collected_tombstone_is_not_replayed_after_restart() {
+    let backend = Arc::new(PausedSave::new(false));
+    let store = ReplicatedMap::<u32, u32>::new(ephemeral_config().with_snapshot_interval(None))
+        .await
+        .unwrap()
+        .with_persistence(backend.clone())
+        .unwrap();
+
+    store.just_insert(17, 1);
+    store.just_remove(&17);
+    store.snapshot_now().unwrap();
+    assert!(store.engine.map.load_full().get(&17).unwrap().is_tombstone());
+    assert!(store.engine.gc_remove(&17).is_some());
+    assert_eq!(store.engine.change_count(), 1, "physical delete was not tracked");
+    store.engine.forget_tombstone(&17);
+    store.snapshot_now().unwrap();
+
+    let restarted = ReplicatedMap::<u32, u32>::new(ephemeral_config())
+        .await
+        .unwrap()
+        .with_persistence(backend.clone())
+        .unwrap();
+    assert!(restarted.engine.map.load_full().get(&17).is_none());
+    assert!(restarted.get_cloned(&17).is_none());
+
+    store.just_insert(17, 42);
+    store.snapshot_now().unwrap();
+    let restarted = ReplicatedMap::<u32, u32>::new(ephemeral_config())
+        .await
+        .unwrap()
+        .with_persistence(backend)
+        .unwrap();
+    assert_eq!(restarted.get_cloned(&17), Some(42));
+}
