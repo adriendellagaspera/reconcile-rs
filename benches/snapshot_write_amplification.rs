@@ -92,7 +92,11 @@ fn trial(rt: &Runtime, n: usize, delta: usize) -> (Duration, Duration, u64, u64,
     let start = Instant::now();
     let restarted = make_store(rt, &path);
     let restart_time = start.elapsed();
-    assert_eq!(restarted.fingerprint(..), expected, "restart changed the dated map");
+    assert_eq!(
+        restarted.fingerprint(..),
+        expected,
+        "restart changed the dated map"
+    );
     assert_eq!(restarted.snapshot().len(), n, "restart lost an entry");
     if delta > 0 {
         assert_eq!(restarted.get_cloned(&0), Some(vec![7; VALUE_BYTES]));
@@ -102,7 +106,13 @@ fn trial(rt: &Runtime, n: usize, delta: usize) -> (Duration, Duration, u64, u64,
         Some(vec![if delta == n { 7 } else { 0 }; VALUE_BYTES])
     );
 
-    (initial_time, second_time, initial_bytes, second_bytes, restart_time)
+    (
+        initial_time,
+        second_time,
+        initial_bytes,
+        second_bytes,
+        restart_time,
+    )
 }
 
 fn main() {
@@ -121,8 +131,7 @@ fn main() {
                 continue;
             }
             for repetition in 0..repeats {
-                let (first, second, reference_bytes, rewrite_bytes, restart) =
-                    trial(&rt, n, delta);
+                let (first, second, reference_bytes, rewrite_bytes, restart) = trial(&rt, n, delta);
                 println!(
                     "{n},{delta},{repetition},{:.3},{:.3},{reference_bytes},{rewrite_bytes},{:.6},{:.3}",
                     first.as_secs_f64() * 1_000.0,
