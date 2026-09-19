@@ -123,16 +123,20 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         }
         let map_guard = self.map.load_full();
         let mut guard = self.tombstone_acks.write();
+        let mut changed = 0;
         for (key, version) in acks {
             // Only acks for locally-held tombstones are retained, bounding the bookkeeping map.
             if map_guard.get(&key).is_some_and(|v| v.is_tombstone()) {
-                guard.entry(key).or_default().insert(peer_ip, version);
+                if guard.entry(key).or_default().insert(peer_ip, version) != Some(version) {
+                    changed += 1;
+                }
             } else {
                 trace!(
                     "dropped ack from {peer_ip} for key with no local tombstone;                      ignoring to prevent unbounded bookkeeping"
                 );
             }
         }
+        self.record_changes(changed);
     }
 
     async fn handle_dated_comparison(
