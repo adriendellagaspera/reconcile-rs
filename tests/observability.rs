@@ -367,7 +367,7 @@ async fn read_replica_warns_about_config_fields_it_cannot_honour() {
     let network = InMemoryNetwork::new();
     let transport = std::sync::Arc::new(network.bind("127.0.0.1:1".parse().unwrap()));
     let config = local_config().with_remote_fanout(9);
-    let _replica = ReadReplicaMap::<String, String>::new_with_transport(config, transport);
+    let _replica = ReadReplicaMap::<String, String>::new_with_transport(config, transport).expect("valid configuration");
 
     let events = events.lock().unwrap();
     let ignored_warning = events.iter().find(|(level, msg)| {
@@ -394,7 +394,7 @@ async fn read_replica_warns_about_max_concurrent_broadcasts_specifically() {
     let network = InMemoryNetwork::new();
     let transport = std::sync::Arc::new(network.bind("127.0.0.1:5".parse().unwrap()));
     let config = local_config().with_max_concurrent_broadcasts(4);
-    let _replica = ReadReplicaMap::<String, String>::new_with_transport(config, transport);
+    let _replica = ReadReplicaMap::<String, String>::new_with_transport(config, transport).expect("valid configuration");
 
     let events = events.lock().unwrap();
     let ignored_warning = events.iter().find(|(level, msg)| {
@@ -418,7 +418,7 @@ async fn read_replica_stays_quiet_when_no_ignored_field_is_set() {
 
     let network = InMemoryNetwork::new();
     let transport = std::sync::Arc::new(network.bind("127.0.0.1:2".parse().unwrap()));
-    let _replica = ReadReplicaMap::<String, String>::new_with_transport(local_config(), transport);
+    let _replica = ReadReplicaMap::<String, String>::new_with_transport(local_config(), transport).expect("valid configuration");
 
     let events = events.lock().unwrap();
     let has_ignored_warning = events.iter().any(|(level, msg)| {
@@ -446,7 +446,7 @@ async fn read_replica_warns_about_more_than_one_net_but_not_zero_or_one() {
 
         let network = InMemoryNetwork::new();
         let transport = std::sync::Arc::new(network.bind(port.parse().unwrap()));
-        let _replica = ReadReplicaMap::<String, String>::new_with_transport(config, transport);
+        let _replica = ReadReplicaMap::<String, String>::new_with_transport(config, transport).expect("valid configuration");
 
         let events = events.lock().unwrap();
         events.iter().any(|(level, msg)| {
