@@ -20,6 +20,7 @@ mod persistence;
 mod persistence_errors;
 mod read;
 mod snapshot_cadence;
+mod snapshot_generation;
 mod value_ref;
 mod value_size;
 mod write;

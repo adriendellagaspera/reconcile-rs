@@ -91,14 +91,13 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         } else {
             observability::record_insert();
         }
-        self.record_changes(1);
-
         let _guard = self.write_lock.lock();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
         let ret = self.map_insert(&mut map, &mut projection, key, value);
         self.map.store(Arc::new(map));
         self.projection.store(Arc::new(projection));
+        self.record_changes(1);
         ret
     }
 
@@ -266,7 +265,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 observability::record_insert();
             }
         }
-        self.record_changes(key_values.len());
         let _guard = self.write_lock.lock();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
@@ -275,6 +273,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         }
         self.map.store(Arc::new(map));
         self.projection.store(Arc::new(projection));
+        self.record_changes(key_values.len());
     }
 
     pub fn insert_bulk(&self, key_values: &[(K, Entry<Timestamp, V>)]) {
@@ -287,17 +286,21 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// mutation sinks call this and why. `n == 0` is a harmless no-op (`fetch_add(0, ..)` leaves
     /// the counter unchanged), so callers never need to guard the call themselves.
     pub(crate) fn record_changes(&self, n: usize) {
-        self.changes_since_snapshot.fetch_add(n, Ordering::Relaxed);
+        self.changes_since_snapshot.fetch_add(n, Ordering::AcqRel);
     }
 
     /// Changes counted since the last successful snapshot (or since construction, if none yet).
     pub(crate) fn change_count(&self) -> usize {
-        self.changes_since_snapshot.load(Ordering::Relaxed)
+        self.changes_since_snapshot.load(Ordering::Acquire)
     }
 
-    /// Zero the change counter — called only after a successful snapshot write
-    /// (`replicated_map/persistence.rs`).
-    pub(crate) fn reset_change_count(&self) {
-        self.changes_since_snapshot.store(0, Ordering::Relaxed);
+    /// Retire only changes counted before a successful snapshot started collecting.
+    /// A writer that committed during collection or save remains pending.
+    pub(crate) fn retire_change_count(&self, counted: usize) {
+        let _ =
+            self.changes_since_snapshot
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |now| {
+                    Some(now.saturating_sub(counted))
+                });
     }
 }

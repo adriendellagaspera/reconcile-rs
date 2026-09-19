@@ -63,7 +63,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Drop the acknowledgment bookkeeping for a key once its tombstone has been collected.
     pub(crate) fn forget_tombstone(&self, key: &K) {
-        self.tombstone_acks.write().remove(key);
+        if self.tombstone_acks.write().remove(key).is_some() {
+            self.record_changes(1);
+        }
     }
 
     /// Whether `peer` still owes an acknowledgment on some held tombstone — i.e. whether its
