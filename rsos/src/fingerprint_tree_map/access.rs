@@ -54,7 +54,6 @@ struct KeyPath {
 struct Relift<'a, K: Serialize + Clone, V: Serialize + Clone> {
     root: &'a mut Node<K, V>,
     path: KeyPath,
-    key: &'a K,
     lift_key: Option<&'a LiftKey>,
     /// Captured before the callback; no stored per-element fingerprint is needed.
     old_fp: Fingerprint,
@@ -84,19 +83,17 @@ impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
             node: &mut Node<K, V>,
             descent: &[usize],
             key_index: usize,
-            key: &K,
             lift_key: Option<&LiftKey>,
             old_fp: Fingerprint,
         ) -> Fingerprint {
             let delta = match descent.split_first() {
-                None => lift_with(lift_key, key, &node.values[key_index]) - old_fp,
+                None => lift_with(lift_key, &node.keys[key_index], &node.values[key_index]) - old_fp,
                 Some((&index, rest)) => repair(
                     Arc::make_mut(
                         &mut node.children.as_mut().expect("interior node on the route")[index],
                     ),
                     rest,
                     key_index,
-                    key,
                     lift_key,
                     old_fp,
                 ),
@@ -110,7 +107,6 @@ impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
             self.root,
             &self.path.descent,
             self.path.key_index,
-            self.key,
             self.lift_key,
             self.old_fp,
         );
@@ -266,7 +262,6 @@ impl<K: Serialize + Ord, V: Serialize> FingerprintTreeMap<K, V> {
         let mut guard = Relift {
             root: Arc::make_mut(&mut self.root),
             path: KeyPath { descent, key_index },
-            key,
             lift_key: self.lift_key.as_ref(),
             old_fp,
         };
