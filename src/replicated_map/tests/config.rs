@@ -40,6 +40,28 @@ async fn missing_security_mode_is_a_typed_construction_error() {
     ));
 }
 
+/// Construction errors retain their typed cause for callers traversing the standard error chain.
+#[test]
+fn construction_error_source_preserves_configuration_and_io_causes() {
+    let configuration = ConstructionError::Config(ConfigError::MissingSecurityMode);
+    let source = std::error::Error::source(&configuration).expect("configuration cause");
+    assert_eq!(
+        source.downcast_ref::<ConfigError>(),
+        Some(&ConfigError::MissingSecurityMode)
+    );
+
+    let transport = ConstructionError::Io(std::io::Error::new(
+        std::io::ErrorKind::AddrInUse,
+        "transport binding failed",
+    ));
+    let source = std::error::Error::source(&transport).expect("transport cause");
+    let io_error = source
+        .downcast_ref::<std::io::Error>()
+        .expect("typed I/O cause");
+    assert_eq!(io_error.kind(), std::io::ErrorKind::AddrInUse);
+    assert_eq!(io_error.to_string(), "transport binding failed");
+}
+
 /// The metering/buffer-size defaults are pinned to their documented values (32 MiB/s, 1 MiB
 /// floor, 8 MiB) — an accidental `*` → `+`/`/` typo in the byte-count arithmetic would silently
 /// shrink these by orders of magnitude without a type error to catch it.
