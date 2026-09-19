@@ -50,12 +50,12 @@ async fn converges(entries: &[(u32, u32)]) -> bool {
         cfg(a_ip),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    );
+    ).expect("valid configuration");
     let b: Replica<u32, u32> = Replica::new_with_transport(
         cfg(b_ip),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
         Arc::new(ManualClock::new(NodeId::new(2))),
-    );
+    ).expect("valid configuration");
     // Seed each as the other's known gossip peer (no real discovery over the in-memory fabric).
     a.peers.write().insert(b_ip, Instant::now());
     b.peers.write().insert(a_ip, Instant::now());

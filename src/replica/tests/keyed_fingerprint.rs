@@ -39,7 +39,7 @@ fn replica_with_key(
         config,
         Arc::new(net.bind(SocketAddr::new(ip, port))),
         Arc::new(ManualClock::new(NodeId::new(1))),
-    )
+    ).expect("valid configuration")
 }
 
 /// Load identical entries into `replica`'s map at the same logical instant on both call sites, so
