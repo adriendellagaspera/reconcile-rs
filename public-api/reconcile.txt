@@ -108,8 +108,8 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_net(&self, ipnet::
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_reconcile_interval(&self, core::time::Duration)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
-pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
-pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> Self
+pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
@@ -155,7 +155,7 @@ pub fn reconcile::read_replica_set::ReadReplicaSet<K>::keys(&self) -> alloc::vec
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::len(&self) -> usize
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::net(&self) -> ipnet::ipnet::IpNet
-pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
+pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::run(self)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::seed_peer(&self, core::net::ip_addr::IpAddr)
@@ -180,12 +180,15 @@ impl<K> !core::panic::unwind_safe::RefUnwindSafe for reconcile::read_replica_set
 impl<K> !core::panic::unwind_safe::UnwindSafe for reconcile::read_replica_set::ReadReplicaSet<K>
 pub mod reconcile::replicated_map
 #[non_exhaustive] pub enum reconcile::replicated_map::ConfigError
+pub reconcile::replicated_map::ConfigError::MissingSecurityMode
 pub reconcile::replicated_map::ConfigError::TooManyNets
 impl core::clone::Clone for reconcile::replicated_map::ConfigError
 pub fn reconcile::replicated_map::ConfigError::clone(&self) -> reconcile::replicated_map::ConfigError
 impl core::cmp::Eq for reconcile::replicated_map::ConfigError
 impl core::cmp::PartialEq for reconcile::replicated_map::ConfigError
 pub fn reconcile::replicated_map::ConfigError::eq(&self, &reconcile::replicated_map::ConfigError) -> bool
+impl core::convert::From<reconcile::replicated_map::ConfigError> for reconcile::replicated_map::ConstructionError
+pub fn reconcile::replicated_map::ConstructionError::from(reconcile::replicated_map::ConfigError) -> Self
 impl core::error::Error for reconcile::replicated_map::ConfigError
 impl core::fmt::Debug for reconcile::replicated_map::ConfigError
 pub fn reconcile::replicated_map::ConfigError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -200,6 +203,28 @@ impl core::marker::Unpin for reconcile::replicated_map::ConfigError
 impl core::marker::UnsafeUnpin for reconcile::replicated_map::ConfigError
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::ConfigError
 impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::ConfigError
+#[non_exhaustive] pub enum reconcile::replicated_map::ConstructionError
+pub reconcile::replicated_map::ConstructionError::Config(reconcile::replicated_map::ConfigError)
+pub reconcile::replicated_map::ConstructionError::Io(core::io::error::Error)
+impl core::convert::From<core::io::error::Error> for reconcile::replicated_map::ConstructionError
+pub fn reconcile::replicated_map::ConstructionError::from(core::io::error::Error) -> Self
+impl core::convert::From<reconcile::replicated_map::ConfigError> for reconcile::replicated_map::ConstructionError
+pub fn reconcile::replicated_map::ConstructionError::from(reconcile::replicated_map::ConfigError) -> Self
+impl core::convert::From<reconcile::replicated_map::ConstructionError> for core::io::error::Error
+pub fn core::io::error::Error::from(reconcile::replicated_map::ConstructionError) -> Self
+impl core::error::Error for reconcile::replicated_map::ConstructionError
+pub fn reconcile::replicated_map::ConstructionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for reconcile::replicated_map::ConstructionError
+pub fn reconcile::replicated_map::ConstructionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for reconcile::replicated_map::ConstructionError
+pub fn reconcile::replicated_map::ConstructionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for reconcile::replicated_map::ConstructionError
+impl core::marker::Send for reconcile::replicated_map::ConstructionError
+impl core::marker::Sync for reconcile::replicated_map::ConstructionError
+impl core::marker::Unpin for reconcile::replicated_map::ConstructionError
+impl core::marker::UnsafeUnpin for reconcile::replicated_map::ConstructionError
+impl !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::ConstructionError
+impl !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::ConstructionError
 #[non_exhaustive] pub enum reconcile::replicated_map::PersistenceLoadError
 pub reconcile::replicated_map::PersistenceLoadError::Corrupt(core::io::error::Error)
 pub reconcile::replicated_map::PersistenceLoadError::RetriesExhausted(core::io::error::Error)
@@ -401,9 +426,9 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_update<F: core::ops::
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::upsert<F: core::ops::function::FnOnce(&mut V)>(&self, K, V, F)
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
-pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
-pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_clock(reconcile::replicated_map::Config, alloc::sync::Arc<dyn lww_register::clock::Clock>) -> core::io::error::Result<Self>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> Self
+pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
+pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_clock(reconcile::replicated_map::Config, alloc::sync::Arc<dyn lww_register::clock::Clock>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::node_id(&self) -> lww_register::clock::NodeId
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
@@ -499,7 +524,7 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::local_addr(&self) -> core::i
 pub fn reconcile::replicated_set::ReplicatedSet<K>::local_net(&self) -> ipnet::ipnet::IpNet
 pub fn reconcile::replicated_set::ReplicatedSet<K>::members(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::nets(&self) -> alloc::vec::Vec<ipnet::ipnet::IpNet>
-pub async fn reconcile::replicated_set::ReplicatedSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
+pub async fn reconcile::replicated_set::ReplicatedSet<K>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::node_id(&self) -> lww_register::clock::NodeId
 pub fn reconcile::replicated_set::ReplicatedSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::remove(&self, &K) -> bool
@@ -590,8 +615,8 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_net(&self, ipnet::
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_reconcile_interval(&self, core::time::Duration)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
-pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
-pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> Self
+pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
+pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
@@ -620,7 +645,7 @@ pub fn reconcile::read_replica_set::ReadReplicaSet<K>::keys(&self) -> alloc::vec
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::len(&self) -> usize
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::net(&self) -> ipnet::ipnet::IpNet
-pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
+pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub async fn reconcile::read_replica_set::ReadReplicaSet<K>::run(self)
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::seed_peer(&self, core::net::ip_addr::IpAddr)
@@ -699,9 +724,9 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_update<F: core::ops::
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::upsert<F: core::ops::function::FnOnce(&mut V)>(&self, K, V, F)
 impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
-pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
-pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_clock(reconcile::replicated_map::Config, alloc::sync::Arc<dyn lww_register::clock::Clock>) -> core::io::error::Result<Self>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> Self
+pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
+pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_clock(reconcile::replicated_map::Config, alloc::sync::Arc<dyn lww_register::clock::Clock>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::node_id(&self) -> lww_register::clock::NodeId
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
@@ -744,7 +769,7 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::local_addr(&self) -> core::i
 pub fn reconcile::replicated_set::ReplicatedSet<K>::local_net(&self) -> ipnet::ipnet::IpNet
 pub fn reconcile::replicated_set::ReplicatedSet<K>::members(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::nets(&self) -> alloc::vec::Vec<ipnet::ipnet::IpNet>
-pub async fn reconcile::replicated_set::ReplicatedSet<K>::new(reconcile::replicated_map::Config) -> core::io::error::Result<Self>
+pub async fn reconcile::replicated_set::ReplicatedSet<K>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::node_id(&self) -> lww_register::clock::NodeId
 pub fn reconcile::replicated_set::ReplicatedSet<K>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::remove(&self, &K) -> bool
