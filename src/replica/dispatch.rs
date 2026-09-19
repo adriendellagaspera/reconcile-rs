@@ -268,7 +268,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
         // Reconcile again under the write lock: state may have changed while hooks ran.
         if !to_apply.is_empty() {
-            self.record_changes(to_apply.len());
+            let change_count = to_apply.len();
             let _guard = self.write_lock.lock();
             let mut map = (*self.map.load_full()).clone();
             let mut projection = (*self.projection.load_full()).clone();
@@ -294,6 +294,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             }
             self.map.store(Arc::new(map));
             self.projection.store(Arc::new(projection));
+            self.record_changes(change_count);
         }
 
         if !acks_to_send.is_empty() {
