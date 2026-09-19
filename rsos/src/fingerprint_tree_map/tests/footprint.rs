@@ -42,8 +42,7 @@ fn report(n: usize, kind: &str, tree: &FingerprintTreeMap<u32, u32>) {
     visit(&tree.root, 1, &mut counts);
     assert_eq!(counts.elements, n);
     let allocated_fingerprint_slots = counts.nodes * MAX_CAPACITY;
-    let child_array_bytes =
-        (counts.nodes - counts.leaves) * size_of::<Children<u32, u32>>();
+    let child_array_bytes = (counts.nodes - counts.leaves) * size_of::<Children<u32, u32>>();
     println!(
         "{kind},{n},{},{},{},{},{:.4},{},{},{}",
         counts.nodes,
@@ -75,13 +74,12 @@ fn node_occupancy() {
     println!(
         "build,n,nodes,leaves,depth,elements,occupancy,reserved_fingerprint_bytes,reserved_fingerprint_bytes_per_entry,boxed_children_bytes"
     );
-    let sweep = std::env::var("RECONCILE_BASELINE_SIZES")
-        .unwrap_or_else(|_| "10000,100000".to_owned());
+    let sweep =
+        std::env::var("RECONCILE_BASELINE_SIZES").unwrap_or_else(|_| "10000,100000".to_owned());
     for part in sweep.split(',') {
         let n = part.trim().parse::<usize>().expect("valid n");
         assert!(n > 0 && n <= u32::MAX as usize);
-        let serial: FingerprintTreeMap<u32, u32> =
-            (0..n as u32).map(|k| (k, k)).collect();
+        let serial: FingerprintTreeMap<u32, u32> = (0..n as u32).map(|k| (k, k)).collect();
         report(n, "serial", &serial);
         let bulk = FingerprintTreeMap::from_sorted_iter((0..n as u32).map(|k| (k, k)));
         report(n, "bulk", &bulk);
