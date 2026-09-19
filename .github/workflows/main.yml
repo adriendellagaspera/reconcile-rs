@@ -319,7 +319,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    # `cargo public-api` output is rustdoc-version-sensitive. Keep the compiler that produced
+    # the committed snapshots pinned; bump it deliberately together with any rendering-only diff.
     - uses: dtolnay/rust-toolchain@nightly
+      with:
+        toolchain: nightly-2026-09-18
     - uses: Swatinem/rust-cache@v2
     - run: cargo install cargo-public-api --locked
     - run: ./scripts/check-public-api.sh
