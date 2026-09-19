@@ -123,8 +123,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Construct an engine over a caller-supplied [`Transport`], with the default clock.
     ///
-    /// Infallible: the only fallible step in [`new`](Self::new) is binding the UDP socket, which
-    /// the caller has already done (or does not need to do at all).
+    /// The transport is already bound, but the security configuration is still validated.
     pub(crate) fn with_transport(
         config: Config,
         transport: Arc<dyn Transport>,
@@ -166,8 +165,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 }
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
-    /// Assemble an engine from an already-constructed [`Transport`] and a clock. Pure wiring — no
-    /// I/O — so it is infallible; the fallible socket bind lives in [`new`](Self::new).
+    /// Assemble an engine from an already-constructed [`Transport`] and a clock, validating
+    /// the explicit security mode before allocating replica state.
     fn build(
         config: Config,
         transport: Arc<dyn Transport>,
