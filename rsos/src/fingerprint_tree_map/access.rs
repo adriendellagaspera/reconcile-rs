@@ -87,7 +87,9 @@ impl<K: Serialize + Clone, V: Serialize + Clone> Drop for Relift<'_, K, V> {
             old_fp: Fingerprint,
         ) -> Fingerprint {
             let delta = match descent.split_first() {
-                None => lift_with(lift_key, &node.keys[key_index], &node.values[key_index]) - old_fp,
+                None => {
+                    lift_with(lift_key, &node.keys[key_index], &node.values[key_index]) - old_fp
+                }
                 Some((&index, rest)) => repair(
                     Arc::make_mut(
                         &mut node.children.as_mut().expect("interior node on the route")[index],
