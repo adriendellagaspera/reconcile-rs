@@ -40,7 +40,7 @@ use crate::bounds::{Key, Value};
 use crate::discovery::Discovery;
 use crate::entry::State;
 use crate::replica::PeerCap;
-use crate::replicated_map::Config;
+use crate::replicated_map::{Config, ConfigError, ConstructionError};
 use crate::transport::{Transport, UdpTransport};
 use crate::FingerprintTreeMap;
 use gossip::auth;
@@ -198,11 +198,9 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// If the socket cannot be bound to `(config.listen_addr, config.port)`, or if
     /// `config.port == 0` — see [`Config::port`]'s docs.
     ///
-    /// # Panics
-    ///
-    /// If `config.cluster_key` is `None` without also setting
-    /// [`Config::with_insecure_no_key`].
-    pub async fn new(config: Config) -> io::Result<Self> {
+    /// Returns `ConfigError::MissingSecurityMode` through `ConstructionError` if neither
+    /// authenticated mode nor the explicit keyless opt-in was selected.
+    pub async fn new(config: Config) -> Result<Self, ConstructionError> {
         crate::replica::check_port_is_nonzero(&config)?;
         // The read replica keeps the OS default socket buffer sizes (`None`/`None`) rather than
         // reading `Config::recv_buffer_size`/`send_buffer_size`: it never bound a tuned socket, and
@@ -211,19 +209,18 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             UdpTransport::bind(SocketAddr::new(config.listen_addr, config.port), None, None)
                 .await?;
         debug!("ReadReplicaMap listening on: {}", transport.local_addr()?);
-        Ok(Self::build(config, Arc::new(transport)))
+        Ok(Self::build(config, Arc::new(transport))?)
     }
 
     /// Create a read replica over a caller-supplied [`Transport`], mirroring
     /// [`ReplicatedMap::new_with_transport`](crate::ReplicatedMap::new_with_transport) — which is
     /// what lets one be driven against a dated peer with no real sockets.
     ///
-    /// The caller has already done the one fallible I/O step, binding.
+    /// The caller has already done the I/O binding step; configuration validation remains
+    /// fallible.
     ///
-    /// # Panics
-    ///
-    /// If `config.cluster_key` is `None` without also setting
-    /// [`Config::with_insecure_no_key`].
+    /// Returns `ConfigError::MissingSecurityMode` through `ConstructionError` if neither
+    /// authenticated mode nor the explicit keyless opt-in was selected.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -234,21 +231,23 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// let read_replica = ReadReplicaMap::<String, String>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .unwrap();
     ///
     /// // Read-only: nothing arrives until it reconciles with a dated peer (module docs).
     /// assert!(read_replica.is_empty());
     /// assert!(read_replica.get(&"a".to_string()).is_none());
     /// ```
-    pub fn new_with_transport(config: Config, transport: Arc<dyn Transport>) -> Self {
-        Self::build(config, transport)
+    pub fn new_with_transport(
+        config: Config,
+        transport: Arc<dyn Transport>,
+    ) -> Result<Self, ConstructionError> {
+        Ok(Self::build(config, transport)?)
     }
 
-    /// Assemble a read replica from an already-constructed [`Transport`]. Pure wiring — no I/O.
-    /// Panics rather than being fallible; see [`new_with_transport`](Self::new_with_transport).
-    /// The fallible socket bind lives in [`new`](Self::new).
-    fn build(config: Config, transport: Arc<dyn Transport>) -> Self {
-        config.check_key_or_insecure_opt_in();
+    /// Assemble a read replica from an already-constructed [`Transport`].
+    fn build(config: Config, transport: Arc<dyn Transport>) -> Result<Self, ConfigError> {
+        config.check_key_or_insecure_opt_in()?;
         warn_on_ignored_config_fields(&config);
         // The primary key derives the value tree's lift exactly as it does on the dated peer. The
         // receive-only rotation key affects authentication only; mixed primaries can exchange
@@ -280,7 +279,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             Some(lift_key) => FingerprintTreeMap::<K, State<V>>::with_lift_key(lift_key),
             None => FingerprintTreeMap::<K, State<V>>::new(),
         };
-        ReadReplicaMap {
+        Ok(ReadReplicaMap {
             tree: Arc::new(ArcSwap::new(Arc::new(tree))),
             write_lock: Arc::new(Mutex::new(())),
             port: config.port,
@@ -301,7 +300,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             round: Arc::new(AtomicU64::new(0)),
             last_round_at: Arc::new(RwLock::new(None)),
             reconcile_interval: Arc::new(RwLock::new(config.reconcile_interval)),
-        }
+        })
     }
 
     /// Provide the address of a known dated peer, reducing the time to first sync.
