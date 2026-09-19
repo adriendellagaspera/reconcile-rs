@@ -54,11 +54,13 @@ async fn stores_converge_over_an_injected_transport() {
     let a = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(a_ip, 1),
         Arc::new(net.bind(SocketAddr::new(a_ip, port))),
-    );
+    )
+    .unwrap();
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg(b_ip, 2),
         Arc::new(net.bind(SocketAddr::new(b_ip, port))),
-    );
+    )
+    .unwrap();
     // Seed each as the other's gossip peer: the in-memory fabric has no discovery.
     a.engine.peers.write().insert(b_ip, Instant::now());
     b.engine.peers.write().insert(a_ip, Instant::now());
@@ -118,9 +120,14 @@ async fn new_returns_err_on_bind_failure() {
     let err = result
         .err()
         .expect("expected Err when the bind address is already in use");
-    assert_eq!(
-        err.kind(),
-        std::io::ErrorKind::AddrInUse,
-        "bind failure should surface as AddrInUse, got {err:?}"
-    );
+    match err {
+        ConstructionError::Io(error) => assert_eq!(
+            error.kind(),
+            std::io::ErrorKind::AddrInUse,
+            "bind failure should surface as AddrInUse, got {error:?}"
+        ),
+        ConstructionError::Config(error) => {
+            panic!("expected bind failure, got configuration error: {error}")
+        }
+    }
 }
