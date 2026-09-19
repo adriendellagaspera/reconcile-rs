@@ -13,7 +13,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use crate::clock::NodeId;
-use crate::{replicated_map::Config, ReplicatedMap};
+use crate::{replicated_map::{Config, ConstructionError}, ReplicatedMap};
 
 use super::ephemeral_config;
 
