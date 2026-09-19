@@ -146,7 +146,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// let store = ReplicatedMap::<String, i32>::new_with_transport(
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
-    /// );
+    /// )
+    /// .expect("valid configuration");
     ///
     /// let region_a: ipnet::IpNet = "10.1.0.0/16".parse().unwrap();
     /// assert!(store.add_net(region_a)); // true: declared

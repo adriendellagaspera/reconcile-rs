@@ -44,10 +44,8 @@ async fn set_nets_enforces_max_nets_at_runtime() {
     );
 }
 
-/// `ReplicatedMap::start_reconciliation` must actually drive a round through the engine, not
-/// silently no-op: with the *automatic* background trigger disabled (an hour-long
-/// `reconcile_interval`), the only way two peers can converge here is by this method being
-/// called explicitly, proving the wrapper reaches the real engine call.
+/// With the background round delayed by an hour, two peers can converge only when
+/// `ReplicatedMap::start_reconciliation` initiates a real round.
 #[tokio::test]
 async fn start_reconciliation_actually_drives_a_round() {
     use std::net::SocketAddr;
