@@ -18,7 +18,6 @@ use crate::{
     ReplicatedMap,
 };
 
-
 /// A scriptable discovery source for the grace/decommission tests. The test thread swaps the
 /// response while the discovery loop runs.
 #[derive(Clone)]
