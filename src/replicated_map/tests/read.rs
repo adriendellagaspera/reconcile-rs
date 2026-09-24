@@ -7,7 +7,6 @@
 // except according to those terms.
 
 use crate::entry::{Entry, State};
-use crate::ReplicatedMap;
 
 use super::{virtual_config, virtual_map};
 
