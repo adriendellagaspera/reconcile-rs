@@ -19,6 +19,8 @@ use tokio_util::sync::CancellationToken;
 use crate::transport::InMemoryNetwork;
 use crate::{FileSnapshot, ReplicatedMap};
 
+use crate::replicated_map::Config;
+
 use super::ephemeral_config;
 
 async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
