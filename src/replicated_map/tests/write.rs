@@ -24,8 +24,7 @@ async fn tombstones_expiration() {
         .with_net("127.0.0.45/32".parse().unwrap())
         .unwrap()
         .with_insecure_no_key();
-    let store = virtual_map::<i32, i32>(config)
-        .with_tombstone_timeout(Duration::from_millis(1));
+    let store = virtual_map::<i32, i32>(config).with_tombstone_timeout(Duration::from_millis(1));
 
     // No `run()`: its periodic GC would race these assertions.
 
@@ -169,8 +168,8 @@ async fn just_remove_bulk_actually_removes_every_key() {
 /// `set_tombstone_timeout` must actually retune the wheel at runtime, not silently no-op.
 #[tokio::test]
 async fn set_tombstone_timeout_actually_retunes_the_wheel() {
-    let store = virtual_map::<i32, i32>(virtual_config())
-        .with_tombstone_timeout(Duration::from_secs(3600)); // won't expire on its own
+    let store =
+        virtual_map::<i32, i32>(virtual_config()).with_tombstone_timeout(Duration::from_secs(3600)); // won't expire on its own
     store.remove(&0);
     assert!(
         store.tombstones.expired(Utc::now()).is_empty(),
