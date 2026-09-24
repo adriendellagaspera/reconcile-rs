@@ -239,9 +239,11 @@ async fn encrypted_node_with_wrong_key_is_rejected() {
 async fn stale_datagram_outside_freshness_window_is_rejected() {
     use reconcile::testing::seal_datagram;
 
-    let port = 8092;
+
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.9.1".parse().unwrap();
+    let receiver_socket = Arc::new(tokio::net::UdpSocket::bind((addr_victim, 0)).await.expect("bind victim"));
+    let port = receiver_socket.local_addr().unwrap().port();
     let key = [0xBBu8; 32];
 
     let cfg = Config::default()
@@ -251,9 +253,11 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
         .unwrap()
         .with_cluster_key(ClusterKey::new(key));
 
-    let store = ReplicatedMap::<i32, i32>::new(cfg)
-        .await
-        .expect("bind failed");
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg,
+        Arc::new(UdpTransport::new(receiver_socket)),
+    )
+    .expect("valid test config");
     store.just_insert(0, 99);
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
 
@@ -301,9 +305,11 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
 async fn replayed_sealed_datagram_is_rejected() {
     use reconcile::testing::seal_datagram;
 
-    let port = 8093;
+
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.10.1".parse().unwrap();
+    let receiver_socket = Arc::new(tokio::net::UdpSocket::bind((addr_victim, 0)).await.expect("bind victim"));
+    let port = receiver_socket.local_addr().unwrap().port();
     let key = [0xDDu8; 32];
 
     let cfg = Config::default()
@@ -313,9 +319,11 @@ async fn replayed_sealed_datagram_is_rejected() {
         .unwrap()
         .with_cluster_key(ClusterKey::new(key));
 
-    let store = ReplicatedMap::<i32, i32>::new(cfg)
-        .await
-        .expect("bind failed");
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg,
+        Arc::new(UdpTransport::new(receiver_socket)),
+    )
+    .expect("valid test config");
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
 
     // Give the run loop time to start before injecting traffic.
@@ -364,9 +372,11 @@ async fn replayed_sealed_datagram_is_rejected() {
 async fn decommissioned_peer_replay_is_rejected() {
     use reconcile::testing::{members_snapshot, seal_datagram};
 
-    let port = 8094;
+
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim: std::net::IpAddr = "127.0.11.1".parse().unwrap();
+    let receiver_socket = Arc::new(tokio::net::UdpSocket::bind((addr_victim, 0)).await.expect("bind victim"));
+    let port = receiver_socket.local_addr().unwrap().port();
     let addr_sender: std::net::IpAddr = "127.0.11.2".parse().unwrap();
     let key = [0xEEu8; 32];
 
@@ -377,9 +387,11 @@ async fn decommissioned_peer_replay_is_rejected() {
         .unwrap()
         .with_cluster_key(ClusterKey::new(key));
 
-    let store = ReplicatedMap::<i32, i32>::new(cfg)
-        .await
-        .expect("bind failed");
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg,
+        Arc::new(UdpTransport::new(receiver_socket)),
+    )
+    .expect("valid test config");
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
 
     tokio::time::sleep(Duration::from_millis(20)).await;
