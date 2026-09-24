@@ -24,6 +24,22 @@ fn ephemeral_config() -> Config {
         .with_insecure_no_key()
 }
 
+fn virtual_config() -> Config {
+    Config::default().with_port(5000).with_insecure_no_key()
+}
+
+fn isolated_read_replica<K: crate::bounds::Key, V: crate::bounds::Value>(
+    config: Config,
+) -> super::ReadReplicaMap<K, V> {
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+
+    let network = crate::transport::InMemoryNetwork::new();
+    let endpoint = SocketAddr::new(config.listen_addr, config.port);
+    super::ReadReplicaMap::new_with_transport(config, Arc::new(network.bind(endpoint)))
+        .expect("valid test configuration")
+}
+
 async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
     for _ in 0..100 {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;

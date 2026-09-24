@@ -12,18 +12,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::super::*;
-use super::{ephemeral_config, wait_until};
+use super::{isolated_read_replica, virtual_config, wait_until};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
 use crate::replicated_map::Config;
+use crate::transport::UdpTransport;
 use gossip::replay;
 
 /// The on-update hook fires for every integrated value, including tombstones.
 #[tokio::test]
 async fn on_update_hook_fires() {
-    let read_replica = ReadReplicaMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, i32>(virtual_config());
     let count = Arc::new(AtomicUsize::new(0));
     let count2 = count.clone();
     read_replica.set_on_update(move |_, _| {
@@ -36,9 +35,7 @@ async fn on_update_hook_fires() {
 /// A second `set_on_update` call replaces the first hook rather than adding to it.
 #[tokio::test]
 async fn set_on_update_replaces_previous_hook() {
-    let read_replica = ReadReplicaMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, i32>(virtual_config());
     let first_count = Arc::new(AtomicUsize::new(0));
     let second_count = Arc::new(AtomicUsize::new(0));
 
@@ -66,13 +63,13 @@ async fn start_reconciliation_wrapper_actually_transmits() {
     use crate::transport::InMemoryNetwork;
 
     let net = InMemoryNetwork::new();
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000u16;
     let read_replica_addr: IpAddr = "127.0.5.2".parse().unwrap();
     let peer_addr: IpAddr = "127.0.5.3".parse().unwrap();
     let peer_transport = net.bind(SocketAddr::new(peer_addr, port));
 
     let read_replica = ReadReplicaMap::<i32, String>::new_with_transport(
-        ephemeral_config()
+        virtual_config()
             .with_port(port)
             .with_listen_addr(read_replica_addr),
         Arc::new(net.bind(SocketAddr::new(read_replica_addr, port))),
@@ -100,16 +97,21 @@ async fn start_reconciliation_wrapper_actually_transmits() {
 async fn a_maximum_size_datagram_is_received_not_discarded_as_too_small() {
     const BUFFER_SIZE: usize = 65507;
 
-    let port = crate::replica::tests::next_ephemeral_test_port();
     let addr: std::net::IpAddr = "127.0.0.1".parse().unwrap();
-    let read_replica = ReadReplicaMap::<i32, String>::new(
+    let socket = Arc::new(
+        tokio::net::UdpSocket::bind((addr, 0))
+            .await
+            .expect("bind receiver"),
+    );
+    let port = socket.local_addr().unwrap().port();
+    let read_replica = ReadReplicaMap::<i32, String>::new_with_transport(
         Config::default()
             .with_port(port)
             .with_listen_addr(addr)
             .with_insecure_no_key(),
+        Arc::new(UdpTransport::new(socket)),
     )
-    .await
-    .expect("bind failed");
+    .expect("valid test config");
     let task = tokio::spawn(read_replica.clone().run());
 
     // Pad a `StateUpdate` so the *sealed* datagram (the version-byte-framed wire form
