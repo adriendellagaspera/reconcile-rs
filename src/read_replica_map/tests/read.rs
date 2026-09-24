@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use super::super::*;
-use super::ephemeral_config;
+use super::{isolated_read_replica, virtual_config};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
 use crate::FingerprintTreeMap;
@@ -18,9 +18,7 @@ use rsos::Fingerprint;
 /// `get` returns the live value, and absent keys are `None`.
 #[tokio::test]
 async fn get_returns_integrated_value() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     assert!(read_replica.get(&1).is_none());
     read_replica.integrate(vec![(1, State::Present("hello".to_string()))]);
     assert_eq!(read_replica.get(&1).as_deref(), Some(&"hello".to_string()));
@@ -33,9 +31,7 @@ async fn get_returns_integrated_value() {
 /// (not filtered) since `snapshot` exposes the raw `State` wire representation.
 #[tokio::test]
 async fn snapshot_reflects_integrated_state_tombstones_included() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     read_replica.integrate(vec![
         (1, State::Present("hello".to_string())),
         (2, State::Tombstone),
@@ -63,9 +59,7 @@ async fn snapshot_reflects_integrated_state_tombstones_included() {
 /// `None` for one that was never integrated.
 #[tokio::test]
 async fn get_cloned_returns_an_owned_copy_or_none_for_a_missing_key() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     assert_eq!(read_replica.get_cloned(&1), None);
     read_replica.integrate(vec![(1, State::Present("hello".to_string()))]);
     assert_eq!(read_replica.get_cloned(&1), Some("hello".to_string()));
@@ -75,9 +69,7 @@ async fn get_cloned_returns_an_owned_copy_or_none_for_a_missing_key() {
 /// A replicated tombstone (`State::Tombstone`) hides the value but is still a stored entry.
 #[tokio::test]
 async fn replicates_tombstones() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     read_replica.integrate(vec![(1, State::Present("v".to_string()))]);
     assert_eq!(read_replica.get(&1).as_deref(), Some(&"v".to_string()));
 
@@ -101,9 +93,7 @@ async fn replicates_tombstones() {
 /// order, tombstones excluded.
 #[tokio::test]
 async fn collection_reads_exclude_tombstones() {
-    let read_replica = ReadReplicaMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, i32>(virtual_config());
     read_replica.integrate(vec![
         (1, State::Present(10)),
         (2, State::Present(20)),
@@ -130,9 +120,7 @@ async fn collection_reads_exclude_tombstones() {
 /// mirroring [`ReplicatedMap`](crate::ReplicatedMap)'s.
 #[tokio::test]
 async fn first_and_last_key_value_skip_boundary_tombstones() {
-    let read_replica = ReadReplicaMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, i32>(virtual_config());
     assert_eq!(read_replica.first_key_value(), None);
     assert_eq!(read_replica.last_key_value(), None);
 
@@ -159,9 +147,7 @@ async fn first_and_last_key_value_skip_boundary_tombstones() {
 /// logical content — i.e. timestamps genuinely play no part in the hash.
 #[tokio::test]
 async fn value_fingerprint_is_timestamp_independent() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     read_replica.integrate(vec![
         (1, State::Present("a".to_string())),
         (2, State::Tombstone),
@@ -184,7 +170,7 @@ async fn value_fingerprint_is_timestamp_independent() {
 #[allow(deprecated)]
 fn deprecated_fingerprint_alias_matches_value_fingerprint() {
     let read_replica = ReadReplicaMap::<i32, String>::new_with_transport(
-        ephemeral_config(),
+        virtual_config(),
         Arc::new(crate::transport::InMemoryNetwork::new().bind("127.0.5.1:1".parse().unwrap())),
     )
     .expect("valid configuration");
@@ -212,9 +198,7 @@ fn value_only_is_smaller_per_entry() {
 /// `is_empty` is `false` once a live (non-tombstone) value is integrated.
 #[tokio::test]
 async fn is_empty_is_false_once_a_live_value_is_integrated() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     assert!(read_replica.is_empty());
 
     read_replica.integrate(vec![(1, State::Present("hello".to_string()))]);
