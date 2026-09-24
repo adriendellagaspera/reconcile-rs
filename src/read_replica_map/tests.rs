@@ -25,9 +25,7 @@ fn ephemeral_config() -> Config {
 }
 
 fn virtual_config() -> Config {
-    Config::default()
-        .with_port(5000)
-        .with_insecure_no_key()
+    Config::default().with_port(5000).with_insecure_no_key()
 }
 
 fn isolated_read_replica<K: crate::bounds::Key, V: crate::bounds::Value>(
