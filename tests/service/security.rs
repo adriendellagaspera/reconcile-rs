@@ -22,15 +22,14 @@ use tokio_util::sync::CancellationToken;
 
 use reconcile::{replicated_map::Config, transport::UdpTransport, ClusterKey, ReplicatedMap};
 
-use crate::support::{assert_until, bind_udp_pair};
 #[cfg(feature = "encryption")]
 use crate::support::wait_until;
+use crate::support::{assert_until, bind_udp_pair};
 
 /// Two nodes sharing the same cluster key must still converge, proving that authenticated
 /// datagrams round-trip end-to-end through the MAC layer.
 #[tokio::test(flavor = "multi_thread")]
 async fn authenticated_nodes_converge() {
-
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.46".parse().unwrap();
     let addr2 = "127.0.0.47".parse().unwrap();
@@ -84,7 +83,6 @@ async fn authenticated_nodes_converge() {
 /// is delivered to each node.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_malformed_datagram_does_not_crash() {
-
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.46".parse().unwrap();
     let addr2 = "127.0.0.47".parse().unwrap();
@@ -132,7 +130,6 @@ async fn test_malformed_datagram_does_not_crash() {
 #[cfg(feature = "encryption")]
 #[tokio::test(flavor = "multi_thread")]
 async fn encrypted_nodes_converge() {
-
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.48".parse().unwrap();
     let addr2 = "127.0.0.49".parse().unwrap();
@@ -190,7 +187,6 @@ async fn encrypted_nodes_converge() {
 #[cfg(feature = "encryption")]
 #[tokio::test(flavor = "multi_thread")]
 async fn encrypted_node_with_wrong_key_is_rejected() {
-
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.50".parse().unwrap();
     let addr2 = "127.0.0.51".parse().unwrap();
@@ -215,9 +211,12 @@ async fn encrypted_node_with_wrong_key_is_rejected() {
         .with_seed(addr2);
     store1.insert("secret".to_string(), "value".to_string());
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::<String, String>::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
-        .expect("valid test config")
-        .with_seed(addr1);
+    let store2 = ReplicatedMap::<String, String>::new_with_transport(
+        cfg2,
+        Arc::new(UdpTransport::new(socket2)),
+    )
+    .expect("valid test config")
+    .with_seed(addr1);
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
 
@@ -239,10 +238,13 @@ async fn encrypted_node_with_wrong_key_is_rejected() {
 async fn stale_datagram_outside_freshness_window_is_rejected() {
     use reconcile::testing::seal_datagram;
 
-
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.9.1".parse().unwrap();
-    let receiver_socket = Arc::new(tokio::net::UdpSocket::bind((addr_victim, 0)).await.expect("bind victim"));
+    let receiver_socket = Arc::new(
+        tokio::net::UdpSocket::bind((addr_victim, 0))
+            .await
+            .expect("bind victim"),
+    );
     let port = receiver_socket.local_addr().unwrap().port();
     let key = [0xBBu8; 32];
 
@@ -305,10 +307,13 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
 async fn replayed_sealed_datagram_is_rejected() {
     use reconcile::testing::seal_datagram;
 
-
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.10.1".parse().unwrap();
-    let receiver_socket = Arc::new(tokio::net::UdpSocket::bind((addr_victim, 0)).await.expect("bind victim"));
+    let receiver_socket = Arc::new(
+        tokio::net::UdpSocket::bind((addr_victim, 0))
+            .await
+            .expect("bind victim"),
+    );
     let port = receiver_socket.local_addr().unwrap().port();
     let key = [0xDDu8; 32];
 
@@ -372,10 +377,13 @@ async fn replayed_sealed_datagram_is_rejected() {
 async fn decommissioned_peer_replay_is_rejected() {
     use reconcile::testing::{members_snapshot, seal_datagram};
 
-
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim: std::net::IpAddr = "127.0.11.1".parse().unwrap();
-    let receiver_socket = Arc::new(tokio::net::UdpSocket::bind((addr_victim, 0)).await.expect("bind victim"));
+    let receiver_socket = Arc::new(
+        tokio::net::UdpSocket::bind((addr_victim, 0))
+            .await
+            .expect("bind victim"),
+    );
     let port = receiver_socket.local_addr().unwrap().port();
     let addr_sender: std::net::IpAddr = "127.0.11.2".parse().unwrap();
     let key = [0xEEu8; 32];
