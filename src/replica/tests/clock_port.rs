@@ -11,6 +11,7 @@ use std::sync::Arc;
 use crate::clock::{Hlc, LogicalCounter, ManualClock, NodeId, PhysicalTime, Timestamp};
 use crate::replica::Replica;
 use crate::replicated_map::Config;
+use crate::transport::InMemoryNetwork;
 
 /// The engine mints timestamps only through the injected [`Clock`](crate::clock::Clock) port, so
 /// a deterministic adapter makes `clock_now()` fully reproducible — no wall-clock time involved.
@@ -22,9 +23,12 @@ async fn engine_mints_through_the_injected_clock() {
         .with_listen_addr("127.0.0.70".parse().unwrap())
         .with_insecure_no_key();
     let clock = Arc::new(ManualClock::new(NodeId::new(42)));
-    let eng: Replica<i32, i32> = Replica::new_with_clock(config, clock)
-        .await
-        .expect("bind failed");
+    let net = InMemoryNetwork::new();
+    let eng: Replica<i32, i32> = Replica::new_with_transport(
+        config,
+        Arc::new(net.bind("127.0.0.70:8080".parse().unwrap())),
+        clock,
+    );
 
     assert_eq!(
         eng.clock_now(),
