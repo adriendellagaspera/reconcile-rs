@@ -55,10 +55,6 @@ fn config_on_port(port: u16) -> Config {
     }
 }
 
-fn ephemeral_config() -> Config {
-    config_on_port(crate::replica::tests::next_ephemeral_test_port())
-}
-
 fn virtual_read_set(config: Config) -> ReadReplicaSet<i32> {
     let net = InMemoryNetwork::new();
     let endpoint = SocketAddr::new(config.listen_addr, config.port);
