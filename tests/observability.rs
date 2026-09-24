@@ -14,7 +14,6 @@
 //! scope here. Running on a `current_thread` runtime keeps the `async` work on the test thread
 //! so the lifecycle events of `ReplicatedMap::new` are captured.
 
-#[cfg(feature = "metrics")]
 use std::hash::Hash;
 #[cfg(feature = "metrics")]
 use std::net::SocketAddr;
@@ -24,7 +23,6 @@ use reconcile::{
     replicated_map::{Config, ConstructionError},
     ClusterKey, InMemoryNetwork, ReadReplicaMap, ReplicatedMap,
 };
-#[cfg(feature = "metrics")]
 use reconcile::{Key, Value};
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
