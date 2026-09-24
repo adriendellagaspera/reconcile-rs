@@ -6,7 +6,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::net::SocketAddr;
+use std::sync::Arc;
+
 use tokio_util::sync::CancellationToken;
+
+use crate::transport::{InMemoryNetwork, Transport};
 
 use crate::{replicated_map::Config, ReplicatedMap};
 
@@ -60,9 +65,12 @@ async fn peer_cap_blocks_unknown_sender_at_capacity() {
         .with_max_peers(2)
         .with_insecure_no_key();
 
-    let store = ReplicatedMap::<i32, i32>::new(config)
-        .await
-        .expect("bind failed");
+    let net = InMemoryNetwork::new();
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        config,
+        Arc::new(net.bind(SocketAddr::new(target_addr, port))),
+    )
+    .expect("valid test config");
 
     // Seed two known members directly (simulates two peers that already completed a
     // dated handshake with this store before the test window).
@@ -77,12 +85,10 @@ async fn peer_cap_blocks_unknown_sender_at_capacity() {
     // Send a valid dated payload from the newcomer's IP several times to ensure at least one
     // reaches the receive loop; all must be dropped by the cap.
     let payload = dated_comparison_payload();
-    let sender = tokio::net::UdpSocket::bind(std::net::SocketAddr::new(newcomer, 0))
-        .await
-        .expect("bind sender");
+    let sender = net.bind(SocketAddr::new(newcomer, port));
     for _ in 0..5 {
         let _ = sender
-            .send_to(&payload, std::net::SocketAddr::new(target_addr, port))
+            .send_to(&payload, &SocketAddr::new(target_addr, port))
             .await;
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
@@ -119,9 +125,12 @@ async fn peer_cap_allows_known_member_at_capacity() {
         .with_max_peers(2)
         .with_insecure_no_key();
 
-    let store = ReplicatedMap::<i32, i32>::new(config)
-        .await
-        .expect("bind failed");
+    let net = InMemoryNetwork::new();
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        config,
+        Arc::new(net.bind(SocketAddr::new(target_addr, port))),
+    )
+    .expect("valid test config");
 
     store.engine.members.write().insert(peer1);
     store.engine.members.write().insert(peer2);
@@ -133,14 +142,12 @@ async fn peer_cap_allows_known_member_at_capacity() {
 
     // Send a valid dated payload FROM a known member (peer1), retrying until accepted.
     let payload = dated_comparison_payload();
-    let sender = tokio::net::UdpSocket::bind(std::net::SocketAddr::new(peer1, 0))
-        .await
-        .expect("bind sender");
+    let sender = net.bind(SocketAddr::new(peer1, port));
 
     let mut peers_refreshed = false;
     for _ in 0..50 {
         let _ = sender
-            .send_to(&payload, std::net::SocketAddr::new(target_addr, port))
+            .send_to(&payload, &SocketAddr::new(target_addr, port))
             .await;
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         if store.engine.peers.read().contains_key(&peer1) {
@@ -170,15 +177,19 @@ async fn decommission_frees_peer_cap_slot() {
     let peer2: std::net::IpAddr = "127.1.0.2".parse().unwrap();
     let newcomer: std::net::IpAddr = "127.1.0.3".parse().unwrap();
 
+    let port = 9803u16; // Virtual port scoped to this test's in-memory network.
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(port)
         .with_listen_addr("127.0.0.1".parse().unwrap())
         .with_max_peers(2)
         .with_insecure_no_key();
 
-    let store = ReplicatedMap::<i32, i32>::new(config)
-        .await
-        .expect("bind failed");
+    let net = InMemoryNetwork::new();
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        config,
+        Arc::new(net.bind(SocketAddr::new("127.0.0.1".parse().unwrap(), port))),
+    )
+    .expect("valid test config");
 
     // Seed two members (simulates two peers that completed a dated exchange).
     store.engine.members.write().insert(peer1);
@@ -242,9 +253,12 @@ async fn peer_cap_no_replay_entry_for_capped_sender() {
         .with_cluster_key(gossip::auth::ClusterKey::new(cluster_key))
         .with_max_peers(2);
 
-    let store = ReplicatedMap::<i32, i32>::new(config)
-        .await
-        .expect("bind failed");
+    let net = InMemoryNetwork::new();
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        config,
+        Arc::new(net.bind(SocketAddr::new(target_addr, port))),
+    )
+    .expect("valid test config");
 
     store.engine.members.write().insert(peer1);
     store.engine.members.write().insert(peer2);
@@ -259,11 +273,9 @@ async fn peer_cap_no_replay_entry_for_capped_sender() {
             .unwrap()
             .seal(counter.next_seq(), counter.next_stamp(), &payload);
 
-    let sender = tokio::net::UdpSocket::bind(std::net::SocketAddr::new(newcomer, 0))
-        .await
-        .expect("bind sender");
+    let sender = net.bind(SocketAddr::new(newcomer, port));
     sender
-        .send_to(&sealed, std::net::SocketAddr::new(target_addr, port))
+        .send_to(&sealed, &SocketAddr::new(target_addr, port))
         .await
         .expect("send");
 
