@@ -6,18 +6,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::discovery::{DiscoverFuture, Discovery, DiscoveryKind};
+use crate::transport::InMemoryNetwork;
 use crate::{
     replicated_map::{Config, MemberPresence, NotAuthoritative},
     ReplicatedMap,
 };
 
-use super::ephemeral_config;
 
 /// A scriptable discovery source for the grace/decommission tests. The test thread swaps the
 /// response while the discovery loop runs.
@@ -80,9 +80,7 @@ impl Discovery for SpeculativeDiscovery {
 /// release the causal-stability GC gate).
 #[tokio::test]
 async fn with_discovery_rejects_a_speculative_source() {
-    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
-        .await
-        .expect("bind failed");
+    let store = discovery_store(discovery_config());
     assert_eq!(
         store.with_discovery(Arc::new(SpeculativeDiscovery)).err(),
         Some(NotAuthoritative {
@@ -107,12 +105,18 @@ fn not_authoritative_display_names_the_actual_kind() {
 }
 
 fn discovery_config() -> Config {
-    // A real, bindable loopback address (the engine binds a socket in `new`) on an ephemeral
-    // port. No `with_net`, mirroring the Kubernetes setup where discovery is purely DNS-driven.
+    // This scenario checks discovery and membership, not UDP binding.
     Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.1".parse().unwrap())
         .with_insecure_no_key()
+}
+
+fn discovery_store(config: Config) -> ReplicatedMap<i32, i32> {
+    let network = InMemoryNetwork::new();
+    let address = SocketAddr::new(config.listen_addr, config.port);
+    ReplicatedMap::new_with_transport(config, Arc::new(network.bind(address)))
+        .expect("valid discovery test config")
 }
 
 /// A member that vanishes from discovery for `miss_threshold` consecutive successful rounds is
@@ -123,9 +127,7 @@ async fn discovery_decommissions_vanished_member_but_not_self() {
     let member: IpAddr = "127.0.0.200".parse().unwrap();
 
     let fake = FakeDiscovery::new(FakeResp::Present(vec![member]));
-    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
-        .await
-        .expect("bind failed")
+    let store = discovery_store(discovery_config())
         .with_discovery(Arc::new(fake.clone()))
         .unwrap()
         .with_discovery_interval(Duration::from_millis(20))
@@ -168,9 +170,7 @@ async fn discovery_blip_does_not_decommission() {
 
     // Report the member present once so it enters `seen_ever`, then fail forever.
     let fake = FakeDiscovery::new(FakeResp::Present(vec![member]));
-    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
-        .await
-        .expect("bind failed")
+    let store = discovery_store(discovery_config())
         .with_discovery(Arc::new(fake.clone()))
         .unwrap()
         .with_discovery_interval(Duration::from_millis(20))
@@ -215,9 +215,7 @@ async fn discovery_failure_increments_the_failure_counter() {
     use metrics_util::debugging::{DebugValue, DebuggingRecorder};
 
     let fake = FakeDiscovery::new(FakeResp::Blip);
-    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
-        .await
-        .expect("bind failed")
+    let store = discovery_store(discovery_config())
         .with_discovery(Arc::new(fake))
         .unwrap()
         .with_discovery_interval(Duration::from_millis(5));
@@ -247,9 +245,7 @@ async fn discovery_failure_increments_the_failure_counter() {
 #[tokio::test(flavor = "multi_thread")]
 async fn last_successful_discovery_at_advances_only_on_success() {
     let fake = FakeDiscovery::new(FakeResp::Blip);
-    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
-        .await
-        .expect("bind failed")
+    let store = discovery_store(discovery_config())
         .with_discovery(Arc::new(fake.clone()))
         .unwrap()
         .with_discovery_interval(Duration::from_millis(20));
@@ -317,9 +313,7 @@ async fn pending_tombstone_acks_hold_decommission_past_the_miss_threshold() {
     let member: IpAddr = "127.0.0.210".parse().unwrap();
 
     let fake = FakeDiscovery::new(FakeResp::Present(vec![member]));
-    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
-        .await
-        .expect("bind failed")
+    let store = discovery_store(discovery_config())
         .with_discovery(Arc::new(fake.clone()))
         .unwrap()
         .with_discovery_interval(Duration::from_millis(15))
@@ -366,9 +360,7 @@ async fn reappearance_resets_the_floor_for_a_member_with_pending_acks() {
     let member: IpAddr = "127.0.0.211".parse().unwrap();
 
     let fake = FakeDiscovery::new(FakeResp::Present(vec![member]));
-    let store = ReplicatedMap::<i32, i32>::new(discovery_config())
-        .await
-        .expect("bind failed")
+    let store = discovery_store(discovery_config())
         .with_discovery(Arc::new(fake.clone()))
         .unwrap()
         .with_discovery_interval(Duration::from_millis(15))
@@ -419,11 +411,9 @@ async fn a_continuously_present_member_is_never_decommissioned() {
     }
 
     let peer: IpAddr = "127.0.0.201".parse().unwrap();
-    let store = ReplicatedMap::<i32, i32>::new(
-        ephemeral_config().with_listen_addr("127.0.0.200".parse().unwrap()),
+    let store = discovery_store(
+        discovery_config().with_listen_addr("127.0.0.200".parse().unwrap()),
     )
-    .await
-    .expect("bind failed")
     .with_discovery_interval(Duration::from_millis(5))
     // As strict as possible: a single erroneous miss would trip this.
     .with_discovery_miss_threshold(1)
