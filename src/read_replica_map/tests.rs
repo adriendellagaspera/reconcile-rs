@@ -16,14 +16,6 @@ mod read;
 mod value_ref;
 mod write;
 
-fn ephemeral_config() -> Config {
-    // A fresh port per call — Config::port must be nonzero — on the loopback default
-    // network.
-    Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
-        .with_insecure_no_key()
-}
-
 fn virtual_config() -> Config {
     Config::default().with_port(5000).with_insecure_no_key()
 }
