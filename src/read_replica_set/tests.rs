@@ -7,10 +7,13 @@
 // except according to those terms.
 
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 use std::time::Duration;
 
+use crate::read_replica_map::ReadReplicaMap;
 use crate::read_replica_set::ReadReplicaSet;
 use crate::replicated_map::{Config, MAX_NETS};
+use crate::transport::UdpTransport;
 use rsos::Fingerprint;
 
 async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
@@ -135,25 +138,36 @@ async fn value_fingerprint_and_its_deprecated_alias_reflect_converged_content() 
 /// loop is spawned on either side, so nothing but this call can produce the datagram.
 #[tokio::test]
 async fn start_reconciliation_wrapper_actually_transmits() {
-    let port = crate::replica::tests::next_ephemeral_test_port();
     let net: ipnet::IpNet = "127.0.6.0/24".parse().unwrap();
-    let replica_addr: std::net::IpAddr = "127.0.6.20".parse().unwrap();
-    let peer_addr: std::net::IpAddr = "127.0.6.21".parse().unwrap();
+    let replica_addr: IpAddr = "127.0.6.20".parse().unwrap();
+    let peer_addr: IpAddr = "127.0.6.21".parse().unwrap();
 
-    let peer_socket = tokio::net::UdpSocket::bind((peer_addr, port))
-        .await
-        .expect("peer bind failed");
+    // Both sockets remain bound throughout the test. Retry if another process already
+    // owns the OS-selected port on the replica's IP; never release a probed port.
+    let (peer_socket, replica_socket, port) = loop {
+        let peer_socket = tokio::net::UdpSocket::bind((peer_addr, 0))
+            .await
+            .expect("peer bind failed");
+        let port = peer_socket.local_addr().unwrap().port();
+        match tokio::net::UdpSocket::bind((replica_addr, port)).await {
+            Ok(replica_socket) => break (peer_socket, replica_socket, port),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => continue,
+            Err(error) => panic!("replica bind failed: {error}"),
+        }
+    };
 
-    let replica = ReadReplicaSet::<i32>::new(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(replica_addr)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key(),
+    let replica = ReadReplicaSet::<i32>(
+        ReadReplicaMap::new_with_transport(
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(replica_addr)
+                .with_net(net)
+                .unwrap()
+                .with_insecure_no_key(),
+            Arc::new(UdpTransport::new(Arc::new(replica_socket))),
+        )
+        .expect("valid test config"),
     )
-    .await
-    .expect("bind failed")
     .with_seed(peer_addr);
 
     replica.start_reconciliation().await;
