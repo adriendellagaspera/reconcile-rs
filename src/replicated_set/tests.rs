@@ -21,6 +21,14 @@ use crate::{FileSnapshot, ReplicatedMap};
 // field), so it is reachable through `super`, not through the crate-root re-export.
 use super::ReplicatedSet;
 
+// Only unit tests in this crate need to build a set from a shared in-memory
+// transport. Keep the wrapper's production representation private.
+impl<K: crate::bounds::Key + std::hash::Hash> ReplicatedSet<K> {
+    pub(crate) fn from_map_for_tests(map: ReplicatedMap<K, ()>) -> Self {
+        Self(map)
+    }
+}
+
 fn config_on_port(port: u16) -> Config {
     Config {
         port,
