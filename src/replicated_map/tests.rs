@@ -76,3 +76,21 @@ fn virtual_map<K: crate::bounds::Key + Hash, V: crate::bounds::Value>(
     super::ReplicatedMap::new_with_transport(config, Arc::new(network.bind(addr)))
         .expect("valid test configuration")
 }
+
+fn virtual_map_with_clock<K: crate::bounds::Key + Hash, V: crate::bounds::Value>(
+    config: Config,
+    clock: Arc<dyn crate::clock::Clock>,
+) -> super::ReplicatedMap<K, V> {
+    let network = crate::transport::InMemoryNetwork::new();
+    let endpoint = SocketAddr::new(config.listen_addr, config.port);
+    let engine = crate::replica::Replica::<K, V>::new_with_transport(
+        config.clone(),
+        Arc::new(network.bind(endpoint)),
+        clock,
+    );
+    super::ReplicatedMap::from_engine(
+        engine,
+        config.snapshot_interval,
+        config.snapshot_change_threshold,
+    )
+}
