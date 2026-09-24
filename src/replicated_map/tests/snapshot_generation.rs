@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 
 use crate::persistence::{PersistedState, Persistence};
-use crate::ReplicatedMap;
 
 use super::{virtual_config, virtual_map};
 
