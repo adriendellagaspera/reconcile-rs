@@ -93,9 +93,7 @@ async fn try_update_on_an_absent_key_succeeds_as_a_no_op_under_the_default_budge
 
 #[tokio::test(flavor = "multi_thread")]
 async fn try_insert_rejects_and_leaves_the_map_untouched_at_a_zero_budget() {
-    let store = isolated_config(
-        config(8321, "127.0.0.241").with_max_concurrent_broadcasts(0),
-    );
+    let store = isolated_config(config(8321, "127.0.0.241").with_max_concurrent_broadcasts(0));
 
     assert_zero_budget_backpressure(
         store
@@ -110,9 +108,7 @@ async fn try_insert_rejects_and_leaves_the_map_untouched_at_a_zero_budget() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn try_update_rejects_and_leaves_the_map_untouched_at_a_zero_budget() {
-    let store = isolated_config(
-        config(8322, "127.0.0.242").with_max_concurrent_broadcasts(0),
-    );
+    let store = isolated_config(config(8322, "127.0.0.242").with_max_concurrent_broadcasts(0));
     // `load_bulk` never broadcasts, so it is unaffected by the zero budget: the one way to seed
     // a live value here.
     store.load_bulk(&[(1, 10)]);
@@ -133,9 +129,7 @@ async fn try_update_rejects_and_leaves_the_map_untouched_at_a_zero_budget() {
 async fn try_update_on_an_absent_key_still_rejects_at_a_zero_budget() {
     // #83's all-or-nothing guarantee claims the slot *before* checking liveness, so even the
     // branch `update` treats as a free no-op is budget-gated here.
-    let store = isolated_config(
-        config(8324, "127.0.0.245").with_max_concurrent_broadcasts(0),
-    );
+    let store = isolated_config(config(8324, "127.0.0.245").with_max_concurrent_broadcasts(0));
 
     assert_zero_budget_backpressure(
         store
