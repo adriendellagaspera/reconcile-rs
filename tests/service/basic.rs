@@ -52,12 +52,12 @@ async fn test() {
 
     let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
         .expect("valid test config")
-    .with_seed(addr2);
+        .with_seed(addr2);
     store1.insert_bulk(&key_values);
     let start_fingerprint = store1.fingerprint(..);
     let store2 = ReplicatedMap::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
         .expect("valid test config")
-    .with_seed(addr1);
+        .with_seed(addr1);
     // Check the initial state *before* spawning the run loops: store1's `insert_bulk` already
     // spawned a background broadcast to its seeded peer (store2), so once store2 starts
     // receiving these asserts would race with reconciliation.
@@ -157,10 +157,10 @@ async fn get_mut_edit_propagates_to_peers() {
 
     let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
         .expect("valid test config")
-    .with_seed(addr2);
+        .with_seed(addr2);
     let store2 = ReplicatedMap::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
         .expect("valid test config")
-    .with_seed(addr1);
+        .with_seed(addr1);
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
 
