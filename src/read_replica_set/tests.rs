@@ -86,33 +86,38 @@ async fn value_fingerprint_and_its_deprecated_alias_reflect_converged_content() 
     use crate::replicated_set::ReplicatedSet;
     use tokio_util::sync::CancellationToken;
 
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000u16;
+    let network = InMemoryNetwork::new();
     let net: ipnet::IpNet = "127.0.6.0/24".parse().unwrap();
     let dated_addr: std::net::IpAddr = "127.0.6.10".parse().unwrap();
     let replica_addr: std::net::IpAddr = "127.0.6.11".parse().unwrap();
 
-    let dated = ReplicatedSet::<i32>::new(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(dated_addr)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key(),
-    )
-    .await
-    .expect("bind failed");
+    let dated = ReplicatedSet::from_map_for_tests(
+        crate::ReplicatedMap::<i32, ()>::new_with_transport(
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(dated_addr)
+                .with_net(net)
+                .unwrap()
+                .with_insecure_no_key(),
+            Arc::new(network.bind(SocketAddr::new(dated_addr, port))),
+        )
+        .expect("valid test configuration"),
+    );
     assert!(dated.insert(7), "key 7 must be newly inserted");
 
-    let replica = ReadReplicaSet::<i32>::new(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(replica_addr)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key(),
+    let replica = ReadReplicaSet(
+        ReadReplicaMap::<i32, ()>::new_with_transport(
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(replica_addr)
+                .with_net(net)
+                .unwrap()
+                .with_insecure_no_key(),
+            Arc::new(network.bind(SocketAddr::new(replica_addr, port))),
+        )
+        .expect("valid test configuration"),
     )
-    .await
-    .expect("bind failed")
     .with_seed(dated_addr);
 
     let dated_task = tokio::spawn(dated.clone().run(CancellationToken::new()));
@@ -212,33 +217,38 @@ async fn with_discovery_converges_without_with_seed() {
         }
     }
 
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000u16;
+    let network = InMemoryNetwork::new();
     let net: ipnet::IpNet = "127.0.7.0/24".parse().unwrap();
     let dated_addr: IpAddr = "127.0.7.10".parse().unwrap();
     let replica_addr: IpAddr = "127.0.7.11".parse().unwrap();
 
-    let dated = ReplicatedSet::<i32>::new(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(dated_addr)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key(),
-    )
-    .await
-    .expect("bind failed");
+    let dated = ReplicatedSet::from_map_for_tests(
+        crate::ReplicatedMap::<i32, ()>::new_with_transport(
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(dated_addr)
+                .with_net(net)
+                .unwrap()
+                .with_insecure_no_key(),
+            Arc::new(network.bind(SocketAddr::new(dated_addr, port))),
+        )
+        .expect("valid test configuration"),
+    );
     assert!(dated.insert(9), "key 9 must be newly inserted");
 
-    let replica = ReadReplicaSet::<i32>::new(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(replica_addr)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key(),
+    let replica = ReadReplicaSet(
+        ReadReplicaMap::<i32, ()>::new_with_transport(
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(replica_addr)
+                .with_net(net)
+                .unwrap()
+                .with_insecure_no_key(),
+            Arc::new(network.bind(SocketAddr::new(replica_addr, port))),
+        )
+        .expect("valid test configuration"),
     )
-    .await
-    .expect("bind failed")
     .with_discovery(Arc::new(FixedDiscovery(dated_addr)))
     .with_discovery_interval(Duration::from_millis(15));
 
@@ -269,28 +279,44 @@ async fn with_dns_discovery_converges_via_localhost_resolution() {
     use crate::replicated_set::ReplicatedSet;
     use tokio_util::sync::CancellationToken;
 
-    let port = crate::replica::tests::next_ephemeral_test_port();
     let dated_addr: std::net::IpAddr = "127.0.0.1".parse().unwrap();
     let replica_addr: std::net::IpAddr = "127.0.7.40".parse().unwrap();
+    let (dated_socket, replica_socket, port) = loop {
+        let dated_socket = Arc::new(
+            tokio::net::UdpSocket::bind((dated_addr, 0))
+                .await
+                .expect("bind dated peer"),
+        );
+        let port = dated_socket.local_addr().unwrap().port();
+        match tokio::net::UdpSocket::bind((replica_addr, port)).await {
+            Ok(replica_socket) => break (dated_socket, Arc::new(replica_socket), port),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => continue,
+            Err(error) => panic!("bind read replica: {error}"),
+        }
+    };
 
-    let dated = ReplicatedSet::<i32>::new(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(dated_addr)
-            .with_insecure_no_key(),
-    )
-    .await
-    .expect("bind failed");
+    let dated = ReplicatedSet::from_map_for_tests(
+        crate::ReplicatedMap::<i32, ()>::new_with_transport(
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(dated_addr)
+                .with_insecure_no_key(),
+            Arc::new(UdpTransport::new(dated_socket)),
+        )
+        .expect("valid test configuration"),
+    );
     assert!(dated.insert(11), "key 11 must be newly inserted");
 
-    let replica = ReadReplicaSet::<i32>::new(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(replica_addr)
-            .with_insecure_no_key(),
+    let replica = ReadReplicaSet(
+        ReadReplicaMap::<i32, ()>::new_with_transport(
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(replica_addr)
+                .with_insecure_no_key(),
+            Arc::new(UdpTransport::new(replica_socket)),
+        )
+        .expect("valid test configuration"),
     )
-    .await
-    .expect("bind failed")
     .with_dns_discovery("localhost", port)
     .with_discovery_interval(Duration::from_millis(15));
 
