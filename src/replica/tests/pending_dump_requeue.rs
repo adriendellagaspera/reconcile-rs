@@ -45,7 +45,7 @@ fn live_view(eng: &Replica<u32, u32>) -> BTreeMap<u32, u32> {
 #[tokio::test]
 async fn wide_scattered_divergence_converges_on_a_single_round() {
     let net = InMemoryNetwork::new();
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000u16;
     let a_ip: IpAddr = "127.0.0.4".parse().unwrap();
     let b_ip: IpAddr = "127.0.0.5".parse().unwrap();
     let cfg = |ip: IpAddr| {
