@@ -20,10 +20,10 @@ type Tombstoned = Entry<Timestamp, i32>;
 
 async fn engine(addr: &str) -> Replica<i32, i32> {
     let config = Config::default()
-        .with_port(8080)
+        .with_port(5000)
         .with_listen_addr(addr.parse().unwrap())
         .with_insecure_no_key();
-    Replica::new(config).await.expect("bind failed")
+    super::in_memory_test_replica(config)
 }
 
 #[tokio::test]
