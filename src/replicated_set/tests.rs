@@ -154,7 +154,7 @@ async fn local_addr_matches_the_configured_bind_address() {
     let socket = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
     let config = config_on_port(socket.local_addr().unwrap().port());
     let expected = SocketAddr::new(config.listen_addr, config.port);
-    let set = ReplicatedSet(
+    let set = ReplicatedSet::<i32>(
         ReplicatedMap::new_with_transport(config, Arc::new(UdpTransport::new(socket)))
             .expect("valid test configuration"),
     );
