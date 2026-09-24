@@ -516,9 +516,10 @@ async fn config_snapshot_interval_actually_changes_the_periodic_cadence() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fast_cadence.bin");
     let short_interval = Duration::from_millis(20);
-    let store = virtual_map::<i32, i32>(virtual_config().with_snapshot_interval(Some(short_interval)))
-    .with_persistence(Arc::new(FileSnapshot::new(&path)))
-    .unwrap();
+    let store =
+        virtual_map::<i32, i32>(virtual_config().with_snapshot_interval(Some(short_interval)))
+            .with_persistence(Arc::new(FileSnapshot::new(&path)))
+            .unwrap();
     store.just_insert(1, 10);
 
     let store2 = store.clone();
