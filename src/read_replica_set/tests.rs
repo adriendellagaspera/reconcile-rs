@@ -8,15 +8,12 @@
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::sync::Arc;
 use std::time::Duration;
 
 use crate::read_replica_map::ReadReplicaMap;
-use crate::read_replica_map::ReadReplicaMap;
 use crate::read_replica_set::ReadReplicaSet;
-use crate::transport::{InMemoryNetwork, UdpTransport};
 use crate::replicated_map::{Config, MAX_NETS};
-use crate::transport::UdpTransport;
+use crate::transport::{InMemoryNetwork, UdpTransport};
 use rsos::Fingerprint;
 
 async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
@@ -329,7 +326,7 @@ async fn local_addr_matches_the_configured_bind_address() {
     let config = config_on_port(socket.local_addr().unwrap().port());
     let expected = SocketAddr::new(config.listen_addr, config.port);
     let replica = ReadReplicaSet(
-        ReadReplicaMap::new_with_transport(config, Arc::new(UdpTransport::new(socket)))
+        ReadReplicaMap::<i32, ()>::new_with_transport(config, Arc::new(UdpTransport::new(socket)))
             .expect("valid test config"),
     );
     assert_eq!(
@@ -386,7 +383,8 @@ async fn seed_peer_registers_a_peer_visible_via_peers() {
 /// entire test window.
 #[tokio::test(flavor = "multi_thread")]
 async fn set_reconcile_interval_actually_retunes_the_idle_timeout() {
-    let replica = virtual_read_set(config_on_port(5000).with_reconcile_interval(Duration::from_secs(3600)));
+    let replica =
+        virtual_read_set(config_on_port(5000).with_reconcile_interval(Duration::from_secs(3600)));
     replica.set_reconcile_interval(Duration::from_millis(20));
 
     let task = tokio::spawn(replica.clone().run());
