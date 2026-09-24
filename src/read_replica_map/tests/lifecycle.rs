@@ -10,7 +10,7 @@
 //! `local_addr`/`sync_state`/`seed_peer`/`set_reconcile_interval` — mirroring
 //! `replicated_map/tests/lifecycle.rs`'s equivalent coverage for `ReplicatedMap`.
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
