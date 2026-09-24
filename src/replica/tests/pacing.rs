@@ -100,11 +100,11 @@ async fn tiny_bulk_send_rate_is_clamped_to_the_floor() {
         let config = Config {
             bulk_send_rate,
             ..Config::default()
-                .with_port(crate::replica::tests::next_ephemeral_test_port())
+                .with_port(5000)
                 .with_listen_addr(addr.parse().unwrap())
                 .with_insecure_no_key()
         };
-        Replica::new(config).await.expect("bind failed")
+        super::in_memory_test_replica(config)
     }
 
     let tiny = engine("127.0.0.80", Some(1)).await;
