@@ -83,7 +83,7 @@ fn engine_with_counter(
 #[tokio::test]
 async fn a_peer_with_a_recent_bulk_update_is_excluded_from_the_round() {
     let net = InMemoryNetwork::new();
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000u16;
     let a_ip: IpAddr = "127.0.0.40".parse().unwrap();
     let peer_ip: IpAddr = "127.0.0.41".parse().unwrap();
     let (a, counter) = engine_with_counter(a_ip, peer_ip, port, &net, Duration::from_secs(3600));
@@ -105,7 +105,7 @@ async fn a_peer_with_a_recent_bulk_update_is_excluded_from_the_round() {
 #[tokio::test]
 async fn a_peer_with_no_recent_bulk_update_is_still_included_in_the_round() {
     let net = InMemoryNetwork::new();
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000u16;
     let a_ip: IpAddr = "127.0.0.42".parse().unwrap();
     let peer_ip: IpAddr = "127.0.0.43".parse().unwrap();
     let (a, counter) = engine_with_counter(a_ip, peer_ip, port, &net, Duration::from_secs(3600));
@@ -125,7 +125,7 @@ async fn a_peer_with_no_recent_bulk_update_is_still_included_in_the_round() {
 #[tokio::test]
 async fn the_exclusion_lapses_once_repair_interval_elapses_with_no_further_update() {
     let net = InMemoryNetwork::new();
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000u16;
     let a_ip: IpAddr = "127.0.0.44".parse().unwrap();
     let peer_ip: IpAddr = "127.0.0.45".parse().unwrap();
     let (a, counter) = engine_with_counter(a_ip, peer_ip, port, &net, Duration::from_millis(20));

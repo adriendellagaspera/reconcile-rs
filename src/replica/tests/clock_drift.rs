@@ -14,8 +14,6 @@ use crate::replica::Replica;
 use crate::replicated_map::Config;
 use crate::transport::InMemoryNetwork;
 
-use super::next_ephemeral_test_port;
-
 /// `Config::max_clock_drift` (#292) must actually reach the [`HlcClock`](crate::clock::HlcClock)
 /// [`Replica::new`]/[`Replica::with_transport`] construct — not just the hardcoded
 /// [`MAX_CLOCK_DRIFT`](crate::clock::MAX_CLOCK_DRIFT) default `HlcClock::new` falls back to on its
@@ -25,7 +23,7 @@ use super::next_ephemeral_test_port;
 #[tokio::test]
 async fn config_max_clock_drift_reaches_the_constructed_clock() {
     let net = InMemoryNetwork::new();
-    let port = next_ephemeral_test_port();
+    let port = 5000u16;
     let ip: IpAddr = "127.0.9.1".parse().unwrap();
     let cfg = Config::default()
         .with_listen_addr(ip)

@@ -19,6 +19,8 @@ use tokio_util::sync::CancellationToken;
 use crate::transport::InMemoryNetwork;
 use crate::{FileSnapshot, ReplicatedMap};
 
+use crate::replicated_map::Config;
+
 use super::ephemeral_config;
 
 async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
@@ -73,11 +75,12 @@ async fn sync_state_advances_as_the_engine_runs() {
 #[tokio::test(flavor = "multi_thread")]
 async fn peers_and_members_reflect_a_converged_pair() {
     let net = InMemoryNetwork::new();
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000u16;
     let a_ip: IpAddr = "127.0.10.1".parse().unwrap();
     let b_ip: IpAddr = "127.0.10.2".parse().unwrap();
     let cfg = |ip: IpAddr| {
-        ephemeral_config()
+        Config::default()
+            .with_insecure_no_key()
             .with_listen_addr(ip)
             .with_port(port)
             .with_reconcile_interval(Duration::from_millis(20))
