@@ -14,18 +14,22 @@ use rand::{
     Rng, SeedableRng,
 };
 
+use std::sync::Arc;
+
 use tokio_util::sync::CancellationToken;
 
-use reconcile::{clock::NodeId, replicated_map::Config, Fingerprint, ReplicatedMap};
+use reconcile::{
+    clock::NodeId, replicated_map::Config, transport::UdpTransport, Fingerprint, ReplicatedMap,
+};
 
-use crate::support::assert_until;
+use crate::support::{assert_until, bind_udp_pair};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test() {
-    let port = 8080;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.44".parse().unwrap();
     let addr2 = "127.0.0.45".parse().unwrap();
+    let (port, socket1, socket2) = bind_udp_pair(addr1, addr2).await;
     let cfg1 = Config::default()
         .with_port(port)
         .with_listen_addr(addr1)
@@ -46,15 +50,13 @@ async fn test() {
         (key, value)
     });
 
-    let store1 = ReplicatedMap::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
+        .expect("valid test config")
         .with_seed(addr2);
     store1.insert_bulk(&key_values);
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
+        .expect("valid test config")
         .with_seed(addr1);
     // Check the initial state *before* spawning the run loops: store1's `insert_bulk` already
     // spawned a background broadcast to its seeded peer (store2), so once store2 starts
@@ -136,10 +138,10 @@ async fn test() {
 /// edited value exactly as for an `insert`.
 #[tokio::test(flavor = "multi_thread")]
 async fn get_mut_edit_propagates_to_peers() {
-    let port = 8089;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.100".parse().unwrap();
     let addr2 = "127.0.0.101".parse().unwrap();
+    let (port, socket1, socket2) = bind_udp_pair(addr1, addr2).await;
     let cfg1 = Config::default()
         .with_port(port)
         .with_listen_addr(addr1)
@@ -153,13 +155,11 @@ async fn get_mut_edit_propagates_to_peers() {
         .unwrap()
         .with_insecure_no_key();
 
-    let store1 = ReplicatedMap::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
+        .expect("valid test config")
         .with_seed(addr2);
-    let store2 = ReplicatedMap::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
+        .expect("valid test config")
         .with_seed(addr1);
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
@@ -193,10 +193,10 @@ async fn get_mut_edit_propagates_to_peers() {
 /// of the fingerprint, re-exchanging the pair forever. The assertions below time out if so.
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_writes_converge() {
-    let port = 8083;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.80".parse().unwrap();
     let addr2 = "127.0.0.81".parse().unwrap();
+    let (port, socket1, socket2) = bind_udp_pair(addr1, addr2).await;
     // Fixed, distinct node ids give a deterministic conflict winner (the higher id).
     let cfg1 = Config::default()
         .with_port(port)
@@ -213,14 +213,18 @@ async fn concurrent_writes_converge() {
         .with_node_id(NodeId::new(2))
         .with_insecure_no_key();
 
-    let store1 = ReplicatedMap::<String, String>::new(cfg1)
-        .await
-        .expect("bind failed")
-        .with_seed(addr2);
-    let store2 = ReplicatedMap::<String, String>::new(cfg2)
-        .await
-        .expect("bind failed")
-        .with_seed(addr1);
+    let store1 = ReplicatedMap::<String, String>::new_with_transport(
+        cfg1,
+        Arc::new(UdpTransport::new(socket1)),
+    )
+    .expect("valid test config")
+    .with_seed(addr2);
+    let store2 = ReplicatedMap::<String, String>::new_with_transport(
+        cfg2,
+        Arc::new(UdpTransport::new(socket2)),
+    )
+    .expect("valid test config")
+    .with_seed(addr1);
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
 

@@ -16,22 +16,24 @@ use rand::{
     SeedableRng,
 };
 
+use std::sync::Arc;
+
 use tokio_util::sync::CancellationToken;
 
-use reconcile::{replicated_map::Config, ClusterKey, ReplicatedMap};
+use reconcile::{replicated_map::Config, transport::UdpTransport, ClusterKey, ReplicatedMap};
 
-use crate::support::assert_until;
 #[cfg(feature = "encryption")]
 use crate::support::wait_until;
+use crate::support::{assert_until, bind_udp_pair};
 
 /// Two nodes sharing the same cluster key must still converge, proving that authenticated
 /// datagrams round-trip end-to-end through the MAC layer.
 #[tokio::test(flavor = "multi_thread")]
 async fn authenticated_nodes_converge() {
-    let port = 8081;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.46".parse().unwrap();
     let addr2 = "127.0.0.47".parse().unwrap();
+    let (port, socket1, socket2) = bind_udp_pair(addr1, addr2).await;
     let key = [0x42u8; 32];
     let cfg1 = Config::default()
         .with_port(port)
@@ -53,15 +55,13 @@ async fn authenticated_nodes_converge() {
         (key, value)
     });
 
-    let store1 = ReplicatedMap::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
+        .expect("valid test config")
         .with_seed(addr2);
     store1.insert_bulk(&key_values);
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
+        .expect("valid test config")
         .with_seed(addr1);
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
@@ -83,10 +83,10 @@ async fn authenticated_nodes_converge() {
 /// is delivered to each node.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_malformed_datagram_does_not_crash() {
-    let port = 8082;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.46".parse().unwrap();
     let addr2 = "127.0.0.47".parse().unwrap();
+    let (port, socket1, socket2) = bind_udp_pair(addr1, addr2).await;
     let cfg1 = Config::default()
         .with_port(port)
         .with_listen_addr(addr1)
@@ -100,13 +100,11 @@ async fn test_malformed_datagram_does_not_crash() {
         .unwrap()
         .with_insecure_no_key();
 
-    let store1 = ReplicatedMap::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
+        .expect("valid test config")
         .with_seed(addr2);
-    let store2 = ReplicatedMap::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
+        .expect("valid test config")
         .with_seed(addr1);
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
@@ -132,10 +130,10 @@ async fn test_malformed_datagram_does_not_crash() {
 #[cfg(feature = "encryption")]
 #[tokio::test(flavor = "multi_thread")]
 async fn encrypted_nodes_converge() {
-    let port = 8083;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.48".parse().unwrap();
     let addr2 = "127.0.0.49".parse().unwrap();
+    let (port, socket1, socket2) = bind_udp_pair(addr1, addr2).await;
     let key = [0x42u8; 32];
     let cfg1 = Config::default()
         .with_port(port)
@@ -159,15 +157,13 @@ async fn encrypted_nodes_converge() {
         (key, value)
     });
 
-    let store1 = ReplicatedMap::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
+        .expect("valid test config")
         .with_seed(addr2);
     store1.insert_bulk(&key_values);
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
+        .expect("valid test config")
         .with_seed(addr1);
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
@@ -191,10 +187,10 @@ async fn encrypted_nodes_converge() {
 #[cfg(feature = "encryption")]
 #[tokio::test(flavor = "multi_thread")]
 async fn encrypted_node_with_wrong_key_is_rejected() {
-    let port = 8084;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.50".parse().unwrap();
     let addr2 = "127.0.0.51".parse().unwrap();
+    let (port, socket1, socket2) = bind_udp_pair(addr1, addr2).await;
     let cfg1 = Config::default()
         .with_port(port)
         .with_listen_addr(addr1)
@@ -210,16 +206,17 @@ async fn encrypted_node_with_wrong_key_is_rejected() {
         .with_cluster_key(ClusterKey::new([0x99u8; 32])) // different key
         .with_encryption();
 
-    let store1 = ReplicatedMap::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
+        .expect("valid test config")
         .with_seed(addr2);
     store1.insert("secret".to_string(), "value".to_string());
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::<String, String>::new(cfg2)
-        .await
-        .expect("bind failed")
-        .with_seed(addr1);
+    let store2 = ReplicatedMap::<String, String>::new_with_transport(
+        cfg2,
+        Arc::new(UdpTransport::new(socket2)),
+    )
+    .expect("valid test config")
+    .with_seed(addr1);
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
 
@@ -241,9 +238,14 @@ async fn encrypted_node_with_wrong_key_is_rejected() {
 async fn stale_datagram_outside_freshness_window_is_rejected() {
     use reconcile::testing::seal_datagram;
 
-    let port = 8092;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.9.1".parse().unwrap();
+    let receiver_socket = Arc::new(
+        tokio::net::UdpSocket::bind((addr_victim, 0))
+            .await
+            .expect("bind victim"),
+    );
+    let port = receiver_socket.local_addr().unwrap().port();
     let key = [0xBBu8; 32];
 
     let cfg = Config::default()
@@ -253,9 +255,11 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
         .unwrap()
         .with_cluster_key(ClusterKey::new(key));
 
-    let store = ReplicatedMap::<i32, i32>::new(cfg)
-        .await
-        .expect("bind failed");
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg,
+        Arc::new(UdpTransport::new(receiver_socket)),
+    )
+    .expect("valid test config");
     store.just_insert(0, 99);
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
 
@@ -303,9 +307,14 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
 async fn replayed_sealed_datagram_is_rejected() {
     use reconcile::testing::seal_datagram;
 
-    let port = 8093;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.10.1".parse().unwrap();
+    let receiver_socket = Arc::new(
+        tokio::net::UdpSocket::bind((addr_victim, 0))
+            .await
+            .expect("bind victim"),
+    );
+    let port = receiver_socket.local_addr().unwrap().port();
     let key = [0xDDu8; 32];
 
     let cfg = Config::default()
@@ -315,9 +324,11 @@ async fn replayed_sealed_datagram_is_rejected() {
         .unwrap()
         .with_cluster_key(ClusterKey::new(key));
 
-    let store = ReplicatedMap::<i32, i32>::new(cfg)
-        .await
-        .expect("bind failed");
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg,
+        Arc::new(UdpTransport::new(receiver_socket)),
+    )
+    .expect("valid test config");
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
 
     // Give the run loop time to start before injecting traffic.
@@ -366,9 +377,14 @@ async fn replayed_sealed_datagram_is_rejected() {
 async fn decommissioned_peer_replay_is_rejected() {
     use reconcile::testing::{members_snapshot, seal_datagram};
 
-    let port = 8094;
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim: std::net::IpAddr = "127.0.11.1".parse().unwrap();
+    let receiver_socket = Arc::new(
+        tokio::net::UdpSocket::bind((addr_victim, 0))
+            .await
+            .expect("bind victim"),
+    );
+    let port = receiver_socket.local_addr().unwrap().port();
     let addr_sender: std::net::IpAddr = "127.0.11.2".parse().unwrap();
     let key = [0xEEu8; 32];
 
@@ -379,9 +395,11 @@ async fn decommissioned_peer_replay_is_rejected() {
         .unwrap()
         .with_cluster_key(ClusterKey::new(key));
 
-    let store = ReplicatedMap::<i32, i32>::new(cfg)
-        .await
-        .expect("bind failed");
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg,
+        Arc::new(UdpTransport::new(receiver_socket)),
+    )
+    .expect("valid test config");
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
 
     tokio::time::sleep(Duration::from_millis(20)).await;
