@@ -6,6 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use bincode::{DefaultOptions, Serializer};
@@ -17,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 use super::super::Message;
 use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
 use crate::entry::{Entry, State};
+use crate::transport::UdpTransport;
 use crate::{replicated_map::Config, ReplicatedMap};
 use gossip::auth;
 
@@ -43,15 +45,19 @@ fn forged_update() -> Vec<u8> {
 #[tokio::test(flavor = "multi_thread")]
 async fn forged_datagram_is_ignored() {
     let key = [0x42u8; auth::KEY_LEN];
-    let port = 8082;
     let victim_addr = "127.0.0.48";
+    // Retain the OS-selected socket for the lifetime of the victim: no port probe/rebind gap.
+    let victim_socket = Arc::new(UdpSocket::bind(format!("{victim_addr}:0")).await.unwrap());
+    let port = victim_socket.local_addr().unwrap().port();
     let config = Config::default()
         .with_port(port)
         .with_listen_addr(victim_addr.parse().unwrap())
         .with_cluster_key(auth::ClusterKey::new(key));
-    let store = ReplicatedMap::<i32, String>::new(config)
-        .await
-        .expect("bind failed");
+    let store = ReplicatedMap::<i32, String>::new_with_transport(
+        config,
+        Arc::new(UdpTransport::new(victim_socket)),
+    )
+    .expect("valid test config");
     store.just_insert(0, "legit".to_string());
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
 
