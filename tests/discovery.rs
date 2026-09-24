@@ -10,14 +10,14 @@
 //! from the discovery source is decommissioned after the grace period, releasing the causal
 //! stability gate that was holding back a tombstone's garbage collection.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
 use reconcile::discovery::{DiscoverFuture, Discovery, DiscoveryKind};
-use reconcile::{replicated_map::Config, ReplicatedMap};
+use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
 
 async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
     for _ in 0..200 {
@@ -67,7 +67,8 @@ impl Discovery for ScriptedDiscovery {
 /// tombstone it had not acknowledged finally be garbage-collected.
 #[tokio::test(flavor = "multi_thread")]
 async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
-    let port = 8097; // dedicated port isolates this test's random probing from the others
+    let port = 5000u16;
+    let network = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1: IpAddr = "127.0.0.86".parse().unwrap();
     let addr2: IpAddr = "127.0.0.87".parse().unwrap();
@@ -86,9 +87,11 @@ async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
 
     // store1 finds peers through discovery (which initially reports store2 present).
     let discovery = ScriptedDiscovery::new(vec![addr2]);
-    let store1 = ReplicatedMap::<i32, i32>::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg1,
+        Arc::new(network.bind(SocketAddr::new(addr1, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr2)
         .with_tombstone_timeout(Duration::from_millis(50))
         .with_discovery(Arc::new(discovery.clone()))
@@ -99,9 +102,11 @@ async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
         // decommissioning takes the wall-time-floor path, not the miss-threshold fast path; keep
         // the floor short so the test still runs quickly.
         .with_discovery_decommission_floor(Duration::from_millis(50));
-    let store2 = ReplicatedMap::<i32, i32>::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg2,
+        Arc::new(network.bind(SocketAddr::new(addr2, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr1)
         .with_tombstone_timeout(Duration::from_millis(50));
 
