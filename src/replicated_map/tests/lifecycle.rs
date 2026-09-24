@@ -39,11 +39,9 @@ async fn local_addr_matches_the_configured_bind_address() {
     let socket = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
     let expected = socket.local_addr().unwrap();
     let config = virtual_config().with_port(expected.port());
-    let store = ReplicatedMap::<i32, i32>::new_with_transport(
-        config,
-        Arc::new(UdpTransport::new(socket)),
-    )
-    .expect("valid test configuration");
+    let store =
+        ReplicatedMap::<i32, i32>::new_with_transport(config, Arc::new(UdpTransport::new(socket)))
+            .expect("valid test configuration");
     assert_eq!(
         store
             .local_addr()
