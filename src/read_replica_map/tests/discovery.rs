@@ -66,9 +66,7 @@ fn discovery_config() -> crate::replicated_map::Config {
         .with_insecure_no_key()
 }
 
-fn read_discovery_replica(
-    config: crate::replicated_map::Config,
-) -> ReadReplicaMap<i32, String> {
+fn read_discovery_replica(config: crate::replicated_map::Config) -> ReadReplicaMap<i32, String> {
     let network = InMemoryNetwork::new();
     let addr = SocketAddr::new(config.listen_addr, config.port);
     ReadReplicaMap::new_with_transport(config, Arc::new(network.bind(addr)))
@@ -99,7 +97,7 @@ fn with_dns_discovery_sets_a_discovery_source() {
     let network = crate::transport::InMemoryNetwork::new();
     let transport = Arc::new(network.bind("127.0.9.71:1".parse().unwrap()));
     let read_replica =
-        ReadReplicaMap::<i32, String>::new_with_transport(ephemeral_config(), transport)
+        ReadReplicaMap::<i32, String>::new_with_transport(discovery_config(), transport)
             .expect("valid configuration")
             .with_dns_discovery("my-service.default.svc.cluster.local", 8080);
     assert!(read_replica.discovery.is_some());
@@ -149,11 +147,9 @@ async fn discover_periodically_seeds_resolved_addresses_as_peers() {
 async fn discover_periodically_never_seeds_its_own_address() {
     let own_addr: IpAddr = "127.0.9.60".parse().unwrap();
     let other: IpAddr = "127.0.9.61".parse().unwrap();
-    let read_replica = read_discovery_replica(
-        discovery_config().with_listen_addr(own_addr),
-    )
-    .with_discovery(Arc::new(FakeDiscovery::new(vec![own_addr, other])))
-    .with_discovery_interval(Duration::from_millis(10));
+    let read_replica = read_discovery_replica(discovery_config().with_listen_addr(own_addr))
+        .with_discovery(Arc::new(FakeDiscovery::new(vec![own_addr, other])))
+        .with_discovery_interval(Duration::from_millis(10));
 
     let loop_replica = read_replica.clone();
     let handle = tokio::spawn(async move { loop_replica.discover_periodically().await });
