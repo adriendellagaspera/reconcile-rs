@@ -19,7 +19,7 @@ use super::ephemeral_config;
 /// transport is bound. Full and read replicas share the same contract.
 #[tokio::test]
 async fn missing_security_mode_is_a_typed_construction_error() {
-    let config = Config::default().with_port(crate::replica::tests::next_ephemeral_test_port());
+    let config = Config::default().with_port(5000);
 
     let full_error = match ReplicatedMap::<i32, i32>::new(config.clone()).await {
         Ok(_) => panic!("missing security mode must be rejected"),
