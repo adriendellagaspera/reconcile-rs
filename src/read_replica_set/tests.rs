@@ -92,7 +92,7 @@ async fn value_fingerprint_and_its_deprecated_alias_reflect_converged_content() 
     let dated_addr: std::net::IpAddr = "127.0.6.10".parse().unwrap();
     let replica_addr: std::net::IpAddr = "127.0.6.11".parse().unwrap();
 
-    let dated = ReplicatedSet(
+    let dated = ReplicatedSet::from_map_for_tests(
         crate::ReplicatedMap::<i32, ()>::new_with_transport(
             Config::default()
                 .with_port(port)
@@ -223,7 +223,7 @@ async fn with_discovery_converges_without_with_seed() {
     let dated_addr: IpAddr = "127.0.7.10".parse().unwrap();
     let replica_addr: IpAddr = "127.0.7.11".parse().unwrap();
 
-    let dated = ReplicatedSet(
+    let dated = ReplicatedSet::from_map_for_tests(
         crate::ReplicatedMap::<i32, ()>::new_with_transport(
             Config::default()
                 .with_port(port)
@@ -295,7 +295,7 @@ async fn with_dns_discovery_converges_via_localhost_resolution() {
         }
     };
 
-    let dated = ReplicatedSet(
+    let dated = ReplicatedSet::from_map_for_tests(
         crate::ReplicatedMap::<i32, ()>::new_with_transport(
             Config::default()
                 .with_port(port)
