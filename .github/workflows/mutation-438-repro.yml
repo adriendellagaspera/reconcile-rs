@@ -34,14 +34,15 @@ jobs:
           budget=$(grep -nF 'let budget = send_buf.len() + TOMBSTONE_ACK_RESEND_BYTE_BUDGET;' "$file" | cut -d: -f1)
           start=$(grep -nF 'let start = (round as usize) % n;' "$file" | cut -d: -f1)
           increment=$(grep -nF 'appended += 1;' "$file" | cut -d: -f1)
-          run_line=$(grep -nF 'pub async fn run(self) {' src/replica/run.rs | cut -d: -f1)
-          test -n "$budget" && test -n "$start" && test -n "$increment" && test -n "$run_line"
+          receive_size_line=$(grep -nF 'if size == recv_buf.len() {' src/replica/run.rs | cut -d: -f1)
+          peer_port_line=$(grep -nF 'if peer.port() != self.port {' src/replica/run.rs | cut -d: -f1)
+          test -n "$budget" && test -n "$start" && test -n "$increment" && test -n "$receive_size_line" && test -n "$peer_port_line"
           # The former (start + offset) % n site no longer exists; select the
           # current budget mutation and nearby surviving counting/indexing sites.
-          pattern="reconciliation\\.rs:($budget|$start|$increment):|run\\.rs:$run_line:"
+          pattern="reconciliation\\.rs:($budget|$start|$increment):|run\\.rs:($receive_size_line|$peer_port_line):"
           echo "REPRO_FILTER=$pattern" >> "$GITHUB_ENV"
           echo "source_commit=$(git rev-parse HEAD)" | tee selected-mutants.txt
-          echo "budget_line=$budget start_line=$start increment_line=$increment run_line=$run_line" | tee -a selected-mutants.txt
+          echo "budget_line=$budget start_line=$start increment_line=$increment receive_size_line=$receive_size_line peer_port_line=$peer_port_line" | tee -a selected-mutants.txt
           unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
           cargo mutants --list --workspace --all-features -f "$file" -f src/replica/run.rs --re "$pattern" | tee -a selected-mutants.txt
           test "$(grep -c 'reconciliation.rs:' selected-mutants.txt)" -ge 3
