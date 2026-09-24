@@ -82,7 +82,7 @@ fn value_of(eng: &Replica<u32, u32>, key: u32) -> Option<u32> {
 #[tokio::test]
 async fn a_lost_round_initiation_is_repaired_within_repair_interval() {
     let net = InMemoryNetwork::new();
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000;
     let a_ip: IpAddr = "127.0.0.20".parse().unwrap();
     let b_ip: IpAddr = "127.0.0.21".parse().unwrap();
     let cfg = |ip: IpAddr| {
@@ -147,7 +147,7 @@ async fn a_lost_round_initiation_is_repaired_within_repair_interval() {
 #[tokio::test]
 async fn a_converged_round_is_acked_without_riding_out_a_retry() {
     let net = InMemoryNetwork::new();
-    let port = crate::replica::tests::next_ephemeral_test_port();
+    let port = 5000;
     let a_ip: IpAddr = "127.0.0.24".parse().unwrap();
     let b_ip: IpAddr = "127.0.0.25".parse().unwrap();
     let cfg = |ip: IpAddr| {
