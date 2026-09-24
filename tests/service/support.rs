@@ -53,16 +53,22 @@ pub(crate) use assert_until_slow;
 pub(crate) async fn bind_udp_pair(
     first: std::net::IpAddr,
     second: std::net::IpAddr,
-) -> (u16, std::sync::Arc<tokio::net::UdpSocket>, std::sync::Arc<tokio::net::UdpSocket>) {
+) -> (
+    u16,
+    std::sync::Arc<tokio::net::UdpSocket>,
+    std::sync::Arc<tokio::net::UdpSocket>,
+) {
     use std::io::ErrorKind;
     use std::net::SocketAddr;
     use std::sync::Arc;
 
     assert_ne!(first, second, "each cluster node must bind a distinct IP");
     for _ in 0..128 {
-        let a = Arc::new(tokio::net::UdpSocket::bind(SocketAddr::new(first, 0))
-            .await
-            .expect("bind first UDP endpoint"));
+        let a = Arc::new(
+            tokio::net::UdpSocket::bind(SocketAddr::new(first, 0))
+                .await
+                .expect("bind first UDP endpoint"),
+        );
         let port = a.local_addr().expect("bound UDP address").port();
         match tokio::net::UdpSocket::bind(SocketAddr::new(second, port)).await {
             Ok(b) => return (port, a, Arc::new(b)),
