@@ -14,7 +14,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use super::super::*;
-use super::{ephemeral_config, wait_until};
+use super::{ephemeral_config, isolated_read_replica, virtual_config, wait_until};
 
 /// `local_addr` reports the transport's real bound address, matching what was configured —
 /// mirrors `ReplicatedMap`'s own test of the same name.
@@ -38,9 +38,7 @@ async fn local_addr_matches_the_configured_bind_address() {
 /// at its initial `0`/`None` forever.
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_state_advances_as_the_replica_runs() {
-    let read_replica = ReadReplicaMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, i32>(virtual_config());
     let initial = read_replica.sync_state();
     assert_eq!(initial.rounds, 0);
     assert!(initial.last_round_at.is_none());
@@ -62,9 +60,7 @@ async fn sync_state_advances_as_the_replica_runs() {
 /// dropped by `peers`'s `PEER_EXPIRATION` filter.
 #[tokio::test]
 async fn seed_peer_registers_and_refreshes_a_peer() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     let new_peer: IpAddr = "127.0.0.211".parse().unwrap();
     let stale_peer: IpAddr = "127.0.0.212".parse().unwrap();
 
@@ -95,11 +91,9 @@ async fn seed_peer_registers_and_refreshes_a_peer() {
 /// for the entire test window.
 #[tokio::test(flavor = "multi_thread")]
 async fn set_reconcile_interval_actually_retunes_the_idle_timeout() {
-    let read_replica = ReadReplicaMap::<i32, i32>::new(
-        ephemeral_config().with_reconcile_interval(Duration::from_secs(3600)),
-    )
-    .await
-    .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, i32>(
+        virtual_config().with_reconcile_interval(Duration::from_secs(3600)),
+    );
     read_replica.set_reconcile_interval(Duration::from_millis(20));
 
     let task = tokio::spawn(read_replica.clone().run());
