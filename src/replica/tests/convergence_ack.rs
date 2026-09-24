@@ -17,7 +17,6 @@ use std::net::SocketAddr;
 
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
-use crate::replica::Replica;
 use crate::replicated_map::Config;
 
 use super::super::Message;
@@ -83,10 +82,10 @@ async fn feed_and_capture_reply(
 #[tokio::test]
 async fn a_converged_comparison_round_is_acked() {
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.63".parse().unwrap())
         .with_insecure_no_key();
-    let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
+    let engine = super::in_memory_test_replica::<i32, u8>(config);
 
     // The engine's own initial_ranges, fed straight back to it, describes exactly what it
     // already holds -- guaranteed to compare equal and SKIP, whatever `rbsr`'s aggregate shape is.
@@ -125,12 +124,10 @@ async fn a_round_that_finds_a_real_difference_is_not_also_acked() {
     // A cold peer's initial probe: the whole universe, claiming to hold nothing -- exactly what
     // an empty store's own `initial_ranges` looks like.
     let probe_config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.67".parse().unwrap())
         .with_insecure_no_key();
-    let empty_probe_engine = Replica::<i32, u8>::new(probe_config)
-        .await
-        .expect("bind failed");
+    let empty_probe_engine = super::in_memory_test_replica::<i32, u8>(probe_config);
     let probe_segment = {
         let guard = empty_probe_engine.map.load_full();
         rbsr::initial_ranges(&*guard)
@@ -140,12 +137,10 @@ async fn a_round_that_finds_a_real_difference_is_not_also_acked() {
     };
 
     let b_config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.68".parse().unwrap())
         .with_insecure_no_key();
-    let b = Replica::<i32, u8>::new(b_config)
-        .await
-        .expect("bind failed");
+    let b = super::in_memory_test_replica::<i32, u8>(b_config);
     b.just_insert(1, Entry::present(b.clock_now(), 7));
 
     let message = Message::EntryFingerprint(probe_segment);
@@ -170,10 +165,10 @@ async fn a_round_that_finds_a_real_difference_is_not_also_acked() {
 #[tokio::test]
 async fn a_convergence_ack_reports_spoke_dated() {
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.65".parse().unwrap())
         .with_insecure_no_key();
-    let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
+    let engine = super::in_memory_test_replica::<i32, u8>(config);
     let peer: SocketAddr = "127.0.0.66:9".parse().unwrap();
 
     let bytes = message_bytes(&Message::ConvergenceAck);
