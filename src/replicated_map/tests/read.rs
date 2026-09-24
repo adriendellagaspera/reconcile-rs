@@ -9,7 +9,7 @@
 use crate::entry::{Entry, State};
 use crate::ReplicatedMap;
 
-use super::ephemeral_config;
+use super::{virtual_config, virtual_map};
 
 /// `snapshot` (#34) hands back an `Arc` over the exact same dated tree `get` reads from,
 /// tombstones included (it exposes the raw `Entry` wire representation, unlike `to_vec`). A
@@ -17,9 +17,7 @@ use super::ephemeral_config;
 /// that is the whole point of it being an owned `Arc`, not a lock.
 #[tokio::test]
 async fn snapshot_reflects_live_state_tombstones_included_and_is_immutable_once_taken() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config());
     store.insert(1, 10);
     store.insert(2, 20);
     store.remove(&2);
@@ -43,9 +41,7 @@ async fn snapshot_reflects_live_state_tombstones_included_and_is_immutable_once_
 /// it, independent of the dated `snapshot`.
 #[tokio::test]
 async fn value_snapshot_reflects_the_projection_not_the_dated_map() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config());
     store.insert(1, 10);
 
     let snapshot = store.value_snapshot();
@@ -61,9 +57,7 @@ async fn value_snapshot_reflects_the_projection_not_the_dated_map() {
 /// completes without hanging.
 #[tokio::test]
 async fn get_cloned_does_not_hold_the_lock_across_a_following_write() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config());
     store.insert(1, 10);
 
     let value = store.get_cloned(&1);
