@@ -9,15 +9,13 @@
 use std::time::{Duration, Instant};
 
 use super::super::*;
-use super::ephemeral_config;
+use super::{isolated_read_replica, virtual_config};
 use ipnet::IpNet;
 
 /// `set_net` retunes what `net` reports, for every clone.
 #[tokio::test]
 async fn set_net_retunes_what_net_reports() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     let original = read_replica.net();
     let retuned: IpNet = "10.77.0.0/16".parse().unwrap();
     assert_ne!(original, retuned, "test needs a genuinely different net");
@@ -36,9 +34,7 @@ async fn set_net_retunes_what_net_reports() {
 /// `membership.rs:33:53` entry for the boundary-operator mutant this can't distinguish.
 #[tokio::test]
 async fn peers_drops_expired_entries_but_keeps_fresh_ones() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     let stale: std::net::IpAddr = "127.0.0.201".parse().unwrap();
     let fresh: std::net::IpAddr = "127.0.0.202".parse().unwrap();
 
