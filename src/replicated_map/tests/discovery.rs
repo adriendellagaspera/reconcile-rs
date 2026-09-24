@@ -411,14 +411,13 @@ async fn a_continuously_present_member_is_never_decommissioned() {
     }
 
     let peer: IpAddr = "127.0.0.201".parse().unwrap();
-    let store = discovery_store(
-        discovery_config().with_listen_addr("127.0.0.200".parse().unwrap()),
-    )
-    .with_discovery_interval(Duration::from_millis(5))
-    // As strict as possible: a single erroneous miss would trip this.
-    .with_discovery_miss_threshold(1)
-    .with_discovery(Arc::new(AlwaysPresent(peer)))
-    .unwrap();
+    let store =
+        discovery_store(discovery_config().with_listen_addr("127.0.0.200".parse().unwrap()))
+            .with_discovery_interval(Duration::from_millis(5))
+            // As strict as possible: a single erroneous miss would trip this.
+            .with_discovery_miss_threshold(1)
+            .with_discovery(Arc::new(AlwaysPresent(peer)))
+            .unwrap();
     // Seed the peer as a known member directly, bypassing a real handshake, so it appears in
     // `members_snapshot()` from round one.
     store.engine.members.write().insert(peer);
