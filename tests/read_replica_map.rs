@@ -56,7 +56,7 @@ async fn read_replica_converges_with_dated_store() {
             .with_listen_addr(dated_addr)
             .with_net(net)
             .unwrap()
-            .with_insecure_no_key(),,
+            .with_insecure_no_key(),
         Arc::new(network.bind(SocketAddr::new(dated_addr, port))),
     )
     .expect("valid test config");
@@ -68,7 +68,7 @@ async fn read_replica_converges_with_dated_store() {
             .with_listen_addr(read_replica_addr)
             .with_net(net)
             .unwrap()
-            .with_insecure_no_key(),,
+            .with_insecure_no_key(),
         Arc::new(network.bind(SocketAddr::new(read_replica_addr, port))),
     )
     .expect("valid test config")
@@ -128,7 +128,7 @@ async fn read_replica_does_not_block_tombstone_gc() {
             .with_listen_addr(dated_addr)
             .with_net(net)
             .unwrap()
-            .with_insecure_no_key(),,
+            .with_insecure_no_key(),
         Arc::new(network.bind(SocketAddr::new(dated_addr, port))),
     )
     .expect("valid test config")
@@ -139,7 +139,7 @@ async fn read_replica_does_not_block_tombstone_gc() {
             .with_listen_addr(read_replica_addr)
             .with_net(net)
             .unwrap()
-            .with_insecure_no_key(),,
+            .with_insecure_no_key(),
         Arc::new(network.bind(SocketAddr::new(read_replica_addr, port))),
     )
     .expect("valid test config")
