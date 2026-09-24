@@ -57,7 +57,7 @@ async fn cross_net_reconciliation() {
         Arc::new(net_transport.bind(SocketAddr::new(addr1, port))),
     )
     .expect("valid test config")
-        .with_seed(addr2);
+    .with_seed(addr2);
     store1.insert("key".to_string(), "value".to_string());
     let start_fingerprint = store1.fingerprint(..);
     let store2 = ReplicatedMap::<String, String>::new_with_transport(
@@ -65,7 +65,7 @@ async fn cross_net_reconciliation() {
         Arc::new(net_transport.bind(SocketAddr::new(addr2, port))),
     )
     .expect("valid test config")
-        .with_seed(addr1);
+    .with_seed(addr1);
     assert_eq!(store2.fingerprint(..), Fingerprint::ZERO);
 
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
@@ -231,7 +231,7 @@ async fn unclassified_peer_is_still_reconciled() {
         Arc::new(net_transport.bind(SocketAddr::new(addr1, port))),
     )
     .expect("valid test config")
-        .with_seed(addr2);
+    .with_seed(addr2);
     store1.insert("k".to_string(), "v".to_string());
     let start_fingerprint = store1.fingerprint(..);
     let store2 = ReplicatedMap::<String, String>::new_with_transport(
@@ -239,7 +239,7 @@ async fn unclassified_peer_is_still_reconciled() {
         Arc::new(net_transport.bind(SocketAddr::new(addr2, port))),
     )
     .expect("valid test config")
-        .with_seed(addr1);
+    .with_seed(addr1);
 
     // Local net of last resort is each node's own host route (peer is not local).
     assert_eq!(store1.local_net(), "127.0.6.1/32".parse().unwrap());
