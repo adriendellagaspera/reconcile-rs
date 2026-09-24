@@ -9,13 +9,11 @@
 use crate::entry::State;
 use crate::ReadReplicaMap;
 
-use super::ephemeral_config;
+use super::{isolated_read_replica, virtual_config};
 
 #[tokio::test]
 async fn value_ref_pins_the_observed_value_across_later_integrations() {
-    let replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let replica = isolated_read_replica::<i32, String>(virtual_config());
     replica.integrate(vec![(1, State::Present("old".to_string()))]);
 
     let old = replica.get(&1).expect("live value");
