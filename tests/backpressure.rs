@@ -12,12 +12,14 @@
 //! fully deterministic (no need to race a real in-flight send): `n < 0` never holds, so every
 //! claim attempt fails immediately.
 
+use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
 
 use reconcile::replicated_map::{Config, WriteRejected};
-use reconcile::ReplicatedMap;
+use reconcile::{InMemoryNetwork, ReplicatedMap};
 
 fn config(port: u16, addr: &str) -> Config {
     Config::default()
@@ -26,10 +28,15 @@ fn config(port: u16, addr: &str) -> Config {
         .with_insecure_no_key()
 }
 
+fn isolated_config(config: Config) -> ReplicatedMap<i32, i32> {
+    let fabric = InMemoryNetwork::new();
+    let endpoint = SocketAddr::new(config.listen_addr, config.port);
+    ReplicatedMap::new_with_transport(config, Arc::new(fabric.bind(endpoint)))
+        .expect("valid test config")
+}
+
 async fn isolated(port: u16, addr: &str) -> ReplicatedMap<i32, i32> {
-    ReplicatedMap::new(config(port, addr))
-        .await
-        .expect("bind failed")
+    isolated_config(config(port, addr))
 }
 
 /// `Backpressure` is `#[non_exhaustive]`, so this crate cannot build one via struct-literal
@@ -86,11 +93,9 @@ async fn try_update_on_an_absent_key_succeeds_as_a_no_op_under_the_default_budge
 
 #[tokio::test(flavor = "multi_thread")]
 async fn try_insert_rejects_and_leaves_the_map_untouched_at_a_zero_budget() {
-    let store = ReplicatedMap::<i32, i32>::new(
+    let store = isolated_config(
         config(8321, "127.0.0.241").with_max_concurrent_broadcasts(0),
-    )
-    .await
-    .expect("bind failed");
+    );
 
     assert_zero_budget_backpressure(
         store
@@ -105,11 +110,9 @@ async fn try_insert_rejects_and_leaves_the_map_untouched_at_a_zero_budget() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn try_update_rejects_and_leaves_the_map_untouched_at_a_zero_budget() {
-    let store = ReplicatedMap::<i32, i32>::new(
+    let store = isolated_config(
         config(8322, "127.0.0.242").with_max_concurrent_broadcasts(0),
-    )
-    .await
-    .expect("bind failed");
+    );
     // `load_bulk` never broadcasts, so it is unaffected by the zero budget: the one way to seed
     // a live value here.
     store.load_bulk(&[(1, 10)]);
@@ -130,11 +133,9 @@ async fn try_update_rejects_and_leaves_the_map_untouched_at_a_zero_budget() {
 async fn try_update_on_an_absent_key_still_rejects_at_a_zero_budget() {
     // #83's all-or-nothing guarantee claims the slot *before* checking liveness, so even the
     // branch `update` treats as a free no-op is budget-gated here.
-    let store = ReplicatedMap::<i32, i32>::new(
+    let store = isolated_config(
         config(8324, "127.0.0.245").with_max_concurrent_broadcasts(0),
-    )
-    .await
-    .expect("bind failed");
+    );
 
     assert_zero_budget_backpressure(
         store
@@ -150,18 +151,23 @@ async fn try_update_on_an_absent_key_still_rejects_at_a_zero_budget() {
 /// exhausted budget.
 #[tokio::test(flavor = "multi_thread")]
 async fn insert_still_applies_locally_at_a_zero_budget_but_never_broadcasts() {
-    let port = 8325u16;
+    let port = 5000u16;
+    let fabric = InMemoryNetwork::new();
     let cfg = |addr: &str| {
         config(port, addr)
             .with_max_concurrent_broadcasts(0)
             .with_reconcile_interval(Duration::from_secs(3600))
     };
-    let sender = ReplicatedMap::<i32, i32>::new(cfg("127.0.0.246"))
-        .await
-        .expect("bind failed");
-    let receiver = ReplicatedMap::<i32, i32>::new(cfg("127.0.0.247"))
-        .await
-        .expect("bind failed");
+    let sender = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg("127.0.0.246"),
+        Arc::new(fabric.bind(SocketAddr::new("127.0.0.246".parse().unwrap(), port))),
+    )
+    .expect("valid test config");
+    let receiver = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg("127.0.0.247"),
+        Arc::new(fabric.bind(SocketAddr::new("127.0.0.247".parse().unwrap(), port))),
+    )
+    .expect("valid test config");
 
     let t_sender = tokio::spawn(sender.clone().run(CancellationToken::new()));
     let t_receiver = tokio::spawn(receiver.clone().run(CancellationToken::new()));
@@ -197,14 +203,19 @@ async fn insert_still_applies_locally_at_a_zero_budget_but_never_broadcasts() {
 /// `reconcile_interval` is starved, so only `try_update`'s own push can deliver the new value.
 #[tokio::test(flavor = "multi_thread")]
 async fn try_update_broadcasts_the_live_update_to_a_peer() {
-    let port = 8326u16;
+    let port = 5000u16;
+    let fabric = InMemoryNetwork::new();
     let cfg = |addr: &str| config(port, addr).with_reconcile_interval(Duration::from_secs(3600));
-    let sender = ReplicatedMap::<i32, i32>::new(cfg("127.0.0.248"))
-        .await
-        .expect("bind failed");
-    let receiver = ReplicatedMap::<i32, i32>::new(cfg("127.0.0.249"))
-        .await
-        .expect("bind failed");
+    let sender = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg("127.0.0.248"),
+        Arc::new(fabric.bind(SocketAddr::new("127.0.0.248".parse().unwrap(), port))),
+    )
+    .expect("valid test config");
+    let receiver = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg("127.0.0.249"),
+        Arc::new(fabric.bind(SocketAddr::new("127.0.0.249".parse().unwrap(), port))),
+    )
+    .expect("valid test config");
 
     let t_sender = tokio::spawn(sender.clone().run(CancellationToken::new()));
     let t_receiver = tokio::spawn(receiver.clone().run(CancellationToken::new()));
