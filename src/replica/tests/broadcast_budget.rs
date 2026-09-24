@@ -26,7 +26,6 @@ fn builder_sets_budget() {
 /// `dump_budget::budget_guard_limits_and_releases_slots` for the egress-side counter.
 #[tokio::test]
 async fn budget_guard_limits_and_releases_slots() {
-    
     let config = Config::default()
         .with_port(5000)
         .with_listen_addr("127.0.0.98".parse().unwrap())
@@ -64,7 +63,6 @@ async fn budget_guard_limits_and_releases_slots() {
 /// deterministically without racing a real in-flight send.
 #[tokio::test]
 async fn zero_budget_rejects_every_claim() {
-    
     let config = Config::default()
         .with_port(5000)
         .with_listen_addr("127.0.0.97".parse().unwrap())
@@ -81,7 +79,6 @@ async fn zero_budget_rejects_every_claim() {
 /// not an unrelated value (e.g. always `0`, indistinguishable from the zero-budget case above).
 #[tokio::test]
 async fn max_concurrent_broadcasts_reports_the_configured_non_zero_budget() {
-    
     let config = Config::default()
         .with_port(5000)
         .with_listen_addr("127.0.0.96".parse().unwrap())
