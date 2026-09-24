@@ -98,7 +98,11 @@ async fn a_maximum_size_datagram_is_received_not_discarded_as_too_small() {
     const BUFFER_SIZE: usize = 65507;
 
     let addr: std::net::IpAddr = "127.0.0.1".parse().unwrap();
-    let socket = Arc::new(tokio::net::UdpSocket::bind((addr, 0)).await.expect("bind receiver"));
+    let socket = Arc::new(
+        tokio::net::UdpSocket::bind((addr, 0))
+            .await
+            .expect("bind receiver"),
+    );
     let port = socket.local_addr().unwrap().port();
     let read_replica = ReadReplicaMap::<i32, String>::new_with_transport(
         Config::default()
