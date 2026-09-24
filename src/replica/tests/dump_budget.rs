@@ -25,7 +25,6 @@ fn builder_sets_budget() {
 /// After the first slot is dropped its count returns to zero and a fresh claim succeeds.
 #[tokio::test]
 async fn budget_guard_limits_and_releases_slots() {
-    
     let config = Config::default()
         .with_port(5000)
         .with_listen_addr("127.0.0.99".parse().unwrap())
