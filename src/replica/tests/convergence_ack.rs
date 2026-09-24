@@ -17,6 +17,7 @@ use std::net::SocketAddr;
 
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
+use crate::replica::Replica;
 use crate::replicated_map::Config;
 
 use super::super::Message;
