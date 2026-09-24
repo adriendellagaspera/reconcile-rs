@@ -18,7 +18,9 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
-use reconcile::{clock::NodeId, replicated_map::Config, transport::UdpTransport, Fingerprint, ReplicatedMap};
+use reconcile::{
+    clock::NodeId, replicated_map::Config, transport::UdpTransport, Fingerprint, ReplicatedMap,
+};
 
 use crate::support::{assert_until, bind_udp_pair};
 
@@ -48,20 +50,14 @@ async fn test() {
         (key, value)
     });
 
-    let store1 = ReplicatedMap::new_with_transport(
-        cfg1,
-        Arc::new(UdpTransport::new(socket1)),
-    )
-    .expect("valid test config")
-        .with_seed(addr2);
+    let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
+        .expect("valid test config")
+    .with_seed(addr2);
     store1.insert_bulk(&key_values);
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::new_with_transport(
-        cfg2,
-        Arc::new(UdpTransport::new(socket2)),
-    )
-    .expect("valid test config")
-        .with_seed(addr1);
+    let store2 = ReplicatedMap::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
+        .expect("valid test config")
+    .with_seed(addr1);
     // Check the initial state *before* spawning the run loops: store1's `insert_bulk` already
     // spawned a background broadcast to its seeded peer (store2), so once store2 starts
     // receiving these asserts would race with reconciliation.
@@ -159,18 +155,12 @@ async fn get_mut_edit_propagates_to_peers() {
         .unwrap()
         .with_insecure_no_key();
 
-    let store1 = ReplicatedMap::new_with_transport(
-        cfg1,
-        Arc::new(UdpTransport::new(socket1)),
-    )
-    .expect("valid test config")
-        .with_seed(addr2);
-    let store2 = ReplicatedMap::new_with_transport(
-        cfg2,
-        Arc::new(UdpTransport::new(socket2)),
-    )
-    .expect("valid test config")
-        .with_seed(addr1);
+    let store1 = ReplicatedMap::new_with_transport(cfg1, Arc::new(UdpTransport::new(socket1)))
+        .expect("valid test config")
+    .with_seed(addr2);
+    let store2 = ReplicatedMap::new_with_transport(cfg2, Arc::new(UdpTransport::new(socket2)))
+        .expect("valid test config")
+    .with_seed(addr1);
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
 
@@ -228,13 +218,13 @@ async fn concurrent_writes_converge() {
         Arc::new(UdpTransport::new(socket1)),
     )
     .expect("valid test config")
-        .with_seed(addr2);
+    .with_seed(addr2);
     let store2 = ReplicatedMap::<String, String>::new_with_transport(
         cfg2,
         Arc::new(UdpTransport::new(socket2)),
     )
     .expect("valid test config")
-        .with_seed(addr1);
+    .with_seed(addr1);
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
 
