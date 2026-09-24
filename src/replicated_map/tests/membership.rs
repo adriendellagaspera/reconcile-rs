@@ -259,8 +259,7 @@ async fn bulk_dumps_in_flight_count_reflects_a_dump_actually_in_progress() {
 /// test module) and checks the wrapper reports each transition.
 #[tokio::test]
 async fn broadcasts_in_flight_count_reflects_claimed_and_released_slots() {
-    let store =
-        virtual_map::<i32, i32>(virtual_config().with_max_concurrent_broadcasts(1));
+    let store = virtual_map::<i32, i32>(virtual_config().with_max_concurrent_broadcasts(1));
 
     assert_eq!(store.broadcasts_in_flight_count(), 0);
     let guard = store
