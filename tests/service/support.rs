@@ -47,3 +47,28 @@ macro_rules! assert_until_slow {
     };
 }
 pub(crate) use assert_until_slow;
+
+/// Bind two distinct loopback endpoints to one OS-selected protocol port without releasing
+/// either endpoint between selection and use. Retry if the second address is already occupied.
+pub(crate) async fn bind_udp_pair(
+    first: std::net::IpAddr,
+    second: std::net::IpAddr,
+) -> (u16, std::sync::Arc<tokio::net::UdpSocket>, std::sync::Arc<tokio::net::UdpSocket>) {
+    use std::io::ErrorKind;
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+
+    assert_ne!(first, second, "each cluster node must bind a distinct IP");
+    for _ in 0..128 {
+        let a = Arc::new(tokio::net::UdpSocket::bind(SocketAddr::new(first, 0))
+            .await
+            .expect("bind first UDP endpoint"));
+        let port = a.local_addr().expect("bound UDP address").port();
+        match tokio::net::UdpSocket::bind(SocketAddr::new(second, port)).await {
+            Ok(b) => return (port, a, Arc::new(b)),
+            Err(error) if error.kind() == ErrorKind::AddrInUse => continue,
+            Err(error) => panic!("bind second UDP endpoint: {error}"),
+        }
+    }
+    panic!("could not reserve a shared UDP port for both cluster endpoints");
+}
