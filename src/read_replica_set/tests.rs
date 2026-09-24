@@ -13,7 +13,7 @@ use std::time::Duration;
 use crate::read_replica_map::ReadReplicaMap;
 use crate::read_replica_set::ReadReplicaSet;
 use crate::replicated_map::{Config, MAX_NETS};
-use crate::transport::UdpTransport;
+use crate::transport::{InMemoryNetwork, UdpTransport};
 use rsos::Fingerprint;
 
 async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
@@ -26,9 +26,9 @@ async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
     false
 }
 
-fn ephemeral_config() -> Config {
+fn config_on_port(port: u16) -> Config {
     Config {
-        port: crate::replica::tests::next_ephemeral_test_port(),
+        port,
         listen_addr: "127.0.0.1".parse().unwrap(),
         nets: [None; MAX_NETS],
         remote_interval: 6,
@@ -55,13 +55,20 @@ fn ephemeral_config() -> Config {
     }
 }
 
+fn virtual_read_set(config: Config) -> ReadReplicaSet<i32> {
+    let net = InMemoryNetwork::new();
+    let endpoint = SocketAddr::new(config.listen_addr, config.port);
+    ReadReplicaSet(
+        ReadReplicaMap::new_with_transport(config, Arc::new(net.bind(endpoint)))
+            .expect("valid test configuration"),
+    )
+}
+
 /// #377: a freshly constructed `ReadReplicaSet` holds no member, and `contains`/`len`/
 /// `is_empty`/`keys` agree on that.
 #[tokio::test]
 async fn fresh_replica_has_no_members() {
-    let replica = ReadReplicaSet::<i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let replica = virtual_read_set(config_on_port(5000));
 
     assert!(replica.is_empty());
     assert_eq!(replica.len(), 0);
@@ -311,11 +318,13 @@ async fn with_dns_discovery_converges_via_localhost_resolution() {
 /// `ReadReplicaMap`'s own `local_addr_matches_the_configured_bind_address`.
 #[tokio::test]
 async fn local_addr_matches_the_configured_bind_address() {
-    let config = ephemeral_config();
+    let socket = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let config = config_on_port(socket.local_addr().unwrap().port());
     let expected = SocketAddr::new(config.listen_addr, config.port);
-    let replica = ReadReplicaSet::<i32>::new(config)
-        .await
-        .expect("bind failed");
+    let replica = ReadReplicaSet(
+        ReadReplicaMap::<i32, ()>::new_with_transport(config, Arc::new(UdpTransport::new(socket)))
+            .expect("valid test config"),
+    );
     assert_eq!(
         replica
             .local_addr()
@@ -329,9 +338,7 @@ async fn local_addr_matches_the_configured_bind_address() {
 /// default.
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_state_advances_as_the_replica_runs() {
-    let replica = ReadReplicaSet::<i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let replica = virtual_read_set(config_on_port(5000));
     let initial = replica.sync_state();
     assert_eq!(initial.rounds, 0);
     assert!(initial.last_round_at.is_none());
@@ -352,9 +359,7 @@ async fn sync_state_advances_as_the_replica_runs() {
 /// `with_seed`, it registers a brand-new peer so it is immediately visible via `peers`.
 #[tokio::test]
 async fn seed_peer_registers_a_peer_visible_via_peers() {
-    let replica = ReadReplicaSet::<i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let replica = virtual_read_set(config_on_port(5000));
     let peer: IpAddr = "127.0.0.213".parse().unwrap();
 
     assert!(
@@ -374,11 +379,8 @@ async fn seed_peer_registers_a_peer_visible_via_peers() {
 /// entire test window.
 #[tokio::test(flavor = "multi_thread")]
 async fn set_reconcile_interval_actually_retunes_the_idle_timeout() {
-    let replica = ReadReplicaSet::<i32>::new(
-        ephemeral_config().with_reconcile_interval(Duration::from_secs(3600)),
-    )
-    .await
-    .expect("bind failed");
+    let replica =
+        virtual_read_set(config_on_port(5000).with_reconcile_interval(Duration::from_secs(3600)));
     replica.set_reconcile_interval(Duration::from_millis(20));
 
     let task = tokio::spawn(replica.clone().run());
