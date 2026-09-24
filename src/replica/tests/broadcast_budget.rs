@@ -26,14 +26,13 @@ fn builder_sets_budget() {
 /// `dump_budget::budget_guard_limits_and_releases_slots` for the egress-side counter.
 #[tokio::test]
 async fn budget_guard_limits_and_releases_slots() {
-    use crate::replica::Replica;
-
+    
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.98".parse().unwrap())
         .with_max_concurrent_broadcasts(1)
         .with_insecure_no_key();
-    let eng = Replica::<i32, i32>::new(config).await.expect("bind failed");
+    let eng = super::in_memory_test_replica::<i32, i32>(config);
 
     // First claim succeeds. Checked through both accessors: `broadcasts_in_flight_count`
     // (test-only) and `broadcasts_in_flight` (the always-available one backing
@@ -65,14 +64,13 @@ async fn budget_guard_limits_and_releases_slots() {
 /// deterministically without racing a real in-flight send.
 #[tokio::test]
 async fn zero_budget_rejects_every_claim() {
-    use crate::replica::Replica;
-
+    
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.97".parse().unwrap())
         .with_max_concurrent_broadcasts(0)
         .with_insecure_no_key();
-    let eng = Replica::<i32, i32>::new(config).await.expect("bind failed");
+    let eng = super::in_memory_test_replica::<i32, i32>(config);
 
     assert!(eng.try_claim_broadcast_slot().is_none());
     assert_eq!(eng.broadcasts_in_flight_count(), 0);
@@ -83,14 +81,13 @@ async fn zero_budget_rejects_every_claim() {
 /// not an unrelated value (e.g. always `0`, indistinguishable from the zero-budget case above).
 #[tokio::test]
 async fn max_concurrent_broadcasts_reports_the_configured_non_zero_budget() {
-    use crate::replica::Replica;
-
+    
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.96".parse().unwrap())
         .with_max_concurrent_broadcasts(7)
         .with_insecure_no_key();
-    let eng = Replica::<i32, i32>::new(config).await.expect("bind failed");
+    let eng = super::in_memory_test_replica::<i32, i32>(config);
 
     assert_eq!(eng.max_concurrent_broadcasts(), 7);
 }
