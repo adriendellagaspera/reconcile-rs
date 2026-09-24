@@ -6,12 +6,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
 use super::super::*;
-use super::{ephemeral_config, wait_until};
+use super::wait_until;
+use crate::transport::InMemoryNetwork;
 
 /// A discovery source returning a fixed, swappable response — the read-replica analogue of
 /// `replicated_map/tests/discovery.rs`'s `FakeDiscovery`, minus the presence bookkeeping a read
@@ -59,6 +60,19 @@ impl crate::discovery::Discovery for FakeDiscovery {
     }
 }
 
+fn discovery_config() -> crate::replicated_map::Config {
+    crate::replicated_map::Config::default()
+        .with_port(5000)
+        .with_insecure_no_key()
+}
+
+fn read_discovery_replica(config: crate::replicated_map::Config) -> ReadReplicaMap<i32, String> {
+    let network = InMemoryNetwork::new();
+    let addr = SocketAddr::new(config.listen_addr, config.port);
+    ReadReplicaMap::new_with_transport(config, Arc::new(network.bind(addr)))
+        .expect("valid discovery test config")
+}
+
 /// #30: `with_discovery`/`with_discovery_interval` are plain builders, and any [`Discovery`]
 /// implementation is accepted regardless of `kind()` — there is no
 /// [`with_discovery`](crate::ReplicatedMap::with_discovery)-style panic guard here, because a
@@ -68,7 +82,7 @@ fn with_discovery_and_interval_are_builders() {
     let network = crate::transport::InMemoryNetwork::new();
     let transport = Arc::new(network.bind("127.0.9.70:1".parse().unwrap()));
     let read_replica =
-        ReadReplicaMap::<i32, String>::new_with_transport(ephemeral_config(), transport)
+        ReadReplicaMap::<i32, String>::new_with_transport(discovery_config(), transport)
             .expect("valid configuration")
             .with_discovery(Arc::new(FakeDiscovery::new(vec![])))
             .with_discovery_interval(Duration::from_millis(42));
@@ -83,7 +97,7 @@ fn with_dns_discovery_sets_a_discovery_source() {
     let network = crate::transport::InMemoryNetwork::new();
     let transport = Arc::new(network.bind("127.0.9.71:1".parse().unwrap()));
     let read_replica =
-        ReadReplicaMap::<i32, String>::new_with_transport(ephemeral_config(), transport)
+        ReadReplicaMap::<i32, String>::new_with_transport(discovery_config(), transport)
             .expect("valid configuration")
             .with_dns_discovery("my-service.default.svc.cluster.local", 8080);
     assert!(read_replica.discovery.is_some());
@@ -94,9 +108,7 @@ fn with_dns_discovery_sets_a_discovery_source() {
 /// waiting on it for every replica that never calls `with_discovery`.
 #[tokio::test]
 async fn discover_periodically_is_a_noop_without_a_configured_source() {
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let read_replica = read_discovery_replica(discovery_config());
     let result = tokio::time::timeout(
         Duration::from_millis(200),
         read_replica.discover_periodically(),
@@ -113,9 +125,7 @@ async fn discover_periodically_is_a_noop_without_a_configured_source() {
 #[tokio::test(flavor = "multi_thread")]
 async fn discover_periodically_seeds_resolved_addresses_as_peers() {
     let discovered: IpAddr = "127.0.9.50".parse().unwrap();
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let read_replica = read_discovery_replica(discovery_config())
         .with_discovery(Arc::new(FakeDiscovery::new(vec![discovered])))
         .with_discovery_interval(Duration::from_millis(10));
 
@@ -135,19 +145,11 @@ async fn discover_periodically_seeds_resolved_addresses_as_peers() {
 /// [`ReplicatedMap::discover_periodically`](crate::ReplicatedMap)'s identical self-exclusion.
 #[tokio::test(flavor = "multi_thread")]
 async fn discover_periodically_never_seeds_its_own_address() {
-    let port = crate::replica::tests::next_ephemeral_test_port();
     let own_addr: IpAddr = "127.0.9.60".parse().unwrap();
     let other: IpAddr = "127.0.9.61".parse().unwrap();
-    let read_replica = ReadReplicaMap::<i32, String>::new(
-        crate::replicated_map::Config::default()
-            .with_port(port)
-            .with_listen_addr(own_addr)
-            .with_insecure_no_key(),
-    )
-    .await
-    .expect("bind failed")
-    .with_discovery(Arc::new(FakeDiscovery::new(vec![own_addr, other])))
-    .with_discovery_interval(Duration::from_millis(10));
+    let read_replica = read_discovery_replica(discovery_config().with_listen_addr(own_addr))
+        .with_discovery(Arc::new(FakeDiscovery::new(vec![own_addr, other])))
+        .with_discovery_interval(Duration::from_millis(10));
 
     let loop_replica = read_replica.clone();
     let handle = tokio::spawn(async move { loop_replica.discover_periodically().await });
@@ -171,9 +173,7 @@ async fn discover_periodically_survives_a_failed_round_and_recovers() {
     let discovered: IpAddr = "127.0.9.65".parse().unwrap();
     let fake = FakeDiscovery::new(vec![]);
     fake.set(FakeDiscoveryResp::Blip);
-    let read_replica = ReadReplicaMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let read_replica = read_discovery_replica(discovery_config())
         .with_discovery(Arc::new(fake.clone()))
         .with_discovery_interval(Duration::from_millis(10));
 
