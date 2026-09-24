@@ -107,9 +107,9 @@ async fn snapshot_periodically_does_not_rewrite_when_idle_after_a_snapshot() {
     let store =
         virtual_map::<i32, i32>(virtual_config().with_snapshot_interval(Some(short_interval)))
             .with_persistence(Arc::new(CountingSave {
-        saves: saves.clone(),
-    }))
-    .unwrap();
+                saves: saves.clone(),
+            }))
+            .unwrap();
 
     store.just_insert(1, 10);
 
