@@ -24,8 +24,6 @@ use crate::replica::Replica;
 use crate::replicated_map::Config;
 use crate::transport::{InMemoryNetwork, Transport};
 
-use super::next_ephemeral_test_port;
-
 /// Three writes to the same key, well inside the coalescing window, must collapse to exactly one
 /// pending entry carrying the last write's (greatest-stamped, under `ManualClock`'s monotonic
 /// `now()`) value — not three queued messages a flush would send separately.
@@ -33,7 +31,7 @@ use super::next_ephemeral_test_port;
 async fn same_key_writes_within_the_window_collapse_to_one_pending_entry() {
     let net = InMemoryNetwork::new();
     let ip: IpAddr = "127.0.10.1".parse().unwrap();
-    let port = next_ephemeral_test_port();
+    let port = 5000u16;
     let cfg = Config {
         // An hour: long enough that this test's own body cannot race the flush.
         coalesce_window: Duration::from_secs(3600),
@@ -72,7 +70,7 @@ async fn same_key_writes_within_the_window_collapse_to_one_pending_entry() {
 #[tokio::test]
 async fn distinct_key_writes_within_the_window_flush_as_one_datagram() {
     let net = InMemoryNetwork::new();
-    let port = next_ephemeral_test_port();
+    let port = 5000u16;
     let sender_ip: IpAddr = "127.0.10.2".parse().unwrap();
     let peer_ip: IpAddr = "127.0.10.3".parse().unwrap();
     let window = Duration::from_millis(150);
