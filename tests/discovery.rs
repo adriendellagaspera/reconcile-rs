@@ -76,13 +76,13 @@ async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
         .with_port(port)
         .with_listen_addr(addr1)
         .with_net(net)
-        .unwrap()
+    .unwrap()
         .with_insecure_no_key();
     let cfg2 = Config::default()
         .with_port(port)
         .with_listen_addr(addr2)
         .with_net(net)
-        .unwrap()
+    .unwrap()
         .with_insecure_no_key();
 
     // store1 finds peers through discovery (which initially reports store2 present).
@@ -92,23 +92,23 @@ async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
         Arc::new(network.bind(SocketAddr::new(addr1, port))),
     )
     .expect("valid test config")
-        .with_seed(addr2)
-        .with_tombstone_timeout(Duration::from_millis(50))
-        .with_discovery(Arc::new(discovery.clone()))
-        .unwrap()
-        .with_discovery_interval(Duration::from_millis(20))
-        .with_discovery_miss_threshold(3)
-        // store2's tombstone ack is pending (it was partitioned before it could send one), so
-        // decommissioning takes the wall-time-floor path, not the miss-threshold fast path; keep
-        // the floor short so the test still runs quickly.
-        .with_discovery_decommission_floor(Duration::from_millis(50));
+    .with_seed(addr2)
+    .with_tombstone_timeout(Duration::from_millis(50))
+    .with_discovery(Arc::new(discovery.clone()))
+    .unwrap()
+    .with_discovery_interval(Duration::from_millis(20))
+    .with_discovery_miss_threshold(3)
+    // store2's tombstone ack is pending (it was partitioned before it could send one), so
+    // decommissioning takes the wall-time-floor path, not the miss-threshold fast path; keep
+    // the floor short so the test still runs quickly.
+    .with_discovery_decommission_floor(Duration::from_millis(50));
     let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg2,
         Arc::new(network.bind(SocketAddr::new(addr2, port))),
     )
     .expect("valid test config")
-        .with_seed(addr1)
-        .with_tombstone_timeout(Duration::from_millis(50));
+    .with_seed(addr1)
+    .with_tombstone_timeout(Duration::from_millis(50));
 
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
