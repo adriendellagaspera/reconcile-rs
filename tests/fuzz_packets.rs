@@ -15,13 +15,14 @@
 //! and deliberately-corrupt datagrams, and assert that the receive task stays
 //! alive and the local state is untouched.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use rand::{Rng, SeedableRng};
 use tokio::net::UdpSocket;
 use tokio_util::sync::CancellationToken;
 
-use reconcile::{replicated_map::Config, ReplicatedMap};
+use reconcile::{replicated_map::Config, ReplicatedMap, UdpTransport};
 
 /// Adversarial payloads: random noise of varied lengths, plus "almost valid" shapes — truncated
 /// length prefixes, huge declared lengths.
@@ -59,17 +60,20 @@ fn malformed_payloads(seed: u64) -> Vec<Vec<u8>> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn malformed_datagrams_do_not_panic_or_corrupt_state() {
-    let port = 8085;
     let victim_addr = "127.0.0.70";
+    let socket = Arc::new(UdpSocket::bind(format!("{victim_addr}:0")).await.unwrap());
+    let port = socket.local_addr().unwrap().port();
     let config = Config::default()
         .with_port(port)
         .with_listen_addr(victim_addr.parse().unwrap())
         // No cluster key: arbitrary bytes are *not* dropped at the auth gate and reach the
         // deserializer, which is exactly the path we want to fuzz.
         .with_insecure_no_key();
-    let store = ReplicatedMap::<i32, String>::new(config)
-        .await
-        .expect("bind failed");
+    let store = ReplicatedMap::<i32, String>::new_with_transport(
+        config,
+        Arc::new(UdpTransport::new(socket)),
+    )
+    .expect("valid test config");
     store.load_bulk(&[(0, "legit".to_string())]);
 
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
