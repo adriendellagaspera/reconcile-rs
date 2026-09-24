@@ -94,12 +94,12 @@ async fn value_fingerprint_and_its_deprecated_alias_reflect_converged_content() 
 
     let dated = ReplicatedSet(
         crate::ReplicatedMap::<i32, ()>::new_with_transport(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(dated_addr)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key(),
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(dated_addr)
+                .with_net(net)
+                .unwrap()
+                .with_insecure_no_key(),
             Arc::new(network.bind(SocketAddr::new(dated_addr, port))),
         )
         .expect("valid test configuration"),
@@ -108,12 +108,12 @@ async fn value_fingerprint_and_its_deprecated_alias_reflect_converged_content() 
 
     let replica = ReadReplicaSet(
         ReadReplicaMap::<i32, ()>::new_with_transport(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(replica_addr)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key(),
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(replica_addr)
+                .with_net(net)
+                .unwrap()
+                .with_insecure_no_key(),
             Arc::new(network.bind(SocketAddr::new(replica_addr, port))),
         )
         .expect("valid test configuration"),
@@ -225,12 +225,12 @@ async fn with_discovery_converges_without_with_seed() {
 
     let dated = ReplicatedSet(
         crate::ReplicatedMap::<i32, ()>::new_with_transport(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(dated_addr)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key(),
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(dated_addr)
+                .with_net(net)
+                .unwrap()
+                .with_insecure_no_key(),
             Arc::new(network.bind(SocketAddr::new(dated_addr, port))),
         )
         .expect("valid test configuration"),
@@ -239,12 +239,12 @@ async fn with_discovery_converges_without_with_seed() {
 
     let replica = ReadReplicaSet(
         ReadReplicaMap::<i32, ()>::new_with_transport(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(replica_addr)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key(),
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(replica_addr)
+                .with_net(net)
+                .unwrap()
+                .with_insecure_no_key(),
             Arc::new(network.bind(SocketAddr::new(replica_addr, port))),
         )
         .expect("valid test configuration"),
@@ -295,13 +295,12 @@ async fn with_dns_discovery_converges_via_localhost_resolution() {
         }
     };
 
-
     let dated = ReplicatedSet(
         crate::ReplicatedMap::<i32, ()>::new_with_transport(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(dated_addr)
-            .with_insecure_no_key(),
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(dated_addr)
+                .with_insecure_no_key(),
             Arc::new(UdpTransport::new(dated_socket)),
         )
         .expect("valid test configuration"),
@@ -310,10 +309,10 @@ async fn with_dns_discovery_converges_via_localhost_resolution() {
 
     let replica = ReadReplicaSet(
         ReadReplicaMap::<i32, ()>::new_with_transport(
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(replica_addr)
-            .with_insecure_no_key(),
+            Config::default()
+                .with_port(port)
+                .with_listen_addr(replica_addr)
+                .with_insecure_no_key(),
             Arc::new(UdpTransport::new(replica_socket)),
         )
         .expect("valid test configuration"),
