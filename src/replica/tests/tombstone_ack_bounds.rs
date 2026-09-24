@@ -23,10 +23,10 @@ type Tombstoned = Entry<Timestamp, i32>;
 async fn engine(addr: &str) -> Replica<i32, i32> {
     // Use a distinct port per module to avoid bind conflicts between parallel test runs.
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr(addr.parse().unwrap())
         .with_insecure_no_key();
-    Replica::new(config).await.expect("bind failed")
+    super::in_memory_test_replica(config)
 }
 
 fn ack_bytes(key: i32, version: u64) -> Vec<u8> {

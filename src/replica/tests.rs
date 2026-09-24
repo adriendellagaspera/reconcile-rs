@@ -25,6 +25,26 @@ pub(crate) fn next_ephemeral_test_port() -> u16 {
         .port()
 }
 
+/// An isolated datagram transport for tests that exercise engine logic, not UDP binding.
+/// Every call gets a private routing table, so the virtual port cannot collide with another test.
+pub(crate) fn in_memory_test_replica<K, V>(
+    config: crate::replicated_map::Config,
+) -> crate::replica::Replica<K, V>
+where
+    K: crate::bounds::Key + std::hash::Hash,
+    V: crate::bounds::Value,
+{
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+
+    use crate::transport::InMemoryNetwork;
+
+    let endpoint = SocketAddr::new(config.listen_addr, config.port);
+    let network = InMemoryNetwork::new();
+    crate::replica::Replica::with_transport(config, Arc::new(network.bind(endpoint)))
+        .expect("valid test config")
+}
+
 mod auth_attack;
 mod broadcast_budget;
 mod causal_stability;

@@ -96,10 +96,10 @@ fn reserved_tag_6_pins_its_own_encoding() {
 #[tokio::test]
 async fn a_reserved_message_does_not_block_the_rest_of_the_datagram() {
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.62".parse().unwrap())
         .with_insecure_no_key();
-    let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
+    let engine: Replica<i32, u8> = super::in_memory_test_replica(config);
 
     let real_update = Message::EntryUpdate((1, Entry::present(future_stamp(), 7)));
     let reserved = Message::Reserved6(vec![0xff; 16]);

@@ -62,10 +62,10 @@ fn future_stamp() -> Timestamp {
 #[tokio::test]
 async fn a_dated_update_reports_true() {
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.60".parse().unwrap())
         .with_insecure_no_key();
-    let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
+    let engine: Replica<i32, u8> = super::in_memory_test_replica(config);
     let message = Message::EntryUpdate((1, Entry::present(future_stamp(), 7)));
     assert!(
         feed(&engine, &message).await,
@@ -77,10 +77,10 @@ async fn a_dated_update_reports_true() {
 #[tokio::test]
 async fn a_value_only_update_reports_false() {
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.61".parse().unwrap())
         .with_insecure_no_key();
-    let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
+    let engine: Replica<i32, u8> = super::in_memory_test_replica(config);
     let message: Message<i32, Entry<Timestamp, u8>, State<u8>> =
         Message::StateUpdate((1, State::Present(7)));
     assert!(

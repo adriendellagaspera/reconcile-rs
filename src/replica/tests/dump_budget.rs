@@ -25,14 +25,12 @@ fn builder_sets_budget() {
 /// After the first slot is dropped its count returns to zero and a fresh claim succeeds.
 #[tokio::test]
 async fn budget_guard_limits_and_releases_slots() {
-    use crate::replica::Replica;
-
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.99".parse().unwrap())
         .with_max_concurrent_bulk_dumps(1)
         .with_insecure_no_key();
-    let eng = Replica::<i32, i32>::new(config).await.expect("bind failed");
+    let eng = super::in_memory_test_replica::<i32, i32>(config);
 
     let peer_a: std::net::SocketAddr = "127.0.0.100:9001".parse().unwrap();
     let peer_b: std::net::SocketAddr = "127.0.0.101:9001".parse().unwrap();
