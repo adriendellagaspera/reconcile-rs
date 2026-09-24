@@ -14,16 +14,16 @@ use tokio_util::sync::CancellationToken;
 
 use crate::persistence::{PersistedState, Persistence};
 use crate::replicated_map::{Config, PersistenceLoadError, MAX_NETS};
-use crate::transport::InMemoryNetwork;
+use crate::transport::{InMemoryNetwork, UdpTransport};
 use crate::{FileSnapshot, ReplicatedMap};
 
 // The tuple-struct constructor is private to this module's parent (the wrapped map is a private
 // field), so it is reachable through `super`, not through the crate-root re-export.
 use super::ReplicatedSet;
 
-fn ephemeral_config() -> Config {
+fn config_on_port(port: u16) -> Config {
     Config {
-        port: crate::replica::tests::next_ephemeral_test_port(),
+        port,
         listen_addr: "127.0.0.1".parse().unwrap(),
         nets: [None; MAX_NETS],
         remote_interval: 6,
@@ -50,11 +50,24 @@ fn ephemeral_config() -> Config {
     }
 }
 
+fn virtual_config() -> Config {
+    config_on_port(5000)
+}
+
+fn virtual_set(config: Config) -> ReplicatedSet<i32> {
+    let network = InMemoryNetwork::new();
+    let addr = SocketAddr::new(config.listen_addr, config.port);
+    ReplicatedSet(
+        ReplicatedMap::new_with_transport(config, Arc::new(network.bind(addr)))
+            .expect("valid test configuration"),
+    )
+}
+
 /// `insert` matches `std::collections::HashSet::insert`; `remove` reports prior presence,
 /// while `contains` reports current presence.
 #[tokio::test]
 async fn insert_remove_contains_and_bulk_agree_on_membership() {
-    let set = ReplicatedSet::<i32>::new(ephemeral_config()).await.unwrap();
+    let set = virtual_set(virtual_config());
 
     assert!(set.is_empty());
     assert!(!set.contains(&1));
@@ -80,7 +93,7 @@ async fn insert_remove_contains_and_bulk_agree_on_membership() {
 /// calling it doesn't panic.
 #[tokio::test]
 async fn set_nets_enforces_max_nets_at_runtime() {
-    let set = ReplicatedSet::<i32>::new(ephemeral_config()).await.unwrap();
+    let set = virtual_set(virtual_config());
 
     let within_cap: Vec<_> = (0..MAX_NETS)
         .map(|i| format!("127.0.0.0/{}", 8 + (i % 24)).parse().unwrap())
@@ -104,7 +117,7 @@ async fn set_nets_enforces_max_nets_at_runtime() {
 /// above).
 #[tokio::test]
 async fn set_repair_interval_actually_retunes_the_engine() {
-    let set = ReplicatedSet::<i32>::new(ephemeral_config()).await.unwrap();
+    let set = virtual_set(virtual_config());
     assert_ne!(set.0.repair_interval(), Duration::from_millis(9));
 
     set.set_repair_interval(Duration::from_millis(9));
@@ -117,7 +130,7 @@ async fn set_repair_interval_actually_retunes_the_engine() {
 /// above).
 #[tokio::test]
 async fn set_coalesce_window_actually_retunes_the_engine() {
-    let set = ReplicatedSet::<i32>::new(ephemeral_config()).await.unwrap();
+    let set = virtual_set(virtual_config());
     assert_eq!(set.0.coalesce_window(), Duration::ZERO);
 
     set.set_coalesce_window(Duration::from_millis(123));
@@ -138,11 +151,13 @@ async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
 /// address, matching what was configured — mirrors #292's own `ReplicatedMap` test.
 #[tokio::test]
 async fn local_addr_matches_the_configured_bind_address() {
-    let config = ephemeral_config();
+    let socket = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let config = config_on_port(socket.local_addr().unwrap().port());
     let expected = SocketAddr::new(config.listen_addr, config.port);
-    let set = ReplicatedSet::<i32>::new(config)
-        .await
-        .expect("bind failed");
+    let set = ReplicatedSet::<i32>(
+        ReplicatedMap::new_with_transport(config, Arc::new(UdpTransport::new(socket)))
+            .expect("valid test configuration"),
+    );
     assert_eq!(
         set.local_addr().expect("transport must report its address"),
         expected
@@ -153,9 +168,7 @@ async fn local_addr_matches_the_configured_bind_address() {
 /// advances as the engine actually runs, rather than returning a default.
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_state_advances_as_the_engine_runs() {
-    let set = ReplicatedSet::<i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let set = virtual_set(virtual_config());
     let initial = set.sync_state();
     assert_eq!(initial.rounds, 0);
     assert!(initial.last_round_at.is_none());
@@ -231,9 +244,7 @@ async fn with_persistence_recovers_membership_on_restart() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("snapshot.bin");
 
-    let set = ReplicatedSet::<i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let set = virtual_set(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     let _ = set.insert(1);
@@ -241,9 +252,7 @@ async fn with_persistence_recovers_membership_on_restart() {
     let _ = set.remove(&2);
     set.0.snapshot_now().expect("snapshot write failed");
 
-    let restarted = ReplicatedSet::<i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let restarted = virtual_set(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     assert!(restarted.contains(&1));
@@ -269,9 +278,7 @@ impl<K: Send + Sync + 'static, V: Send + Sync + 'static> Persistence<K, V> for F
 /// `with_persistence_recovers_membership_on_restart` above).
 #[tokio::test]
 async fn with_persistence_surfaces_load_errors() {
-    let set = ReplicatedSet::<i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let set = virtual_set(virtual_config());
     match set.with_persistence(Arc::new(FailingLoad(std::io::ErrorKind::InvalidData))) {
         Ok(_) => panic!("expected Corrupt, got Ok"),
         Err(PersistenceLoadError::Corrupt(_)) => {}
