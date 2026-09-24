@@ -9,6 +9,7 @@
 use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
 use crate::entry::{Entry, State};
 use crate::replica::Replica;
+use crate::transport::InMemoryNetwork;
 use crate::{replicated_map::Config, ReplicatedMap};
 use bincode::{DefaultOptions, Serializer};
 use gossip::auth;
@@ -28,7 +29,12 @@ async fn pre_insert_hook_can_call_insert_again_without_deadlock() {
         .with_port(8080)
         .with_listen_addr("127.0.0.44".parse().unwrap())
         .with_insecure_no_key();
-    let svc = ReplicatedMap::new(config).await.expect("bind failed");
+    let net = InMemoryNetwork::new();
+    let svc = ReplicatedMap::new_with_transport(
+        config,
+        Arc::new(net.bind("127.0.0.44:8080".parse().unwrap())),
+    )
+    .expect("valid test config");
     svc.insert_bulk(&[(1, 10_u8)]);
 
     let flag = Arc::new(AtomicBool::new(false));
@@ -59,7 +65,12 @@ async fn set_pre_insert_replaces_previous_hook() {
         .with_port(8080)
         .with_listen_addr("127.0.0.45".parse().unwrap())
         .with_insecure_no_key();
-    let svc = ReplicatedMap::new(config).await.expect("bind failed");
+    let net = InMemoryNetwork::new();
+    let svc = ReplicatedMap::new_with_transport(
+        config,
+        Arc::new(net.bind("127.0.0.45:8080".parse().unwrap())),
+    )
+    .expect("valid test config");
 
     let first_ran = Arc::new(AtomicBool::new(false));
     let second_ran = Arc::new(AtomicBool::new(false));
@@ -116,7 +127,12 @@ fn pre_insert_hook_can_call_insert_again_from_network_path_without_deadlock() {
                 .with_port(8083)
                 .with_listen_addr("127.0.0.50".parse().unwrap())
                 .with_insecure_no_key();
-            let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
+            let net = InMemoryNetwork::new();
+            let engine = Replica::<i32, u8>::with_transport(
+                config,
+                Arc::new(net.bind("127.0.0.50:8083".parse().unwrap())),
+            )
+            .expect("valid test config");
 
             // The same re-entrant hook as the direct-path test, registered on the engine whose
             // map `handle_messages` writes to: it calls back into `just_insert` on that engine.
