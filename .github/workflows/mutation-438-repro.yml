@@ -39,12 +39,12 @@ jobs:
           test -n "$budget" && test -n "$start" && test -n "$increment" && test -n "$receive_size_line" && test -n "$peer_port_line"
           # The former (start + offset) % n site no longer exists; select the
           # current budget mutation and nearby surviving counting/indexing sites.
-          pattern="reconciliation\\.rs:($budget|$start|$increment):|run\\.rs:($receive_size_line|$peer_port_line):"
+          pattern="src/replica/(reconciliation\\.rs:($budget|$start|$increment):|run\\.rs:($receive_size_line|$peer_port_line):)"
           echo "REPRO_FILTER=$pattern" >> "$GITHUB_ENV"
           echo "source_commit=$(git rev-parse HEAD)" | tee selected-mutants.txt
           echo "budget_line=$budget start_line=$start increment_line=$increment receive_size_line=$receive_size_line peer_port_line=$peer_port_line" | tee -a selected-mutants.txt
           unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
-          cargo mutants --list --workspace --all-features -f "$file" -f src/replica/run.rs --re "$pattern" | tee -a selected-mutants.txt
+          cargo mutants --list --workspace --all-features --re "$pattern" | tee -a selected-mutants.txt
           test "$(grep -c 'reconciliation.rs:' selected-mutants.txt)" -ge 3
           grep -q 'run.rs:' selected-mutants.txt
       - name: Reproduce (record verdicts and build paths)
@@ -59,8 +59,8 @@ jobs:
           printf 'jobs=%s repeat=%s source=%s\n' "$MUTATION_JOBS" '${{ matrix.repeat }}' "$(git rev-parse HEAD)" | tee repro-info.txt
           set +e
           cargo mutants --workspace --all-features --test-workspace=true \
-            -f src/replica/reconciliation.rs -f src/replica/run.rs --re "$REPRO_FILTER" \
-            --jobs "$MUTATION_JOBS" --copy-target=false --output . \
+            --re "$REPRO_FILTER" \
+            --jobs "$MUTATION_JOBS" --copy-target=false \
             > cargo-mutants-console.log 2>&1
           result=$?
           set -e
