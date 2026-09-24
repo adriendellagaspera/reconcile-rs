@@ -10,11 +10,13 @@
 //! member has acknowledged it, and must eventually collect once they have — pairwise and across
 //! a cluster with no manual decommissioning.
 
+use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
-use reconcile::{replicated_map::Config, ReplicatedMap};
+use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
 
 use crate::support::{assert_until, assert_until_slow};
 
@@ -23,10 +25,8 @@ use crate::support::{assert_until, assert_until_slow};
 /// replica must release the tombstone for GC.
 #[tokio::test(flavor = "multi_thread")]
 async fn tombstone_is_retained_until_peer_acknowledges() {
-    // A dedicated port isolates this test from the others: peer discovery probes a random
-    // address in 127.0.0.0/8 on this port, so sharing a port lets concurrently-running tests
-    // cross-talk and pollute each other's stores.
-    let port = 8084;
+    let port = 5000u16;
+    let fabric = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.72".parse().unwrap();
     let addr2 = "127.0.0.73".parse().unwrap();
@@ -45,14 +45,18 @@ async fn tombstone_is_retained_until_peer_acknowledges() {
 
     // Aggressive wall-clock expiry so that, without causal-stability gating, the tombstone
     // would be GC'd almost immediately.
-    let store1 = ReplicatedMap::<i32, i32>::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg1,
+        Arc::new(fabric.bind(SocketAddr::new(addr1, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr2)
         .with_tombstone_timeout(Duration::from_millis(50));
-    let store2 = ReplicatedMap::<i32, i32>::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg2,
+        Arc::new(fabric.bind(SocketAddr::new(addr2, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr1)
         .with_tombstone_timeout(Duration::from_millis(50));
 
@@ -98,8 +102,8 @@ async fn tombstone_is_retained_until_peer_acknowledges() {
 /// resurrected when that replica returns with the stale value.
 #[tokio::test(flavor = "multi_thread")]
 async fn deleted_value_is_not_resurrected_by_returning_peer() {
-    // Dedicated port for test isolation (see `tombstone_is_retained_until_peer_acknowledges`).
-    let port = 8085;
+    let port = 5000u16;
+    let fabric = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.70".parse().unwrap();
     let addr2 = "127.0.0.71".parse().unwrap();
@@ -116,14 +120,18 @@ async fn deleted_value_is_not_resurrected_by_returning_peer() {
         .unwrap()
         .with_insecure_no_key();
 
-    let store1 = ReplicatedMap::<i32, i32>::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg1,
+        Arc::new(fabric.bind(SocketAddr::new(addr1, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr2)
         .with_tombstone_timeout(Duration::from_millis(50));
-    let store2 = ReplicatedMap::<i32, i32>::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
+        cfg2,
+        Arc::new(fabric.bind(SocketAddr::new(addr2, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr1)
         .with_tombstone_timeout(Duration::from_millis(50));
 
@@ -170,8 +178,8 @@ async fn deleted_value_is_not_resurrected_by_returning_peer() {
 /// needs the periodic ack resend, acks otherwise being pairwise. Full-mesh topology.
 #[tokio::test(flavor = "multi_thread")]
 async fn tombstone_gc_converges_in_3_node_cluster_mesh() {
-    // Dedicated port for test isolation.
-    let port = 8120;
+    let port = 5000u16;
+    let fabric = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.110".parse().unwrap();
     let addr2 = "127.0.0.111".parse().unwrap();
@@ -188,21 +196,27 @@ async fn tombstone_gc_converges_in_3_node_cluster_mesh() {
             .with_reconcile_interval(Duration::from_millis(100))
             .with_insecure_no_key()
     };
-    let store1 = ReplicatedMap::<i32, i32>::new(mk(addr1))
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::<i32, i32>::new_with_transport(
+        mk(addr1),
+        Arc::new(fabric.bind(SocketAddr::new(addr1, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr2)
         .with_seed(addr3)
         .with_tombstone_timeout(Duration::from_millis(200));
-    let store2 = ReplicatedMap::<i32, i32>::new(mk(addr2))
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
+        mk(addr2),
+        Arc::new(fabric.bind(SocketAddr::new(addr2, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr1)
         .with_seed(addr3)
         .with_tombstone_timeout(Duration::from_millis(200));
-    let store3 = ReplicatedMap::<i32, i32>::new(mk(addr3))
-        .await
-        .expect("bind failed")
+    let store3 = ReplicatedMap::<i32, i32>::new_with_transport(
+        mk(addr3),
+        Arc::new(fabric.bind(SocketAddr::new(addr3, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr1)
         .with_seed(addr2)
         .with_tombstone_timeout(Duration::from_millis(200));
@@ -249,7 +263,8 @@ async fn tombstone_gc_converges_in_3_node_cluster_mesh() {
 /// the stale-value ack path anyway.
 #[tokio::test(flavor = "multi_thread")]
 async fn tombstone_gc_converges_in_3_node_cluster_line() {
-    let port = 8121;
+    let port = 5000u16;
+    let fabric = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
     let addr1 = "127.0.0.113".parse().unwrap();
     let addr2 = "127.0.0.114".parse().unwrap();
@@ -266,20 +281,26 @@ async fn tombstone_gc_converges_in_3_node_cluster_line() {
     };
     // Line: A seeds B; B seeds A and C; C seeds B. Seeds define the intended topology; a stray
     // discovery probe could only add connectivity, which never prevents GC convergence.
-    let store1 = ReplicatedMap::<i32, i32>::new(mk(addr1))
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::<i32, i32>::new_with_transport(
+        mk(addr1),
+        Arc::new(fabric.bind(SocketAddr::new(addr1, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr2)
         .with_tombstone_timeout(Duration::from_millis(200));
-    let store2 = ReplicatedMap::<i32, i32>::new(mk(addr2))
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
+        mk(addr2),
+        Arc::new(fabric.bind(SocketAddr::new(addr2, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr1)
         .with_seed(addr3)
         .with_tombstone_timeout(Duration::from_millis(200));
-    let store3 = ReplicatedMap::<i32, i32>::new(mk(addr3))
-        .await
-        .expect("bind failed")
+    let store3 = ReplicatedMap::<i32, i32>::new_with_transport(
+        mk(addr3),
+        Arc::new(fabric.bind(SocketAddr::new(addr3, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr2)
         .with_tombstone_timeout(Duration::from_millis(200));
 
