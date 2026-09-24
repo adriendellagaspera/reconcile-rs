@@ -9,11 +9,13 @@
 //! Multi-network topology: cross-net reconciliation, discovery, and the runtime net/knob-mutation
 //! API — independent of the LWW convergence semantics `basic.rs` covers.
 
+use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
-use reconcile::{replicated_map::Config, Fingerprint, ReplicatedMap};
+use reconcile::{replicated_map::Config, Fingerprint, InMemoryNetwork, ReplicatedMap};
 
 use crate::support::{assert_until, wait_until};
 
@@ -21,11 +23,12 @@ use crate::support::{assert_until, wait_until};
 /// cross-network anti-entropy.
 #[tokio::test(flavor = "multi_thread")]
 async fn cross_net_reconciliation() {
-    let port = 8085;
+    let port = 5000u16;
     let net_a = "127.0.0.0/30".parse().unwrap();
     let net_b = "127.0.1.0/30".parse().unwrap();
     let addr1 = "127.0.0.1".parse().unwrap();
     let addr2 = "127.0.1.1".parse().unwrap();
+    let net_transport = InMemoryNetwork::new();
     // Each node is local to its own network and declares the other as a remote one. A short
     // cross-network cadence keeps the test fast.
     let cfg1 = Config::default()
@@ -49,15 +52,19 @@ async fn cross_net_reconciliation() {
         .with_remote_fanout(1)
         .with_insecure_no_key();
 
-    let store1 = ReplicatedMap::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::new_with_transport(
+        cfg1,
+        Arc::new(net_transport.bind(SocketAddr::new(addr1, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr2);
     store1.insert("key".to_string(), "value".to_string());
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::<String, String>::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::<String, String>::new_with_transport(
+        cfg2,
+        Arc::new(net_transport.bind(SocketAddr::new(addr2, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr1);
     assert_eq!(store2.fingerprint(..), Fingerprint::ZERO);
 
@@ -78,11 +85,12 @@ async fn cross_net_reconciliation() {
 /// the local net stays a /30.
 #[tokio::test(flavor = "multi_thread")]
 async fn cross_net_discovery_without_seed() {
-    let port = 8086;
+    let port = 5000u16;
     let net_a = "127.0.2.0/30".parse().unwrap();
     let net_b = "127.0.3.0/30".parse().unwrap();
     let addr1 = "127.0.2.1".parse().unwrap();
     let addr2 = "127.0.3.1".parse().unwrap();
+    let net_transport = InMemoryNetwork::new();
     let peer2_host = "127.0.3.1/32".parse().unwrap();
     let peer1_host = "127.0.2.1/32".parse().unwrap();
     let cfg1 = Config::default()
@@ -107,12 +115,18 @@ async fn cross_net_discovery_without_seed() {
         .with_insecure_no_key();
 
     // No `with_seed`: the two nodes must find each other purely through per-network discovery probes.
-    let store1 = ReplicatedMap::new(cfg1).await.expect("bind failed");
+    let store1 = ReplicatedMap::new_with_transport(
+        cfg1,
+        Arc::new(net_transport.bind(SocketAddr::new(addr1, port))),
+    )
+    .expect("valid test config");
     store1.insert("k".to_string(), "v".to_string());
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::<String, String>::new(cfg2)
-        .await
-        .expect("bind failed");
+    let store2 = ReplicatedMap::<String, String>::new_with_transport(
+        cfg2,
+        Arc::new(net_transport.bind(SocketAddr::new(addr2, port))),
+    )
+    .expect("valid test config");
 
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
@@ -127,11 +141,12 @@ async fn cross_net_discovery_without_seed() {
 /// converge without the peer's net do so once [`add_net`](ReplicatedMap::add_net) injects it.
 #[tokio::test(flavor = "multi_thread")]
 async fn runtime_add_net_enables_discovery_and_convergence() {
-    let port = 8087;
+    let port = 5000u16;
     let net_a = "127.0.4.0/30".parse().unwrap();
     let net_b = "127.0.5.0/30".parse().unwrap();
     let addr1 = "127.0.4.1".parse().unwrap();
     let addr2 = "127.0.5.1".parse().unwrap();
+    let net_transport = InMemoryNetwork::new();
     let peer2_host = "127.0.5.1/32".parse().unwrap();
     let peer1_host = "127.0.4.1/32".parse().unwrap();
     // Fast cadence to converge quickly.
@@ -152,12 +167,18 @@ async fn runtime_add_net_enables_discovery_and_convergence() {
         .with_remote_fanout(1)
         .with_insecure_no_key();
 
-    let store1 = ReplicatedMap::new(cfg1).await.expect("bind failed");
+    let store1 = ReplicatedMap::new_with_transport(
+        cfg1,
+        Arc::new(net_transport.bind(SocketAddr::new(addr1, port))),
+    )
+    .expect("valid test config");
     store1.insert("k".to_string(), "v".to_string());
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::<String, String>::new(cfg2)
-        .await
-        .expect("bind failed");
+    let store2 = ReplicatedMap::<String, String>::new_with_transport(
+        cfg2,
+        Arc::new(net_transport.bind(SocketAddr::new(addr2, port))),
+    )
+    .expect("valid test config");
 
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
@@ -181,11 +202,12 @@ async fn runtime_add_net_enables_discovery_and_convergence() {
 /// still converges — the guarantee that keeps a topology change from causing silent divergence.
 #[tokio::test(flavor = "multi_thread")]
 async fn unclassified_peer_is_still_reconciled() {
-    let port = 8088;
+    let port = 5000u16;
     // A declared network that contains neither node.
     let foreign_net = "127.0.7.0/30".parse().unwrap();
     let addr1 = "127.0.6.1".parse().unwrap();
     let addr2 = "127.0.6.2".parse().unwrap();
+    let net_transport = InMemoryNetwork::new();
     let cfg1 = Config::default()
         .with_port(port)
         .with_listen_addr(addr1)
@@ -204,15 +226,19 @@ async fn unclassified_peer_is_still_reconciled() {
         .with_insecure_no_key();
 
     // Seeded so each knows the other, even though neither address is in any declared network.
-    let store1 = ReplicatedMap::new(cfg1)
-        .await
-        .expect("bind failed")
+    let store1 = ReplicatedMap::new_with_transport(
+        cfg1,
+        Arc::new(net_transport.bind(SocketAddr::new(addr1, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr2);
     store1.insert("k".to_string(), "v".to_string());
     let start_fingerprint = store1.fingerprint(..);
-    let store2 = ReplicatedMap::<String, String>::new(cfg2)
-        .await
-        .expect("bind failed")
+    let store2 = ReplicatedMap::<String, String>::new_with_transport(
+        cfg2,
+        Arc::new(net_transport.bind(SocketAddr::new(addr2, port))),
+    )
+    .expect("valid test config")
         .with_seed(addr1);
 
     // Local net of last resort is each node's own host route (peer is not local).
@@ -237,16 +263,17 @@ async fn runtime_config_setters() {
     let net_d = "127.0.9.0/30".parse().unwrap(); // does not contain addr
     let host_route = "127.0.8.1/32".parse().unwrap();
 
-    let store = ReplicatedMap::<i32, i32>::new(
+    let net_transport = InMemoryNetwork::new();
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
         Config::default()
-            .with_port(8090)
+            .with_port(5000)
             .with_listen_addr(addr)
             .with_net(net_c)
             .unwrap()
             .with_insecure_no_key(),
+        Arc::new(net_transport.bind(SocketAddr::new(addr, 5000))),
     )
-    .await
-    .expect("bind failed");
+    .expect("valid test config");
     assert_eq!(store.nets(), vec![net_c]);
     assert_eq!(store.local_net(), net_c);
 
