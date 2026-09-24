@@ -12,14 +12,16 @@
 //! updates must reconcile to a peer (not merely mutate locally), so the propagating cases use a
 //! two-node cluster.
 
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
 use reconcile::{
     replicated_map::{Config, RunOutcome},
-    ReplicatedMap,
+    InMemoryNetwork, ReplicatedMap,
 };
 
 async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
@@ -47,17 +49,18 @@ fn config(port: u16, addr: &str) -> Config {
         .with_insecure_no_key()
 }
 
-async fn isolated(port: u16, addr: &str) -> ReplicatedMap<i32, i32> {
-    ReplicatedMap::new(config(port, addr))
-        .await
-        .expect("bind failed")
+fn isolated(port: u16, addr: &str) -> ReplicatedMap<i32, i32> {
+    let network = InMemoryNetwork::new();
+    let local: SocketAddr = format!("{addr}:{port}").parse().unwrap();
+    ReplicatedMap::new_with_transport(config(port, addr), Arc::new(network.bind(local)))
+        .expect("valid test config")
 }
 
 // --- Atomic read-modify-write (single node is enough for the semantics) -----------------------
 
 #[tokio::test(flavor = "multi_thread")]
 async fn update_mutates_present_and_reports_absent() {
-    let store = isolated(8210, "127.0.0.220").await;
+    let store = isolated(8210, "127.0.0.220");
     store.insert(1, 10);
 
     assert!(
@@ -80,7 +83,7 @@ async fn update_mutates_present_and_reports_absent() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn upsert_updates_or_inserts() {
-    let store = isolated(8211, "127.0.0.221").await;
+    let store = isolated(8211, "127.0.0.221");
 
     // Absent: inserts the default.
     store.upsert(1, 100, |v| *v += 1);
@@ -93,7 +96,7 @@ async fn upsert_updates_or_inserts() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn get_or_insert_with_inserts_only_when_absent() {
-    let store = isolated(8212, "127.0.0.222").await;
+    let store = isolated(8212, "127.0.0.222");
 
     assert_eq!(store.get_or_insert_with(&1, || 42), 42);
     assert_eq!(store.get(&1).as_deref(), Some(&42));
@@ -124,14 +127,21 @@ async fn converged_pair(
     tokio::task::JoinHandle<RunOutcome>,
     tokio::task::JoinHandle<RunOutcome>,
 ) {
-    let store1 = ReplicatedMap::<i32, i32>::new(config(port, a1))
-        .await
-        .expect("bind failed")
-        .with_seed(a2.parse().unwrap());
-    let store2 = ReplicatedMap::<i32, i32>::new(config(port, a2))
-        .await
-        .expect("bind failed")
-        .with_seed(a1.parse().unwrap());
+    let network = InMemoryNetwork::new();
+    let a1_endpoint: SocketAddr = format!("{a1}:{port}").parse().unwrap();
+    let a2_endpoint: SocketAddr = format!("{a2}:{port}").parse().unwrap();
+    let store1 = ReplicatedMap::<i32, i32>::new_with_transport(
+        config(port, a1),
+        Arc::new(network.bind(a1_endpoint)),
+    )
+    .expect("valid test config")
+    .with_seed(a2.parse().unwrap());
+    let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
+        config(port, a2),
+        Arc::new(network.bind(a2_endpoint)),
+    )
+    .expect("valid test config")
+    .with_seed(a1.parse().unwrap());
     for k in 1..=5 {
         store1.insert(k, k * 10);
     }
@@ -193,14 +203,19 @@ async fn clear_propagates() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn load_bulk_seeds_locally_then_converges() {
-    let store1 = ReplicatedMap::<i32, i32>::new(config(8216, "127.0.0.229"))
-        .await
-        .expect("bind failed")
-        .with_seed("127.0.0.230".parse().unwrap());
-    let store2 = ReplicatedMap::<i32, i32>::new(config(8216, "127.0.0.230"))
-        .await
-        .expect("bind failed")
-        .with_seed("127.0.0.229".parse().unwrap());
+    let network = InMemoryNetwork::new();
+    let store1 = ReplicatedMap::<i32, i32>::new_with_transport(
+        config(8216, "127.0.0.229"),
+        Arc::new(network.bind("127.0.0.229:8216".parse().unwrap())),
+    )
+    .expect("valid test config")
+    .with_seed("127.0.0.230".parse().unwrap());
+    let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
+        config(8216, "127.0.0.230"),
+        Arc::new(network.bind("127.0.0.230:8216".parse().unwrap())),
+    )
+    .expect("valid test config")
+    .with_seed("127.0.0.229".parse().unwrap());
 
     let seed: Vec<(i32, i32)> = (1..=4).map(|k| (k, k * 10)).collect();
     store1.load_bulk(&seed);
