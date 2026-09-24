@@ -17,12 +17,13 @@
 #![cfg(all(reconcile_internal_testing, feature = "metrics"))]
 
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use metrics_util::debugging::{DebugValue, DebuggingRecorder};
 use tokio_util::sync::CancellationToken;
 
-use reconcile::{replicated_map::Config, ReplicatedMap};
+use reconcile::{replicated_map::Config, ReplicatedMap, UdpTransport};
 
 fn config(addr: &str, port: u16) -> Config {
     Config::default()
@@ -89,10 +90,17 @@ async fn mixed_wire_versions_are_reported_not_silently_dropped() {
     let snapshotter = install_recorder();
 
     let target_addr: IpAddr = "127.0.0.210".parse().unwrap();
-    let port = 9900u16;
-    let store = ReplicatedMap::<i32, i32>::new(config("127.0.0.210", port))
-        .await
-        .expect("bind failed");
+    let victim_socket = Arc::new(
+        tokio::net::UdpSocket::bind((target_addr, 0))
+            .await
+            .expect("bind receiver"),
+    );
+    let port = victim_socket.local_addr().unwrap().port();
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        config("127.0.0.210", port),
+        Arc::new(UdpTransport::new(victim_socket)),
+    )
+    .expect("valid test config");
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
     tokio::time::sleep(Duration::from_millis(50)).await;
 
