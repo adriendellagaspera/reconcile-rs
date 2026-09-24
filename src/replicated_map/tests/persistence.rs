@@ -15,7 +15,7 @@ use crate::replica::version_hash;
 use crate::replicated_map::PersistenceLoadError;
 use crate::{FileSnapshot, ReplicatedMap};
 
-use super::ephemeral_config;
+use super::{ephemeral_config, virtual_config, virtual_map};
 
 /// A durable backend must let a restarted store recover both live values and tombstones, with
 /// identical timestamps (hence an identical fingerprint).
@@ -24,9 +24,7 @@ async fn persistence_roundtrip_recovers_entries_and_tombstones() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("snapshot.bin");
 
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     store.insert(1, 11); // live value
@@ -36,9 +34,7 @@ async fn persistence_roundtrip_recovers_entries_and_tombstones() {
     store.persist_snapshot(); // force a durable write
 
     // A brand-new store recovers the previous state from the same file.
-    let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let restarted = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     assert_eq!(restarted.get(&1).as_deref(), Some(&11));
@@ -115,9 +111,7 @@ async fn transient_load_failure_is_retried_not_fatal() {
         ),
     });
     // Must succeed: the backend stops failing within the retry budget.
-    let _store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let _store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(backend)
         .unwrap();
 }
@@ -132,9 +126,7 @@ async fn load_failure_beyond_retry_budget_reports_retries_exhausted() {
             super::super::persistence::LOAD_RETRY_ATTEMPTS,
         ),
     });
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let store = virtual_map::<i32, i32>(virtual_config());
     match store.with_persistence(backend) {
         Ok(_) => panic!("expected RetriesExhausted, got Ok"),
         Err(err) => match &err {
@@ -157,9 +149,7 @@ async fn invalid_data_reports_corrupt_without_retrying() {
         failures_remaining: std::sync::atomic::AtomicU32::new(1),
     });
     let start = std::time::Instant::now();
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let store = virtual_map::<i32, i32>(virtual_config());
     match store.with_persistence(backend) {
         Ok(_) => panic!("expected Corrupt, got Ok"),
         Err(err) => match &err {
@@ -184,9 +174,7 @@ async fn snapshot_across_multiple_chunks_recovers_every_entry() {
     let path = dir.path().join("snapshot.bin");
     let n = super::super::persistence::SNAPSHOT_CHUNK_SIZE * 2 + 17; // spans three chunks, last one partial
 
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     for k in 0..n as i32 {
@@ -195,9 +183,7 @@ async fn snapshot_across_multiple_chunks_recovers_every_entry() {
     let expected = store.fingerprint(..);
     store.persist_snapshot();
 
-    let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let restarted = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     assert_eq!(
@@ -218,9 +204,7 @@ async fn restart_preserves_membership_and_acks() {
     let path = dir.path().join("snapshot.bin");
     let peer: IpAddr = "127.0.0.99".parse().unwrap();
 
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     store.engine.members.write().insert(peer);
@@ -235,9 +219,7 @@ async fn restart_preserves_membership_and_acks() {
         .insert(peer, 123);
     store.persist_snapshot();
 
-    let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let restarted = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     assert!(
@@ -264,9 +246,7 @@ async fn restart_keeps_tombstone_gc_gated() {
     let path = dir.path().join("snapshot.bin");
     let peer: IpAddr = "127.0.0.98".parse().unwrap();
 
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     store.engine.members.write().insert(peer);
@@ -288,9 +268,7 @@ async fn restart_keeps_tombstone_gc_gated() {
 
     // Sanity check the hazard: a *fresh* store (no recovered membership) would consider the
     // same tombstone stable and collect it.
-    let fresh = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let fresh = virtual_map::<i32, i32>(virtual_config());
     fresh.insert(1, 11);
     fresh.remove(&1);
     let fresh_version = fresh
@@ -306,9 +284,7 @@ async fn restart_keeps_tombstone_gc_gated() {
     );
 
     // The recovered store keeps the tombstone gated, preventing resurrection.
-    let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let restarted = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     assert!(restarted.get(&1).is_none(), "tombstone was not recovered");
@@ -446,9 +422,7 @@ async fn restart_insert_beats_persisted_tombstone() {
 async fn snapshot_periodically_actually_persists() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("periodic.bin");
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     store.just_insert(1, 10);
@@ -459,9 +433,7 @@ async fn snapshot_periodically_actually_persists() {
     )
     .await;
 
-    let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let restarted = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     assert_eq!(
@@ -492,9 +464,7 @@ async fn on_persistence_error_fires_on_every_failure() {
 
     let calls = Arc::new(AtomicUsize::new(0));
     let calls_in_hook = calls.clone();
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FailingSave))
         .unwrap()
         .on_persistence_error(move |err| {
@@ -525,9 +495,7 @@ async fn on_persistence_error_does_not_fire_on_success() {
     let path = dir.path().join("snapshot.bin");
     let calls = Arc::new(AtomicUsize::new(0));
     let calls_in_hook = calls.clone();
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap()
         .on_persistence_error(move |_err| {
@@ -548,11 +516,7 @@ async fn config_snapshot_interval_actually_changes_the_periodic_cadence() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fast_cadence.bin");
     let short_interval = Duration::from_millis(20);
-    let store = ReplicatedMap::<i32, i32>::new(
-        ephemeral_config().with_snapshot_interval(Some(short_interval)),
-    )
-    .await
-    .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config().with_snapshot_interval(Some(short_interval)))
     .with_persistence(Arc::new(FileSnapshot::new(&path)))
     .unwrap();
     store.just_insert(1, 10);
@@ -566,9 +530,7 @@ async fn config_snapshot_interval_actually_changes_the_periodic_cadence() {
     tokio::time::sleep(short_interval * 10).await;
     periodic.abort();
 
-    let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let restarted = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     assert_eq!(
