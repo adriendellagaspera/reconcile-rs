@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::persistence::{PersistedState, Persistence};
-use crate::ReplicatedMap;
 
 use super::{virtual_config, virtual_map};
 
@@ -105,10 +104,9 @@ async fn snapshot_periodically_writes_once_threshold_reached() {
 async fn snapshot_periodically_does_not_rewrite_when_idle_after_a_snapshot() {
     let saves = Arc::new(AtomicUsize::new(0));
     let short_interval = Duration::from_millis(20);
-    let store = virtual_map::<i32, i32>(
-        virtual_config().with_snapshot_interval(Some(short_interval)),
-    )
-    .with_persistence(Arc::new(CountingSave {
+    let store =
+        virtual_map::<i32, i32>(virtual_config().with_snapshot_interval(Some(short_interval)))
+            .with_persistence(Arc::new(CountingSave {
         saves: saves.clone(),
     }))
     .unwrap();
