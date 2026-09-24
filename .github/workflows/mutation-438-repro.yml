@@ -1,0 +1,86 @@
+# Diagnostic only: this workflow stays on the experiment PR and is not merged into main.
+name: mutation-438-repro
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/mutation-438-repro.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        jobs: [1, 3]
+        repeat: [1, 2]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants@27.1.0
+      - name: Select historical and neighboring mutants
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=src/replica/reconciliation.rs
+          budget=$(grep -nF 'let budget = send_buf.len() + TOMBSTONE_ACK_RESEND_BYTE_BUDGET;' "$file" | cut -d: -f1)
+          start=$(grep -nF 'let start = (round as usize) % n;' "$file" | cut -d: -f1)
+          increment=$(grep -nF 'appended += 1;' "$file" | cut -d: -f1)
+          test -n "$budget" && test -n "$start" && test -n "$increment"
+          # The former (start + offset) % n site no longer exists; select the
+          # current budget mutation and nearby surviving counting/indexing sites.
+          pattern="reconciliation\\.rs:($budget|$start|$increment):"
+          echo "REPRO_FILTER=$pattern" >> "$GITHUB_ENV"
+          echo "source_commit=$(git rev-parse HEAD)" | tee selected-mutants.txt
+          echo "budget_line=$budget start_line=$start increment_line=$increment" | tee -a selected-mutants.txt
+          unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
+          cargo mutants --list --workspace --all-features -f "$file" --re "$pattern" | tee -a selected-mutants.txt
+          test "$(grep -c 'reconciliation.rs:' selected-mutants.txt)" -ge 3
+      - name: Reproduce (record verdicts and build paths)
+        shell: bash
+        env:
+          PROPTEST_RNG_SEED: "20260817"
+          MUTATION_JOBS: ${{ matrix.jobs }}
+        run: |
+          set -uo pipefail
+          unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
+          export RUSTFLAGS="${RUSTFLAGS:-} --cfg reconcile_internal_testing"
+          printf 'jobs=%s repeat=%s source=%s\n' "$MUTATION_JOBS" '${{ matrix.repeat }}' "$(git rev-parse HEAD)" | tee repro-info.txt
+          set +e
+          cargo mutants --workspace --all-features --test-workspace=true \
+            -f src/replica/reconciliation.rs --re "$REPRO_FILTER" \
+            --jobs "$MUTATION_JOBS" --copy-target=false --output mutants.out \
+            > cargo-mutants-console.log 2>&1
+          result=$?
+          set -e
+          printf 'cargo_mutants_exit=%s\n' "$result" | tee -a repro-info.txt
+          cat cargo-mutants-console.log
+          find mutants.out -maxdepth 2 -type f -print | sort | tee -a repro-info.txt
+          for outcome in caught.txt missed.txt unviable.txt timeout.txt; do
+            if [ -f "mutants.out/$outcome" ]; then
+              printf '\n--- %s ---\n' "$outcome" | tee -a repro-info.txt
+              cat "mutants.out/$outcome" | tee -a repro-info.txt
+            fi
+          done
+          echo '--- scenario cargo/build paths ---' | tee -a repro-info.txt
+          grep -R -E 'CARGO_TARGET_DIR|target/debug|target/release|Running |Finished |AddrInUse|Address already in use|test result:' mutants.out/log 2>/dev/null | head -n 140 | tee -a repro-info.txt || true
+          # This is a diagnostic experiment, not an automatic gate promotion.
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-438-jobs-${{ matrix.jobs }}-repeat-${{ matrix.repeat }}
+          path: |
+            selected-mutants.txt
+            repro-info.txt
+            cargo-mutants-console.log
+            mutants.out/
+          retention-days: 14
