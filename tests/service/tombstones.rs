@@ -50,15 +50,15 @@ async fn tombstone_is_retained_until_peer_acknowledges() {
         Arc::new(fabric.bind(SocketAddr::new(addr1, port))),
     )
     .expect("valid test config")
-        .with_seed(addr2)
-        .with_tombstone_timeout(Duration::from_millis(50));
+    .with_seed(addr2)
+    .with_tombstone_timeout(Duration::from_millis(50));
     let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg2,
         Arc::new(fabric.bind(SocketAddr::new(addr2, port))),
     )
     .expect("valid test config")
-        .with_seed(addr1)
-        .with_tombstone_timeout(Duration::from_millis(50));
+    .with_seed(addr1)
+    .with_tombstone_timeout(Duration::from_millis(50));
 
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
@@ -125,15 +125,15 @@ async fn deleted_value_is_not_resurrected_by_returning_peer() {
         Arc::new(fabric.bind(SocketAddr::new(addr1, port))),
     )
     .expect("valid test config")
-        .with_seed(addr2)
-        .with_tombstone_timeout(Duration::from_millis(50));
+    .with_seed(addr2)
+    .with_tombstone_timeout(Duration::from_millis(50));
     let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg2,
         Arc::new(fabric.bind(SocketAddr::new(addr2, port))),
     )
     .expect("valid test config")
-        .with_seed(addr1)
-        .with_tombstone_timeout(Duration::from_millis(50));
+    .with_seed(addr1)
+    .with_tombstone_timeout(Duration::from_millis(50));
 
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
@@ -201,25 +201,25 @@ async fn tombstone_gc_converges_in_3_node_cluster_mesh() {
         Arc::new(fabric.bind(SocketAddr::new(addr1, port))),
     )
     .expect("valid test config")
-        .with_seed(addr2)
-        .with_seed(addr3)
-        .with_tombstone_timeout(Duration::from_millis(200));
+    .with_seed(addr2)
+    .with_seed(addr3)
+    .with_tombstone_timeout(Duration::from_millis(200));
     let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
         mk(addr2),
         Arc::new(fabric.bind(SocketAddr::new(addr2, port))),
     )
     .expect("valid test config")
-        .with_seed(addr1)
-        .with_seed(addr3)
-        .with_tombstone_timeout(Duration::from_millis(200));
+    .with_seed(addr1)
+    .with_seed(addr3)
+    .with_tombstone_timeout(Duration::from_millis(200));
     let store3 = ReplicatedMap::<i32, i32>::new_with_transport(
         mk(addr3),
         Arc::new(fabric.bind(SocketAddr::new(addr3, port))),
     )
     .expect("valid test config")
-        .with_seed(addr1)
-        .with_seed(addr2)
-        .with_tombstone_timeout(Duration::from_millis(200));
+    .with_seed(addr1)
+    .with_seed(addr2)
+    .with_tombstone_timeout(Duration::from_millis(200));
 
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
@@ -286,23 +286,23 @@ async fn tombstone_gc_converges_in_3_node_cluster_line() {
         Arc::new(fabric.bind(SocketAddr::new(addr1, port))),
     )
     .expect("valid test config")
-        .with_seed(addr2)
-        .with_tombstone_timeout(Duration::from_millis(200));
+    .with_seed(addr2)
+    .with_tombstone_timeout(Duration::from_millis(200));
     let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
         mk(addr2),
         Arc::new(fabric.bind(SocketAddr::new(addr2, port))),
     )
     .expect("valid test config")
-        .with_seed(addr1)
-        .with_seed(addr3)
-        .with_tombstone_timeout(Duration::from_millis(200));
+    .with_seed(addr1)
+    .with_seed(addr3)
+    .with_tombstone_timeout(Duration::from_millis(200));
     let store3 = ReplicatedMap::<i32, i32>::new_with_transport(
         mk(addr3),
         Arc::new(fabric.bind(SocketAddr::new(addr3, port))),
     )
     .expect("valid test config")
-        .with_seed(addr2)
-        .with_tombstone_timeout(Duration::from_millis(200));
+    .with_seed(addr2)
+    .with_tombstone_timeout(Duration::from_millis(200));
 
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
