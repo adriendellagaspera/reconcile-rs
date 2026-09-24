@@ -6,6 +6,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::hash::Hash;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::replicated_map::{Config, MAX_NETS};
@@ -28,9 +31,9 @@ mod write;
 /// A config bound to a fresh port on loopback — port `0` is refused, so
 /// [`next_ephemeral_test_port`](crate::replica::tests::next_ephemeral_test_port) stands in for it
 /// — so persistence tests can construct stores without colliding on a fixed port.
-fn ephemeral_config() -> Config {
+fn config_on_port(port: u16) -> Config {
     Config {
-        port: crate::replica::tests::next_ephemeral_test_port(),
+        port,
         listen_addr: "127.0.0.1".parse().unwrap(),
         nets: [None; MAX_NETS],
         remote_interval: 6,
@@ -55,4 +58,21 @@ fn ephemeral_config() -> Config {
         coalesce_window: Duration::ZERO,
         max_value_size: None,
     }
+}
+
+fn ephemeral_config() -> Config {
+    config_on_port(crate::replica::tests::next_ephemeral_test_port())
+}
+
+fn virtual_config() -> Config {
+    config_on_port(5000)
+}
+
+fn virtual_map<K: crate::bounds::Key + Hash, V: crate::bounds::Value>(
+    config: Config,
+) -> super::ReplicatedMap<K, V> {
+    let network = crate::transport::InMemoryNetwork::new();
+    let addr = SocketAddr::new(config.listen_addr, config.port);
+    super::ReplicatedMap::new_with_transport(config, Arc::new(network.bind(addr)))
+        .expect("valid test configuration")
 }
