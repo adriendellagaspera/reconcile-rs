@@ -14,36 +14,53 @@
 //! scope here. Running on a `current_thread` runtime keeps the `async` work on the test thread
 //! so the lifecycle events of `ReplicatedMap::new` are captured.
 
+use std::hash::Hash;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use reconcile::{
-    replicated_map::Config, ClusterKey, InMemoryNetwork, ReadReplicaMap, ReplicatedMap,
+    replicated_map::{Config, ConstructionError}, ClusterKey, InMemoryNetwork, Key, ReadReplicaMap,
+    ReplicatedMap, Value,
 };
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 use tracing_subscriber::Registry;
 
-/// A fresh, real bindable port per call — `Config::port` must be nonzero — so the several
-/// tests in this file calling `local_config()` never collide with each other. `cargo nextest`
-/// runs each `#[test]` in its own process, so a process-local counter restarts at the same value
-/// in every one of them — probing the OS for a genuinely free port is what stays collision-free
-/// across process boundaries, not just across threads.
-fn next_test_port() -> u16 {
-    std::net::UdpSocket::bind("127.0.0.1:0")
-        .expect("OS should hand out an ephemeral port")
-        .local_addr()
-        .expect("a bound socket reports its own address")
-        .port()
-}
-
 fn local_config() -> Config {
     Config::default()
-        .with_port(next_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.1".parse().unwrap())
         .with_net("127.0.0.1/8".parse().unwrap())
         .unwrap()
         .with_insecure_no_key()
+}
+
+fn virtual_store<K: Key + Hash, V: Value>(config: Config) -> ReplicatedMap<K, V> {
+    let fabric = InMemoryNetwork::new();
+    let endpoint = SocketAddr::new(config.listen_addr, config.port);
+    ReplicatedMap::new_with_transport(config, Arc::new(fabric.bind(endpoint)))
+        .expect("valid test config")
+}
+
+/// Exercise the real UDP constructor (and its "Listening on" event). Keep a
+/// port-selection lease open on another loopback IP until construction finishes;
+/// retry when the actual listen address is already occupied.
+async fn logged_store<K: Key + Hash, V: Value>(config: Config) -> ReplicatedMap<K, V> {
+    for _ in 0..64 {
+        let lease = tokio::net::UdpSocket::bind("127.0.0.250:0")
+            .await
+            .expect("bind port-selection lease");
+        let selected = config.clone().with_port(lease.local_addr().unwrap().port());
+        match ReplicatedMap::new(selected).await {
+            Ok(store) => return store,
+            Err(ConstructionError::Io(err)) if err.kind() == std::io::ErrorKind::AddrInUse => {
+                continue;
+            }
+            Err(err) => panic!("real UDP constructor failed: {err}"),
+        }
+    }
+    panic!("unable to reserve a real UDP endpoint after 64 attempts");
 }
 
 /// Keep every `tracing` callsite hot for the whole binary.
@@ -94,9 +111,7 @@ async fn startup_emits_info_and_security_warning_without_cluster_key() {
     let subscriber = Registry::default().with(layer);
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    let _store = ReplicatedMap::<String, String>::new(local_config())
-        .await
-        .expect("bind failed");
+    let _store = logged_store::<String, String>(local_config()).await;
 
     let events = events.lock().unwrap();
     let has_info_listening = events
@@ -123,9 +138,7 @@ async fn cluster_key_suppresses_the_security_warning() {
     let _guard = tracing::subscriber::set_default(subscriber);
 
     let config = local_config().with_cluster_key(ClusterKey::new([7u8; 32]));
-    let _store = ReplicatedMap::<String, String>::new(config)
-        .await
-        .expect("bind failed");
+    let _store = logged_store::<String, String>(config).await;
 
     let events = events.lock().unwrap();
     let has_info_listening = events
@@ -152,9 +165,7 @@ async fn local_mutations_increment_metric_counters() {
 
     // `new` emits no metrics, so build outside the recorder scope.
     keep_callsites_hot();
-    let store = ReplicatedMap::<i32, i32>::new(local_config())
-        .await
-        .expect("bind failed");
+    let store = virtual_store::<i32, i32>(local_config());
 
     let recorder = DebuggingRecorder::new();
     let snapshotter = recorder.snapshotter();
@@ -193,9 +204,7 @@ async fn broadcast_backpressure_increments_the_counter_at_a_zero_budget() {
     use metrics_util::debugging::{DebugValue, DebuggingRecorder};
 
     keep_callsites_hot();
-    let store = ReplicatedMap::<i32, i32>::new(local_config().with_max_concurrent_broadcasts(0))
-        .await
-        .expect("bind failed");
+    let store = virtual_store::<i32, i32>(local_config().with_max_concurrent_broadcasts(0));
 
     let recorder = DebuggingRecorder::new();
     let snapshotter = recorder.snapshotter();
@@ -250,9 +259,7 @@ async fn persistence_failures_recorded_as_counter_and_gauge_resets_on_success() 
 
     keep_callsites_hot();
     let backend = Arc::new(FailUntilFlagged(AtomicBool::new(false)));
-    let store = ReplicatedMap::<i32, i32>::new(local_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_store::<i32, i32>(local_config())
         .with_persistence(backend.clone())
         .unwrap();
 
@@ -319,9 +326,7 @@ async fn reconciliation_round_refreshes_the_state_gauges() {
     use metrics_util::debugging::{DebugValue, DebuggingRecorder};
 
     keep_callsites_hot();
-    let store = ReplicatedMap::<i32, i32>::new(local_config())
-        .await
-        .expect("bind failed");
+    let store = virtual_store::<i32, i32>(local_config());
     store.insert(1, 10); // stays live
     store.insert(2, 20);
     store.remove(&2); // becomes a tombstone
@@ -461,7 +466,7 @@ async fn read_replica_warns_about_more_than_one_net_but_not_zero_or_one() {
     };
 
     let zero_nets = Config::default()
-        .with_port(next_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.1".parse().unwrap())
         .with_insecure_no_key();
     assert!(
