@@ -7,7 +7,6 @@
 // except according to those terms.
 
 use crate::entry::State;
-use crate::ReadReplicaMap;
 
 use super::{isolated_read_replica, virtual_config};
 
