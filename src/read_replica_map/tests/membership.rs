@@ -8,7 +8,6 @@
 
 use std::time::{Duration, Instant};
 
-use super::super::*;
 use super::{isolated_read_replica, virtual_config};
 use ipnet::IpNet;
 
