@@ -27,10 +27,10 @@ use crate::replicated_map::Config;
 #[tokio::test]
 async fn equal_stamp_update_is_not_reapplied() {
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.150".parse().unwrap())
         .with_insecure_no_key();
-    let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
+    let engine: Replica<i32, u8> = super::in_memory_test_replica(config);
 
     let stamp = Timestamp::new(
         Hlc::new(PhysicalTime::from_millis(1_000), LogicalCounter::new(0)),
@@ -82,10 +82,10 @@ async fn equal_stamp_update_is_not_reapplied() {
 #[tokio::test]
 async fn newer_remote_tombstone_is_acked() {
     let config = Config::default()
-        .with_port(crate::replica::tests::next_ephemeral_test_port())
+        .with_port(5000)
         .with_listen_addr("127.0.0.152".parse().unwrap())
         .with_insecure_no_key();
-    let engine = Replica::<i32, u8>::new(config).await.expect("bind failed");
+    let engine: Replica<i32, u8> = super::in_memory_test_replica(config);
 
     let old_stamp = Timestamp::new(
         Hlc::new(PhysicalTime::from_millis(1_000), LogicalCounter::new(0)),
