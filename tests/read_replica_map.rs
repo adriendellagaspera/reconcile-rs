@@ -44,33 +44,34 @@ macro_rules! assert_until {
 /// the dated store's value-only projection fingerprint.
 #[tokio::test(flavor = "multi_thread")]
 async fn read_replica_converges_with_dated_store() {
-    let port = 8086;
+    let port = 5000u16;
+    let network = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
     let dated_addr = "127.0.0.90".parse().unwrap();
     let read_replica_addr = "127.0.0.91".parse().unwrap();
 
-    let dated = ReplicatedMap::<String, String>::new(
+    let dated = ReplicatedMap::<String, String>::new_with_transport(
         Config::default()
             .with_port(port)
             .with_listen_addr(dated_addr)
             .with_net(net)
             .unwrap()
-            .with_insecure_no_key(),
+            .with_insecure_no_key(),,
+        Arc::new(network.bind(SocketAddr::new(dated_addr, port))),
     )
-    .await
-    .expect("bind failed");
+    .expect("valid test config");
     // Seed the read replica with the dated store's address: the read replica *drives*
     // reconciliation over the value-only channel, so it just needs to know where to send.
-    let read_replica = ReadReplicaMap::<String, String>::new(
+    let read_replica = ReadReplicaMap::<String, String>::new_with_transport(
         Config::default()
             .with_port(port)
             .with_listen_addr(read_replica_addr)
             .with_net(net)
             .unwrap()
-            .with_insecure_no_key(),
+            .with_insecure_no_key(),,
+        Arc::new(network.bind(SocketAddr::new(read_replica_addr, port))),
     )
-    .await
-    .expect("bind failed")
+    .expect("valid test config")
     .with_seed(dated_addr);
 
     // Populate the dated store with live values and one key we will later delete.
@@ -114,33 +115,34 @@ async fn read_replica_converges_with_dated_store() {
 /// only a read replica talking to it, the dated store must still collect an expired tombstone.
 #[tokio::test(flavor = "multi_thread")]
 async fn read_replica_does_not_block_tombstone_gc() {
-    let port = 8087;
+    let port = 5000u16;
+    let network = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
     let dated_addr = "127.0.0.92".parse().unwrap();
     let read_replica_addr = "127.0.0.93".parse().unwrap();
 
     // Aggressive tombstone expiry so GC would fire quickly *if* it is not gated.
-    let dated = ReplicatedMap::<i32, i32>::new(
+    let dated = ReplicatedMap::<i32, i32>::new_with_transport(
         Config::default()
             .with_port(port)
             .with_listen_addr(dated_addr)
             .with_net(net)
             .unwrap()
-            .with_insecure_no_key(),
+            .with_insecure_no_key(),,
+        Arc::new(network.bind(SocketAddr::new(dated_addr, port))),
     )
-    .await
-    .expect("bind failed")
+    .expect("valid test config")
     .with_tombstone_timeout(Duration::from_millis(50));
-    let read_replica = ReadReplicaMap::<i32, i32>::new(
+    let read_replica = ReadReplicaMap::<i32, i32>::new_with_transport(
         Config::default()
             .with_port(port)
             .with_listen_addr(read_replica_addr)
             .with_net(net)
             .unwrap()
-            .with_insecure_no_key(),
+            .with_insecure_no_key(),,
+        Arc::new(network.bind(SocketAddr::new(read_replica_addr, port))),
     )
-    .await
-    .expect("bind failed")
+    .expect("valid test config")
     .with_seed(dated_addr);
 
     dated.insert(1, 11);
