@@ -17,15 +17,13 @@ use crate::{
     ReplicatedMap,
 };
 
-use super::ephemeral_config;
+use super::{virtual_config, virtual_map};
 
 /// `set_nets` enforces the same [`MAX_NETS`] cap `Config::with_net` do at
 /// construction time, just at runtime — both the accepting and the rejecting side need coverage.
 #[tokio::test]
 async fn set_nets_enforces_max_nets_at_runtime() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config());
 
     let within_cap: Vec<_> = (0..MAX_NETS)
         .map(|i| format!("127.0.0.0/{}", 8 + (i % 24)).parse().unwrap())
@@ -57,7 +55,7 @@ async fn start_reconciliation_actually_drives_a_round() {
     let a_ip: IpAddr = "127.0.3.5".parse().unwrap();
     let b_ip: IpAddr = "127.0.3.6".parse().unwrap();
     let cfg = |ip: IpAddr| {
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(ip)
             .with_port(port)
             .with_reconcile_interval(Duration::from_secs(3600))
@@ -111,9 +109,7 @@ async fn start_reconciliation_actually_drives_a_round() {
 /// `peers_map_len` must reflect the engine's actual peer count, not a fixed literal.
 #[tokio::test]
 async fn peers_map_len_reflects_the_engine_peers_map() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config());
     assert_eq!(store.peers_map_len(), 0);
     store
         .engine
@@ -126,9 +122,7 @@ async fn peers_map_len_reflects_the_engine_peers_map() {
 /// `tombstone_acks_len` must reflect the engine's actual tracked-key count, not a fixed literal.
 #[tokio::test]
 async fn tombstone_acks_len_reflects_the_engine_tombstone_acks_map() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config());
     assert_eq!(store.tombstone_acks_len(), 0);
     store
         .engine
@@ -152,7 +146,7 @@ async fn replay_filter_len_reflects_the_engine_replay_filter() {
     let b_ip: IpAddr = "127.0.5.6".parse().unwrap();
     let key = gossip::auth::ClusterKey::new([7u8; 32]);
     let cfg = |ip: IpAddr| {
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(ip)
             .with_port(port)
             .with_cluster_key(key.clone())
@@ -209,7 +203,7 @@ async fn bulk_dumps_in_flight_count_reflects_a_dump_actually_in_progress() {
     let a_ip: IpAddr = "127.0.6.5".parse().unwrap();
     let b_ip: IpAddr = "127.0.6.6".parse().unwrap();
     let cfg = |ip: IpAddr| {
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(ip)
             .with_port(port)
             .with_reconcile_interval(Duration::from_millis(20))
@@ -265,10 +259,7 @@ async fn bulk_dumps_in_flight_count_reflects_a_dump_actually_in_progress() {
 /// test module) and checks the wrapper reports each transition.
 #[tokio::test]
 async fn broadcasts_in_flight_count_reflects_claimed_and_released_slots() {
-    let store =
-        ReplicatedMap::<i32, i32>::new(ephemeral_config().with_max_concurrent_broadcasts(1))
-            .await
-            .expect("bind failed");
+    let store = virtual_map::<i32, i32>(virtual_config().with_max_concurrent_broadcasts(1));
 
     assert_eq!(store.broadcasts_in_flight_count(), 0);
     let guard = store
@@ -307,7 +298,7 @@ async fn set_remote_interval_actually_retunes_the_cross_network_cadence() {
     let a_ip: IpAddr = "127.1.0.5".parse().unwrap();
     let b_ip: IpAddr = "127.2.0.5".parse().unwrap();
     let a = ReplicatedMap::<i32, i32>::new_with_transport(
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(a_ip)
             .with_port(port)
             .with_net(net_a)
@@ -317,7 +308,7 @@ async fn set_remote_interval_actually_retunes_the_cross_network_cadence() {
     )
     .expect("valid configuration");
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(b_ip)
             .with_port(port)
             .with_reconcile_interval(Duration::from_millis(5)),
@@ -395,7 +386,7 @@ async fn set_remote_fanout_actually_retunes_the_cross_network_sample_size() {
     let a_ip: IpAddr = "127.1.1.5".parse().unwrap();
     let b_ip: IpAddr = "127.2.1.5".parse().unwrap();
     let a = ReplicatedMap::<i32, i32>::new_with_transport(
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(a_ip)
             .with_port(port)
             .with_net(net_a)
@@ -405,7 +396,7 @@ async fn set_remote_fanout_actually_retunes_the_cross_network_sample_size() {
     )
     .expect("valid configuration");
     let b = ReplicatedMap::<i32, i32>::new_with_transport(
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(b_ip)
             .with_port(port)
             .with_reconcile_interval(Duration::from_millis(5)),
@@ -465,7 +456,7 @@ async fn set_reconcile_interval_actually_retunes_the_round_cadence() {
     let a_ip: IpAddr = "127.0.4.5".parse().unwrap();
     let b_ip: IpAddr = "127.0.4.6".parse().unwrap();
     let cfg = |ip: IpAddr| {
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(ip)
             .with_port(port)
             .with_net(shared_net)
@@ -525,9 +516,7 @@ async fn set_reconcile_interval_actually_retunes_the_round_cadence() {
 /// no-op setter -- `repair_interval()` reads the same value the repair loop reads.
 #[tokio::test]
 async fn set_repair_interval_actually_retunes_the_repair_timer() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config());
     assert_ne!(
         store.repair_interval(),
         Duration::from_millis(7),
@@ -557,7 +546,7 @@ async fn set_coalesce_window_actually_delays_the_broadcast() {
     let a_ip: IpAddr = "127.0.4.7".parse().unwrap();
     let b_ip: IpAddr = "127.0.4.8".parse().unwrap();
     let cfg = |ip: IpAddr| {
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(ip)
             .with_port(port)
             .with_reconcile_interval(Duration::from_secs(3600))

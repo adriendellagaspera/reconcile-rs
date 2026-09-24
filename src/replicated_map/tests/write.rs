@@ -13,21 +13,18 @@ use chrono::Utc;
 use crate::clock::NodeId;
 use crate::{replicated_map::Config, ReplicatedMap};
 
-use super::ephemeral_config;
+use super::{virtual_config, virtual_map};
 
 #[tokio::test]
 async fn tombstones_expiration() {
-    // A dedicated port and /32 net keep a concurrent test's discovery from injecting here.
+    // A per-test in-memory transport isolates the expiry assertions from real UDP.
     let config = Config::default()
         .with_port(8090)
         .with_listen_addr("127.0.0.45".parse().unwrap())
         .with_net("127.0.0.45/32".parse().unwrap())
         .unwrap()
         .with_insecure_no_key();
-    let store = ReplicatedMap::<i32, i32>::new(config)
-        .await
-        .expect("bind failed")
-        .with_tombstone_timeout(Duration::from_millis(1));
+    let store = virtual_map::<i32, i32>(config).with_tombstone_timeout(Duration::from_millis(1));
 
     // No `run()`: its periodic GC would race these assertions.
 
@@ -51,9 +48,7 @@ mod tombstone_expiry_bound {
     /// Plant a tombstone carrying exactly `physical_ms` through the hook, and return the
     /// instant the wheel recorded for it.
     async fn plant(physical_ms: u64) -> (ReplicatedMap<i32, i32>, chrono::DateTime<Utc>) {
-        let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-            .await
-            .expect("bind failed");
+        let store = virtual_map::<i32, i32>(virtual_config());
         let stamp = crate::clock::Timestamp::new(
             Hlc::new(
                 PhysicalTime::from_millis(physical_ms),
@@ -153,9 +148,7 @@ mod tombstone_expiry_bound {
 /// `just_insert_bulk` must actually insert every pair, not silently no-op.
 #[tokio::test]
 async fn just_insert_bulk_actually_inserts_every_pair() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config());
     store.just_insert_bulk(&[(1, 10), (2, 20), (3, 30)]);
     assert_eq!(store.get(&1).as_deref(), Some(&10));
     assert_eq!(store.get(&2).as_deref(), Some(&20));
@@ -165,9 +158,7 @@ async fn just_insert_bulk_actually_inserts_every_pair() {
 /// `just_remove_bulk` must actually remove every key, not silently no-op.
 #[tokio::test]
 async fn just_remove_bulk_actually_removes_every_key() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config());
     store.just_insert_bulk(&[(1, 10), (2, 20)]);
     store.just_remove_bulk(&[1, 2]);
     assert_eq!(store.get(&1).as_deref(), None);
@@ -177,10 +168,8 @@ async fn just_remove_bulk_actually_removes_every_key() {
 /// `set_tombstone_timeout` must actually retune the wheel at runtime, not silently no-op.
 #[tokio::test]
 async fn set_tombstone_timeout_actually_retunes_the_wheel() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .unwrap()
-        .with_tombstone_timeout(Duration::from_secs(3600)); // won't expire on its own
+    let store =
+        virtual_map::<i32, i32>(virtual_config()).with_tombstone_timeout(Duration::from_secs(3600)); // won't expire on its own
     store.remove(&0);
     assert!(
         store.tombstones.expired(Utc::now()).is_empty(),
