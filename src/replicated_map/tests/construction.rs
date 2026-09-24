@@ -24,8 +24,7 @@ use super::{virtual_config, virtual_map};
 /// value reported is the one the clock actually stamps onto minted timestamps.
 #[tokio::test]
 async fn node_id_is_readable_and_matches_the_minted_stamp() {
-    let store =
-        virtual_map::<i32, i32>(virtual_config().with_node_id(NodeId::new(0xABCD)));
+    let store = virtual_map::<i32, i32>(virtual_config().with_node_id(NodeId::new(0xABCD)));
     assert_eq!(store.node_id(), NodeId::new(0xABCD));
     store.insert(1, 1);
     let stamp = store.engine.map.load_full().get(&1).unwrap().stamp;
