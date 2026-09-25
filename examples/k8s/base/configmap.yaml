@@ -11,7 +11,7 @@ data:
   RECONCILE_DNS_NAME: "reconcile-headless.default.svc.cluster.local"
   RECONCILE_PORT: "8080"
   # Address the in-process Prometheus endpoint listens on, and the separate readiness-probe
-  # endpoint (reflects ReplicatedMap::sync_state, not just process liveness — #292). 0.0.0.0
+  # endpoint (reflects ReplicatedMap::sync_state, not just process liveness). 0.0.0.0
   # exposes both on every interface the pod has; that's fine for the kubelet's own probe traffic
   # (pod-local), but see README.md's "Metrics endpoint exposure" (under "Security model") before
   # relying on this beyond a local/kind playground — a NetworkPolicy should still restrict who can

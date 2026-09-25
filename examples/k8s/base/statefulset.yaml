@@ -56,7 +56,7 @@ spec:
               protocol: TCP
           readinessProbe:
             # Reflects sync state (has this node completed a reconciliation round?), not just
-            # process liveness -- see reconcile::replicated_map::ReplicatedMap::sync_state (#292).
+            # process liveness -- see reconcile::replicated_map::ReplicatedMap::sync_state.
             httpGet:
               path: /
               port: ready
