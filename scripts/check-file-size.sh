@@ -78,7 +78,7 @@ if [ "$status" -eq 0 ]; then
     echo "check-file-size: $scanned files scanned, $warned over warning budget, none over hard-fail outside the whitelist above"
 else
     echo >&2
-    echo "Split the file (mirroring #421/#425) rather than raising FAIL. If it genuinely cannot" >&2
+    echo "Split the file rather than raising FAIL. If it genuinely cannot" >&2
     echo "decompose further, add it to EXCEPTIONS in scripts/check-file-size.sh and say why in" >&2
     echo "the commit." >&2
 fi

@@ -19,7 +19,7 @@ if [ "${1:-}" = "--bless" ]; then
 fi
 
 if ! command -v cargo-public-api >/dev/null 2>&1; then
-    echo "check-public-api: cargo-public-api not installed — 'cargo install cargo-public-api' (AGENTS.md §2)" >&2
+    echo "check-public-api: cargo-public-api not installed — run 'cargo install cargo-public-api'" >&2
     exit 1
 fi
 
@@ -87,7 +87,7 @@ for item in doc.get("index", {}).values():
 fi
 
 if [ "$rule3_hit" -eq 1 ]; then
-    echo "rbsr is deliberately 0.x (AGENTS.md §11, #308) — route this through a reconcile-owned" >&2
+    echo "rbsr is deliberately 0.x — route this through a reconcile-owned" >&2
     echo "type, or reopen the version-line decision." >&2
     status=1
 fi

@@ -33,7 +33,7 @@ done
 
 if [ "$status" -ne 0 ]; then
     echo >&2
-    echo "Domain modules must stay infrastructure-free (ARCHITECTURE.md §2.1)." >&2
+    echo "Domain modules must stay infrastructure-free." >&2
     echo "Route the dependency through a port/adapter instead, or move the code out of the domain." >&2
     echo >&2
 fi
@@ -100,7 +100,7 @@ done
 if [ "$manifest_status" -ne 0 ]; then
     echo >&2
     echo "rsos/rbsr/lww-register must stay standalone: no async runtime, socket, wire codec or" >&2
-    echo "wall clock in their manifests (ARCHITECTURE.md §2.1, AGENTS.md §9). Put the adapter" >&2
+    echo "wall clock in their manifests. Put the adapter" >&2
     echo "in gossip or reconcile instead." >&2
     status=1
 fi
@@ -141,18 +141,18 @@ if [ -f ARCHITECTURE.md ]; then
     while IFS= read -r edge; do
         [ -n "$edge" ] || continue
         grep -qxF "$edge" <<<"$documented" ||
-            { echo "check-domain-purity: ARCHITECTURE.md §2 does not draw ${edge%|*} --> depends on --> ${edge#*|}" >&2; graph_status=1; }
+            { echo "check-domain-purity: the architecture dependency graph does not draw ${edge%|*} --> depends on --> ${edge#*|}" >&2; graph_status=1; }
     done <<<"$actual"
     while IFS= read -r edge; do
         [ -n "$edge" ] || continue
         grep -qxF "$edge" <<<"$actual" ||
-            { echo "check-domain-purity: ARCHITECTURE.md §2 draws ${edge%|*} depending on ${edge#*|}, which no manifest declares" >&2; graph_status=1; }
+            { echo "check-domain-purity: the architecture dependency graph draws ${edge%|*} depending on ${edge#*|}, which no manifest declares" >&2; graph_status=1; }
     done <<<"$documented"
 fi
 
 if [ "$graph_status" -ne 0 ]; then
     echo >&2
-    echo "ARCHITECTURE.md §2's mermaid graph and the workspace manifests disagree. The manifests are" >&2
+    echo "the architecture dependency graph and the workspace manifests disagree. The manifests are" >&2
     echo "ground truth: fix the diagram, or fix the dependency if the diagram was the intent." >&2
     status=1
 fi

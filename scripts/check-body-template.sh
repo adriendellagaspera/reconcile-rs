@@ -107,7 +107,7 @@ if [ "$status" -eq 0 ]; then
     echo "check-body-template: $arm body conforms to $template"
 else
     echo >&2
-    echo "The templates fix the shape of a body; this gate makes them binding (#9). Structure only --" >&2
+    echo "The templates fix the shape of a body; this gate makes them binding. Structure only --" >&2
     echo "never length: see the script's header for what is deliberately not checked." >&2
 fi
 

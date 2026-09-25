@@ -93,6 +93,6 @@ echo >&2
 sed 's/^/  /' <<<"$real_removed_lines" >&2
 echo >&2
 echo "check-breaking-label: the lines above leave the public API in this PR, and it carries no" >&2
-echo "M-breaking. Either apply the label (non-additive: needs a major version and a MIGRATING.md" >&2
+echo "M-breaking. Either apply the label for a non-additive change requiring a major version" >&2
 echo "entry, .github/labels.tsv), or keep the item and deprecate it additively instead." >&2
 exit 1
