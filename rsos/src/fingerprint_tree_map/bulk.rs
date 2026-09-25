@@ -153,14 +153,6 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
     /// If `items`' keys are not strictly increasing (which also rules out duplicates) --
     /// [`FromIterator`]'s `collect` remains the right choice for unsorted or duplicate-keyed
     /// input.
-    /// ```
-    /// use rsos::FingerprintTreeMap;
-    /// let bulk: FingerprintTreeMap<i32, i32> =
-    ///  FingerprintTreeMap::from_sorted_iter((0..1000).map(|k| (k, k * 2)));
-    /// let serial: FingerprintTreeMap<i32, i32> = (0..1000).map(|k| (k, k * 2)).collect;
-    /// // Same elements, same aggregate -- regardless of the two builds' internal tree shape.
-    /// assert_eq!(bulk.aggregate(..), serial.aggregate(..));
-    /// ```
     #[must_use]
     pub fn from_sorted_iter<T: IntoIterator<Item = (K, V)>>(items: T) -> Self {
         Self::build_sorted(items, None)

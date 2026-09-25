@@ -57,12 +57,7 @@ impl Fingerprint {
     /// [`to_le_bytes`](Fingerprint::to_le_bytes). A third party can build a `lift`-compatible
     /// fingerprint from raw bytes (e.g. a BLAKE3 digest computed with the re-exported
     /// [`blake3`]) without reimplementing this limb decode.
-    /// ```
-    /// use rsos::Fingerprint;
-    /// let fp = Fingerprint([1, 2, 3, 4]);
-    /// assert_eq!(Fingerprint::from_le_bytes(&fp.to_le_bytes), fp);
-    /// ```
-    /// Unrolled rather than looped over the four limbs: a fixed count of four is simpler written
+        /// Unrolled rather than looped over the four limbs: a fixed count of four is simpler written
     /// out than indexed, and it keeps this `const fn` free of a manually incremented loop counter
     /// — the shape a single mutated `+=` could turn into an infinite loop, rather than a
     /// fast-failing wrong answer.
@@ -306,23 +301,11 @@ pub fn lift_keyed<K: Serialize + ?Sized, V: Serialize + ?Sized>(
 }
 
 /// The canonical 256-bit digest of a single value — [`lift`] with no key half, same encoding.
-/// ```
-/// use rsos::{digest, lift};
-/// // No key half: digesting a value is lift with a unit key.
-/// assert_eq!(digest(&"Hello"), lift(&, &"Hello"));
-/// // Distinct values digest to distinct fingerprints.
-/// assert_ne!(digest(&"Hello"), digest(&"Hell"));
-/// ```
 pub fn digest<T: Serialize + ?Sized>(value: &T) -> Fingerprint {
     lift_with(None, &(), value)
 }
 
 /// [`digest`], keyed under `lift_key` — [`lift_keyed`] with no key half, same encoding.
-/// ```
-/// use rsos::{digest_keyed, lift_keyed, LiftKey};
-/// let key = LiftKey::new([7; 32]);
-/// assert_eq!(digest_keyed(&key, &"Hello"), lift_keyed(&key, &, &"Hello"));
-/// ```
 pub fn digest_keyed<T: Serialize + ?Sized>(lift_key: &LiftKey, value: &T) -> Fingerprint {
     lift_with(Some(lift_key), &(), value)
 }

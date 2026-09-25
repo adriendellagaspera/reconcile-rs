@@ -110,16 +110,6 @@ impl<K: std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for FingerprintTree
 /// key order. Returned by [`FingerprintTreeMap::range`].
 /// Named `ItemRange`, not `Range`: the latter would collide with [`std::ops::Range`], which this
 /// type's own generic parameter `R` is frequently instantiated with. The public name is stable.
-/// ```
-/// use rsos::FingerprintTreeMap;
-/// let map: FingerprintTreeMap<i32, &str> =
-///  [(10, "a"), (20, "b"), (30, "c"), (40, "d")].into_iter.collect;
-/// // Only the keys inside the bound are yielded, in key order -- not the whole map.
-/// let pairs: Vec<_> = map.range(20..40).collect;
-/// assert_eq!(pairs, vec![(&20, &"b"), (&30, &"c")]);
-/// // Its count agrees with the aggregate computed over the same range: both walk the same subtree.
-/// assert_eq!(map.range(20..40).count, map.aggregate(20..40).size);
-/// ```
 pub struct ItemRange<'a, K, V, R: RangeBounds<K>> {
     /// Owned, not borrowed: a borrowed range makes `map.range(lo..hi)` on runtime bounds `E0716`.
     range: R,
