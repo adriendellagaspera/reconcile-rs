@@ -47,16 +47,17 @@ fi
 echo "check-mutation-gate: mutating lines changed against ${BASE_REF}"
 echo "                     PROPTEST_RNG_SEED=${PROPTEST_RNG_SEED}${SHARD:+, shard=$SHARD}"
 
-# #438: parallel runs reported inconsistent MISSED/CAUGHT verdicts, but the cause
-# is unconfirmed. The script previously forced every scratch copy to share the
-# source checkout's target directory; network tests also use overlapping ports.
-# Keep sequential execution until targeted sequential/parallel runs distinguish
-# mutant-caused failures from build and test infrastructure failures.
-JOBS=1
+# #438: historical parallel runs reported inconsistent MISSED/CAUGHT verdicts.
+# The repository then had two concrete isolation defects: all workers inherited one
+# CARGO_TARGET_DIR, and several tests competed for fixed/probed-and-released UDP ports.
+# Both are removed. The final post-isolation comparison (#179) ran the same mutant set
+# three times at jobs=1 and three times at jobs=3: verdicts matched exactly, no
+# infrastructure errors appeared, and every parallel worker used a distinct target.
+JOBS=3
 
 # --copy-target=false overrides .cargo/mutants.toml's `copy_target = true`.
-# Concurrent target copying previously failed with an I/O error; keep it disabled
-# while investigating #438 independently of the shared-build-directory issue.
+# Keep it disabled with parallel workers: every cargo-mutants worker must build in
+# its own scratch target rather than copying or reusing a target being mutated elsewhere.
 #
 # --workspace is load-bearing: without it cargo-mutants scopes to the invoking package
 # only (the root `reconcile` crate), so a diff touching rsos/rbsr/lww-register/gossip
@@ -79,14 +80,11 @@ JOBS=1
 # SHARD_ARGS: a large mechanical split (#427/#452) can put 200+ mutants in one diff -- git diff
 # shows moved code as changed regardless of whether any logic in it actually did (AGENTS.md §10's
 # "a rule enforced by eye" problem, here applied to cargo-mutants' own scope). At --jobs 1 (the
-# current conservative setting while #438 remains unresolved) that serialized into a
-# 2+ hour run, twice cut off mid-run by the CI runner with zero mutants missed either time --
-# wasted compute, not a real gate failure. Splitting the *same* mutant set across parallel shards
-# (mutants.yml's `pr-diff` matrix) keeps each shard's wall-clock low without raising --jobs (so
-# without enabling concurrent mutation workers) and without paying for more total CPU-time than one successful serial
-# run would have -- unlike the timeout-minutes bumps this replaced, which paid for repeated
-# failed attempts at the same serial run. Empty on a normal PR (5-20 mutants): one shard gets
-# everything, sharding is a no-op.
+# the then-sequential gate) that serialized into a 2+ hour run, twice cut off mid-run by the CI
+# runner with zero mutants missed either time -- wasted compute, not a real gate failure. Splitting
+# the *same* mutant set across parallel CI shards still caps each runner's wall-clock even now that
+# each shard can use several isolated cargo-mutants workers. Empty on a normal PR (5-20 mutants):
+# one shard gets everything, so sharding remains a no-op for the common case.
 SHARD_ARGS=()
 if [ -n "$SHARD" ]; then
     SHARD_ARGS=(--shard "$SHARD" --sharding round-robin)

@@ -47,25 +47,18 @@ jobs:
   # Gates every PR on the mutants introduced by that PR only. Typical PR: 5-20
   # mutants, 2-8 min. Measured on this repo, a 492-line diff produced 73 mutants.
   #
-  # #427/#452 is the outlier a single serial job doesn't budget for: a wholesale file-move split
+  # #427/#452 is the outlier a single job doesn't budget for: a wholesale file-move split
   # (mirroring #421/#425) shows git diff its *entire* moved content as changed, not just the
   # seams that actually moved, so the in-diff mutant count scales with the file's size rather
   # than the PR's real logic delta -- 1543 moved lines produced 247 mutants here, an order of
-  # magnitude past "typical". check-mutation-gate.sh pins --jobs 1 (#438: >1 produces false
-  # MISSED verdicts under load), so a single job's wall-clock is linear in mutant count with no
-  # parallelism to buy back -- and raising timeout-minutes doesn't actually buy more either: two
-  # separate attempts (90 min, then 180 min) both died at ~90-94 min via an identical "runner has
-  # received a shutdown signal", stopped at nearly the same mutant both times, with zero missed
-  # either time -- wasted compute for no verdict, and Actions minutes aren't free to keep
-  # re-spending on the same guess. The fix is the one `nightly` below already uses for the same
-  # problem at 8x this diff's scale: shard the *same* --in-diff mutant set across parallel jobs.
-  # Each shard stays well under any single-job ceiling, --jobs stays at 1 within each shard (so
-  # #438's risk never reopens), and total CPU-time is roughly what one successful serial run
-  # would have cost anyway -- unlike the timeout bumps this replaces, which paid twice for zero
-  # result. 4 shards, not 8: this diff is 1/6 of nightly's full-sweep size, and matrix legs carry
-  # their own checkout/cache/toolchain-install overhead that a normal 5-20-mutant PR shouldn't
-  # pay 8x for. Round-robin (not the default `slice`) spreads slow and fast mutants evenly, same
-  # rationale as `nightly`'s own comment.
+  # magnitude past "typical". Two attempts (90 min, then 180 min) both died at ~90-94 min via an
+  # identical "runner has received a shutdown signal", stopped at nearly the same mutant both
+  # times, with zero missed either time. Sharding the *same* --in-diff mutant set across four
+  # runners keeps each leg bounded; after #438's target-directory and network-resource isolation,
+  # check-mutation-gate.sh can also use three cargo-mutants workers inside each shard. The shards
+  # are still useful for pathological moved-file diffs, while a normal 5-20-mutant PR usually has
+  # work in only one shard. Round-robin (not the default `slice`) spreads slow and fast mutants
+  # evenly, same rationale as `nightly`'s own comment.
   #
   # Runs on `merge_group` too (main.yml `changes` job's rationale: the queue validates a
   # *combination* no single pull request tested, so it never filters). `github.base_ref` is only
