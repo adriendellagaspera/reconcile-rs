@@ -14,7 +14,7 @@ exclude_re = [
     "testing::",
     "impl Mac for HmacSha256Mac",
     "read_replica_map/membership\\.rs:71:53: replace < with <=",
-    "read_replica_map/write\\.rs:221:36: replace != with ==",
+    "read_replica_map/write\\.rs:219:36: replace != with ==",
     "fingerprint_tree_map/query\\.rs:(37|47):29:",
     "fingerprint_tree_map/query\\.rs:61:19: replace \\+= with \\*=",
     "fingerprint_tree_map/query\\.rs:70:19: replace \\+= with \\*=",
@@ -23,13 +23,13 @@ exclude_re = [
     "fingerprint_tree_map/range\\.rs:60:51: replace \\+ with \\*",
     "replay/bitmap\\.rs:75:32: replace \\| with \\^",
     "params\\.rs:70:9: replace SplitStride::get -> usize with 0",
-    "protocol\\.rs:321:54: replace == with !=",
-    "protocol/rank\\.rs:117:30: replace != with ==",
-    "protocol/rank\\.rs:117:43: replace \\|\\| with &&",
-    "protocol/rank\\.rs:117:62: replace != with ==",
-    "protocol/rank\\.rs:118:49: replace != with ==",
+    "protocol\\.rs:296:54: replace == with !=",
+    "protocol/rank\\.rs:111:30: replace != with ==",
+    "protocol/rank\\.rs:111:43: replace \\|\\| with &&",
+    "protocol/rank\\.rs:111:62: replace != with ==",
+    "protocol/rank\\.rs:112:49: replace != with ==",
     "replica/construct\\.rs:212:33: replace < with <=",
-    "replica/repair\\.rs:118:36: replace > with >=",
+    "replica/repair\\.rs:116:36: replace > with >=",
 ]
 
 skip_calls = ["with_capacity", "reserve"]
