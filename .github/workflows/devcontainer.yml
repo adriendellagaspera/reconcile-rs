@@ -11,13 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The heavy devcontainer build/smoke only validates the dev *image*, so it is
-  # pointless on the vast majority of changes that don't touch it. We still let the
-  # workflow trigger on every PR/push (so the required check always reports), but gate
-  # the expensive job behind a fast paths check: when nothing devcontainer-related
-  # changed, `devcontainer-ci` is skipped — and a skipped job counts as a passing
-  # required check, whereas filtering the whole workflow via `on.*.paths` would leave
-  # the check stuck "pending" and block merges.
   changes:
     name: Detect devcontainer changes
     runs-on: ubuntu-latest
@@ -25,10 +18,6 @@ jobs:
       devcontainer: ${{ steps.filter.outputs.devcontainer }}
     steps:
       - uses: actions/checkout@v3
-      # Not on `merge_group`: that event gives `paths-filter` no base to diff against, and a throw
-      # here would fail this job, which would *skip* `devcontainer-ci` rather than run it -- green
-      # having built nothing. The queue therefore builds unconditionally, which is also the right
-      # answer on its own terms: it validates a combination no single pull request tested.
       - uses: dorny/paths-filter@v3
         id: filter
         if: github.event_name != 'merge_group'
@@ -90,10 +79,6 @@ jobs:
             --log-level info \
             --cache-from type=local,src=/tmp/.devcontainer-cache
 
-      # The point of this job is to verify the devcontainer image itself builds and
-      # works, not to re-run the full suite — fmt, clippy and the complete test matrix
-      # already run (faster) in the `main` workflow's lint-and-test job. So we only
-      # smoke the dev image: compile every target and run the fast lib unit tests.
       - name: Smoke-build inside devcontainer
         run: |
           devcontainer exec --workspace-folder . -- bash -lc "\
