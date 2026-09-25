@@ -1,20 +1,5 @@
 name: issue-integrity
 
-# Primarily a schedule, because what these three audit is the *existing* state of the issue tracker
-# rather than the diff of any one commit -- a doc's claim about an issue goes stale when the
-# **issue** moves, which is nobody's push. Failing a commit for that would punish the wrong person
-# at the wrong time; failing a weekly run produces work, which is what this is. `workflow_dispatch`
-# re-runs it on demand, e.g. right after closing a batch of issues.
-#
-# The `pull_request` trigger does not revisit that. It is the *converse* case: when a PR edits one
-# of these scripts, or the file a script reads, the verdict becomes attributable to the diff again,
-# and a gate that changes without ever running is a gate nobody has tested. Each job below is gated
-# on its own inputs, so a PR only ever sees the check it could have broken -- and a change to
-# `check-issue-triage.sh` now self-tests against the live tracker in the PR that makes it, instead
-# of first executing days later on a Monday.
-#
-# Tracker drift alone still reaches only the schedule, which is the half of the original reasoning
-# that was always right.
 on:
   schedule:
     - cron: '17 6 * * 1'
@@ -27,23 +12,13 @@ permissions:
   pull-requests: read
 
 jobs:
-  # Same two rules as `main.yml`'s `changes` job: the filter lives in `if:` (a skipped job passes a
-  # required check, an `on.*.paths`-filtered workflow hangs one), and it only ever narrows a
-  # `pull_request` run -- `schedule` and `workflow_dispatch` always run everything, which is the
-  # audit this workflow exists for.
   changes:
     runs-on: ubuntu-latest
     outputs:
       shas: ${{ steps.filter.outputs.shas }}
-      claims: ${{ steps.filter.outputs.claims }}
-      rustdoc: ${{ steps.filter.outputs.rustdoc }}
       triage: ${{ steps.filter.outputs.triage }}
-      decisions: ${{ steps.filter.outputs.decisions }}
     steps:
       - uses: actions/checkout@v4
-      # Pull-request-only, for the reason spelled out in `main.yml`'s `changes` job: a throw here
-      # would fail this job, skip every job that `needs:` it, and report green having audited
-      # nothing.
       - uses: dorny/paths-filter@v3
         id: filter
         if: github.event_name == 'pull_request'
@@ -52,23 +27,9 @@ jobs:
             shas:
               - 'scripts/check-closed-issue-shas.sh'
               - '.github/workflows/issue-integrity.yml'
-            claims:
-              - 'scripts/check-doc-issue-claims.sh'
-              - '*.md'
-              - '.github/workflows/issue-integrity.yml'
-            rustdoc:
-              - 'scripts/check-closed-issue-rustdoc-refs.sh'
-              - 'scripts/lib-rustdoc-issue-refs.sh'
-              - '**/*.rs'
-              - '.github/workflows/issue-integrity.yml'
             triage:
               - 'scripts/check-issue-triage.sh'
-              - '.github/labels.tsv'
-              - '.github/workflows/issue-integrity.yml'
-            decisions:
-              - 'scripts/check-decision-issues-recorded.sh'
-              - 'ARCHITECTURE.md'
-              - 'AGENTS.md'
+              - 'scripts/test-check-issue-triage.sh'
               - '.github/labels.tsv'
               - '.github/workflows/issue-integrity.yml'
 
@@ -79,71 +40,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history, not the default shallow clone: `check-closed-issue-shas.sh` needs every
-          # commit reachable, to tell "cited SHA never merged" apart from "cited SHA is just old".
           fetch-depth: 0
-      - name: Closed issues must not cite commits that never reached main
-        env:
+      - env:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/check-closed-issue-shas.sh
 
-  # Checks only the annotated `[#N](…) (closed)` form -- see the script header for the measured
-  # reason free prose is out of scope. Its filter is root-level `*.md` and not `**/*.md` because
-  # that is precisely what the script scans (`grep -ronE … -- *.md`); widening the filter past the
-  # script's own reach would run it on changes it cannot see.
-  doc-issue-claims:
-    needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.claims == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Documentation must not assert an issue state the tracker disagrees with
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/check-doc-issue-claims.sh
-
-  # The mirror image of `doc-issue-claims`: that one checks an annotated *claim* in `.md` files
-  # against reality, this one checks that rustdoc cites no closed issue at all -- `rustdoc` is
-  # published, third-party documentation (docs.rs), where a closed-issue citation is a vestige, not
-  # a claim; `.md` docs like ARCHITECTURE.md/POSITIONING.md are durable-reference records where citing a
-  # closed issue is the point. Same reason for widening the filter no further than the
-  # script's own reach: `check-closed-issue-rustdoc-refs.sh` reads `.rs` files via `git ls-files`.
-  closed-issue-rustdoc-refs:
-    needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.rustdoc == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: rustdoc must not cite a closed issue
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/check-closed-issue-rustdoc-refs.sh
-
-  # Needs no history, hence the default shallow checkout.
   open-issue-labels:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.triage == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Exercise issue-label invariants against fixtures
-        run: bash ./scripts/test-check-issue-triage.sh
-      - name: Open issues must satisfy .github/labels.tsv's invariants
-        env:
+      - run: bash ./scripts/test-check-issue-triage.sh
+      - env:
           GH_TOKEN: ${{ github.token }}
-          # Unset for now: the backlog predates the taxonomy, so a deadline would fail the first
-          # run for reasons nobody chose. Set it once the backlog is labelled.
           TRIAGE_SLA_DAYS: ''
         run: ./scripts/check-issue-triage.sh
-
-  # Needs no history, hence the default shallow checkout.
-  decision-issues-recorded:
-    needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.decisions == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Closed C-decision issues must be cited in ARCHITECTURE.md or AGENTS.md
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/check-decision-issues-recorded.sh

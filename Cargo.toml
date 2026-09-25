@@ -1,5 +1,4 @@
 [workspace]
-# Workspace dependency map and crate responsibilities: ARCHITECTURE.md §2.
 members = ["rsos", "rbsr", "lww-register", "gossip", "devkit", "."]
 resolver = "2"
 
@@ -7,8 +6,6 @@ resolver = "2"
 name = "reconcile"
 version = "0.5.0"
 edition = "2021"
-# Dependency floor: blake3 -> cpufeatures requires Rust 1.85. `clippy::incompatible_msrv`
-# prevents source changes from silently raising it.
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 description = "A reconciliation storage service to sync a key-value map over multiple instances"
@@ -16,165 +13,88 @@ repository = "https://github.com/adriendellagaspera/reconcile-rs"
 readme = "README.md"
 keywords = ["reconciliation", "gossip", "replicated", "distributed", "crdt"]
 categories = ["data-structures", "network-programming"]
-# Keep the published crate to the library proper. Everything below is repository-only material —
-# turnkey Kubernetes example/deployment scaffolding and long-form design docs — that bloats the
-# package without serving consumers of the crate. (Relative links to these from README still
-# resolve, because crates.io rewrites them to the repository.)
 exclude = [
     "pre-commit",
     "CONTRIBUTING.md",
     "examples/k8s/",
     "ARCHITECTURE.md",
-    "POSITIONING.md",
 ]
 
-# Render every feature-gated public item on docs.rs, not only the default feature set.
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [profile.release]
 debug = true
-# Fingerprint/count arithmetic must fail loudly rather than wrap into unexplained divergence.
 overflow-checks = true
 
 [[bench]]
 name = "bench"
 harness = false
 
-# System-level, end-to-end benchmarks over the public API (no internal seam, so no feature gate).
 [[bench]]
 name = "system"
 harness = false
 
-# Protocol-level cost of one RBSR reconciliation (messages / advertised ranges / wire bytes as a
-# function of store size and difference size). Drives `rsos`/`rbsr` directly rather than the facade;
-# no internal seam, so no feature gate.
 [[bench]]
 name = "protocol"
 harness = false
 
-# K-writer contention: write throughput vs writer count, for `FingerprintTreeMap` and for a plain
-# `BTreeMap` control, each behind one shared `parking_lot::RwLock` — isolates the RSOS contract's
-# mandatory root-path write on every insert from the cost of the lock that already serialises
-# writers in `src/replicated_map.rs`. Drives `rsos` directly; no internal seam, so no feature gate.
 [[bench]]
 name = "contention"
 harness = false
 
-# #46 manual full-snapshot write-amplification and restart baseline (CSV, no Criterion).
 [[bench]]
 name = "snapshot_write_amplification"
 harness = false
 
 [features]
 default = ["mac-blake3"]
-# Facade feature names forward to `gossip`, which owns auth/encryption implementation and cfgs.
-# Exactly one MAC backend is used; `mac-blake3` takes precedence when both are enabled.
 mac-blake3 = ["gossip/mac-blake3"]
 mac-hmac = ["gossip/mac-hmac"]
-# Wipe the cluster key from memory on drop (defense in depth).
 zeroize = ["gossip/zeroize"]
-# Per-datagram payload confidentiality via authenticated encryption (AEAD).
-# When enabled, `Config::with_encryption` upgrades the keyed protocol from a
-# plaintext-payload MAC to XChaCha20-Poly1305 over the same cluster key. This one is both
-# forwarded *and* read locally:
-# `replica.rs` and `replicated_map.rs` still carry their own `#[cfg(feature = "encryption")]` arms.
 encryption = ["gossip/encryption"]
-# Emit runtime metrics via the `metrics` facade. Off by default: when disabled, every
-# metric call site compiles to a no-op (see `src/observability.rs`), so the default build
-# keeps its lean dependency footprint.
 metrics = ["dep:metrics"]
-# Install a Prometheus recorder and expose a `/metrics` HTTP endpoint (see
-# `src/prometheus.rs`). Pulls the exporter's HTTP listener stack; opt-in only. Implies
-# `metrics`, which feeds the same facade.
 metrics-prometheus = ["metrics", "dep:metrics-exporter-prometheus"]
-# Reserved for a future `hickory-resolver`-backed DNS discovery adapter (SRV records, explicit
-# TTL/ndots control, robust resolution in static/musl images). Not implemented yet: the default
-# `DnsDiscovery` uses the system resolver via `tokio::net::lookup_host` and needs no extra crate.
+# Reserved; currently no-op in gossip.
 dns-hickory = ["gossip/dns-hickory"]
 
-# Repository-only integration-test seams use a cfg rather than a Cargo feature so dependents cannot
-# opt into and freeze them as public API. Declare the cfg for `unexpected_cfgs` checking.
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(reconcile_internal_testing)"] }
 
-# The turnkey Kubernetes example. It is a multi-file example (`examples/k8s/main.rs`), so its
-# target is named after the directory: `cargo run --example k8s`. The metrics/readiness endpoint
-# (the Kubernetes probes target `/metrics`) is built in via the feature below. The rest of
-# `examples/k8s/` (manifests, kind playground, Dockerfile) is deployment scaffolding.
 [[example]]
 name = "k8s"
 path = "examples/k8s/main.rs"
 required-features = ["metrics-prometheus"]
 
 [dependencies]
-# Lock-free `Arc`-snapshot swap for `ReplicatedMap`/`ReadReplicaMap`'s trees (#34): readers
-# `load_full()` an `Arc` with no lock at all; writers serialize through a dedicated
-# `parking_lot::Mutex` (never `ArcSwap::rcu`, whose optimistic retry would replay side effects —
-# see `src/replica.rs` `Inner::write_lock`).
 arc-swap = "1.7.1"
 bincode = "1.3.3"
 chrono = { version = "0.4.31", features = ["serde"] }
-# The gossip adapter layer (`Transport`/`UdpTransport`, the wire-encoding functions,
-# `Authenticator`, replay protection, `Discovery`) — see `gossip/src/lib.rs`.
-# `default-features = false` so this crate's own `mac-blake3` default is the single place the MAC
-# backend gets chosen; the unification entries above forward it.
 gossip = { package = "reconcile-gossip", version = "0.5.0", path = "gossip", default-features = false }
 ipnet = "2.9.0"
-# The LWW-Register CRDT domain (`Entry`/`State`, `Timestamp`/`Clock`, `Persistence`, `Key`/`Value`)
-# — see `lww-register/src/lib.rs`. Infrastructure-free by construction.
 lww-register = { version = "0.5.0", path = "lww-register" }
 metrics = { version = "0.24", optional = true }
 metrics-exporter-prometheus = { version = "0.16", optional = true, default-features = false, features = ["http-listener"] }
 parking_lot = "0.12.1"
 rand = "0.8.5"
-# The anti-entropy algorithm (`initial_ranges`/`protocol_round`/`RangeAggregate`), generic over any RSOS
-# backend — see `rbsr/src/lib.rs`.
 rbsr = { version = "0.2.1", path = "rbsr" }
-# The data-structure/fingerprint mechanism (`FingerprintTreeMap`, `Rsos<K>`, `Fingerprint`,
-# `Aggregate`) — see `rsos/src/lib.rs` for what it is.
-#
-# Every intra-workspace dependency carries a `version` alongside its `path`: cargo strips `path` at
-# publish time and resolves the requirement from crates.io, so without it `cargo package`/`publish`
-# refuses the crate outright. That is what unblocks publishing the facade at all (#204, AGENTS.md
-# §11).
 rsos = { version = "0.5.0", path = "rsos" }
 serde = { version = "1.0.192", features = ["derive"] }
 tokio = { version = "1.33.0", features = ["net", "time", "rt", "macros", "sync"] }
-# `CancellationToken`, `ReplicatedMap::run`'s shutdown signal (#292). Re-exported (`src/lib.rs`)
-# under the same #297 reasoning as `tokio`/`ipnet`/`rand`/`parking_lot`: it names a type in a
-# public signature, so a dependent must never need its own independently-versioned copy.
 tokio-util = { version = "0.7", default-features = false }
 tracing = "0.1.40"
 
 [dev-dependencies]
-# Only `benches/system.rs`'s traffic-counting `Transport` wrapper needs this: `Transport`'s methods
-# are `#[async_trait]`-desugared, so an external impl needs the same macro (already a transitive
-# dependency via `gossip`, just not re-exported to consumers).
 async-trait = "0.1"
 clap = { version = "4.4.6", features = ["derive"] }
 criterion = "0.5.1"
-# `benches/protocol.rs`'s cost driver and `benches/contention.rs`'s N-writer harness, factored out
-# to a shared crate instead of duplicated between the two — see `devkit/Cargo.toml`. No `version`:
-# unlike the `[dependencies]` path entries above, a dev-dependency's `path` is simply stripped at
-# publish time rather than resolved from crates.io, so it needs none — and "devkit" is already an
-# unrelated package on the real registry, so adding one here would resolve to that crate instead.
 devkit = { path = "devkit" }
-# Cargo unions features across `[dependencies]`/`[dev-dependencies]` entries for the same package
-# when building dev targets: this turns on `gossip`'s `netem` feature (`gossip/src/netem/`) for
-# `benches/`/`tests/` only, without adding it to the default build any dependent gets.
-# `default-features = false` mirrors the `[dependencies]` entry above so `netem` is the only net
-# new thing this adds.
 gossip = { package = "reconcile-gossip", version = "0.5.0", path = "gossip", default-features = false, features = ["netem"] }
 metrics-util = { version = "0.19", default-features = false, features = ["debugging"] }
 proptest = "1.11.0"
 rand = "0.8.5"
-# Only the socket-option unit tests in `src/replica.rs` still reach for it, now that `UdpTransport`
-# lives in `gossip` (which keeps it as a real dependency, for SO_RCVBUF/SO_SNDBUF sizing, #169).
 socket2 = "0.5"
 tempfile = "3"
-# `io-util` is only for the `k8s` example's bare-bones readiness-probe TCP responder
-# (`examples/k8s/main.rs`) writing its response bytes.
 tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread", "io-util"] }
 tracing-subscriber = "0.3.17"
