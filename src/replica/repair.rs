@@ -168,7 +168,7 @@ mod tests {
     #[tokio::test]
     async fn a_fresh_pending_repair_is_not_yet_due() {
         let net = InMemoryNetwork::new();
-        let port = crate::replica::tests::next_ephemeral_test_port();
+        let port = 5000;
         let a: Replica<u32, u32> = engine("127.0.0.10".parse().unwrap(), port, &net);
         let peer: IpAddr = "127.0.0.11".parse().unwrap();
         a.set_repair_interval(Duration::from_secs(3600));
@@ -200,7 +200,7 @@ mod tests {
     #[tokio::test]
     async fn a_retried_repair_is_not_immediately_due_again() {
         let net = InMemoryNetwork::new();
-        let port = crate::replica::tests::next_ephemeral_test_port();
+        let port = 5000;
         let a: Replica<u32, u32> = engine("127.0.0.16".parse().unwrap(), port, &net);
         let peer: IpAddr = "127.0.0.17".parse().unwrap();
         a.set_repair_interval(Duration::from_millis(20));
@@ -229,7 +229,7 @@ mod tests {
     #[tokio::test]
     async fn a_second_note_does_not_reset_an_already_pending_deadline() {
         let net = InMemoryNetwork::new();
-        let port = crate::replica::tests::next_ephemeral_test_port();
+        let port = 5000;
         let a: Replica<u32, u32> = engine("127.0.0.12".parse().unwrap(), port, &net);
         let peer: IpAddr = "127.0.0.13".parse().unwrap();
         a.set_repair_interval(Duration::from_millis(20));
@@ -252,7 +252,7 @@ mod tests {
     #[tokio::test]
     async fn a_repair_is_dropped_after_the_attempt_bound() {
         let net = InMemoryNetwork::new();
-        let port = crate::replica::tests::next_ephemeral_test_port();
+        let port = 5000;
         let a: Replica<u32, u32> = engine("127.0.0.14".parse().unwrap(), port, &net);
         let peer: IpAddr = "127.0.0.15".parse().unwrap();
         a.set_repair_interval(Duration::from_millis(1));
