@@ -77,7 +77,7 @@ fn engine_with_counter(
     (a, counter)
 }
 
-/// The core regression: a peer whose dated bulk-update batch just landed within
+/// A peer whose dated bulk-update batch arrived within
 /// `repair_interval` must not be sent a fresh full comparison.
 #[tokio::test]
 async fn a_peer_with_a_recent_bulk_update_is_excluded_from_the_round() {

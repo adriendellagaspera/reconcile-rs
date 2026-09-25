@@ -266,7 +266,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// [`Config::snapshot_interval`](super::Config::snapshot_interval) — or never, if that is
     /// `None` — and, on each wakeup, actually writing only once
     /// [`Config::snapshot_change_threshold`](super::Config::snapshot_change_threshold) changes
-    /// have landed since the last snapshot, so an idle node does zero snapshot IO.
+    /// have occurred since the last snapshot, so an idle node does zero snapshot IO.
     pub(super) async fn snapshot_periodically(&self) {
         let Some(interval) = self.snapshot_interval else {
             return;

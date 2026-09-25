@@ -59,7 +59,7 @@ impl Discovery for FakeDiscovery {
     }
 }
 
-/// A discovery source that never lies about its kind — used to prove `with_discovery` rejects
+/// A discovery source with a fixed kind, for testing `with_discovery` kind validation.
 /// a speculative source unconditionally.
 struct SpeculativeDiscovery;
 
