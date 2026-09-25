@@ -5,8 +5,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Kubernetes example node. Deployment instructions live in examples/k8s/README.md.
-
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
