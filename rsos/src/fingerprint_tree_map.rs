@@ -5,17 +5,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! [`FingerprintTreeMap`]: a from-scratch `ArrayVec`-node B-tree (order 6) caching a per-subtree
-//! [`Aggregate`] at every node — `O(log n)` access, insertion, removal and range aggregate.
-//! The [`Rsos`](crate::Rsos) realization this crate ships (Meyer, arXiv:2212.13567;
-//! arXiv:2603.19820). Lift and combiner: [`crate::fingerprint`]. Trait-to-inherent name mapping:
-//! crate root docs.
-//! Split across siblings by concern: `node` owns the `Node<K, V>` storage and rebalancing;
-//! `access`/`mutate`/`query`/`range`/`bulk` each own one `impl FingerprintTreeMap` group (point
-//! access, insert/remove, order-statistics, range iteration, bottom-up bulk build); this file
-//! keeps the public type definitions (their module location is their `cargo public-api`-visible
-//! path — see ) plus the shared support (`Side`/`without`/`element`) every sibling
-//! draws on.
+//! [`FingerprintTreeMap`], the in-memory [`Rsos`](crate::Rsos) implementation.
+//!
+//! It is an order-6 B-tree with cached subtree [`Aggregate`] values and copy-on-write `Arc` nodes.
+//! Point operations and range aggregates are `O(log n)`; clones share unchanged nodes.
 
 use std::ops::RangeBounds;
 use std::sync::Arc;

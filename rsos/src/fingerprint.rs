@@ -5,35 +5,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Range fingerprint primitive: invariant 1, §6.
-//! `[u64; 4]`, per-element BLAKE3 over the [canonical encoding](crate::encoding), combined by
-//! addition mod 2²⁵⁶ — an abelian group whose carries are not `GF(2)`-linear, unlike the XOR
-//! combiner it must never become. Hash function *and* input encoding are both pinned here; either
-//! one changing is a wire break, frozen by this module's golden vectors.
-//! Non-`GF(2)`-linearity defeats the linear-algebra collision search that sinks XOR, but it is **not**
-//! collision resistance against a *chosen-input* (writing) adversary: finding a colliding multiset is
-//! Wagner's balance problem over `ℤ/2²⁵⁶`, which a k-tree solves in subexponential time — reduction
-//! mod `2^j` is a group homomorphism, so merging on low-order bits is exact and carries never disturb
-//! a matched window. **What this type guarantees on its own is therefore honest-model soundness, not
-//! unforgeability**: anyone who can write to a replica can grind a collision, demonstrated against
-//! the RBSR driver in `rbsr/tests/wagner_false_convergence.rs`.
-//! [`LiftKey`] closes that gap for a keyed lift: `BLAKE3_keyed(K, …)` reduces grinding to breaking
-//! the PRF instead of ~2³¹ offline evaluations, since the attacker no longer knows the hash they
-//! must invert (Clarke et al., ASIACRYPT 2003). This closes the gap only for holders of the key —
-//! a cluster running unkeyed (no [`LiftKey`] configured, as in the facade's explicit
-//! unauthenticated mode) is exactly as Wagner-breakable as before; keying is
-//! `reconcile`'s responsibility, derived from the shared cluster key already required for datagram
-//! authentication (`ClusterKey::derive_lift_key` — `gossip` — is never referenced here: `rsos`
-//! stays domain-pure,, and takes only the derived 32 bytes).
-//! **The collision bound assumes a set, not a multiset**: every statement above holds only if
-//! each live element is folded in exactly once. `FingerprintTreeMap::insert` on an already-present
-//! key applies a signed `new_fp - old_fp` delta rather than a blind `combine` (the type's sole
-//! mutation sink for the cached aggregate), so update-in-place, persistence reload and duplicate
-//! wire delivery all stay single-fold; the latter is pinned by
-//! `tests/proptest_fingerprint_tree_map/btreemap_oracle.rs`'s duplicate-delivery property. Under a genuine
-//! multiplicity (an element folded `c` times without a matching retraction) the bound degrades to
-//! `2^-(w - v₂(c))`, and vanishes outright under a `GF(2)`-linear combiner.
-//! Meyer, arXiv:2212.13567; Clarke et al., *Incremental Multiset Hash Functions* (ASIACRYPT 2003).
+//! 256-bit additive range fingerprints.
+//!
+//! Elements are lifted with BLAKE3 over [`crate::encoding`] and combined by addition modulo
+//! 2^256. The combiner is not XOR. [`LiftKey`] enables a keyed lift for adversarial settings;
+//! unkeyed fingerprints provide reconciliation soundness but not chosen-input collision resistance.
+//! [`FingerprintTreeMap`](crate::FingerprintTreeMap) folds each live key/value pair exactly once.
 
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 
@@ -59,10 +36,7 @@ use crate::encoding;
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Fingerprint(pub [u64; 4]);
 
-//  invariant 1: serializing through `[u8; 32]` rather than `[u64; 4]`
-// avoids bincode's per-limb varint length byte, in any `serde` backend. Deliberately a wire
-// break — see `tests/wire_format.rs`'s golden vector. Does not touch `rsos::encoding` (§6),
-// which already encodes every integer at fixed width.
+// Serialize as fixed 32-byte little-endian data rather than backend-dependent integer limbs.
 impl Serialize for Fingerprint {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.to_le_bytes().serialize(serializer)

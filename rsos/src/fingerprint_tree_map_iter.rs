@@ -5,18 +5,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! In-order iterators over [`FingerprintTreeMap`](crate::fingerprint_tree_map::FingerprintTreeMap):
-//! `O(h)` initial descent, amortized `O(1)` per `next`, `O(h)` stack.
-//! `IterMut`/`ValuesMut` are `#[cfg(test)]`-only: they hand out `&mut V` without updating the
-//! element fingerprint or the cached subtree aggregate.
-//! [`FingerprintTreeMap::with_mut`](crate::fingerprint_tree_map::FingerprintTreeMap::with_mut) is
-//! the supported mutation path.
-//! `Iter`, `IntoIter`, `Keys`, `Values`, `IntoKeys`, `IntoValues` all implement `ExactSizeIterator`
-//! (`len`/`size_hint` are `O(1)`, seeded once from the tree's cached subtree size) and
-//! `FusedIterator`, plus `Clone` and `Debug`.
-//! Split across siblings by iterator family: `into_iter`/`iter`/`iter_mut`/`keys`/`values` each own
-//! one traversal's `impl` blocks; this file keeps the public type definitions (their module
-//! location is their `cargo public-api`-visible path -- see ).
+//! In-order iterators over [`FingerprintTreeMap`](crate::fingerprint_tree_map::FingerprintTreeMap).
+//!
+//! Initial descent is `O(h)`, each `next` is amortized `O(1)`, and iterator state is `O(h)`.
+//! Mutable iterators are test-only because mutating values directly would bypass fingerprint updates.
 
 use std::sync::Arc;
 

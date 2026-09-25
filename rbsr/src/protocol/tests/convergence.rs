@@ -120,11 +120,8 @@ fn corpora() -> Vec<(&'static str, Vec<i32>, Vec<i32>)> {
     ]
 }
 
-/// A policy that behaves like [`FixedFanOut`] except it never actually narrows a range once a
-/// real cut is possible (`span > 1`) — it asks for a stride wider than any span instead.
-///  invariant 13: included in [`policies`] so the driver's guard,
-/// not this policy's own hygiene, is what the convergence matrix below is proving. Without
-/// that guard this would hang exactly like the oracle-coupled probe.
+/// A deliberately non-progressing policy used to exercise the driver's progress guard.
+/// For splittable ranges it requests a stride that cannot narrow the range.
 #[derive(Clone, Copy, Debug, Default)]
 struct NeverNarrows;
 
@@ -159,10 +156,7 @@ fn policies() -> Vec<(&'static str, Box<dyn RefinementPolicy>)> {
     ]
 }
 
-///  invariant 13, isolated to one round: a policy asking for a
-/// stride that would not narrow a `span > 1` range must not reach the fan-out loop as a
-/// `Split` at all — it is answered as an `Enumerate`, counted and bounced back exactly like a
-/// policy that had returned `Enumerate` itself.
+/// A non-progressing split on a range with more than one local element becomes enumeration.
 #[test]
 fn non_progressing_split_is_converted_to_enumerate() {
     let store = tree(&(0..10).collect::<Vec<_>>()); // span = 10, so span() > 1
