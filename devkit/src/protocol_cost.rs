@@ -147,7 +147,7 @@ pub struct Cost {
     pub enumerations: usize,
     pub enumerated_elements: usize,
     /// What those elements cost on the wire, one entry per payload variant `price_element`
-    /// returned — the value half of [`total_bytes`](Cost:total_bytes). Empty when `reconcile` was
+    /// returned — the value half of [`Cost::total_bytes`]. Empty when `reconcile` was
     /// called with `price_element: None`.
     pub enumerated_bytes: Vec<usize>,
     /// Local RSOS queries, summed over both peers.
@@ -197,9 +197,7 @@ pub struct Decisions {
 /// entry per payload variant to price side by side. `None` counts enumerated elements without
 /// pricing them, for a timed drive where encoding a real payload would put the caller's own
 /// encoder inside the measurement.
-/// `rng` is `protocol_round_with_policy`'s injected cut-offset seam (rbsr's,
-/// "Defense against a correlated false SKIP"), reused across every round of this drive — the same
-/// pattern a real deployment's `Replica`/`ReadReplicaMap` follow with their own session RNG.
+/// `rng` supplies the session-scoped randomized split offset and is reused across all rounds.
 pub fn reconcile<S: Rsos<u64>>(
     a: &S,
     b: &S,
