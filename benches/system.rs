@@ -348,7 +348,7 @@ fn heap_footprint(c: &mut Criterion) {
         );
         drop((kvs, store));
 
-                // Heap-indirected String -> Vec<u8> case.
+        // Heap-indirected String -> Vec<u8> case.
         let kvs = corpus_heap(size, HEAP_VALUE_LEN);
         let raw = kvs.first().map_or(0, |(k, v)| k.len() + v.len());
         let store = loaded_store_heap(&rt, &[]);

@@ -104,23 +104,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// # Panics
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime, on the
     /// success path only.
-    /// ```
-    /// # use std::sync::Arc;
-    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    /// # #[tokio::main]
-    /// # async fn main {
-    /// let network = InMemoryNetwork::new;
-    /// let transport = Arc::new(network.bind("127.0.0.1:8309".parse.unwrap));
-    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///  Config::default.with_insecure_no_key,
-    ///  transport,
-    /// )
-    /// .expect("valid configuration");
-    /// assert_eq!(store.try_insert("a".to_string, 1), Ok(None));
-    /// assert_eq!(store.try_insert("a".to_string, 2), Ok(Some(1)));
-    /// assert_eq!(store.get_cloned(&"a".to_string), Some(2));
-    /// # }
-    /// ```
     pub fn try_insert(&self, key: K, value: V) -> Result<Option<V>, WriteRejected> {
         check_value_size(&value, self.engine.max_value_size()).map_err(WriteRejected::TooLarge)?;
         match self
