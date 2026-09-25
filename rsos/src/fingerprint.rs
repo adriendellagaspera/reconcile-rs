@@ -57,7 +57,7 @@ impl Fingerprint {
     /// [`to_le_bytes`](Fingerprint::to_le_bytes). A third party can build a `lift`-compatible
     /// fingerprint from raw bytes (e.g. a BLAKE3 digest computed with the re-exported
     /// [`blake3`]) without reimplementing this limb decode.
-        /// Unrolled rather than looped over the four limbs: a fixed count of four is simpler written
+    /// Unrolled rather than looped over the four limbs: a fixed count of four is simpler written
     /// out than indexed, and it keeps this `const fn` free of a manually incremented loop counter
     /// — the shape a single mutated `+=` could turn into an infinite loop, rather than a
     /// fast-failing wrong answer.
