@@ -13,7 +13,7 @@ use std::time::Duration;
 use crate::persistence::{PersistedState, Persistence};
 use crate::replica::version_hash;
 use crate::replicated_map::PersistenceLoadError;
-use crate::{FileSnapshot, ReplicatedMap};
+use crate::FileSnapshot;
 
 use super::{virtual_config, virtual_map, virtual_map_with_clock};
 
