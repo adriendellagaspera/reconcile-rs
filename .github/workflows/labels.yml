@@ -1,13 +1,5 @@
 name: labels
 
-# Keeps the label set itself mechanical (AGENTS.md §10). Two jobs, two failure modes:
-#   sync     the label set drifts from `.github/labels.tsv` -> re-apply the file on every change
-#   triage   an issue opens with no labels at all           -> stamp `S-needs-triage`
-#
-# The third failure mode -- an issue carrying an invalid *combination* -- is audited weekly by
-# `issue-integrity.yml`, alongside the closed-issue-SHA audit: both look at the tracker's existing
-# state rather than at any one diff, so they share one schedule instead of two.
-
 on:
   push:
     branches: [ "main" ]
@@ -31,9 +23,6 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v4
-      # No `--prune`: deleting a label strips it from every issue carrying it, which is not
-      # recoverable from the file. Removing a label is therefore a deliberate local run
-      # (`./scripts/sync-labels.sh --apply --prune`), never a side effect of a merge.
       - name: Apply .github/labels.tsv
         run: ./scripts/sync-labels.sh --apply
         env:
@@ -46,18 +35,6 @@ jobs:
     permissions:
       issues: write
     steps:
-      # The default state has to be applied by something, or "exactly one S-" is false for every
-      # issue the moment it is opened, and the weekly audit becomes noise. The issue template also
-      # sets it, which covers only template-created issues -- this covers the rest (API,
-      # `gh issue create`, transfers).
-      #
-      # Guarded on "no S- label yet": an issue created through the API with its full C-/A-/S- set
-      # already present (the shape every issue in this backlog's 2026-08-14 split/rescope pass
-      # used) still fires this same `issues: opened` webhook, and an unconditional `--add-label`
-      # stamped a second, contradictory S- onto seven of nine such issues before this guard existed
-      # -- `--add-label` merges, it does not replace, so "exactly one S-" broke immediately for
-      # the one case this job exists to prevent it for. `gh issue view --json labels` right before
-      # acting keeps the check and the write on the same event instead of trusting a separate run.
       - name: Stamp S-needs-triage, unless an S- label is already present
         run: |
           set -euo pipefail
