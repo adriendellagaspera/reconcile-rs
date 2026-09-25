@@ -1,12 +1,7 @@
-// The benchmark drives the range-fingerprint via `FingerprintTreeMap:aggregate`, which is public
-// on the standalone `rsos` crate — so, unlike when it went through the gated `reconcile:testing`
-// seam, the bench body needs no feature gate at all.
+// Structure and reconciliation benchmarks that use repository-only testing seams.
 use imp::main;
 
-// `service_reconcile_rtt` below composes `just_insert`/`just_remove` (`reconcile_internal_testing`
-// seams, ) with the injected-RTT decorator, so it lives here rather than in
-// `system.rs`, which is deliberately feature-gate-free (the benchmark guide "Pricing that
-// end-to-end...").
+// RTT reconciliation stays here because it uses `reconcile_internal_testing` mutation seams.
 
 mod imp {
     use std::collections::BTreeMap;

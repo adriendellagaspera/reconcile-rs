@@ -5,42 +5,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// `K`-writer contention: write throughput vs writer count `N`, for `FingerprintTreeMap` and for
-// plain `BTreeMap`, each behind one shared `parking_lot:RwLock` of the exact shape
-// `src/replica.rs` uses for its `map` field (`Arc<RwLock<FingerprintTreeMap<K, V>>>`).
-// Isolates the RSOS contract's own write cost: the `FingerprintTreeMap` arm pays the
-// lock plus the root-path aggregate maintenance `rsos:fingerprint_tree_map`'s `O(log n)`
-// `Aggregate(l, u)` bound requires; the `BTreeMap` arm pays the same lock and insert shape with no
-// aggregate to maintain. The delta between the two arms, at each `N`, is the contract's own share
-// of the write cost. Full method and results: the benchmark guide.
-// Reports three quantities, none of them a plain fp/btree ratio — that quotient's two
-// terms both grow with `N`, so it cannot say which one moved:
-// - A machine-independent **counted** result (`rsos:counters`, behind
-//  `--cfg reconcile_internal_testing`): cached aggregates an insert maintains, unaffected by the
-//  host.
-// - A **timed** result over [`TRIALS`] repeated trials per `(N, arm)`, arms paired within a trial
-//  and order-alternated, the whole `(N, trial)` sweep run in one shuffled schedule, reported as
-//  percentile-bootstrap-interval means (`devkit:stats`).
-// - **Delta**, `1/X_fp − 1/X_btree` per trial: cancels the shared lock term
-//  (`1/X_arm = S_arm + H(N)`) to bound the contract's own per-insert cost from above, exact at
-//  `N = 1` — the statistic the report leads with.
-// Throughput stays wall-clock on purpose: lock waiting *is* elapsed time, with no counted proxy
-// for it.
-// **What is, and is not, measured.** Both arms insert into a map pre-filled to [`PREFILL`]
-// entries, then `N` threads each insert their own disjoint block of fresh keys, one `write()`
-// acquisition per key — `Replica:just_insert`/gossip receipt's own shape. This is a **lock
-// contention** benchmark, not a lock-free redesign or a COW prototype — both are.
-// **Comparability caveat.** Every timed comparison is arm-against-arm on the machine that
-// produced it; absolute ops/s are not portable across machines. The counted half carries no such
-// caveat.
-// Every parameter is overridable from the environment, and `CONTENTION_RAW=1` emits one
-// line per trial so several invocations can be pooled into the invocation-level statistics
-// the benchmark guide documents — the experimental unit is the invocation, not the trial:
-// ```sh
-// CONTENTION_WRITERS=1,2,4,8,16,32,64,128 CONTENTION_TRIALS=30 cargo bench --bench contention
-// ```
-// Reproduction and results: the benchmark guide. Not run in CI (only compile-checked); run locally
-// with `cargo bench --bench contention`.
+// Write-contention benchmark for `FingerprintTreeMap` versus `BTreeMap` behind the same
+// `parking_lot::RwLock`. Reports aggregate-maintenance counts, throughput, and per-trial cost
+// deltas across writer counts. Environment variables control the sweep; `CONTENTION_RAW=1` emits
+// trial-level rows. Run with `cargo bench --bench contention`.
 
 use std::hint::black_box;
 use std::str::FromStr;
@@ -485,9 +453,7 @@ fn print_counted_summary(_prefill: usize) {
     );
 }
 
-// Printed report: the counted result, then throughput vs `N` for both arms with intervals, then
-// the explicit test of whether the ratio moves with `N`. Meant to be read directly and copied into
-// the benchmark guide; the Criterion groups below plot the same measurement.
+// Printed report: counted work, throughput intervals, ratio trend, model fit, and order effect.
 fn print_contention_report() {
     let trials = env_or("CONTENTION_TRIALS", TRIALS);
     let ops = env_or("CONTENTION_OPS", OPS_PER_WRITER);
@@ -503,11 +469,8 @@ fn print_contention_report() {
     print_order_effect(&points);
 }
 
-// Timed Criterion groups for both arms, over the same `N` sweep, with Criterion's own sampling and
-// `Throughput:Elements` so `target/criterion/report/index.html` plots the same measurement the
-// report above states. The report, not this group, is what the benchmark guide quotes: it pairs the
-// arms within a trial and puts an interval on their ratio, which Criterion — measuring each
-// benchmark id independently — cannot do.
+// Criterion groups plot the same writer-count sweep; the printed report additionally pairs arms
+// within each trial so it can report intervals on their delta.
 fn writer_contention(c: &mut Criterion) {
     print_contention_report();
 
