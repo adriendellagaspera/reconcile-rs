@@ -47,12 +47,12 @@ fi
 echo "check-mutation-gate: mutating lines changed against ${BASE_REF}"
 echo "                     PROPTEST_RNG_SEED=${PROPTEST_RNG_SEED}${SHARD:+, shard=$SHARD}"
 
-# #438: historical parallel runs reported inconsistent MISSED/CAUGHT verdicts.
-# The repository then had two concrete isolation defects: all workers inherited one
-# CARGO_TARGET_DIR, and several tests competed for fixed/probed-and-released UDP ports.
-# Both are removed. The final post-isolation comparison (#179) ran the same mutant set
-# three times at jobs=1 and three times at jobs=3: verdicts matched exactly, no
-# infrastructure errors appeared, and every parallel worker used a distinct target.
+# #438: two independent isolation defects were demonstrated.
+# First, the historical tree remained mutation-unstable even with isolated build targets because
+# its test suite still hit real AddrInUse failures. Second, on the hermetic #179 source, forcing
+# all three cargo-mutants workers back onto one CARGO_TARGET_DIR alone made verdicts unstable
+# across repeated runs; with isolated targets the same source/verdict set was stable 3/3.
+# Both defects are removed. Keep --copy-target=false and per-worker scratch targets.
 JOBS=3
 
 # --copy-target=false overrides .cargo/mutants.toml's `copy_target = true`.
