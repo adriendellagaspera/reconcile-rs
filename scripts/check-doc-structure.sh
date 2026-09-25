@@ -62,6 +62,13 @@ if [ -n "$rust_refs" ]; then
   fail 'Rust comments must be self-contained and must not cite tracker issues or repository prose'
 fi
 
+config_refs=$(grep -rnE '^[[:space:]]*#([^!]|$).*(#[0-9]+|POSITIONING\.md|MIGRATING\.md|CHANGELOG\.md)' \
+  --include='*.sh' --include='*.toml' --include='*.yml' --include='*.yaml' \
+  --exclude='check-doc-structure.sh' --exclude-dir=target . || true)
+if [ -n "$config_refs" ]; then
+  echo "$config_refs" >&2
+  fail 'Configuration comments must describe current local constraints, not tracker history'
+fi
 for old in CHANGELOG.md MIGRATING.md POSITIONING.md; do
   [ ! -e "$old" ] || fail "$old is historical documentation"
 done
