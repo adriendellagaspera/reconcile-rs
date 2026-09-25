@@ -61,7 +61,7 @@ pub const VERSION_LEN: usize = 1;
 /// Bumping it is the sanctioned way to make a non-additive change to the `Message` wire format:
 /// a peer running a different version is rejected with a distinguishable, counted reason
 /// (`reconcile_datagrams_dropped_total{reason="version"}`) rather than silently misread or
-/// indistinguishably dropped as malformed. There is currently no accepted-version *window* — a
+/// indistinguishably dropped as malformed. There is no accepted-version *window* — a
 /// mismatch of any kind is rejected; widening that is a policy change to make deliberately, not a
 /// side effect of the next bump.
 pub const WIRE_VERSION: u8 = 3;

@@ -5,7 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! an `EntryFingerprint` round that converges with nothing else to send back now gets a real
+//! an `EntryFingerprint` round that converges with nothing else to send back gets a real
 //! [`Message::ConvergenceAck`] reply, instead of leaving the sender to ride out a bounded,
 //! unacknowledged retry on `repair_interval`.
 

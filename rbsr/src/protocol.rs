@@ -213,14 +213,9 @@ where
             Decision::Split(stride) => {
                 outcome.split += 1;
                 let stride = stride.get();
-                // A fixed stride leaves one undersized block over `actual_span` (none when it
-                // divides evenly); placing that block at a session-random position among the
-                // `ceil(actual_span / stride)` blocks, instead of always last, moves every
-                // interior cut after it with the draw —, "Defense against a
-                // correlated false SKIP", option A. Block *count* is `ceil(actual_span / stride)`
-                // for any draw, so this touches no bound invariant 10 or the fan-out width already
-                // relied on. `end_index.get - start_index.get`, not the policy-visible `span`
-                // a hostile backend could disagree with — see `RsosView`'s count-agreement law.
+                // A fixed stride leaves at most one undersized block. Its session-random position
+                // moves interior cut points without changing block count or fan-out. Use the
+                // concrete resolved span rather than a policy-reported span.
                 let actual_span = end_index.get() - start_index.get();
                 let remainder = actual_span % stride;
                 let short_block =

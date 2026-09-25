@@ -56,7 +56,7 @@ pub(super) const DEFAULT_MAX_CONCURRENT_BULK_DUMPS: usize = 4;
 pub(super) const DEFAULT_MAX_CONCURRENT_BROADCASTS: usize = 1024;
 
 /// Default [`Config::snapshot_change_threshold`]: a periodic snapshot tick writes as soon
-/// as at least one change has landed since the last snapshot, matching the
+/// as at least one change has occurred since the last snapshot, matching the
 /// unconditional-write behavior for any node that isn't fully idle.
 pub(super) const DEFAULT_SNAPSHOT_CHANGE_THRESHOLD: usize = 1;
 
@@ -163,7 +163,7 @@ pub struct Config {
     /// default 32 MiB/s ⇒ ~2 ms between full-size datagrams), the gap between two datagrams of
     /// the same transfer can exceed `repair_interval` too, and the guard's window lapses
     /// mid-transfer. Independent of any of that, steady-state idle chatter to every peer this
-    /// guard does *not* currently cover still balloons as this interval shortens, since that
+    /// guard does not cover still grows as this interval shortens, since that
     /// traffic grows as `1/interval` per local peer. Retunable via
     /// [`set_reconcile_interval`](crate::ReplicatedMap::set_reconcile_interval).
     pub reconcile_interval: Duration,
@@ -248,7 +248,7 @@ pub struct Config {
     /// until an explicit [`snapshot_now`](super::ReplicatedMap::snapshot_now) call.
     /// Each wakeup still only writes if at least
     /// [`snapshot_change_threshold`](Self::snapshot_change_threshold) changes (local writes,
-    /// gossip applies, and tombstone GC removals) have landed since the last snapshot — so a node
+    /// gossip applies, and tombstone GC removals) have occurred since the last snapshot — so a node
     /// with no activity between wakeups skips the write, and steady-state snapshot IO tracks
     /// change volume rather than firing unconditionally on the clock.
     /// Up to this much of the most recent writes are lost on an ungraceful restart (one that skips

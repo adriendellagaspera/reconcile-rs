@@ -5,23 +5,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// System-level, end-to-end benchmarks driving the **public** `ReplicatedMap` API (point-read
-// latency vs `HashMap`/`BTreeMap`, per-entry memory footprint (both a `size_of` fact and a real
-// per-entry heap-cost measurement, ), bulk-load throughput, cold anti-entropy convergence
-// between two in-process nodes, gossip fan-out and propagation latency as node count grows,
-// convergence under injected RTT and loss, and durable rejoin — snapshot-load time alone, then
-// reconverge time and wire bytes for a snapshot-resumed rejoin against a cold one). Unlike the
-// `bench` target, these reach no crate internals, so they need no feature gate. `point_read`/
-// `bulk_load`/`heap_footprint` each carry a `_heap` or inline heap-indirected (`String -> Vec<u8>`)
-// variant alongside the `Copy` (`u32 -> u32`) baseline, isolating 's confound (key/value
-// types).
-// The `*_rtt` lanes answer the round-trip question: every other benchmark here runs at RTT ≈ 0,
-// which prices bytes and zeroes round-trips — the axis RBSR is worst on. They run over the seeded
-// delay/loss decorator in `gossip::netem`, whose module docs carry the model and the `turmoil`
-// evaluation.
-// Reproduction and interpretation are documented in the benchmark guide. Not run in CI (only
-// compile-checked); run locally with `cargo bench --bench system`.
-
+// End-to-end benchmarks over the public `ReplicatedMap` API.
+// Covers point reads, bulk loading, memory footprint, convergence, fan-out, propagation,
+// injected latency/loss, persistence reload, and reconciliation cadence.
+// Run with `cargo bench --bench system`.
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{BTreeMap, HashMap};
 use std::hint::black_box;
@@ -730,9 +717,8 @@ async fn wait_for(counter: &AtomicU64, target: u64) {
 // out to a few hundred simulated peers.
 const FANOUT_NODE_COUNTS: &[usize] = &[2, 4, 8, 16, 32, 64, 128];
 
-// Node counts for `gossip_propagation`, smaller than `FANOUT_NODE_COUNTS`: every node runs a live
-// loop on one runtime, so past a few dozen this measures scheduler and lock contention. Caveats:
-// the benchmark guide.
+// Node counts for `gossip_propagation`; every node runs a live loop on one runtime, so the grid is
+// kept small enough to limit scheduler and lock contention.
 const PROPAGATION_NODE_COUNTS: &[usize] = &[2, 4, 8, 16, 32];
 
 // Gossip fan-out: what one node sends for a single write as `N` grows. `Replica::broadcast` is
