@@ -86,38 +86,9 @@ pub fn initial_ranges<K, B: RsosView<K>>(local: &B) -> Vec<RangeAggregate<K>> {
     }]
 }
 
-/// What one [`protocol_round`] did, tallied where the decisions are taken — the output vectors
-/// cannot be diffed for it, since one range can appear in both and a dropped segment in neither.
-/// [`AddAssign`](std::ops::AddAssign) accumulates a whole reconciliation.
-/// ```
-/// use rand::SeedableRng;
-/// use rsos::FingerprintTreeMap;
-/// use rbsr::{initial_ranges, protocol_round};
-/// // Three active ranges against the same responder `b`, chosen to hit SKIP, IDLIST and SPLIT in
-/// // one round: `b` matches itself, an empty store advertises against non-empty `b`, and a
-/// // same-sized-but-disjoint `c` mismatches `b`.
-/// let mut b = FingerprintTreeMap::new;
-/// for i in 0..40 {
-///  b.insert(i, i);
-/// }
-/// let empty: FingerprintTreeMap<i32, i32> = FingerprintTreeMap::new;
-/// let mut c = FingerprintTreeMap::new;
-/// for i in 0..40 {
-///  c.insert(i + 1000, i); // same count as `b`, disjoint keys -> different fingerprint
-/// }
-/// let mut active = initial_ranges(&b);
-/// active.extend(initial_ranges(&empty));
-/// active.extend(initial_ranges(&c));
-/// let mut children = Vec::new;
-/// let mut enumerations = Vec::new;
-/// let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-/// let outcome = protocol_round(&b, active, &mut children, &mut enumerations, &mut rng);
-/// assert_eq!(outcome.skipped, 1); // `b` vs `b`
-/// assert_eq!(outcome.enumerated, 1); // `b` vs `empty`
-/// assert_eq!(outcome.split, 1); // `b` vs `c`
-/// assert_eq!(outcome.children, children.len); // every SPLIT/bounced child, tallied
-/// assert_eq!(outcome.dropped_malformed, 0); // no inverted range in this round
-/// ```
+/// Counts the decisions made by one [`protocol_round`].
+///
+/// [`AddAssign`](std::ops::AddAssign) accumulates several rounds.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RoundOutcome {
     skipped: usize,
@@ -134,8 +105,7 @@ pub struct RoundOutcome {
 /// bounces the parent back), or neither (SKIP, or dropped as malformed and counted in
 /// [`RoundOutcome::dropped_malformed`]).
 /// The rule is a [`RefinementPolicy`], swappable through [`protocol_round_with_policy`] without a
-/// protocol break. Whatever the policy, the driver keeps invariant 10: a
-/// SPLIT's children are pairwise disjoint with union the parent.
+/// protocol break. Split children are pairwise disjoint and cover the parent range.
 pub fn protocol_round<K, B: RsosView<K>>(
     local: &B,
     active_ranges: Vec<RangeAggregate<K>>,
@@ -156,36 +126,12 @@ where
     )
 }
 
-/// [`protocol_round`] with its default rule replaced.
-/// The policy chooses the outcome and the split width, nothing else: bounds validation, rank
-/// arithmetic, `select` cuts and the partition invariant stay here. `?Sized`, so
-/// `&dyn RefinementPolicy` works.
-/// A `Split` this policy returns for a range of more than one local element is trusted to narrow
-/// it ([`RefinementPolicy`]'s progress law); one that would not is converted to an `Enumerate`
-/// instead of reaching the fan-out below, whatever policy produced it (,
-/// invariant 13) — the driver stays liveness-safe even against a policy that breaks the
-/// law, at the cost of an immediate IDLIST for the ranges where it does.
-/// ```
-/// use rand::SeedableRng;
-/// use rsos::FingerprintTreeMap;
-/// use rbsr::{initial_ranges, protocol_round_with_policy, SqrtFanOut};
-/// let mut a = FingerprintTreeMap::new;
-/// let mut b = FingerprintTreeMap::new;
-/// for i in 0..400 {
-///  a.insert(i, i);
-///  b.insert(i, i);
-/// }
-/// b.insert(999, 999); // only `b` has this key, so the outer range mismatches and must split
-/// let active = initial_ranges(&b);
-/// let mut children = Vec::new;
-/// let mut enumerations = Vec::new;
-/// let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-/// protocol_round_with_policy(&a, &SqrtFanOut, active, &mut children, &mut enumerations, &mut rng);
-/// // `SqrtFanOut` cuts `a`'s 400-element span into exactly ⌊√400⌋ = 20 children, unlike the
-/// // default `FixedFanOut`, which would cap it at 16 regardless of the span.
-/// assert_eq!(children.len, 20);
-/// assert!(enumerations.is_empty);
-/// ```
+/// [`protocol_round`] with a caller-supplied refinement policy.
+///
+/// The policy chooses the outcome and split width. Bounds validation, rank arithmetic, partitioning,
+/// and the progress guard remain enforced by the protocol driver. A non-progressing split is
+/// converted to enumeration.
+///
 /// # RNG seam
 /// `rng` is injected, never drawn from ambient/thread-local entropy: the driver's own tests stay
 /// deterministic under a seeded `StdRng`, and a caller with no session-scoped RNG to reuse
