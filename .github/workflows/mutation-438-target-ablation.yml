@@ -1,4 +1,4 @@
-# Diagnostic only: reproduces #438 on historical commit 71f3ecc.
+# Diagnostic only: reintroduce only the shared-target defect on the hermetic #179 source.
 name: mutation-438-target-ablation
 
 on:
@@ -10,59 +10,54 @@ permissions:
   contents: read
 
 jobs:
-  ablate:
+  shared-target:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        target_mode: [isolated]
-        repeat: [1, 2, 3]
+        repeat: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v3
         with:
-          ref: 71f3ecc43b1f1024ea6b90bc581285c643c7a10f
+          # Exact source used by #179's successful isolated-target comparison.
+          ref: 8743fb05a3461e23b3656f4214f4fa9c78e0ac2b
           fetch-depth: 0
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-mutants@27.1.0
-      - name: Configure target-directory ablation
+      - name: Select the #179 comparison mutants
         shell: bash
-        env:
-          TARGET_MODE: ${{ matrix.target_mode }}
         run: |
           set -euo pipefail
-          echo "historical_commit=$(git rev-parse HEAD)" | tee ablation-info.txt
-          echo "target_mode=$TARGET_MODE repeat=${{ matrix.repeat }} jobs=3" | tee -a ablation-info.txt
-          if [ "$TARGET_MODE" = shared ]; then
-            export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target"
-            echo "cargo_target_dir=$CARGO_TARGET_DIR" | tee -a ablation-info.txt
-          else
-            unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
-            echo "cargo_target_dir=unset" | tee -a ablation-info.txt
-          fi
-          pattern='src/replica/reconciliation.rs:(125|135):'
+          file=src/replica/reconciliation.rs
+          budget=$(grep -nF 'let budget = send_buf.len() + TOMBSTONE_ACK_RESEND_BYTE_BUDGET;' "$file" | cut -d: -f1)
+          start=$(grep -nF 'let start = (round as usize) % n;' "$file" | cut -d: -f1)
+          increment=$(grep -nF 'appended += 1;' "$file" | cut -d: -f1)
+          receive_size_line=$(grep -nF 'if size == recv_buf.len() {' src/replica/run.rs | cut -d: -f1)
+          peer_port_line=$(grep -nF 'if peer.port() != self.port {' src/replica/run.rs | cut -d: -f1)
+          test -n "$budget" && test -n "$start" && test -n "$increment" && test -n "$receive_size_line" && test -n "$peer_port_line"
+          pattern="src/replica/(reconciliation\\.rs:($budget|$start|$increment):|run\\.rs:($receive_size_line|$peer_port_line):)"
           echo "MUTANT_FILTER=$pattern" >> "$GITHUB_ENV"
-          cargo mutants --list --workspace --all-features --test-workspace=true \
-            -f src/replica/reconciliation.rs --re "$pattern" | tee selected-mutants.txt
-          test "$(grep -c 'reconciliation.rs:' selected-mutants.txt)" -ge 2
-      - name: Run historical mutants
+          echo "source_commit=$(git rev-parse HEAD)" | tee ablation-info.txt
+          echo "repeat=${{ matrix.repeat }} jobs=3 target_mode=shared" | tee -a ablation-info.txt
+          cargo mutants --list --workspace --all-features --re "$pattern" | tee selected-mutants.txt
+          test "$(grep -c 'reconciliation.rs:' selected-mutants.txt)" -ge 3
+          grep -q 'run.rs:' selected-mutants.txt
+      - name: Run with the historical shared target defect
         shell: bash
         env:
           PROPTEST_RNG_SEED: "20260817"
-          TARGET_MODE: ${{ matrix.target_mode }}
         run: |
           set -uo pipefail
-          if [ "$TARGET_MODE" = shared ]; then
-            export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target"
-          else
-            unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
-          fi
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target"
+          unset CARGO_BUILD_TARGET_DIR
+          export RUSTFLAGS="${RUSTFLAGS:-} --cfg reconcile_internal_testing"
+          echo "cargo_target_dir=$CARGO_TARGET_DIR" | tee -a ablation-info.txt
           set +e
           cargo mutants --workspace --all-features --test-workspace=true \
-            -f src/replica/reconciliation.rs --re "$MUTANT_FILTER" \
-            --jobs 3 --copy-target=false --timeout 300 \
+            --re "$MUTANT_FILTER" --jobs 3 --copy-target=false \
             > cargo-mutants-console.log 2>&1
           result=$?
           set -e
@@ -70,18 +65,15 @@ jobs:
           cat cargo-mutants-console.log
           test -f mutants.out/outcomes.json
           jq '{caught, missed, timeout, unviable}' mutants.out/outcomes.json | tee -a ablation-info.txt
-          echo '--- infrastructure error scan ---' | tee -a ablation-info.txt
           if grep -R -nE 'AddrInUse|Address already in use|Worker thread failed|IO error|No such file or directory' mutants.out cargo-mutants-console.log | tee infrastructure-errors.txt; then
             echo "infrastructure_error_matches=present" | tee -a ablation-info.txt
           else
             : > infrastructure-errors.txt
             echo "infrastructure_error_matches=none" | tee -a ablation-info.txt
           fi
-          echo '--- scratch roots ---' | tee -a ablation-info.txt
           grep -RhoE '/tmp/cargo-mutants-reconcile-rs-[^/ ]+' mutants.out cargo-mutants-console.log 2>/dev/null | sort -u | tee scratch-roots.txt || true
-          cat scratch-roots.txt | tee -a ablation-info.txt
-          echo '--- target roots ---' | tee -a ablation-info.txt
           grep -RhoE '/[^ ]*/target/(debug|release)' mutants.out cargo-mutants-console.log 2>/dev/null | sort -u | tee target-roots.txt || true
+          echo '--- target roots ---' | tee -a ablation-info.txt
           cat target-roots.txt | tee -a ablation-info.txt
           for outcome in caught.txt missed.txt unviable.txt timeout.txt; do
             if [ -f "mutants.out/$outcome" ]; then
@@ -89,12 +81,11 @@ jobs:
               cat "mutants.out/$outcome" | tee -a ablation-info.txt
             fi
           done
-          # Diagnostic: preserve all verdicts; do not fail the matrix on MISSED.
           exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mutation-438-ablation-${{ matrix.target_mode }}-repeat-${{ matrix.repeat }}
+          name: mutation-438-shared-current-repeat-${{ matrix.repeat }}
           path: |
             ablation-info.txt
             selected-mutants.txt
