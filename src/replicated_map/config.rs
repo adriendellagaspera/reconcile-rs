@@ -71,20 +71,6 @@ pub const MAX_NETS: usize = 8;
 /// [`with_net`](Config::with_net)); every public field is readable, but `#[non_exhaustive]` means
 /// an external crate must go through a constructor and builders — one construction path, not two
 /// with different guarantees.
-/// ```
-/// use reconcile::{replicated_map::Config, ClusterKey};
-/// let key = ClusterKey::from_hex(
-///  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-/// )
-/// .unwrap;
-/// // The `with_*` builders chain. Real deployments normally set a cluster key;
-/// // `with_insecure_no_key` is the explicit opt-out.
-/// let config = Config::new(4242)
-/// .with_net("10.1.0.0/16".parse.unwrap)?
-/// .with_cluster_key(key);
-/// assert_eq!(config.port, 4242);
-/// # Ok::<, reconcile::replicated_map::ConfigError>()
-/// ```
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct Config {

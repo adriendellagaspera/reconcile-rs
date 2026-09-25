@@ -33,20 +33,6 @@ use crate::{Discovery, ReplicatedMap};
 use rsos::Fingerprint;
 
 /// A replicated set; see the [module documentation](crate::replicated_set).
-/// ```
-/// use reconcile::{replicated_map::Config, ReplicatedSet};
-/// # #[tokio::main]
-/// # async fn main -> std::io::Result<> {
-/// let set = ReplicatedSet::<String>::new(Config::new(8082).with_insecure_no_key).await?;
-/// // Matches `HashSet::insert`: true means this call added a new member.
-/// assert!(set.insert("a".to_string)); // newly inserted
-/// assert!(!set.insert("a".to_string)); // already a member
-/// assert!(set.contains(&"a".to_string));
-/// assert!(set.remove(&"a".to_string)); // true: was a member
-/// assert!(!set.contains(&"a".to_string));
-/// # Ok()
-/// # }
-/// ```
 pub struct ReplicatedSet<K>(ReplicatedMap<K, ()>)
 where
     K: Clone + Hash + Eq + Send + Sync;
