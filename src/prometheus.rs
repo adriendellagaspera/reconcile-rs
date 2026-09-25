@@ -8,28 +8,6 @@
 //! Optional Prometheus integration, enabled by the `metrics-prometheus` feature.
 //! The library emits through the [`metrics`] facade and never installs a recorder itself. These
 //! helpers install one and either serve `/metrics` or hand back the exposition text.
-//! # Serving a `/metrics` endpoint
-//! ```no_run
-//! # async fn run -> Result<, Box<dyn std::error::Error>> {
-//! // Installs the recorder and spawns a background HTTP server exposing `/metrics`.
-//! reconcile::prometheus::serve("0.0.0.0:9000".parse?).await?;
-//! //... then start your store: `store.run(shutdown).await;`
-//! # Ok()
-//! # }
-//! ```
-//! `0.0.0.0` above is for concreteness, not a recommendation: `serve` binds whatever address you
-//! give it, and `0.0.0.0` is every interface. See 's "Metrics endpoint exposure" (under
-//! "Security model") for what that exposes and how to scope it down in production.
-//! # Rendering the exposition text yourself (configurable hook)
-//! ```no_run
-//! # fn run -> Result<, Box<dyn std::error::Error>> {
-//! let handle = reconcile::prometheus::install_recorder?;
-//! // Serve `handle.render` through your own HTTP stack whenever Prometheus scrapes.
-//! let body: String = handle.render;
-//! # let _ = body;
-//! # Ok()
-//! # }
-//! ```
 
 use std::error::Error as StdError;
 use std::fmt;
