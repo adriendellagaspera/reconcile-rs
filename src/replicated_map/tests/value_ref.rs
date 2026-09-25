@@ -6,15 +6,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::ReplicatedMap;
-
-use super::ephemeral_config;
+use super::{virtual_config, virtual_map};
 
 #[tokio::test]
 async fn value_ref_pins_the_observed_value_across_later_writes() {
-    let store = ReplicatedMap::<i32, String>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let store = virtual_map::<i32, String>(virtual_config());
     store.insert(1, "old".to_string());
 
     let old = store.get(&1).expect("live value");

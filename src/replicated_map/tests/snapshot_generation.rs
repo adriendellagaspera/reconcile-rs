@@ -14,9 +14,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 
 use crate::persistence::{PersistedState, Persistence};
-use crate::ReplicatedMap;
 
-use super::ephemeral_config;
+use super::{virtual_config, virtual_map};
 
 struct PausedSave {
     block_next: AtomicBool,
@@ -61,9 +60,7 @@ impl Persistence<u32, u32> for PausedSave {
 #[tokio::test]
 async fn write_during_save_stays_pending_and_is_recovered_by_next_snapshot() {
     let backend = Arc::new(PausedSave::new(true));
-    let store = ReplicatedMap::<u32, u32>::new(ephemeral_config().with_snapshot_interval(None))
-        .await
-        .unwrap()
+    let store = virtual_map::<u32, u32>(virtual_config().with_snapshot_interval(None))
         .with_persistence(backend.clone())
         .unwrap();
 
@@ -85,9 +82,7 @@ async fn write_during_save_stays_pending_and_is_recovered_by_next_snapshot() {
     assert_eq!(persisted.entries.len(), 2);
     assert!(persisted.entries.iter().any(|(key, _)| *key == 2));
 
-    let restarted = ReplicatedMap::<u32, u32>::new(ephemeral_config())
-        .await
-        .unwrap()
+    let restarted = virtual_map::<u32, u32>(virtual_config())
         .with_persistence(backend)
         .unwrap();
     assert_eq!(restarted.get_cloned(&1), Some(10));
@@ -98,9 +93,7 @@ async fn write_during_save_stays_pending_and_is_recovered_by_next_snapshot() {
 #[tokio::test]
 async fn cloned_handles_do_not_overlap_backend_saves() {
     let backend = Arc::new(PausedSave::new(true));
-    let store = ReplicatedMap::<u32, u32>::new(ephemeral_config().with_snapshot_interval(None))
-        .await
-        .unwrap()
+    let store = virtual_map::<u32, u32>(virtual_config().with_snapshot_interval(None))
         .with_persistence(backend.clone())
         .unwrap();
 
@@ -122,9 +115,7 @@ async fn cloned_handles_do_not_overlap_backend_saves() {
 #[tokio::test]
 async fn metadata_only_decommission_and_ack_forget_remain_snapshot_pending() {
     let backend = Arc::new(PausedSave::new(false));
-    let store = ReplicatedMap::<u32, u32>::new(ephemeral_config().with_snapshot_interval(None))
-        .await
-        .unwrap()
+    let store = virtual_map::<u32, u32>(virtual_config().with_snapshot_interval(None))
         .with_persistence(backend.clone())
         .unwrap();
 
@@ -148,9 +139,7 @@ async fn metadata_only_decommission_and_ack_forget_remain_snapshot_pending() {
         "membership and ack removals were not tracked"
     );
     store.snapshot_now().unwrap();
-    let restored = ReplicatedMap::<u32, u32>::new(ephemeral_config())
-        .await
-        .unwrap()
+    let restored = virtual_map::<u32, u32>(virtual_config())
         .with_persistence(backend.clone())
         .unwrap();
     assert!(!restored.engine.members.read().contains(&peer));
@@ -187,9 +176,7 @@ async fn metadata_only_decommission_and_ack_forget_remain_snapshot_pending() {
 #[tokio::test]
 async fn physically_collected_tombstone_is_not_replayed_after_restart() {
     let backend = Arc::new(PausedSave::new(false));
-    let store = ReplicatedMap::<u32, u32>::new(ephemeral_config().with_snapshot_interval(None))
-        .await
-        .unwrap()
+    let store = virtual_map::<u32, u32>(virtual_config().with_snapshot_interval(None))
         .with_persistence(backend.clone())
         .unwrap();
 
@@ -212,9 +199,7 @@ async fn physically_collected_tombstone_is_not_replayed_after_restart() {
     store.engine.forget_tombstone(&17);
     store.snapshot_now().unwrap();
 
-    let restarted = ReplicatedMap::<u32, u32>::new(ephemeral_config())
-        .await
-        .unwrap()
+    let restarted = virtual_map::<u32, u32>(virtual_config())
         .with_persistence(backend.clone())
         .unwrap();
     assert!(restarted.engine.map.load_full().get(&17).is_none());
@@ -222,9 +207,7 @@ async fn physically_collected_tombstone_is_not_replayed_after_restart() {
 
     store.just_insert(17, 42);
     store.snapshot_now().unwrap();
-    let restarted = ReplicatedMap::<u32, u32>::new(ephemeral_config())
-        .await
-        .unwrap()
+    let restarted = virtual_map::<u32, u32>(virtual_config())
         .with_persistence(backend)
         .unwrap();
     assert_eq!(restarted.get_cloned(&17), Some(42));

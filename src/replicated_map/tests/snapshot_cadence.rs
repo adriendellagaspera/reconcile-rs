@@ -15,9 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::persistence::{PersistedState, Persistence};
-use crate::ReplicatedMap;
 
-use super::ephemeral_config;
+use super::{virtual_config, virtual_map};
 
 /// A [`Persistence`] backend that always succeeds and counts how many times [`save`](Persistence::save)
 /// was called — lets a test assert *whether* the periodic task wrote, not just what it wrote.
@@ -41,13 +40,11 @@ impl<K: Send + Sync + 'static, V: Send + Sync + 'static> Persistence<K, V> for C
 async fn snapshot_periodically_skips_below_change_threshold() {
     let saves = Arc::new(AtomicUsize::new(0));
     let short_interval = Duration::from_millis(20);
-    let store = ReplicatedMap::<i32, i32>::new(
-        ephemeral_config()
+    let store = virtual_map::<i32, i32>(
+        virtual_config()
             .with_snapshot_interval(Some(short_interval))
             .with_snapshot_change_threshold(3),
     )
-    .await
-    .expect("bind failed")
     .with_persistence(Arc::new(CountingSave {
         saves: saves.clone(),
     }))
@@ -75,13 +72,11 @@ async fn snapshot_periodically_skips_below_change_threshold() {
 async fn snapshot_periodically_writes_once_threshold_reached() {
     let saves = Arc::new(AtomicUsize::new(0));
     let short_interval = Duration::from_millis(20);
-    let store = ReplicatedMap::<i32, i32>::new(
-        ephemeral_config()
+    let store = virtual_map::<i32, i32>(
+        virtual_config()
             .with_snapshot_interval(Some(short_interval))
             .with_snapshot_change_threshold(3),
     )
-    .await
-    .expect("bind failed")
     .with_persistence(Arc::new(CountingSave {
         saves: saves.clone(),
     }))
@@ -109,15 +104,12 @@ async fn snapshot_periodically_writes_once_threshold_reached() {
 async fn snapshot_periodically_does_not_rewrite_when_idle_after_a_snapshot() {
     let saves = Arc::new(AtomicUsize::new(0));
     let short_interval = Duration::from_millis(20);
-    let store = ReplicatedMap::<i32, i32>::new(
-        ephemeral_config().with_snapshot_interval(Some(short_interval)),
-    )
-    .await
-    .expect("bind failed")
-    .with_persistence(Arc::new(CountingSave {
-        saves: saves.clone(),
-    }))
-    .unwrap();
+    let store =
+        virtual_map::<i32, i32>(virtual_config().with_snapshot_interval(Some(short_interval)))
+            .with_persistence(Arc::new(CountingSave {
+                saves: saves.clone(),
+            }))
+            .unwrap();
 
     store.just_insert(1, 10);
 
@@ -139,9 +131,7 @@ async fn snapshot_periodically_does_not_rewrite_when_idle_after_a_snapshot() {
 /// forever whenever persistence is configured with periodic snapshotting turned off.
 #[tokio::test]
 async fn snapshot_interval_none_disables_periodic_task() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config().with_snapshot_interval(None))
-        .await
-        .expect("bind failed");
+    let store = virtual_map::<i32, i32>(virtual_config().with_snapshot_interval(None));
 
     tokio::time::timeout(Duration::from_secs(2), store.snapshot_periodically())
         .await
