@@ -1,50 +1,4 @@
 #!/usr/bin/env bash
-# Line-count budget per file, prod and test scored separately -- the mechanical replacement
-# for `.claude/rules/big-files.md` (retired 5d71271 once replica.rs/replicated_map.rs were
-# split): that rule was prose a human had to remember to re-check by eye, and by its own
-# retirement commit's admission "never covered test files" -- exactly the kind of rule
-# AGENTS.md §10 sends to a script instead.
-#
-# Two tiers per category: WARN is a visible nudge and still exits 0; FAIL blocks. Test files
-# get a looser budget than prod on purpose -- a wide table of small, similar cases legitimately
-# runs longer than the production code it exercises.
-#
-# PROD_FAIL/PROD_WARN and TEST_FAIL/TEST_WARN started at 500/300 and 900/600 respectively --
-# tight enough for a *newly written* file, not a retroactive claim every current file already
-# fit. #427's file-by-file EXCEPTIONS split (largest-file-first) ratchets these down as each
-# entry clears: every clearance lowers both budgets by as much as is safe -- never past the
-# largest remaining *non-exception* file for that category, so clearing one file never silently
-# fails an unrelated one. rsos/src/fingerprint_tree_map.rs's split (#427) landed every sibling
-# under 250L against a 482L largest-remaining-prod-file floor (src/replica.rs) and a 689L
-# largest-remaining-test-file floor (tests/proptest_fingerprint_tree_map.rs) -- FAIL moved to
-# 490/700, WARN (informational only, never fails the build) to 280/400. tests/service.rs's split
-# (#427/#452 continuation) landed every sibling under 425L, but doesn't move FAIL/WARN further --
-# tests/proptest_fingerprint_tree_map.rs (689L) was already the binding test-file floor before
-# and after. That file's own split (#427 continuation) landed every sibling under 320L; the
-# largest-remaining-test-file floor is now rsos/src/fingerprint_tree_map/tests.rs (654L) --
-# still above TEST_WARN, so FAIL/WARN aren't moved by this split alone (a deliberate follow-up,
-# not a side effect of splitting). That follow-up: five more #427 splits (rbsr/src/policy.rs,
-# rbsr/src/protocol.rs, rsos/src/encoding.rs, tests/proptest_fingerprint_tree_map.rs,
-# src/replica.rs) cleared every remaining EXCEPTIONS entry, leaving rsos/src/fingerprint.rs
-# (441L) and rsos/src/fingerprint_tree_map/tests.rs (654L) as the new largest-remaining floors;
-# splitting those two (into rsos/src/fingerprint/tests.rs and
-# rsos/src/fingerprint_tree_map/tests/{basic,aggregate,invariants,query}.rs respectively, every
-# sibling under 260L) moved the floors down to 379L prod (src/replicated_set.rs) and 498L test
-# (rbsr/src/protocol/tests.rs) -- FAIL moved to 400/600, WARN left at 280/400 (WARN is a nudge,
-# not floor-bound, and most files sitting in the old 280-400/400-600 warn band would just add
-# noise if WARN moved too).
-#
-# EXCEPTIONS are files already over FAIL when this gate (or a tightened budget) was introduced,
-# grandfathered rather than split as a side effect -- each is a candidate for its own
-# #421/#425-style split, tracked separately (#427 is the umbrella issue; a specific split gets
-# its own #423-style C-design sub-issue when someone is ready to take it). Adding to this list
-# needs the same justification in its commit; per check-doc-budget.sh's precedent, it is not the
-# default remedy for a file that grows past FAIL after today -- split the file first.
-#
-# The whitelist is never silent: every run prints its full contents (count + per-file line
-# count), pass or fail, and a listed path that no longer exists or no longer needs the grant
-# (shrank back under FAIL) fails the run until the entry is fixed -- an EXCEPTIONS line is a
-# live claim, not a fire-and-forget opt-out.
 set -Eeuo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -107,9 +61,6 @@ while IFS= read -r -d '' f; do
     fi
 done < <(find . -name '*.rs' -not -path './target/*' -print0)
 
-# Every EXCEPTIONS entry must correspond to a file this run actually found -- a stale path (the
-# file renamed, moved, or deleted since) would otherwise silently grant nothing to anyone, which
-# reads as "handled" when it is really "broken by drift" (AGENTS.md §9).
 for e in "${EXCEPTIONS[@]}"; do
     if [ -z "${exception_lines[$e]:-}" ]; then
         echo "check-file-size: EXCEPTIONS lists '$e', which no longer exists" \
@@ -118,8 +69,6 @@ for e in "${EXCEPTIONS[@]}"; do
     fi
 done
 
-# Always visible, pass or fail: a silent whitelist is the opposite of what replacing
-# big-files.md's by-eye rule was for.
 echo "check-file-size: ${#EXCEPTIONS[@]} files whitelisted (over hard-fail, grandfathered in EXCEPTIONS):"
 for e in "${EXCEPTIONS[@]}"; do
     printf '  %-42s %s\n' "$e" "${exception_lines[$e]:-MISSING} lines"
