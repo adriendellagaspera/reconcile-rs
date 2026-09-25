@@ -545,7 +545,7 @@ mod imp {
     }
 
     // Store sizes for `service_reconcile_rtt`: grid, `n` = 10³…10⁶ — the same range
-    // `benches/protocol.rs`'s counted tables sweep, so the measured and counted columns line up.
+    // `benches/protocol.rs`'s counted tables sweep, so both targets use the same size grid.
     const RECONCILE_RTT_SIZES: &[usize] = &[1_000, 10_000, 100_000, 1_000_000];
 
     // How the `d` differing keys are laid out — the same two layouts `benches/protocol.rs`'s

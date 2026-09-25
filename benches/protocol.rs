@@ -5,37 +5,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Protocol-level cost of one full RBSR reconciliation, under the shipped default refinement
-// policy (`rbsr:FixedFanOut` at `b = 16`): how many total wire bytes, messages, advertised
-// ranges, datagrams and local RSOS queries two peers spend to resolve a difference of size `d` in
-// a store of size `n`, how that changes when the differences cluster instead of scattering, and
-// how it moves with the size of a stored value.
-// **One unit: total wire bytes.** Refinement bytes and the values an IDLIST enumeration ships are
-// two halves of one quantity, so both are summed here at four payload sizes `V` (`VALUE_SIZES`) —
-// the axis `system`'s `memory_footprint` already varies. The breakdown is still printed under each
-// total, because it says *why* the run landed where it did.
-// One-way messages stay a separate column on purpose: no byte total prices a round trip. This
-// target runs at RTT ≈ 0, so weigh that column by your own — at the rate `benches/system.rs`'s
-// injected-RTT lane measures, one RTT per round trip with no hidden multiplier
-// .
-// **Why one drive prices every `V`.** Both peers assign the same value to the same key, so equal
-// key sets have equal aggregates whatever the payload is, and every SKIP/IDLIST/SPLIT decision
-// reads aggregates alone: the *decisions* — messages, ranges, enumerations, elements, queries —
-// are identical at every payload size, and only the per-element wire cost moves. So the drive runs
-// once, over a `u64`-valued store, and each enumerated element is priced by encoding the dated
-// cell the transport really ships for it, `(K, Entry<Timestamp, Vec<u8>>)`
-// (`src/replica.rs`'s `Message:EntryUpdate`), through the transport's own encoder. That is measured
-// rather than argued: `payload_size_does_not_move_the_trace` drives the same case over a `u64`, an
-// 8-byte and a 4 KB payload and compares before any table is printed. It also buys the 4 KB
-// column at `n = 10⁶`, which materializing 4 GB of payload twice could not.
-// Both byte columns are payload before framing: neither carries the one-byte `Message` variant tag
-// the transport prepends per item, nor the authenticator's per-datagram overhead.
-// Unlike `bench` (structure micro-benchmarks) and `system` (end-to-end over `ReplicatedMap`), this
-// target drives the protocol driver directly, through the same two crates a downstream consumer
-// would use without the facade: `rsos` for the store and `rbsr` for the round. It needs no feature
-// gate and no runtime — a reconciliation is a pure function of two stores.
-// Reproduction and interpretation: the benchmark guide. Not run in CI (only compile-checked); run
-// locally with `cargo bench --bench protocol`.
+// Protocol-level RBSR cost benchmark.
+// Reports wire bytes, messages, ranges, datagrams, fragments, enumerated elements, and local RSOS
+// queries across store size, difference size/layout, and value size. It drives `rsos` and `rbsr`
+// directly; refinement decisions are payload-independent and payload size prices enumerated values.
+// Run with `cargo bench --bench protocol`.
 
 use std::hint::black_box;
 
@@ -57,16 +31,10 @@ use rsos::{FingerprintTreeMap, Rsos};
 // setup rather than measurement.
 const SIZES: &[usize] = &[1_000, 10_000, 100_000, 1_000_000];
 
-// Value payload sizes every total is reported at, in bytes: `system`'s `memory_footprint` axis,
-// extended to 4 KB — past that a single value approaches the datagram ceiling (README,
-// "Value-size ceiling"). The axis exists because a policy's two halves are priced against each
-// other *through* it: refinement bytes do not move with `V`, an enumerated element does.
+// Value payload sizes used to price enumerated entries.
 const VALUE_SIZES: [usize; 4] = [8, 64, 512, 4096];
 
-// When the priced writes happened, in milliseconds since the Unix epoch (2026-08-14). A stamp's
-// two `u64`s are varints, so a zeroed clock would encode in two bytes where a real one takes
-// eighteen — pricing an enumerated element far below what it costs. Fixed, not read from the
-// clock, so the report stays reproducible.
+// Fixed representative timestamp for deterministic varint sizing.
 const WRITE_INSTANT_MS: u64 = 1_786_752_000_000;
 
 // The identity stamping those writes, of the shape `Replica:new` mints
@@ -177,11 +145,7 @@ fn element_bytes(key: u64, scratch: &mut Vec<u8>) -> [usize; VALUE_SIZES.len()] 
     })
 }
 
-// The `Queries`/`Counting`/`Cost`/`Decisions` types and the `reconcile` driver itself moved to
-// `devkit:protocol_cost`: generic over any `rsos:Rsos` backend and any
-// `rbsr:RefinementPolicy`, with no dependency on this crate's own wire format. `element_bytes`
-// is what wires this repository's dated-cell payload into it, via `reconcile`'s `price_element`
-// closure — see `counted_reconcile`.
+// Shared protocol-cost accounting and the reconciliation driver live in `devkit::protocol_cost`.
 
 // The premise of the whole value-size axis, checked instead of asserted: one drive can price every
 // payload size because no decision reads the payload.
@@ -254,7 +218,7 @@ fn totals(cost: &Cost) -> String {
         .join(" | ")
 }
 
-// The refinement/IDLIST breakdown under a total: why the run landed there.
+// Refinement and IDLIST breakdown.
 fn breakdown(cost: &Cost) -> String {
     format!(
         "refine {bytes:>9} B / {ranges:>6} r / {messages:>3} msgs / {datagrams:>3} dgrams \

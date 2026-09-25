@@ -78,16 +78,10 @@ fn corpus(n: usize) -> Vec<(u32, u32)> {
         .collect()
 }
 
-// Payload length of the heap-indirected corpus's value, in bytes — matching one of 's own
-// headline dataset shapes (its 64 B/256 B rows) so `heap_footprint`'s numbers below are directly
-// comparable to that issue's external-prototype table rather than an arbitrary size.
+// Value size for the heap-indirected memory-footprint corpus.
 const HEAP_VALUE_LEN: usize = 64;
 
-// Deterministic heap-indirected `(key, value)` corpus: `String` key, `Vec<u8>` value — the type
-// pair every external-prototype table in measured, and 's confound (key/value
-// types) isolated from `corpus`'s `Copy` `u32 -> u32` baseline. Zero-padded decimal keys keep
-// lexicographic order matching `corpus`'s numeric order, so both corpora exercise the same
-// sequential-insertion shape.
+// Deterministic `String -> Vec<u8>` corpus; zero-padded keys preserve numeric ordering.
 fn corpus_heap(n: usize, value_len: usize) -> Vec<(String, Vec<u8>)> {
     (0..n as u32)
         .map(|k| {
@@ -266,7 +260,7 @@ fn bulk_load(c: &mut Criterion) {
 }
 
 // As [`bulk_load`], for the heap-indirected `String -> Vec<u8>` type pair — 's own external
-// prototype measured this type pair, not `u32 -> u32`; this is `insert_bulk`'s counterpart.
+// Heap-indirected counterpart to the `u32 -> u32` bulk-load case.
 // `bulk_load_just_insert` (`benches/bench.rs`) is the per-entry `just_insert` counterpart to both
 // this and `bulk_load` — it needs a `reconcile_internal_testing` seam this feature-gate-free
 // binary cannot reach.
@@ -367,7 +361,7 @@ fn heap_footprint(c: &mut Criterion) {
         );
         drop((kvs, store));
 
-        // String -> Vec<u8>: the heap-indirected type pair 's external prototype measured.
+                // Heap-indirected String -> Vec<u8> case.
         let kvs = corpus_heap(size, HEAP_VALUE_LEN);
         let raw = kvs.first().map_or(0, |(k, v)| k.len() + v.len());
         let store = loaded_store_heap(&rt, &[]);
