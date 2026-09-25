@@ -229,48 +229,15 @@ pub trait Clock: Send + Sync + 'static {
     fn observe_trusted(&self, remote: Timestamp);
 }
 
-/// Assert that `clock` upholds the [`Clock`] contract [`Entry::merge`](crate::entry::Entry::merge)'s
-/// strict `>` and the tombstone garbage collector depend on. Call this from an implementor's own
-/// test suite before trusting a [`Clock`] adapter in production — nothing in this crate can call it
-/// for you, since it has no way to know your adapter exists.
-/// # What a violation costs
-/// [`Clock`] is `pub`, `now`/`observe`/`observe_trusted` are the only seam the domain reads
-/// physical time through, and nothing here stops a caller from handing `Replica`/`ReplicatedMap` a
-/// clock that is not actually monotonic. That is not a hypothetical: the naive implementation —
-/// read the wall clock, stamp `logical = 0` — type-checks, compiles, and passes review by
-/// inspection. It still breaks correctness, silently, because every place a [`Timestamp`] is
-/// compared assumes strict monotonicity holds:
-/// - **`now` not monotonic.** Two calls to `now` returning an equal or decreasing reading let
-///  two local writes to the same key race to an equal `(physical, logical, node_id)`.
-///  `Entry::merge`'s strict `>` then keeps *each side's* value
-///  depending on merge order — the two replicas never agree which write won, so the fingerprint
-///  never matches and the anti-entropy round re-exchanges the same key forever.
-/// - **`observe(t)` not chased by a later `now > t`.** A remote write can then be shadowed by a
-///  local one carrying an *earlier* effective order, even though the remote write causally
-///  happened first from this node's point of view — the causal edge HLC exists to preserve is
-///  lost.
-/// - **`observe_trusted` clamping.** A backward wall-clock step across a restart (NTP correction,
-///  VM pause, manual clock set) leaves the post-restart clock below this node's own
-///  already-persisted stamps; `observe_trusted` restores it, but only if it is never clamped. A
-///  clamped `observe_trusted` re-admits own-write shadowing — the first post-restart write can be
-///  silently discarded by the pre-restart one still on disk.
-/// None of these failure modes panic, error, or log by default: they surface as writes that
-/// mysteriously do not stick, or as a cluster that never converges. `assert_conformance` cannot
-/// prove an adapter correct in general (that would require modeling every possible wall-clock and
-/// scheduler interleaving), but it does what a type system cannot: it drives the specific
-/// interleavings above and panics with a diagnostic the moment one is violated, rather than letting
-/// a faulty adapter ship silently.
-/// # What is checked
-/// - [`now`](Clock::now) is strictly monotonic across a burst of calls with no observation
-///  in between.
-/// - After [`observe`](Clock::observe) of a timestamp with a modest (in-budget) lead over the
-///  clock's own reading, the next [`now`](Clock::now) is strictly greater than it.
-/// - After [`observe_trusted`](Clock::observe_trusted) of a timestamp far beyond
-///  [`MAX_CLOCK_DRIFT`], the next [`now`](Clock::now) is still strictly greater than it —
-///  `observe_trusted` must never clamp.
+/// Assert the invariants required by the [`Clock`] contract.
+///
+/// The check exercises strict local monotonicity, observation of a remote timestamp, and trusted
+/// observation beyond the drift budget. A conforming clock must make the next [`Clock::now`]
+/// strictly greater in each case.
+///
 /// # Panics
-/// Panics with a diagnostic message identifying which invariant failed and the two readings that
-/// violated it.
+///
+/// Panics when the clock violates one of these invariants.
 pub fn assert_conformance<C: Clock>(clock: &C) {
     // 1. `now` alone must be strictly monotonic.
     let mut prev = clock.now();

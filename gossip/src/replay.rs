@@ -5,32 +5,15 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Per-peer replay protection for the authenticated modes.
-//! Every authenticated datagram carries a 16-byte replay header (`seq || stamp`, little-endian,
-//! ms since epoch) inside the authenticated region. A `seq` already seen or behind the sliding
-//! bitmap is rejected, as is a `stamp` deviating from local time by more than
-//! [`FRESHNESS_WINDOW_DEFAULT`]. Unauthenticated mode carries no header and is exempt.
-//! Three rules the code must keep:
-//! - **Replay state outlives membership.** A decommissioned peer keeps its filter entry, or a
-//!  captured datagram re-adds it to `members` and re-poisons causal stability. The staleness
-//!  purge is sound only because no datagram can raise `stamp_at_max` without being accepted or
-//!  triggering `reset`.
-//! - **Restart beats regression.** For `seq <= max_seq`, `stamp > stamp_at_max` means a genuine
-//!  restart and resets the state; otherwise the bitmap decides. *Residual*: a restart within the
-//!  same millisecond is indistinguishable from a replay and is dropped.
-//! - **Post-restart tail guard.** `PeerState::max_stamp_seen`, never rewound by `reset`, blocks a
-//!  forward-path datagram with a strictly lower stamp; strict `<` because same-millisecond bursts
-//!  share a stamp. Relies on [`SenderCounter::next_stamp`]'s in-process floor. *Residual*: a
-//!  sender restarting with its clock behind its own stamps is treated as a replay until the clock
-//!  catches up.
-//! Split across siblings by concern: `wire` owns [`Seq`]/[`Stamp`]'s encoding, ordering and
-//! freshness check; `bitmap` owns the sliding out-of-order acceptance window; `peer_state` owns
-//! the per-peer accept/restart decision; `sender` owns [`SenderCounter`]'s monotonic issuance;
-//! `filter` owns [`ReplayFilter`]'s per-peer map, staleness purge and public entry points. This
-//! file keeps the public type definitions (their module location is their `cargo public-api`-
-//! visible path — see ) plus the shared support (`WINDOW_SIZE`, `phys_now_ms`) every
-//! sibling draws on.
-
+//! Replay protection for authenticated datagrams.
+//!
+//! Each datagram carries an authenticated sequence number and sender timestamp. [`ReplayFilter`]
+//! rejects duplicates, stale sequence numbers, and timestamps outside the configured freshness
+//! window.
+//!
+//! Replay state outlives transient membership. A sender restart may reset sequence tracking only
+//! when its authenticated timestamp advances beyond the previous maximum; [`SenderCounter`]
+//! preserves monotonic sender stamps within a process.
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::atomic::AtomicU64;

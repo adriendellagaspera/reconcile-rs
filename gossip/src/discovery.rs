@@ -5,15 +5,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Dynamic peer discovery behind the [`Discovery`] port.
-//! - [`RandomProbe`] — default, **speculative**: one random address per declared network per
-//!  round, steering only that round's targets.
-//! - [`DnsDiscovery`] — **authoritative**, for a Kubernetes headless Service: one address record
-//!  per ready pod, seeded into the known-peer set, with absence decommissioning after a grace
-//!  period.
-//! Either way discovery feeds the gossip-target set only, never causal-stability membership
-//! .
-
+//! Dynamic peer discovery behind [`Discovery`].
+//!
+//! [`RandomProbe`] supplies speculative round targets. [`DnsDiscovery`] supplies an authoritative
+//! peer snapshot suitable for DNS-backed deployments. Discovery changes gossip targets only;
+//! authoritative membership is established by authenticated protocol traffic.
 use std::error::Error as StdError;
 use std::fmt;
 use std::future::Future;
