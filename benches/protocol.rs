@@ -52,35 +52,35 @@ use lww_register::Entry;
 use rbsr::{FanOut, FixedFanOut, RefinementPolicy};
 use rsos::{FingerprintTreeMap, Rsos};
 
-/// Store sizes swept by the cost report (log scale). Capped at 10⁶: the point is the growth rate of
-/// the exchanged volume, and two 10⁷-entry trees would dominate the benchmark's own runtime with
-/// setup rather than measurement.
+// Store sizes swept by the cost report (log scale). Capped at 10⁶: the point is the growth rate of
+// the exchanged volume, and two 10⁷-entry trees would dominate the benchmark's own runtime with
+// setup rather than measurement.
 const SIZES: &[usize] = &[1_000, 10_000, 100_000, 1_000_000];
 
-/// Value payload sizes every total is reported at, in bytes: `system`'s `memory_footprint` axis,
-/// extended to 4 KB — past that a single value approaches the datagram ceiling (README,
-/// "Value-size ceiling"). The axis exists because a policy's two halves are priced against each
-/// other *through* it: refinement bytes do not move with `V`, an enumerated element does.
+// Value payload sizes every total is reported at, in bytes: `system`'s `memory_footprint` axis,
+// extended to 4 KB — past that a single value approaches the datagram ceiling (README,
+// "Value-size ceiling"). The axis exists because a policy's two halves are priced against each
+// other *through* it: refinement bytes do not move with `V`, an enumerated element does.
 const VALUE_SIZES: [usize; 4] = [8, 64, 512, 4096];
 
-/// When the priced writes happened, in milliseconds since the Unix epoch (2026-08-14). A stamp's
-/// two `u64`s are varints, so a zeroed clock would encode in two bytes where a real one takes
-/// eighteen — pricing an enumerated element far below what it costs. Fixed, not read from the
-/// clock, so the report stays reproducible.
+// When the priced writes happened, in milliseconds since the Unix epoch (2026-08-14). A stamp's
+// two `u64`s are varints, so a zeroed clock would encode in two bytes where a real one takes
+// eighteen — pricing an enumerated element far below what it costs. Fixed, not read from the
+// clock, so the report stays reproducible.
 const WRITE_INSTANT_MS: u64 = 1_786_752_000_000;
 
-/// The identity stamping those writes, of the shape `Replica:new` mints
-/// (`NodeId:new(rand:random())`) — a full-width value, again because varints make small ones
-/// unrepresentative. Fixed for reproducibility.
+// The identity stamping those writes, of the shape `Replica:new` mints
+// (`NodeId:new(rand:random())`) — a full-width value, again because varints make small ones
+// unrepresentative. Fixed for reproducibility.
 const NODE_ID: u64 = 0xfeed_face_dead_beef;
 
-/// How the `d` differing keys are laid out: scattered forces every subtree to refine, clustered
-/// confines the work to one descent — the axis where `√m` and a fixed `b` differ most.
+// How the `d` differing keys are laid out: scattered forces every subtree to refine, clustered
+// confines the work to one descent — the axis where `√m` and a fixed `b` differ most.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Clustering {
-    /// Spread evenly, so the differences land in distinct subranges.
+    // Spread evenly, so the differences land in distinct subranges.
     Scattered,
-    /// One contiguous block in the middle of the key space.
+    // One contiguous block in the middle of the key space.
     Clustered,
 }
 
@@ -93,8 +93,8 @@ impl Clustering {
     }
 }
 
-/// The `(difference size, layout)` pairs swept against every store size. `d = 1` — the published
-/// bounds' usual case — has no layout, so it appears only as `Scattered`.
+// The `(difference size, layout)` pairs swept against every store size. `d = 1` — the published
+// bounds' usual case — has no layout, so it appears only as `Scattered`.
 const DIFFERENCES: &[(usize, Clustering)] = &[
     (1, Clustering::Scattered),
     (10, Clustering::Scattered),
@@ -103,9 +103,9 @@ const DIFFERENCES: &[(usize, Clustering)] = &[
     (100, Clustering::Clustered),
 ];
 
-/// Build a store of `n` sequential entries, omitting `missing`, each key carrying `value(key)`.
-/// Sequential keys: the measured quantity depends on rank positions, not key distribution, and
-/// stays reproducible without a PRNG.
+// Build a store of `n` sequential entries, omitting `missing`, each key carrying `value(key)`.
+// Sequential keys: the measured quantity depends on rank positions, not key distribution, and
+// stays reproducible without a PRNG.
 fn store_of<V: Serialize + Clone>(
     n: usize,
     missing: &[u64],
@@ -120,14 +120,14 @@ fn store_of<V: Serialize + Clone>(
     map
 }
 
-/// The store every table is driven over. Its values are `u64` rather than dated cells because the
-/// decisions do not depend on them — see the module docs, and
-/// `payload_size_does_not_move_the_trace`.
+// The store every table is driven over. Its values are `u64` rather than dated cells because the
+// decisions do not depend on them — see the module docs, and
+// `payload_size_does_not_move_the_trace`.
 fn store(n: usize, missing: &[u64]) -> FingerprintTreeMap<u64, u64> {
     store_of(n, missing, |key| key.wrapping_mul(2_654_435_761))
 }
 
-/// The `d` keys withheld from the second store, laid out according to `clustering`.
+// The `d` keys withheld from the second store, laid out according to `clustering`.
 fn missing_keys(n: usize, d: usize, clustering: Clustering) -> Vec<u64> {
     match clustering {
         Clustering::Scattered => (1..=d as u64)
@@ -142,7 +142,7 @@ fn missing_keys(n: usize, d: usize, clustering: Clustering) -> Vec<u64> {
     }
 }
 
-/// The stamp the entry under `key` carries: one HLC reading per write, at a plausible instant.
+// The stamp the entry under `key` carries: one HLC reading per write, at a plausible instant.
 fn stamp(key: u64) -> Timestamp {
     Timestamp::new(
         Hlc::new(
@@ -153,21 +153,21 @@ fn stamp(key: u64) -> Timestamp {
     )
 }
 
-/// The dated cell one key is stored and shipped as, at payload size `value_bytes`: the register
-/// cell `ReplicatedMap` stores (`src/replica.rs`'s `FingerprintTreeMap<K, Entry<Timestamp, V>>`).
-/// The payload is a `Vec<u8>` rather than a `[u8; V]` because that is what a deployment can
-/// actually store: `lww_register:Value` demands `Serialize`, which `serde` implements for arrays
-/// only up to 32 elements. It costs the wire a length varint an array would not carry — one byte up
-/// to 250, three beyond — which is part of the price, not an artifact of the harness.
+// The dated cell one key is stored and shipped as, at payload size `value_bytes`: the register
+// cell `ReplicatedMap` stores (`src/replica.rs`'s `FingerprintTreeMap<K, Entry<Timestamp, V>>`).
+// The payload is a `Vec<u8>` rather than a `[u8; V]` because that is what a deployment can
+// actually store: `lww_register:Value` demands `Serialize`, which `serde` implements for arrays
+// only up to 32 elements. It costs the wire a length varint an array would not carry — one byte up
+// to 250, three beyond — which is part of the price, not an artifact of the harness.
 fn dated_cell(key: u64, value_bytes: usize) -> Entry<Timestamp, Vec<u8>> {
     Entry::present(stamp(key), vec![key as u8; value_bytes])
 }
 
-/// What one enumerated element costs on the wire, one entry per [`VALUE_SIZES`] payload size:
-/// `Message:EntryUpdate`'s payload (`src/replica.rs`), through the transport's own encoder.
-/// Measured per element rather than derived from a per-entry constant — bincode's varints make the
-/// key and the stamp cost what their values happen to cost — and read straight off [`VALUE_SIZES`],
-/// so the reported sizes and the priced cells cannot drift apart.
+// What one enumerated element costs on the wire, one entry per [`VALUE_SIZES`] payload size:
+// `Message:EntryUpdate`'s payload (`src/replica.rs`), through the transport's own encoder.
+// Measured per element rather than derived from a per-entry constant — bincode's varints make the
+// key and the stamp cost what their values happen to cost — and read straight off [`VALUE_SIZES`],
+// so the reported sizes and the priced cells cannot drift apart.
 fn element_bytes(key: u64, scratch: &mut Vec<u8>) -> [usize; VALUE_SIZES.len()] {
     VALUE_SIZES.map(|value_bytes| {
         scratch.clear();
@@ -183,20 +183,20 @@ fn element_bytes(key: u64, scratch: &mut Vec<u8>) -> [usize; VALUE_SIZES.len()] 
 // is what wires this repository's dated-cell payload into it, via `reconcile`'s `price_element`
 // closure — see `counted_reconcile`.
 
-/// The premise of the whole value-size axis, checked instead of asserted: one drive can price every
-/// payload size because no decision reads the payload.
-/// Same keys, three value types — the `u64` every table is driven over, and the dated cells at both
-/// ends of [`VALUE_SIZES`] — so the comparison covers the substitution the report actually makes.
-/// Decisions must match exactly. Refinement *bytes* are held to a tolerance instead, because a
-/// different payload gives a different fingerprint and bincode spends four bytes fewer on a limb
-/// that happens to fall below 2³²: an equality assertion would be sound about one run in a hundred
-/// thousand, and the quantity it would be wrong about is a handful of bytes in tens of thousands.
+// The premise of the whole value-size axis, checked instead of asserted: one drive can price every
+// payload size because no decision reads the payload.
+// Same keys, three value types — the `u64` every table is driven over, and the dated cells at both
+// ends of [`VALUE_SIZES`] — so the comparison covers the substitution the report actually makes.
+// Decisions must match exactly. Refinement *bytes* are held to a tolerance instead, because a
+// different payload gives a different fingerprint and bincode spends four bytes fewer on a limb
+// that happens to fall below 2³²: an equality assertion would be sound about one run in a hundred
+// thousand, and the quantity it would be wrong about is a handful of bytes in tens of thousands.
 fn payload_size_does_not_move_the_trace() {
     const N: usize = 10_000;
     const D: usize = 10;
-    /// Refinement-byte drift a differing fingerprint may cause. Two orders of magnitude above what
-    /// the varint arithmetic above can produce at this `n`, and far below anything a changed
-    /// decision could hide in.
+    // Refinement-byte drift a differing fingerprint may cause. Two orders of magnitude above what
+    // the varint arithmetic above can produce at this `n`, and far below anything a changed
+    // decision could hide in.
     const TOLERANCE: f64 = 0.001;
 
     let missing = missing_keys(N, D, Clustering::Scattered);
@@ -244,7 +244,7 @@ fn payload_size_does_not_move_the_trace() {
     );
 }
 
-/// One `V=… total` cell per payload size.
+// One `V=… total` cell per payload size.
 fn totals(cost: &Cost) -> String {
     VALUE_SIZES
         .iter()
@@ -254,7 +254,7 @@ fn totals(cost: &Cost) -> String {
         .join(" | ")
 }
 
-/// The refinement/IDLIST breakdown under a total: why the run landed there.
+// The refinement/IDLIST breakdown under a total: why the run landed there.
 fn breakdown(cost: &Cost) -> String {
     format!(
         "refine {bytes:>9} B / {ranges:>6} r / {messages:>3} msgs / {datagrams:>3} dgrams \
@@ -276,10 +276,10 @@ fn breakdown(cost: &Cost) -> String {
     )
 }
 
-/// One priced reconciliation, with both peers' local query counts folded in: the table path.
-/// `rng` seeds fresh here rather than being threaded from the caller: every call in this file
-/// prices one independent drive, and a fixed seed keeps a printed/asserted report reproducible
-/// across runs, which a shared, monotonically-advancing stream would not.
+// One priced reconciliation, with both peers' local query counts folded in: the table path.
+// `rng` seeds fresh here rather than being threaded from the caller: every call in this file
+// prices one independent drive, and a fixed seed keeps a printed/asserted report reproducible
+// across runs, which a shared, monotonically-advancing stream would not.
 fn counted_reconcile<S: Rsos<u64>>(a: &S, b: &S, policy: &dyn RefinementPolicy) -> Cost {
     let (counted_a, counted_b) = (Counting::new(a), Counting::new(b));
     let mut scratch = Vec::new();
@@ -290,15 +290,15 @@ fn counted_reconcile<S: Rsos<u64>>(a: &S, b: &S, policy: &dyn RefinementPolicy) 
     cost
 }
 
-/// The session-random cut offset (`rbsr`'s, "Defense against a correlated false
-/// SKIP") only moves which block of a fixed-stride split is undersized — it changes no split's
-/// child *count*, so it must move the round count by no more than the constant slack alternating
-/// responders and one IDLIST bounce-back already cost the unshifted driver. Checked here rather
-/// than asserted from first principles: this is Meyer §5.1's own claim about the mechanism, priced
-/// against the real driver instead of taken on faith.
-/// Generous on purpose — this exists to catch a regression that makes the descent no longer
-/// logarithmic (a stride that stops narrowing, an off-by-one that revisits a level), not to pin an
-/// exact round count the shipped policy's own tuning is free to move.
+// The session-random cut offset (`rbsr`'s, "Defense against a correlated false
+// SKIP") only moves which block of a fixed-stride split is undersized — it changes no split's
+// child *count*, so it must move the round count by no more than the constant slack alternating
+// responders and one IDLIST bounce-back already cost the unshifted driver. Checked here rather
+// than asserted from first principles: this is Meyer §5.1's own claim about the mechanism, priced
+// against the real driver instead of taken on faith.
+// Generous on purpose — this exists to catch a regression that makes the descent no longer
+// logarithmic (a stride that stops narrowing, an off-by-one that revisits a level), not to pin an
+// exact round count the shipped policy's own tuning is free to move.
 fn assert_round_bound(n: usize, d: usize, clustering: Clustering, cost: &Cost, fan_out: usize) {
     let depth = (n as f64).log(fan_out as f64).ceil().max(1.0) as usize;
     let bound = 2 * depth + 4;
@@ -311,9 +311,9 @@ fn assert_round_bound(n: usize, d: usize, clustering: Clustering, cost: &Cost, f
     );
 }
 
-/// Exchanged volume under the shipped default policy, printed rather than timed — exact and
-/// reproducible for a given `(n, d, clustering)` — alongside the timed drive loop, the paper's
-/// `T_loc`.
+// Exchanged volume under the shipped default policy, printed rather than timed — exact and
+// reproducible for a given `(n, d, clustering)` — alongside the timed drive loop, the paper's
+// `T_loc`.
 fn reconciliation_cost(c: &mut Criterion) {
     payload_size_does_not_move_the_trace();
     let policy = FixedFanOut::new(FanOut::NEGENTROPY);
