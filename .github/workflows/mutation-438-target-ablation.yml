@@ -43,7 +43,7 @@ jobs:
             echo "CARGO_BUILD_TARGET_DIR=" >> "$GITHUB_ENV"
             echo "cargo_target_dir=unset" | tee -a ablation-info.txt
           fi
-          pattern='src/replica/reconciliation\\.rs:(125|135):'
+          pattern='src/replica/reconciliation.rs:(125|135):'
           echo "MUTANT_FILTER=$pattern" >> "$GITHUB_ENV"
           cargo mutants --list --workspace --all-features --test-workspace=true \
             -f src/replica/reconciliation.rs --re "$pattern" | tee selected-mutants.txt
