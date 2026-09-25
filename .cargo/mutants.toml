@@ -23,7 +23,7 @@ exclude_re = [
     "fingerprint_tree_map/range\\.rs:60:51: replace \\+ with \\*",
     "replay/bitmap\\.rs:75:32: replace \\| with \\^",
     "params\\.rs:70:9: replace SplitStride::get -> usize with 0",
-    "protocol\\.rs:296:54: replace == with !=",
+    "protocol\\.rs:288:54: replace == with !=",
     "protocol/rank\\.rs:111:30: replace != with ==",
     "protocol/rank\\.rs:111:43: replace \\|\\| with &&",
     "protocol/rank\\.rs:111:62: replace != with ==",
