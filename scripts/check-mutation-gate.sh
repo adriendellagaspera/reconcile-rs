@@ -50,8 +50,9 @@ echo "                     PROPTEST_RNG_SEED=${PROPTEST_RNG_SEED}${SHARD:+, shar
 # #438: historical parallel runs reported inconsistent MISSED/CAUGHT verdicts.
 # The repository then had two concrete isolation defects: all workers inherited one
 # CARGO_TARGET_DIR, and several tests competed for fixed/probed-and-released UDP ports.
-# Both are removed; repeated post-isolation jobs=1/jobs=3 campaigns are the evidence
-# required before this value is raised.
+# Both are removed. The final post-isolation comparison (#179) ran the same mutant set
+# three times at jobs=1 and three times at jobs=3: verdicts matched exactly, no
+# infrastructure errors appeared, and every parallel worker used a distinct target.
 JOBS=3
 
 # --copy-target=false overrides .cargo/mutants.toml's `copy_target = true`.
