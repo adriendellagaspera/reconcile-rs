@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target_mode: [shared, isolated]
+        target_mode: [isolated]
         repeat: [1, 2, 3]
     steps:
       - uses: actions/checkout@v3
@@ -36,11 +36,10 @@ jobs:
           echo "historical_commit=$(git rev-parse HEAD)" | tee ablation-info.txt
           echo "target_mode=$TARGET_MODE repeat=${{ matrix.repeat }} jobs=3" | tee -a ablation-info.txt
           if [ "$TARGET_MODE" = shared ]; then
-            echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/target" >> "$GITHUB_ENV"
-            echo "cargo_target_dir=$GITHUB_WORKSPACE/target" | tee -a ablation-info.txt
+            export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target"
+            echo "cargo_target_dir=$CARGO_TARGET_DIR" | tee -a ablation-info.txt
           else
-            echo "CARGO_TARGET_DIR=" >> "$GITHUB_ENV"
-            echo "CARGO_BUILD_TARGET_DIR=" >> "$GITHUB_ENV"
+            unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
             echo "cargo_target_dir=unset" | tee -a ablation-info.txt
           fi
           pattern='src/replica/reconciliation.rs:(125|135):'
@@ -52,8 +51,14 @@ jobs:
         shell: bash
         env:
           PROPTEST_RNG_SEED: "20260817"
+          TARGET_MODE: ${{ matrix.target_mode }}
         run: |
           set -uo pipefail
+          if [ "$TARGET_MODE" = shared ]; then
+            export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target"
+          else
+            unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
+          fi
           set +e
           cargo mutants --workspace --all-features --test-workspace=true \
             -f src/replica/reconciliation.rs --re "$MUTANT_FILTER" \
