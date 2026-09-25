@@ -234,8 +234,7 @@ mod tests {
         assert_eq!(dead.project(), State::Tombstone);
     }
 
-    ///  invariant 8, through the derived `Hash` as a stand-in for the real
-    /// fingerprint walk — this crate knows nothing of `rsos`.
+    /// Projection hashing ignores timestamps; full-entry hashing includes them.
     #[test]
     fn projection_hash_is_timestamp_independent_but_entry_hash_is_not() {
         let early = Entry::present(

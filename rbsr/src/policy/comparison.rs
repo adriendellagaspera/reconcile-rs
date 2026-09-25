@@ -35,8 +35,7 @@ impl Comparison {
     }
 
     /// Whether the range is already resolved.
-    /// Compares the **whole** aggregate, never the fingerprint alone (
-    /// invariant 3). Owned here so no policy can re-derive it wrongly.
+    /// Compares cardinality and fingerprint together.
     pub fn agrees(&self) -> bool {
         self.local == self.remote
     }
@@ -48,16 +47,8 @@ impl Comparison {
         self.children_emitted
     }
 
-    /// **Test-only, `cfg(reconcile_internal_testing)`-gated.** The whole **local** [`Aggregate`],
-    /// fingerprint included.
-    /// This is exactly what the no-fingerprint-derived-decisions law (this type's own docs) says a
-    /// [`RefinementPolicy`](super::RefinementPolicy) must never read — the cfg gate makes it
-    /// reachable only from a `--cfg reconcile_internal_testing` build (never a default one, never
-    /// released), it does not make reading it here sound. It exists so an oracle-*coupled* probe
-    /// policy can be written at all, as a dependent crate's own measurement harness:
-    /// `Comparison`'s public, non-gated surface still carries no such accessor, and every *shipped*
-    /// policy in this crate still goes through [`span`](Self::span)/[`remote_size`](Self::remote_size)
-    /// only.
+    /// Test-only access to the full local [`Aggregate`] for probe/oracle tests.
+    /// Shipped policies intentionally use [`span`](Self::span) and [`remote_size`](Self::remote_size).
     #[cfg(reconcile_internal_testing)]
     pub const fn local_for_testing(&self) -> Aggregate {
         self.local

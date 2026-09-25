@@ -5,31 +5,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Hybrid Logical Clock timestamps, ordering half:
-//! Kulkarni et al. 2014's HLC *is* the pair `(physical, logical)` — [`Hlc`], and all the
-//! arithmetic touches. [`NodeId`] is not a clock component but the tie-break that makes the LWW
-//! comparison a total order, attached where a reading is minted into a [`Timestamp`] (Preguiça,
-//! Baquero & Shapiro, arXiv:1805.06358, on the LWW-Register). Reads no wall clock: the single
-//! physical-time read lives in the `HlcClock` adapter behind the [`Clock`] port.
-//! [`AdmittedTime`] is the load-bearing type: [`Hlc::advance_past_remote`] accepts nothing else,
-//! so the far-future clamp of [`MAX_CLOCK_DRIFT`] cannot be skipped by accident. It guards the
-//! *local clock state* only — a stored remote stamp keeps its original value as LWW data, and the
-//! one consumer deriving an instant from a stored stamp re-admits it (`reconcile::clock`'s
-//! `BoundedInstant`, invariant 6).
-//! [`Clock`] is a public, injectable port (`reconcile::Replica::new_with_clock`,
-//! `reconcile::ReplicatedMap::new_with_clock`): nothing about it is enforced by the type
-//! system beyond the method signatures, so a monotonicity bug in a third-party adapter compiles
-//! clean and fails only at runtime, silently, as writes that never converge. [`assert_conformance`]
-//! is the gate — run it over any [`Clock`] before trusting it, including [`Clock::observe_trusted`],
-//! which this trait now requires every implementor to state explicitly (no default body: see its
-//! docs for why a default is unsound).
-//! Split across siblings by concern: `primitives` owns the plain-newtype impls
-//! ([`ClockDrift`]/[`PhysicalTime`]/[`LogicalCounter`]/[`NodeId`] construction and accessors);
-//! `admitted`/`hlc`/`timestamp` each own one `impl` group (drift-clamped admission, the HLC
-//! advance/tick arithmetic, and the `(Hlc, NodeId)` pairing). This file keeps the public type
-//! definitions (their module location is their `cargo public-api`-visible path — see
-//! §11), the [`Clock`] port trait, and [`assert_conformance`] — none of which can move to a
-//! submodule without changing a public path or, for the trait, its own definition site.
+//! Hybrid Logical Clock domain types.
+//!
+//! [`Timestamp`] orders writes by `(physical, logical, node_id)`. [`AdmittedTime`] represents a
+//! physical reading admitted under the drift policy before it can advance [`Hlc`]. [`Clock`] is
+//! the injectable clock port; [`assert_conformance`] checks the runtime monotonicity contract.
+//! This crate does not read wall-clock time; adapters do.
 
 use serde::{Deserialize, Serialize};
 
@@ -63,27 +44,16 @@ pub struct PhysicalTime(u64);
 )]
 pub struct LogicalCounter(u32);
 
-/// A replica's identity: the deterministic tie-break that makes the conflict order total ---
-/// **as long as no two nodes share one**.
-/// Uniqueness is probabilistic, not guaranteed. Left unset, `reconcile`'s `Config` draws 64 random
-/// bits per node, so over `n` draws the birthday bound puts a collision at about `n^2 / 2^65`:
-/// | draws | P(some pair collides) |
-/// |---:|---:|
-/// | 10^3 | ~3 * 10^-14 |
-/// | 10^4 | ~3 * 10^-12 |
-/// | 10^6 | ~3 * 10^-8 |
-/// `n` counts **draws, not live nodes**: a random id is redrawn on every restart, so a long-lived
-/// cluster accumulates draws even at constant size. What a collision costs is not a lost write but
-/// a permanent one --- two nodes stamping different content identically leave [`Ord`] nothing to
-/// order by, so `max` keeps each side's own value forever. `reconcile` reports that state when it
-/// first observes it, and `Config::with_node_id` is what removes the risk rather than shrinking it.
+/// Replica identity used as the deterministic final tie-break in [`Timestamp`] ordering.
+///
+/// Live replicas must use distinct IDs. The `reconcile` facade generates one randomly by default
+/// and allows callers to pin it; an ID collision can prevent conflicting writes from converging.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub struct NodeId(u64);
 
-/// A remote physical-time reading **admitted** to the local clock state: evidence the
-/// [`MAX_CLOCK_DRIFT`] check has run.
+/// A remote physical-time reading admitted to the local clock state under the drift policy.
 /// Obtainable only via [`clamped_to_drift`](AdmittedTime::clamped_to_drift) or
 /// [`trusted`](AdmittedTime::trusted) — no public field, no `Default`, no `From<PhysicalTime>`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -92,9 +62,7 @@ pub struct AdmittedTime {
     clamped: bool,
 }
 
-/// A **Hybrid Logical Clock reading**: the pair `(physical, logical)` of Kulkarni et al. 2014.
-/// Field declaration order *is* the first two thirds of the conflict order (
-/// invariant 2); no identity takes part in the arithmetic.
+/// A Hybrid Logical Clock reading: `(physical, logical)`.
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default,
 )]
@@ -105,10 +73,9 @@ pub struct Hlc {
     logical: LogicalCounter,
 }
 
-/// A Hybrid Logical Clock timestamp: the **LWW ordering key**, `(Hlc, NodeId)`.
-/// Field declaration order *is* the conflict order `(physical, logical, node_id)`
-/// . Neither the newtypes nor the nesting costs anything on the
-/// wire, pinned by `tests/timestamp_wire_format.rs`.
+/// The LWW ordering key: `(physical, logical, node_id)`.
+///
+/// Field declaration order defines the serialized conflict order.
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default,
 )]
