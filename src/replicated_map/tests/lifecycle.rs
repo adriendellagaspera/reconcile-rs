@@ -16,12 +16,12 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
-use crate::transport::InMemoryNetwork;
+use crate::transport::{InMemoryNetwork, UdpTransport};
 use crate::{FileSnapshot, ReplicatedMap};
 
 use crate::replicated_map::Config;
 
-use super::ephemeral_config;
+use super::{virtual_config, virtual_map};
 
 async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
     for _ in 0..300 {
@@ -36,11 +36,12 @@ async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
 /// `local_addr` reports the transport's real bound address, matching what was configured.
 #[tokio::test]
 async fn local_addr_matches_the_configured_bind_address() {
-    let config = ephemeral_config();
-    let expected = SocketAddr::new(config.listen_addr, config.port);
-    let store = ReplicatedMap::<i32, i32>::new(config)
-        .await
-        .expect("bind failed");
+    let socket = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let expected = socket.local_addr().unwrap();
+    let config = virtual_config().with_port(expected.port());
+    let store =
+        ReplicatedMap::<i32, i32>::new_with_transport(config, Arc::new(UdpTransport::new(socket)))
+            .expect("valid test configuration");
     assert_eq!(
         store
             .local_addr()
@@ -54,9 +55,7 @@ async fn local_addr_matches_the_configured_bind_address() {
 /// initial `0`/`None` forever.
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_state_advances_as_the_engine_runs() {
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed");
+    let store = virtual_map::<i32, i32>(virtual_config());
     let initial = store.sync_state();
     assert_eq!(initial.rounds, 0);
     assert!(initial.last_round_at.is_none());
@@ -124,9 +123,7 @@ async fn peers_and_members_reflect_a_converged_pair() {
 async fn run_observes_cancellation_and_flushes_a_durable_final_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("shutdown.bin");
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     store.insert(7, 70);
@@ -147,9 +144,7 @@ async fn run_observes_cancellation_and_flushes_a_durable_final_snapshot() {
         .final_snapshot
         .expect("the final snapshot on shutdown should succeed");
 
-    let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let restarted = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     assert_eq!(
@@ -165,9 +160,7 @@ async fn run_observes_cancellation_and_flushes_a_durable_final_snapshot() {
 async fn snapshot_now_flushes_without_the_periodic_task() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("forced.bin");
-    let store = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let store = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     store.just_insert(3, 30);
@@ -181,9 +174,7 @@ async fn snapshot_now_flushes_without_the_periodic_task() {
         "snapshot_now must record last_snapshot_at on success"
     );
 
-    let restarted = ReplicatedMap::<i32, i32>::new(ephemeral_config())
-        .await
-        .expect("bind failed")
+    let restarted = virtual_map::<i32, i32>(virtual_config())
         .with_persistence(Arc::new(FileSnapshot::new(&path)))
         .unwrap();
     assert_eq!(

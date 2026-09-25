@@ -10,21 +10,25 @@
 //! `local_addr`/`sync_state`/`seed_peer`/`set_reconcile_interval` — mirroring
 //! `replicated_map/tests/lifecycle.rs`'s equivalent coverage for `ReplicatedMap`.
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::super::*;
-use super::{ephemeral_config, isolated_read_replica, virtual_config, wait_until};
+use super::{isolated_read_replica, virtual_config, wait_until};
+use crate::transport::UdpTransport;
 
 /// `local_addr` reports the transport's real bound address, matching what was configured —
 /// mirrors `ReplicatedMap`'s own test of the same name.
 #[tokio::test]
 async fn local_addr_matches_the_configured_bind_address() {
-    let config = ephemeral_config();
-    let expected = SocketAddr::new(config.listen_addr, config.port);
-    let read_replica = ReadReplicaMap::<i32, i32>::new(config)
-        .await
-        .expect("bind failed");
+    let socket = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let expected = socket.local_addr().unwrap();
+    let read_replica = ReadReplicaMap::<i32, i32>::new_with_transport(
+        virtual_config().with_port(expected.port()),
+        Arc::new(UdpTransport::new(socket)),
+    )
+    .expect("valid test configuration");
     assert_eq!(
         read_replica
             .local_addr()
