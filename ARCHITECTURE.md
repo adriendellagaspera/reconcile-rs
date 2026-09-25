@@ -33,6 +33,7 @@ graph LR
     gossip --> reconcile
     rsos --> devkit
     rbsr --> devkit
+    devkit --> reconcile
 ```
 
 | crate | responsibility |
