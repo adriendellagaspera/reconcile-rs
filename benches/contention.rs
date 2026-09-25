@@ -5,42 +5,42 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `K`-writer contention: write throughput vs writer count `N`, for `FingerprintTreeMap` and for
-//! plain `BTreeMap`, each behind one shared `parking_lot:RwLock` of the exact shape
-//! `src/replica.rs` uses for its `map` field (`Arc<RwLock<FingerprintTreeMap<K, V>>>`).
-//! Isolates the RSOS contract's own write cost: the `FingerprintTreeMap` arm pays the
-//! lock plus the root-path aggregate maintenance `rsos:fingerprint_tree_map`'s `O(log n)`
-//! `Aggregate(l, u)` bound requires; the `BTreeMap` arm pays the same lock and insert shape with no
-//! aggregate to maintain. The delta between the two arms, at each `N`, is the contract's own share
-//! of the write cost. Full method and results: the benchmark guide.
-//! Reports three quantities, none of them a plain fp/btree ratio — that quotient's two
-//! terms both grow with `N`, so it cannot say which one moved:
-//! - A machine-independent **counted** result (`rsos:counters`, behind
-//!  `--cfg reconcile_internal_testing`): cached aggregates an insert maintains, unaffected by the
-//!  host.
-//! - A **timed** result over [`TRIALS`] repeated trials per `(N, arm)`, arms paired within a trial
-//!  and order-alternated, the whole `(N, trial)` sweep run in one shuffled schedule, reported as
-//!  percentile-bootstrap-interval means (`devkit:stats`).
-//! - **Delta**, `1/X_fp − 1/X_btree` per trial: cancels the shared lock term
-//!  (`1/X_arm = S_arm + H(N)`) to bound the contract's own per-insert cost from above, exact at
-//!  `N = 1` — the statistic the report leads with.
-//! Throughput stays wall-clock on purpose: lock waiting *is* elapsed time, with no counted proxy
-//! for it.
-//! **What is, and is not, measured.** Both arms insert into a map pre-filled to [`PREFILL`]
-//! entries, then `N` threads each insert their own disjoint block of fresh keys, one `write()`
-//! acquisition per key — `Replica:just_insert`/gossip receipt's own shape. This is a **lock
-//! contention** benchmark, not a lock-free redesign or a COW prototype — both are.
-//! **Comparability caveat.** Every timed comparison is arm-against-arm on the machine that
-//! produced it; absolute ops/s are not portable across machines. The counted half carries no such
-//! caveat.
-//! Every parameter is overridable from the environment, and `CONTENTION_RAW=1` emits one
-//! line per trial so several invocations can be pooled into the invocation-level statistics
-//! the benchmark guide documents — the experimental unit is the invocation, not the trial:
-//! ```sh
-//! CONTENTION_WRITERS=1,2,4,8,16,32,64,128 CONTENTION_TRIALS=30 cargo bench --bench contention
-//! ```
-//! Reproduction and results: the benchmark guide. Not run in CI (only compile-checked); run locally
-//! with `cargo bench --bench contention`.
+// `K`-writer contention: write throughput vs writer count `N`, for `FingerprintTreeMap` and for
+// plain `BTreeMap`, each behind one shared `parking_lot:RwLock` of the exact shape
+// `src/replica.rs` uses for its `map` field (`Arc<RwLock<FingerprintTreeMap<K, V>>>`).
+// Isolates the RSOS contract's own write cost: the `FingerprintTreeMap` arm pays the
+// lock plus the root-path aggregate maintenance `rsos:fingerprint_tree_map`'s `O(log n)`
+// `Aggregate(l, u)` bound requires; the `BTreeMap` arm pays the same lock and insert shape with no
+// aggregate to maintain. The delta between the two arms, at each `N`, is the contract's own share
+// of the write cost. Full method and results: the benchmark guide.
+// Reports three quantities, none of them a plain fp/btree ratio — that quotient's two
+// terms both grow with `N`, so it cannot say which one moved:
+// - A machine-independent **counted** result (`rsos:counters`, behind
+//  `--cfg reconcile_internal_testing`): cached aggregates an insert maintains, unaffected by the
+//  host.
+// - A **timed** result over [`TRIALS`] repeated trials per `(N, arm)`, arms paired within a trial
+//  and order-alternated, the whole `(N, trial)` sweep run in one shuffled schedule, reported as
+//  percentile-bootstrap-interval means (`devkit:stats`).
+// - **Delta**, `1/X_fp − 1/X_btree` per trial: cancels the shared lock term
+//  (`1/X_arm = S_arm + H(N)`) to bound the contract's own per-insert cost from above, exact at
+//  `N = 1` — the statistic the report leads with.
+// Throughput stays wall-clock on purpose: lock waiting *is* elapsed time, with no counted proxy
+// for it.
+// **What is, and is not, measured.** Both arms insert into a map pre-filled to [`PREFILL`]
+// entries, then `N` threads each insert their own disjoint block of fresh keys, one `write()`
+// acquisition per key — `Replica:just_insert`/gossip receipt's own shape. This is a **lock
+// contention** benchmark, not a lock-free redesign or a COW prototype — both are.
+// **Comparability caveat.** Every timed comparison is arm-against-arm on the machine that
+// produced it; absolute ops/s are not portable across machines. The counted half carries no such
+// caveat.
+// Every parameter is overridable from the environment, and `CONTENTION_RAW=1` emits one
+// line per trial so several invocations can be pooled into the invocation-level statistics
+// the benchmark guide documents — the experimental unit is the invocation, not the trial:
+// ```sh
+// CONTENTION_WRITERS=1,2,4,8,16,32,64,128 CONTENTION_TRIALS=30 cargo bench --bench contention
+// ```
+// Reproduction and results: the benchmark guide. Not run in CI (only compile-checked); run locally
+// with `cargo bench --bench contention`.
 
 use std::hint::black_box;
 use std::str::FromStr;
@@ -205,12 +205,12 @@ fn print_throughput_table(points: &[Point], trials: usize, ops: usize, prefill: 
          thread can be preempted while *holding* the lock, stalling every other writer -- and the \
          longer critical section is preempted mid-section more often, so delta inflates for a \
          reason that is the scheduler's, not the contract's. Read those rows as an upper bound \
-         only (#456)."
+         only."
     );
     println!(
         "[contention] Mean with a 95% percentile-bootstrap interval. `delta` is \
          1/X_fp - 1/X_btree: the contract's own per-insert cost, with the shared lock term \
-         cancelled (#457)."
+         cancelled."
     );
     println!(
         "[contention] {:>7} | {:>29} | {:>29} | {:>25} | {:>6} | {:>22}",
@@ -381,7 +381,7 @@ fn print_model_fit(points: &[Point]) {
     };
     let fixed_cost_secs = summarize(&baseline.delta_ns_per_op).mean * 1e-9;
     println!(
-        "[contention] Model (#457): predict the RSOS arm from the control arm assuming the \
+        "[contention] Model: predict the RSOS arm from the control arm assuming the \
          contract's own cost is the constant {:.0} ns measured at N={}.",
         fixed_cost_secs * 1e9,
         baseline.n
