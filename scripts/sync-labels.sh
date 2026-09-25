@@ -1,35 +1,6 @@
 #!/usr/bin/env bash
-# Applies `.github/labels.tsv` to the repository's GitHub labels, idempotently.
-#
-# The file is the source of truth; GitHub is the copy. This is the kubernetes/test-infra
-# `label_sync` pattern at one-repo scale: the label set is reviewed as a diff like any other
-# change, and a label created by hand in the web UI is either added to the file or removed
-# by `--prune`. Without this, a taxonomy is a convention, and a convention held by eye is
-# what AGENTS.md §10 forbids.
-#
-# Usage:
-#   ./scripts/sync-labels.sh                 # dry run — prints the plan, changes nothing
-#   ./scripts/sync-labels.sh --apply         # create and update
-#   ./scripts/sync-labels.sh --apply --prune # also delete labels absent from the file
-#
-# `--prune` is opt-in and separate because deleting a label removes it from every issue that
-# carries it, and that is not recoverable from this file. Run the dry run first, read the
-# DELETE lines, then decide.
-#
-# Renaming beats deleting: `gh label edit OLD --name NEW` keeps the label on every issue it is
-# already applied to, where delete-then-create silently strips it from all of them. The three
-# GitHub defaults this repository has used map straight across, so the rename is done here, as
-# a migration step, rather than left as a prerequisite someone has to remember to run first —
-# and it has to run *before* the create/update pass below, because once `C-bug` exists as a new
-# label the rename of `bug` can no longer land on it.
-#
-# The table is idempotent and self-retiring: a row whose old name is already gone is a no-op,
-# so it costs one API call per run and can be deleted once every clone has synced.
-#
-# Requires: gh (authenticated, or GH_TOKEN in the environment with `issues: write`).
 set -Eeuo pipefail
 
-# Resolve the repo root from the script's own location, matching the other scripts here.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR/.."
 
@@ -59,11 +30,8 @@ if ! command -v gh >/dev/null 2>&1; then
     exit 1
 fi
 
-# Existing labels, one name per line. `gh label list` paginates at 30 by default, which is
-# under the size of the taxonomy itself — the explicit limit is load-bearing, not cosmetic.
 existing=$(gh label list --repo "$REPO" --limit 200 --json name --jq '.[].name')
 
-# old name -> new name. See the migration note in the header.
 MIGRATIONS=(
     "bug=C-bug"
     "documentation=C-docs"
@@ -84,9 +52,6 @@ for row in "${MIGRATIONS[@]}"; do
     if $apply; then
         gh label edit "$old" --repo "$REPO" --name "$new" >/dev/null
     fi
-    # Applied to the in-memory view in both modes: with it, the pass below sees the new name as
-    # existing and updates its colour instead of trying to create a duplicate -- and the dry run
-    # prints the same plan `--apply` would execute, which is the only thing a dry run is for.
     existing=$(printf '%s\n' "$existing" | sed "s|^${old}$|${new}|")
 done
 
@@ -96,8 +61,6 @@ created=0
 updated=0
 
 while IFS=$'\t' read -r name color description || [ -n "$name" ]; do
-    # Skip comments and blank lines. Leading whitespace is not tolerated: a `#` that is not
-    # in column 1 is far more likely to be a typo in a description than a deliberate comment.
     case "$name" in ''|'#'*) continue ;; esac
 
     if [ -z "$color" ] || [ -z "$description" ]; then

@@ -259,9 +259,7 @@ pub struct Config {
     /// Minimum number of changes (local writes, gossip-applied remote updates, and tombstone GC
     /// removals, each counted once) since the last snapshot before a periodic
     /// [`snapshot_interval`](Self::snapshot_interval) wakeup actually writes one (default `1`).
-    /// At the default, any single change is enough — a fully idle node between wakeups does
-    /// zero snapshot IO, matching the always-write behavior for any node that isn't
-    /// idle. Raising it trades a larger post-restart replay window for fewer writes under bursty
+    /// At the default, any single change is enough; a fully idle node performs no periodic snapshot I/O. Raising it trades a larger post-restart replay window for fewer writes under bursty
     /// traffic. Never consulted by [`snapshot_now`](super::ReplicatedMap::snapshot_now), which
     /// always writes when called regardless of how many changes have accumulated.
     pub snapshot_change_threshold: usize,
@@ -273,8 +271,7 @@ pub struct Config {
     pub max_clock_drift: ClockDrift,
     /// How long a local write waits, batched with any other writes, before the accumulated batch
     /// is broadcast to peers as one send loop instead of one broadcast per write. Default
-    /// [`Duration::ZERO`]: no coalescing — every write broadcasts immediately, the
-    /// behavior.
+    /// [`Duration::ZERO`] disables coalescing, so every write broadcasts immediately.
     /// | constraint | detail |
     /// |---|---|
     /// | latency vs window | peers observe a write up to `coalesce_window` later than with immediate broadcast; a few ms buys far fewer datagrams under a write burst |

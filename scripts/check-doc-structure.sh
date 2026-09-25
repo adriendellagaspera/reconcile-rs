@@ -56,8 +56,10 @@ for doc in "${CURRENT_DOCS[@]}"; do
   if grep -nE '#[0-9]+' "$doc" >/dev/null; then fail "$doc: tracker references do not belong in current-state documentation"; fi
 done
 
-if grep -rnE '^[[:space:]]*//[/!]?.*#[0-9]+' --include='*.rs' --exclude-dir=target . >/dev/null; then
-  fail 'Rust comments must not cite tracker issues'
+rust_refs=$(grep -rnE '^[[:space:]]*//[/!]?.*(#[0-9]+|ARCHITECTURE\.md|AGENTS\.md|POSITIONING\.md|MIGRATING\.md|CHANGELOG\.md|README\.md)' --include='*.rs' --exclude-dir=target . || true)
+if [ -n "$rust_refs" ]; then
+  echo "$rust_refs" >&2
+  fail 'Rust comments must be self-contained and must not cite tracker issues or repository prose'
 fi
 
 for old in CHANGELOG.md MIGRATING.md POSITIONING.md; do

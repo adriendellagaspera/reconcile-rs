@@ -104,13 +104,13 @@ pub enum Decision {
     /// element (`span() <= 1`), terminating only because the peer refines it. For `span() > 1`
     /// that argument is [`RefinementPolicy`]'s progress law, not the driver's to assume: a
     /// `Split` that violates it is converted to an [`Enumerate`](Decision::Enumerate) instead of
-    /// reaching the fan-out below .
+    /// reaching the fan-out below.
     Split(SplitStride),
 }
 
 /// The rule that turns one range comparison into one [`Decision`].
 ///
-/// A **purely local decision, never a wire contract** : peers running
+/// A **purely local decision, never a wire contract**: peers running
 /// different policies converge. A policy must therefore never be advertised or negotiated.
 ///
 /// # Law: eventual progress
@@ -122,9 +122,8 @@ pub enum Decision {
 /// an oracle-coupled probe can violate it — a content-determined stride can land a range on a fixed
 /// point that never shrinks.
 ///
-/// Breaking the law no longer hangs the driver: `protocol_round_with_policy` converts a
-/// non-progressing `Split` into an `Enumerate` rather than trusting a plugged-in policy to hold
-/// this itself . That makes the law non-fatal to violate, not
+/// `protocol_round_with_policy` converts a non-progressing `Split` into `Enumerate`, so a custom
+/// policy cannot stall the driver. That makes the law non-fatal to violate, not
 /// free to — a policy that violates it still pays for every such range in an immediate IDLIST
 /// instead of the split it asked for.
 ///
@@ -136,7 +135,7 @@ pub enum Decision {
 /// | [`SqrtFanOut`] | the same four | `⌊√m⌋` elements per child, so `Θ(√m)` children |
 /// | [`EnumerateBelowThreshold`] | the paper's `\|X ∩ [l, u)\| ≤ t` | a constant `b` |
 ///
-/// Protocol costs are measured by `benches/protocol.rs`.
+/// `benches/protocol.rs` measures protocol cost.
 ///
 /// # Implementing your own
 ///
