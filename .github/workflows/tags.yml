@@ -63,26 +63,23 @@ jobs:
       - name: Verify the whole workspace packages cleanly
         run: cargo package --workspace
 
-  # The one job that touches crates.io. Gated on the `production` GitHub Environment: a repo admin
-  # must configure it once (Settings → Environments → New environment named `production` → Required
-  # reviewers) for this to actually pause — until then `environment:` is a label with no enforced
-  # wait. With it configured, the job stops here and a human has to click Approve in the Actions run
-  # before `cargo login`/`cargo publish` execute; `verify` above already ran unattended and would
-  # have failed fast on a bad tag, so the human is confirming a build that's already known-good, not
-  # re-discovering problems.
+  # The one job that touches crates.io. Authentication uses crates.io Trusted Publishing:
+  # GitHub issues a short-lived OIDC token, which crates.io exchanges for a temporary publish token.
+  # No long-lived crates.io secret is stored in the repository.
   publish:
     needs: verify
     runs-on: ubuntu-latest
-    environment: production
-    # `contents: write` only for the GitHub Release step at the end — `cargo login`/`cargo publish`
-    # authenticate against crates.io with CARGO_REGISTRY_TOKEN, not GITHUB_TOKEN.
     permissions:
+      # Required by rust-lang/crates-io-auth-action for GitHub OIDC trusted publishing.
+      id-token: write
+      # Required only for the GitHub Release step at the end.
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login on crates repository
-        run: echo ${{ secrets.CARGO_REGISTRY_TOKEN }} | cargo login
+      - name: Authenticate with crates.io
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@v1
 
       # ---------------------------------------------------------------------------------------
       # PUBLISH ORDER IS A HARD CONSTRAINT — DO NOT REORDER.
@@ -113,6 +110,8 @@ jobs:
       # packaged crate, which is precisely the breakage worth catching at release time.
       # ---------------------------------------------------------------------------------------
       - name: Publish the workspace to crates.io, in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
         run: |
           set -euo pipefail
 
