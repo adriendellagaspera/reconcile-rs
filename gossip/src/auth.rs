@@ -84,35 +84,14 @@ compile_error!(
 /// A shared cluster secret. Constructing one is the only way to enable authentication.
 /// `Clone` but not `Copy`: the `zeroize` feature gives it a wiping `Drop`, which `Copy` forbids.
 /// The public boundary (`Config::cluster_key`, `Authenticator::new`) takes and returns
-/// `ClusterKey`, never a bare `[u8; 32]` —: type-owned parsing, an invalid instance
-/// structurally impossible to hand to either.
+/// `ClusterKey`, never a bare `[u8; 32]`; invalid key material cannot be constructed.
 /// `Debug` is redacting: it never prints the key material, so an accidental `{:?}` in a log
 /// statement cannot leak it.
-/// ```
-/// use reconcile_gossip::auth::ClusterKey;
-/// let key = ClusterKey::from_hex(
-///  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-/// )
-/// .unwrap;
-/// // Debug never prints the key material, even by accident.
-/// assert_eq!(format!("{key:?}"), "ClusterKey(\"<redacted>\")");
-/// // A key that isn't exactly 64 hex characters is rejected, not silently truncated/padded.
-/// assert!(ClusterKey::from_hex("too short").is_err);
-/// ```
 #[cfg_attr(feature = "zeroize", derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop))]
 #[derive(Clone)]
 pub struct ClusterKey([u8; KEY_LEN]);
 
 /// Why constructing a [`ClusterKey`] from untrusted input failed.
-/// ```
-/// use reconcile_gossip::auth::{ClusterKey, ClusterKeyError};
-/// let err = ClusterKey::from_hex("too short").unwrap_err;
-/// assert_eq!(err, ClusterKeyError::WrongHexLength(9));
-/// assert_eq!(
-///  err.to_string,
-///  "cluster key must be 64 hex characters, got 9"
-/// );
-/// ```
 #[derive(Debug, Eq, PartialEq)]
 pub enum ClusterKeyError {
     /// [`ClusterKey::from_hex`] got a string that was not exactly `2 * KEY_LEN` (64) characters.

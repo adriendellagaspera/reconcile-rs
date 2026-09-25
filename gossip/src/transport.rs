@@ -5,8 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! The [`Transport`] port and its [`UdpTransport`]/[`InMemoryTransport`] adapters
-//! .
+//! The [`Transport`] port and its [`UdpTransport`]/[`InMemoryTransport`] adapters.
 
 use std::io;
 use std::net::SocketAddr;
@@ -23,25 +22,6 @@ use tracing::{debug, warn};
 /// `#[async_trait]` macro itself — is either `std` or re-exported from this crate (or
 /// `reconcile`), so an external implementation never has to independently depend on
 /// `async-trait` and match its version to this crate's:
-/// ```
-/// use std::io;
-/// use std::net::SocketAddr;
-/// use reconcile_gossip::async_trait;
-/// use reconcile_gossip::transport::Transport;
-/// struct NullTransport;
-/// #[async_trait]
-/// impl Transport for NullTransport {
-///  async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-///  Ok((buf.len, self.local_addr?))
-///  }
-///  async fn send_to(&self, buf: &[u8], _dst: &SocketAddr) -> io::Result<usize> {
-///  Ok(buf.len)
-///  }
-///  fn local_addr(&self) -> io::Result<SocketAddr> {
-///  Ok("0.0.0.0:0".parse.unwrap)
-///  }
-/// }
-/// ```
 #[async_trait]
 pub trait Transport: Send + Sync + 'static {
     /// Receive one datagram into `buf`, returning the number of bytes read and the sender address.

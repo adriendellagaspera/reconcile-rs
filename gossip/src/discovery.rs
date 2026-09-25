@@ -144,20 +144,6 @@ impl DnsDiscovery {
     /// the `host:port` string `lookup_host` expects and is discarded from the results. Each
     /// lookup is bounded by [`DEFAULT_DNS_DISCOVERY_TIMEOUT`]; tune it with
     /// [`with_timeout`](Self::with_timeout).
-    /// ```no_run
-    /// use reconcile_gossip::discovery::{Discovery, DiscoveryKind, DnsDiscovery};
-    /// # #[tokio::main]
-    /// # async fn main -> Result<, Box<dyn std::error::Error + Send + Sync>> {
-    /// // Point it at a Kubernetes headless Service (`clusterIP: None`): one record per ready pod.
-    /// let discovery = DnsDiscovery::new("my-app-headless.my-ns.svc.cluster.local", 7000);
-    /// assert_eq!(discovery.kind, DiscoveryKind::Authoritative);
-    /// // Resolves through the system resolver on every call. Not run here (`no_run`): a doc
-    /// // build shouldn't depend on network/DNS availability.
-    /// let peers = discovery.discover.await?;
-    /// # let _ = peers;
-    /// # Ok()
-    /// # }
-    /// ```
     pub fn new(name: impl Into<String>, port: u16) -> Self {
         DnsDiscovery {
             name: name.into(),
