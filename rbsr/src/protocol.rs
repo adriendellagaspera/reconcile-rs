@@ -13,8 +13,7 @@
 //! one way it can fail on a malformed segment; `range_aggregate` owns [`RangeAggregate`]'s own
 //! construction and field readers; `outcome` owns [`RoundOutcome`]'s accessors and its
 //! [`AddAssign`](std::ops::AddAssign). This file keeps the public type definitions (their module
-//! location is their `cargo public-api`-visible path — see ) plus the round-driving
-//! logic itself: [`initial_ranges`], [`protocol_round`] and [`protocol_round_with_policy`].
+//! location is their `cargo public-api`-visible path) plus the round-driving logic itself.
 
 use std::ops::Bound;
 
@@ -35,8 +34,7 @@ mod rank;
 
 use rank::{BoundedRange, InvertedRange};
 
-/// The refinement policy [`protocol_round`] applies. Costs: `benches/protocol.rs`; the evidence
-/// for this default:
+/// The default refinement policy used by [`protocol_round`].
 const DEFAULT_POLICY: FixedFanOut = FixedFanOut::new(FanOut::NEGENTROPY);
 
 /// The start bound of a [`RangeAggregate`] range: `Included` or `Unbounded`, never `Excluded`.
