@@ -1,55 +1,27 @@
 [package]
-# Published as `reconcile-gossip`: the plain name `gossip` is taken on crates.io. Every dependent in
-# this workspace renames it straight back with `gossip = { package = "reconcile-gossip", … }`, so no
-# Rust source anywhere says anything but `use gossip::…` — the published name is a registry detail,
-# not an API one. The directory stays `gossip/`.
 name = "reconcile-gossip"
 version = "0.5.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-# The "implementation detail" wording is deliberate and belongs on the crates.io card itself: this
-# crate is published only because cargo has no vendoring — `reconcile` cannot be published unless
-# every one of its dependencies is on crates.io. Same pattern as `serde_derive`,
-# `pin-project-internal` or `tracing-attributes`. Its own version line moves with `reconcile`'s
-# (#308, AGENTS.md §11): every re-exported type (`Transport`, `UdpTransport`, `Discovery`, …)
-# carries `reconcile`'s 1.0 stability guarantee, which "no stability guarantee" used to deny. See
-# AGENTS.md §11 and `src/lib.rs`.
 description = "Implementation detail of the `reconcile` crate — depend on `reconcile` instead; re-exported types carry its 1.0 stability line. The gossip adapter layer: UDP transport, wire encoding, datagram authentication, replay protection and peer discovery."
 repository = "https://github.com/adriendellagaspera/reconcile-rs"
 readme = "README.md"
 keywords = ["gossip", "udp", "reconcile", "internal"]
 categories = ["network-programming"]
 
-# See reconcile's own [package.metadata.docs.rs] (#189) — same reasoning, this crate owns the
-# mac-blake3/mac-hmac/zeroize/encryption/dns-hickory feature gates reconcile forwards.
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["mac-blake3"]
-# Per-datagram MAC authentication backends (see `src/auth.rs`).
-# Exactly one backend is used at build time; `mac-blake3` takes precedence if
-# both are enabled. At least one must be enabled or the crate fails to compile.
-# (BLAKE3 itself is always pulled in: it backs the range fingerprint, see the `rsos` crate.)
 mac-blake3 = []
 mac-hmac = ["dep:hmac", "dep:sha2"]
-# Wipe the cluster key from memory on drop (defense in depth).
 zeroize = ["dep:zeroize"]
-# Per-datagram payload confidentiality via authenticated encryption (AEAD).
-# When enabled, `Config::with_encryption` upgrades the keyed protocol from a
-# plaintext-payload MAC to XChaCha20-Poly1305 over the same cluster key. See
-# `src/auth.rs` and issue #96.
 encryption = ["dep:chacha20poly1305"]
-# Reserved for a future `hickory-resolver`-backed DNS discovery adapter (SRV records, explicit
-# TTL/ndots control, robust resolution in static/musl images). Not implemented yet: the default
-# `DnsDiscovery` uses the system resolver via `tokio::net::lookup_host` and needs no extra crate.
+# Reserved; currently no-op.
 dns-hickory = []
-# The seeded network-emulation `Transport` decorator (`src/netem/`): injected one-way delay,
-# jitter, loss and reordering, for reconciliation-cost measurement. Dev/bench tooling, not part of
-# the default build; every dependency it needs (`tokio`, `parking_lot`, `rand`, `async-trait`) is
-# already a hard dependency of this crate, so the feature adds no new dependency edge.
 netem = []
 
 [dependencies]
@@ -64,8 +36,6 @@ parking_lot = "0.12.1"
 rand = "0.8.5"
 serde = { version = "1.0.192", features = ["derive"] }
 sha2 = { version = "0.10", optional = true }
-# Sizes the gossip UDP socket's SO_RCVBUF / SO_SNDBUF (issue #169). Already in the tree as a
-# transitive dependency of tokio, so this is essentially free.
 socket2 = "0.5"
 tokio = { version = "1.33.0", features = ["net", "time", "rt", "macros", "sync"] }
 tracing = "0.1.40"

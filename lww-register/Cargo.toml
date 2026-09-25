@@ -4,30 +4,11 @@ version = "0.5.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-# As with `reconcile-gossip`, the "implementation detail" wording is on the crates.io card on
-# purpose: this crate is published only so `reconcile` can be (cargo has no vendoring), not because
-# it is offered as a general-purpose LWW-Register — depend on `reconcile`, not this crate, for that
-# API. Its own version line moves with `reconcile`'s (#308, AGENTS.md §11): every re-exported type
-# carries `reconcile`'s 1.0 stability guarantee, which "no stability guarantee" used to deny. See
-# AGENTS.md §11 and `src/lib.rs`.
 description = "Implementation detail of the `reconcile` crate — depend on `reconcile` instead; re-exported types carry its 1.0 stability line. The state-based LWW-Register CRDT domain: Entry/State, HLC Timestamp + Clock port, and the Persistence port."
 repository = "https://github.com/adriendellagaspera/reconcile-rs"
 readme = "README.md"
 keywords = ["crdt", "lww", "register", "reconcile", "internal"]
 categories = ["data-structures"]
 
-# Infrastructure-free by construction. This dependency list *is* the boundary: no async runtime
-# (`tokio`), no wire codec (`bincode`), no wall clock (`chrono`), no network types (`ipnet`) — the
-# same set `scripts/check-domain-purity.sh` greps this crate's sources for, and the reason that
-# script still exists (it catches an import added inside the crate that the manifest alone would
-# not). `serde` is a derive-only data-shape dependency, not infrastructure: `Entry`/`State`/
-# `Timestamp`/`PersistedState` are values that cross a wire or a file written by *other* crates,
-# which choose the codec.
-#
-# Note there is deliberately no `rbsr`/`rsos` edge either. The migration plan pencilled one in, but
-# nothing here needs it: `Entry`/`State`/`Timestamp`/`Key`/`Value`/`Persistence` are pure data and
-# pure contracts. It is the `reconcile` facade that combines this domain with `rbsr`'s diff walk
-# over an `rsos` tree, so the edge belongs there. Leaving it out keeps this crate a true leaf
-# alongside `rsos` and makes the "zero infrastructure" claim structural rather than conventional.
 [dependencies]
 serde = { version = "1.0.192", features = ["derive"] }
