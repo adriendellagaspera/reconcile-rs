@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -18,20 +17,15 @@ use super::{Backpressure, ReplicatedMap, WriteRejected};
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Mutate the value for `k` in place, then propagate like [`insert`](ReplicatedMap::insert).
-    ///
     /// The callback sees `Some(&mut V)` for a live key, `None` for an absent or tombstoned one; a
     /// mutated entry is re-stamped and broadcast. Holds the write lock for the whole
     /// read-modify-write, so it is atomic against the reconciliation loop.
-    ///
     /// # Deadlock
-    ///
     /// `callback` runs while the write lock is held (a dedicated mutex, not the map lock a
     /// reader also takes). Calling a write method (`insert`, `update`, another `get_mut`, …) from
     /// `callback` self-deadlocks — the mutex is not reentrant. A pure read (`get`, `for_each`, …)
     /// no longer takes this lock at all and is safe to call from `callback`.
-    ///
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// the callback mutates a live entry).
     pub fn get_mut<F: FnOnce(Option<&mut V>)>(&self, k: &K, callback: F) {
@@ -68,7 +62,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// `None` if `k` was absent/tombstoned. Atomic against the reconciliation loop. Never
     /// broadcasts — the caller decides how, since [`try_update`](Self::try_update) needs a slot
     /// claimed *before* this runs, unlike [`mutate_live`](Self::mutate_live)'s callers.
-    ///
     /// The shared core of [`mutate_live`](Self::mutate_live) and [`try_update`](Self::try_update).
     /// `validate` sees the mutated value — while the write lock is still held, before it is stored
     /// — and can reject it: a rejection leaves the map/projection exactly as they were,
@@ -95,7 +88,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             }
         });
         if let Some(entry) = &updated {
-            // `value()` is `Some` here: `updated` is only ever set inside the `value_mut()` branch
+            // `value` is `Some` here: `updated` is only ever set inside the `value_mut` branch
             // above, which only runs for a live entry.
             validate(entry.value().expect("just-mutated live entry has a value"))?;
         }
@@ -113,7 +106,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Mutate `k` in place **only when live**, re-stamping and broadcasting; returns whether it
     /// was. Atomic against the reconciliation loop.
-    ///
     /// The shared core of [`update`](Self::update) and [`upsert`](Self::upsert). `validate` never
     /// rejects here — [`try_update`](Self::try_update) is what makes
     /// [`mutate_live_checked`](Self::mutate_live_checked)'s rejection path reachable.
@@ -132,39 +124,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Atomically mutate the live value for `k`, then re-stamp and broadcast; returns whether the
     /// key was live. The race-free replacement for a `get`-then-`insert`.
-    ///
     /// # Deadlock
-    ///
     /// `f` runs while the map write lock is held — same hazard as
     /// [`get_mut`](Self::get_mut)'s `# Deadlock` section.
-    ///
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// `k` is live).
-    ///
-    /// ```
-    /// # use std::sync::Arc;
-    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8305".parse().unwrap()));
-    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
-    /// )
-    /// .expect("valid configuration");
-    ///
-    /// // Absent: no race-free `get`-then-`insert` needed, `update` just reports it and does nothing.
-    /// assert!(!store.update(&"a".to_string(), |v| *v += 1));
-    ///
-    /// store.insert("a".to_string(), 1);
-    /// assert!(store.update(&"a".to_string(), |v| *v += 1)); // atomic against a concurrent writer
-    /// assert_eq!(store.get_cloned(&"a".to_string()), Some(2));
-    /// # }
-    /// ```
     #[must_use]
     pub fn update<F: FnOnce(&mut V)>(&self, k: &K, f: F) -> bool {
         self.mutate_live(k, f)
@@ -177,46 +142,18 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// then silently fails to broadcast. Also checks the mutated value's encoded size against
     /// [`Config::max_value_size`](super::Config::max_value_size), before it is stored.
     /// Always sends immediately, bypassing coalescing, for the same reason `try_insert` does.
-    ///
     /// # Errors
-    ///
     /// [`WriteRejected::Backpressure`] when the egress budget is already at capacity, or
     /// [`WriteRejected::TooLarge`] when the mutated value's encoded size exceeds
     /// `max_value_size`. Nothing is mutated either way — including when `k` turns out to be
     /// absent/tombstoned, which `update` would otherwise treat as a safe, budget-free no-op;
     /// that asymmetry is the cost of the all-or-nothing guarantee.
-    ///
     /// # Deadlock
-    ///
     /// `f` runs while the map write lock is held — same hazard as
     /// [`get_mut`](Self::get_mut)'s `# Deadlock` section.
-    ///
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// `k` is live).
-    ///
-    /// ```
-    /// # use std::sync::Arc;
-    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8310".parse().unwrap()));
-    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
-    /// )
-    /// .expect("valid configuration");
-    ///
-    /// assert_eq!(store.try_update(&"a".to_string(), |v| *v += 1), Ok(false));
-    ///
-    /// store.insert("a".to_string(), 1);
-    /// assert_eq!(store.try_update(&"a".to_string(), |v| *v += 1), Ok(true));
-    /// assert_eq!(store.get_cloned(&"a".to_string()), Some(2));
-    /// # }
-    /// ```
     pub fn try_update<F: FnOnce(&mut V)>(&self, k: &K, f: F) -> Result<bool, WriteRejected> {
         let Some(guard) = self.engine.try_claim_broadcast_slot() else {
             return Err(WriteRejected::Backpressure(Backpressure {
@@ -246,97 +183,41 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// Update the live value for `k` with `f`, or insert `default` if it is absent or tombstoned.
-    ///
     /// The update branch is atomic; the insert branch behaves like [`insert`](Self::insert).
-    ///
     /// # Atomicity
-    ///
     /// Not a compare-and-swap, node-local or otherwise: the update branch holds the map write lock
     /// across the whole read-modify-write and so is atomic against a concurrent local writer or the
     /// reconciliation loop *once `k` is live*, but the insert branch is a plain, unconditional
     /// [`insert`](Self::insert) — two local callers racing on the same absent `k` can both take that
     /// branch, and last-write-wins (by `Timestamp`, not by call order) decides the survivor exactly
-    /// as it would between two nodes. See "Conflict resolution" in the crate README for why a
+    /// as it would between two nodes. See "Conflict resolution" in the crate for why a
     /// cluster-wide conditional write isn't offered at all.
-    ///
     /// # Deadlock
-    ///
     /// `f` runs while the map write lock is held on the update branch — same hazard as
     /// [`get_mut`](Self::get_mut)'s `# Deadlock` section.
-    ///
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime.
-    ///
-    /// ```
-    /// # use std::sync::Arc;
-    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8306".parse().unwrap()));
-    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
-    /// )
-    /// .expect("valid configuration");
-    ///
-    /// // Absent: the default is inserted as-is, `f` never runs.
-    /// store.upsert("a".to_string(), 1, |v| *v += 100);
-    /// assert_eq!(store.get_cloned(&"a".to_string()), Some(1));
-    ///
-    /// // Live: `f` runs against the existing value, `default` is discarded.
-    /// store.upsert("a".to_string(), 1, |v| *v += 100);
-    /// assert_eq!(store.get_cloned(&"a".to_string()), Some(101));
-    /// # }
-    /// ```
     pub fn upsert<F: FnOnce(&mut V)>(&self, k: K, default: V, f: F) {
         if !self.mutate_live(&k, f) {
             self.insert(k, default);
         }
     }
 
-    /// Return the live value for `k`, inserting (and broadcasting) `f()` first if it is
+    /// Return the live value for `k`, inserting (and broadcasting) `f` first if it is
     /// absent/tombstoned. Under last-write-wins, two nodes racing to insert converge by timestamp
     /// order; this node returns the value it observed/created.
-    ///
     /// # Atomicity
-    ///
     /// Not atomic, not even node-locally: the read and the insert are two separate lock
-    /// acquisitions with no lock held across `f()`, unlike [`upsert`](Self::upsert)'s update branch.
-    /// Two local callers racing on the same absent `k` can each see it absent, each run `f()`, and
+    /// acquisitions with no lock held across `f`, unlike [`upsert`](Self::upsert)'s update branch.
+    /// Two local callers racing on the same absent `k` can each see it absent, each run `f`, and
     /// each insert — last-write-wins then picks the survivor by `Timestamp`, and a caller whose
     /// insert loses still returns the value *it* computed, not the one that ends up stored. Use
     /// [`update`](Self::update)/[`upsert`](Self::upsert) instead when the key is expected to already
-    /// be live; see "Conflict resolution" in the crate README for why no conditional insert
+    /// be live; see "Conflict resolution" in the crate for why no conditional insert
     /// (`insert_if_absent`) is offered as a stronger alternative.
-    ///
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// `k` is absent/tombstoned).
-    ///
-    /// ```
-    /// # use std::sync::Arc;
-    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8307".parse().unwrap()));
-    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
-    /// )
-    /// .expect("valid configuration");
-    ///
-    /// // Absent: `f` runs, its result is both inserted and returned.
-    /// assert_eq!(store.get_or_insert_with(&"a".to_string(), || 1), 1);
-    /// // Live: `f` never runs, the existing value is returned instead.
-    /// assert_eq!(store.get_or_insert_with(&"a".to_string(), || 999), 1);
-    /// # }
-    /// ```
     pub fn get_or_insert_with<F: FnOnce() -> V>(&self, k: &K, f: F) -> V {
         if let Some(value) = self.get(k) {
             return value.clone();

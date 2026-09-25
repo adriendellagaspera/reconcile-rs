@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -36,7 +35,7 @@ fn agreeing_aggregates_are_skipped_by_every_policy() {
     );
 }
 
-/// The `for_testing` seam (#529) round-trips exactly what `new` was given — the whole point being
+/// The `for_testing` seam round-trips exactly what `new` was given — the whole point being
 /// that a dependent crate's oracle-coupled probe policy sees the same `Aggregate` a driver built.
 #[cfg(reconcile_internal_testing)]
 #[test]
@@ -119,7 +118,7 @@ fn degenerate_parameters_are_unrepresentable() {
     );
 }
 
-/// `threshold()` reflects the constructed value, not just the degenerate `0 -> 1` case above.
+/// `threshold` reflects the constructed value, not just the degenerate `0 -> 1` case above.
 #[test]
 fn threshold_accessor_returns_the_constructed_value() {
     assert_eq!(

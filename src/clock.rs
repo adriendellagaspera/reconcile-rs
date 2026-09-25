@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -8,7 +7,6 @@
 
 //! The wall-clock **adapter** behind the [`Clock`] port, whose types and arithmetic live in
 //! [`lww_register::clock`] and are re-exported here.
-//!
 //! `HlcClock` owns the crate's primary wall-clock read and the node's [`NodeId`], which it
 //! attaches when minting a reading into a [`Timestamp`]. Every other wall-clock read in `reconcile`
 //! lives in this file too, alongside it: `BoundedInstant` needs a physical-time read and `chrono`
@@ -16,7 +14,6 @@
 //! [`MAX_CLOCK_DRIFT`] budget; `wall_clock_now` is the plain `DateTime<Utc>` reading a caller
 //! like `TimeoutWheel::expired` needs for an instant of its own, supplied instead of read locally so
 //! the wheel itself never touches the wall clock.
-//!
 //! `HlcClock` is the default [`Clock`] adapter, not the only one that can be plugged in:
 //! [`ReplicatedMap::new_with_clock`](crate::ReplicatedMap::new_with_clock) accepts any `Arc<dyn
 //! Clock>`. [`assert_conformance`] is what an implementor runs before trusting a
@@ -64,10 +61,9 @@ pub(crate) enum StampBound {
 
 /// A wall-clock instant derived from a **stored** HLC stamp, bounded so a peer-controlled stamp
 /// cannot drive it arbitrarily far into the future.
-///
 /// [`Clock::observe`]'s clamp guards the local clock state only — a stored stamp keeps its
 /// received value as LWW data — so anything deriving an instant from one must bound it itself
-/// (`ARCHITECTURE.md` §5 invariant 6). Constructing this is the only way to get the instant, so
+/// . Constructing this is the only way to get the instant, so
 /// neither an exact far-future conversion (unbounded tombstone retention) nor a wrap-negative
 /// cast is reachable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,7 +74,6 @@ pub(crate) struct BoundedInstant {
 
 impl BoundedInstant {
     /// Bound `stamp_physical` to `local now + budget` and convert it to a wall-clock instant.
-    ///
     /// Within budget the stamp is used unchanged, so honest replicas agree on when a tombstone
     /// ages out; beyond it, the cap. Outcomes: [`StampBound`].
     pub(crate) fn from_stored_stamp(
@@ -120,7 +115,6 @@ impl BoundedInstant {
 
 /// A per-node Hybrid Logical Clock: the default [`Clock`] adapter, internally synchronized and
 /// cloned across a node's tasks.
-///
 /// Owns the crate's only physical-time read. Its state is a bare [`Hlc`]; the [`NodeId`] is
 /// attached only at mint time, so it is held in one place.
 #[derive(Debug)]
@@ -175,7 +169,6 @@ impl Clock for HlcClock {
     }
 
     /// Advance past a peer's timestamp, so a subsequent [`now`](Clock::now) outranks it.
-    ///
     /// The untrusted path: the remote reading goes through [`AdmittedTime::clamped_to_drift`] and
     /// a clamp is `warn!`ed. The remote's own `Timestamp` is untouched.
     fn observe(&self, remote: Timestamp) {
@@ -199,7 +192,6 @@ impl Clock for HlcClock {
     }
 
     /// Advance past a stamp this node authored, without the clamp.
-    ///
     /// A backward wall-clock step across a restart would otherwise leave the clock below an
     /// honest persisted stamp, shadowing our own writes. The one place entitled to
     /// [`AdmittedTime::trusted`].

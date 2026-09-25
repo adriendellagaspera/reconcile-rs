@@ -1,21 +1,12 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `ARCHITECTURE.md` §5 invariant 13's own coverage (`shipped_policies_always_progress.rs`) only
-//! drives *shipped* policies, which all hold the progress law by construction. This test drives
-//! two oracle-independent, non-progressing policies instead — the class of policy the driver's
-//! guard exists to defend against — and the two cases where only one of two peers runs one, which
-//! `shipped_policies_always_progress.rs`'s single-policy convergence matrix cannot reach at all.
-//!
-//! `ConstantStrideSplit`/`SpanHashedStrideSplit` are `reconcile_internal_testing`-only probe
-//! policies (deliberately not shippable) that violate the progress law on their own; the guard
-//! (`protocol_round_with_policy` converting a non-progressing `Split` to an `Enumerate`) is what
-//! must keep every drive below settling despite that.
+//! Progress-guard tests with deliberately non-progressing policies, including asymmetric peers.
+//! The driver must convert non-narrowing split decisions to enumeration and still terminate.
 
 #![forbid(unsafe_code)]
 #![cfg(reconcile_internal_testing)]

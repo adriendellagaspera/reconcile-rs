@@ -1,7 +1,4 @@
-<!--
-AGENTS.md §9: prose is the last resort. A table, a mermaid diagram, a code
-block, or a link replaces a paragraph.
--->
+<!-- Keep the description focused; link to canonical documentation instead of duplicating it. -->
 
 | | |
 |---|---|
@@ -11,4 +8,4 @@ block, or a link replaces a paragraph.
 
 ## Verification
 
-- [ ] AGENTS.md §3's full list is green
+- [ ] Required checks are green

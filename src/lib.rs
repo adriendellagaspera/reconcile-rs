@@ -6,33 +6,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! This crate provides a key-data map structure [`FingerprintTreeMap`] (from the [`rsos`] crate)
-//! that can be used together with the reconciliation [`ReplicatedMap`]. Different instances can talk
-//! together over UDP to efficiently reconcile their differences.
+//! Embedded, in-memory, eventually consistent replication.
 //!
-//! All the data is available locally in all instances, and the user can be
-//! notified of changes to the collection with an insertion hook.
+//! [`ReplicatedMap`] stores the complete dataset on every authoritative replica. Reads are local;
+//! writes propagate asynchronously and same-key conflicts use last-write-wins ordering.
 //!
-//! The protocol allows finding a difference over millions of elements with a limited
-//! number of round-trips. It should also work well to populate an instance from
-//! scratch from other instances.
+//! Use it when the working set fits in memory on every node and eventual consistency is acceptable.
+//! It is not a counter CRDT, a strongly consistent store, or a sharded data store.
 //!
-//! # When to use this
-//!
-//! An **embedded, in-memory, eventually-consistent replicated map**: every instance holds the
-//! whole dataset and serves reads locally, writes propagate asynchronously and merge
-//! last-write-wins. Right when reads dominate, the working set fits in RAM on every node, and
-//! same-key conflicts are rare. Wrong for counters (LWW overwrites, it does not sum), strong
-//! consistency, datasets past one node's RAM, and collaborative text.
-//!
-//! # Security model
-//!
-//! Construction requires an explicit trust mode. [`Config::with_cluster_key`](replicated_map::Config::with_cluster_key),
-//! set on **every** node, enables per-datagram MAC authentication and per-sender replay protection.
-//! [`Config::with_insecure_no_key`](replicated_map::Config::with_insecure_no_key) explicitly opts
-//! into unauthenticated operation and is suitable only for a trusted underlay. The repository's
-//! `SECURITY.md` is canonical for the full threat model.
-
+//! Construction requires an explicit trust mode. Use
+//! [`Config::with_cluster_key`](replicated_map::Config::with_cluster_key) for authenticated traffic,
+//! or [`Config::with_insecure_no_key`](replicated_map::Config::with_insecure_no_key) only when the
+//! surrounding network supplies the trust boundary.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -49,7 +34,7 @@ pub mod replicated_set;
 pub(crate) mod snapshot;
 pub mod value_ref;
 
-// Sibling crates re-exported under their historical paths (`ARCHITECTURE.md` §2).
+// Stable facade re-exports.
 pub use gossip::auth::{ClusterKey, ClusterKeyError};
 pub use gossip::{discovery, transport};
 pub use lww_register::{bounds, entry};
@@ -71,7 +56,7 @@ pub use tokio_util;
 #[cfg(feature = "metrics-prometheus")]
 pub mod prometheus;
 
-// Internal mechanism, `pub(crate)` (`ARCHITECTURE.md` §3.2); test seams go through [`testing`].
+// Internal runtime mechanisms; test seams go through [`testing`].
 pub(crate) mod observability;
 pub(crate) mod replica;
 pub(crate) mod timeout_wheel;

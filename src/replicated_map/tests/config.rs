@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -116,7 +115,7 @@ fn config_error_too_many_nets_display_names_the_limit() {
     );
 }
 
-/// `with_nets` (#97) rejects a batch that would exceed [`MAX_NETS`] with a `Result`, the bulk-form
+/// `with_nets` rejects a batch that would exceed [`MAX_NETS`] with a `Result`, the bulk-form
 /// counterpart `with_net` already returns per-net.
 #[test]
 fn with_nets_rejects_a_batch_past_max_nets() {
@@ -160,7 +159,7 @@ fn config_debug_redacts_cluster_key_but_not_its_presence() {
 }
 
 /// Each `with_*` builder actually sets its field on `self`; a mutant collapsing any of them to
-/// `Default::default()` would silently discard both `self` and the argument.
+/// `Default::default` would silently discard both `self` and the argument.
 #[test]
 fn config_builders_actually_set_their_field() {
     use ipnet::IpNet;
@@ -203,19 +202,18 @@ fn config_builders_actually_set_their_field() {
     assert_eq!(cfg.max_value_size, Some(4096));
 }
 
-/// [`Config::max_value_size`] is `None` (no ceiling) unless a caller opts in — #82's write-time
+/// [`Config::max_value_size`] is `None` (no ceiling) unless a caller opts in — 's write-time
 /// rejection must never engage for a `Config` nobody configured it on.
 #[test]
 fn max_value_size_defaults_to_none() {
     assert_eq!(Config::default().max_value_size, None);
 }
 
-/// The new #292 fields default to the documented values: [`SNAPSHOT_INTERVAL`] (5 s) and
+/// The new fields default to the documented values: [`SNAPSHOT_INTERVAL`] (5 s) and
 /// [`MAX_CLOCK_DRIFT`](crate::clock::MAX_CLOCK_DRIFT) (1 h) — not e.g. `Duration::ZERO`, which
-/// would make every write pay a snapshot or silently disable the drift clamp. #46 adds
+/// would make every write pay a snapshot or silently disable the drift clamp. adds
 /// `snapshot_change_threshold`, defaulting to `1` — an idle node still skips the write, but any
-/// single change is enough to trigger one, matching the historical always-write behavior.
-///
+/// single change is enough to trigger one, matching the always-write behavior.
 /// [`SNAPSHOT_INTERVAL`]: super::super::persistence::SNAPSHOT_INTERVAL
 #[test]
 fn snapshot_interval_and_max_clock_drift_default_correctly() {

@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -25,7 +24,6 @@ use super::Replica;
 
 /// Derive a node's **local network** — whichever declared net contains `listen_addr`, and the one
 /// reconciled with every round.
-///
 /// With no match, falls back to the node's own host route, so every peer is treated as remote
 /// rather than mis-qualified. Called at construction and on each `nets` mutation, so the warning
 /// fires only there.
@@ -43,9 +41,7 @@ pub(crate) fn derive_local_net(nets: &[IpNet], listen_addr: IpAddr) -> IpNet {
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// (runtime) Replace the declared networks wholesale and re-derive the local network.
-    ///
     /// # Errors
-    ///
     /// If `nets` exceeds [`MAX_NETS`] — the same cap `Config::with_net` enforce at
     /// construction time and [`add_net`](Self::add_net) enforces at runtime.
     pub(crate) fn set_nets(&self, nets: &[IpNet]) -> Result<(), ConfigError> {
@@ -138,8 +134,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Permanently remove a peer from membership, clearing its recorded acks, so tombstones stop
     /// waiting for it.
-    ///
-    /// Per-peer replay state is deliberately **kept** (AGENTS.md §8): dropping it would let a
+    /// Per-peer replay state is deliberately **kept**: dropping it would let a
     /// captured datagram replayed inside the freshness window re-add the peer.
     pub(crate) fn decommission_peer(&self, peer: IpAddr) {
         let mut changed = usize::from(self.members.write().remove(&peer));
@@ -152,9 +147,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Register or refresh a known peer at runtime — what a discovery source calls per resolved
     /// address.
-    ///
     /// Re-arms `PEER_EXPIRATION` and makes the address a gossip target. Never touches
-    /// [`members`](Self::members) (`ARCHITECTURE.md` §5 invariant 6).
+    /// [`members`](Self::members).
     pub(crate) fn seed_peer(&self, peer: IpAddr) {
         self.peers.write().insert(peer, Instant::now());
     }
@@ -165,7 +159,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Number of entries currently in the peers gossip-routing map.
-    ///
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
     #[cfg(any(test, reconcile_internal_testing))]
     pub(crate) fn peers_map_len(&self) -> usize {
@@ -173,7 +166,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Number of entries currently in the per-peer replay filter.
-    ///
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
     #[cfg(any(test, reconcile_internal_testing))]
     pub(crate) fn replay_filter_len(&self) -> usize {
@@ -181,7 +173,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Number of keys currently tracked in the tombstone-acknowledgment map.
-    ///
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
     #[cfg(any(test, reconcile_internal_testing))]
     pub(crate) fn tombstone_acks_len(&self) -> usize {
@@ -189,7 +180,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Number of bulk dump tasks currently in flight across all peers.
-    ///
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
     #[cfg(any(test, reconcile_internal_testing))]
     pub(crate) fn bulk_dumps_in_flight_count(&self) -> usize {
@@ -197,7 +187,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Number of write-broadcast tasks currently in flight.
-    ///
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`. Production code reads
     /// the same counter unconditionally through [`Replica::broadcasts_in_flight`], via
     /// [`Backpressure`](crate::replicated_map::Backpressure)'s construction and the

@@ -1,12 +1,11 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #46: `Config::snapshot_interval` becoming `Option<Duration>` (periodic snapshotting can be
+//! `Config::snapshot_interval` becoming `Option<Duration>` (periodic snapshotting can be
 //! disabled outright) and the new `Config::snapshot_change_threshold` (a periodic wakeup only
 //! writes once enough changes have accumulated, so an idle node does zero snapshot IO).
 

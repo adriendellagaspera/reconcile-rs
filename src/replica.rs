@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -55,9 +54,8 @@ pub(crate) struct PeerCap(usize);
 
 /// The internal reconciliation engine at the network level; removals are the outer layer's
 /// ([`ReplicatedMap`](crate::replicated_map::ReplicatedMap)).
-///
 /// `V` is the plain user value type, stored and exchanged as
-/// [`Entry<Timestamp, V>`](crate::entry::Entry) (`ARCHITECTURE.md` §4). [`Transport`] is held as a
+/// [`Entry<Timestamp, V>`](crate::entry::Entry). [`Transport`] is held as a
 /// trait object; encoding goes through [`gossip::bincode`], so no codec parameter appears.
 pub(crate) struct Replica<K, V> {
     /// All engine state behind one [`Arc`], so a clone is a refcount bump. Fields are reached
@@ -65,24 +63,23 @@ pub(crate) struct Replica<K, V> {
     inner: Arc<Inner<K, V>>,
 }
 
-/// Shared, refcounted state of a [`Replica`]; see that struct for the rationale.
+/// Shared, refcounted state of a [`Replica`].
 pub(crate) struct Inner<K, V> {
-    /// `ArcSwap`, not `RwLock`: a reader `load_full()`s an owned `Arc` with no lock at all,
+    /// `ArcSwap`, not `RwLock`: a reader `load_full`s an owned `Arc` with no lock at all,
     /// which is what makes it safe to hold across an `.await` point
     /// ([`start_reconciliation`](Self::start_reconciliation),
-    /// [`handle_messages`](Self::handle_messages)) — `ArcSwap::load()`'s pooled `Guard` is
+    /// [`handle_messages`](Self::handle_messages)) — `ArcSwap::load`'s pooled `Guard` is
     /// documented as unsuitable for that. A writer clones the current `Arc` (an O(1) root bump),
-    /// mutates the clone with the ordinary COW `&mut self` API, and `store()`s it back,
+    /// mutates the clone with the ordinary COW `&mut self` API, and `store`s it back,
     /// serialized through [`write_lock`](Self::write_lock) — see that field for why.
     pub(crate) map: Arc<ArcSwap<FingerprintTreeMap<K, Entry<Timestamp, V>>>>,
     /// Value-only **projection** of [`map`](Self::map), kept in sync at every mutation.
-    ///
-    /// Timestamp-less by construction (`ARCHITECTURE.md` §5 invariant 8), which is what lets a
+    /// Timestamp-less by construction, which is what lets a
     /// dateless read replica converge with this dated store. Never touches causal stability.
     pub(crate) projection: Arc<ArcSwap<FingerprintTreeMap<K, State<V>>>>,
     /// Serializes every writer of [`map`](Self::map)/[`projection`](Self::projection)/
     /// [`live_tombstones`](Self::live_tombstones), so the three stay consistent with each other
-    /// (`ARCHITECTURE.md` §5 invariant 8, `Replica::map_insert`'s lock-order comment). Deliberately
+    /// . Deliberately
     /// a plain mutex around the load-clone-mutate-store sequence, never `ArcSwap::rcu`: an
     /// optimistic-retry `rcu` closure can re-run under contention, which would replay the
     /// `live_tombstones`/`projection` side effects more than once.
@@ -206,8 +203,7 @@ pub(crate) struct Inner<K, V> {
     replay_filter: Arc<replay::ReplayFilter>,
     /// Monotonic set of every peer this node has exchanged messages with; never expired, unlike
     /// [`peers`](Self::peers).
-    ///
-    /// This is the causal-stability gate on tombstone GC (`ARCHITECTURE.md` §5 invariant 6).
+    /// This is the causal-stability gate on tombstone GC.
     /// Remote-net members ack on the slower cross-network cadence, so GC is slower there but no
     /// less correct.
     pub(crate) members: Arc<RwLock<HashSet<IpAddr>>>,
@@ -252,9 +248,7 @@ pub(crate) struct Inner<K, V> {
 }
 
 /// One atomic message of the reconciliation protocol.
-///
 /// Variant order is the wire tag order:
-///
 /// | tag | channel | variant |
 /// |---:|---|---|
 /// | 0 | dated | [`EntryFingerprint`](Message::EntryFingerprint) |
@@ -264,15 +258,10 @@ pub(crate) struct Inner<K, V> {
 /// | 4 | state-only | [`StateUpdate`](Message::StateUpdate) |
 /// | 5 | dated | [`ConvergenceAck`](Message::ConvergenceAck) |
 /// | 6 | reserved | [`Reserved6`](Message::Reserved6) |
-///
 /// Unknown tags beyond this enum fail deserialization and the receive loop drops the datagram.
-/// Assigning a real shape to the reserved tag, or otherwise changing the wire shape, requires the
-/// compatibility treatment documented in `MIGRATING.md`; `gossip::auth::WIRE_VERSION` is the
-/// strict protocol-version gate.
-///
-/// The two channels follow the domain split in `ARCHITECTURE.md` §5 invariant 8: the dated
-/// channel operates on `Entry<Timestamp, V>`; the state-only channel operates on the timestamp-less
-/// `State<V>` projection used by read replicas.
+/// Changing variant order or wire shape requires a wire-version change.
+/// The dated channel carries `Entry<Timestamp, V>`; the state-only channel carries the
+/// timestamp-free `State<V>` projection used by read replicas.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
     /// A range and its aggregate over the dated `map` (an `Entry<Timestamp, V>` tree), for the

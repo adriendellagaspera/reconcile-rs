@@ -1,12 +1,11 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #47 manual structural probe, after #92's boxed children array.
+//!  manual structural probe, after 's boxed children array.
 //! These are exact Rust layout/occupancy counts, not measured RSS or a predicted heap saving.
 //! Pair with the allocation-counting system::heap_footprint benchmark on the same revision.
 
@@ -57,7 +56,6 @@ fn report(n: usize, kind: &str, tree: &FingerprintTreeMap<u32, u32>) {
 }
 
 /// Manual probe: cargo test -p rsos --lib node_occupancy -- --ignored --nocapture
-///
 /// RECONCILE_BASELINE_SIZES=10000,100000,1000000 extends the default sweep.
 /// A per-node inline fingerprint reservation is not a guaranteed equal-sized saving when the
 /// field is removed: alignment, allocation classes and other bookkeeping affect actual RSS.

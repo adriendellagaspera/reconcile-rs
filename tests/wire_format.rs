@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,13 +6,11 @@
 // except according to those terms.
 
 //! Golden vector for the RBSR segment wire encoding.
-//!
 //! This lives in `reconcile` rather than in `rbsr` on purpose. `rbsr` owns the *type* that goes on
 //! the wire; it owns no *encoding* — the codec is chosen here, in the adapter layer
 //! (`gossip::bincode`), and `bincode` is a real dependency of this package and of nothing below it.
 //! Putting the byte-level check where the codec already lives is what keeps a codec dependency out
 //! of `rbsr` entirely, rather than admitting one and then carving an exception for it.
-//!
 //! The segment is built through `RangeAggregate::new`, because chosen bounds are the whole point:
 //! `initial_ranges` only ever emits `(Unbounded, Unbounded)`, so a vector built from it would never
 //! exercise the `Included`/`Excluded` encodings — nor catch a reordering of `StartBound`/
@@ -28,13 +25,11 @@ use rbsr::RangeAggregate;
 use rsos::{Aggregate, Fingerprint};
 
 /// `RangeAggregate`'s golden encoding, under the wire codec's `DefaultOptions`.
-///
 /// bincode inlines the nested `Aggregate` in declaration order, so these bytes hold only while
 /// `Aggregate` declares `fingerprint` before `size` — reordering breaks this test, which is the
 /// point.
-///
 /// Reading the vector: `1` = `StartBound::Included`, `7` = start key; `1` = `EndBound::Excluded`,
-/// `42` = end key; 32 raw fingerprint bytes (#382 — no longer four varint-encoded `u64` limbs, see
+/// `42` = end key; 32 raw fingerprint bytes ( — no longer four varint-encoded `u64` limbs, see
 /// `rsos::Fingerprint`'s `Serialize` impl); `251, 44, 1` = `size == 300`.
 #[test]
 fn wire_format_is_unchanged_by_the_aggregate_collapse() {
@@ -66,7 +61,7 @@ fn wire_format_is_unchanged_by_the_aggregate_collapse() {
     assert_eq!(decoded, segment);
 }
 
-/// #382: `Fingerprint`'s wire size is exactly 32 bytes regardless of limb value — the property the
+/// `Fingerprint`'s wire size is exactly 32 bytes regardless of limb value — the property the
 /// raw-bytes `Serialize`/`Deserialize` impl exists to guarantee, checked at the worst case for the
 /// varint encoding it replaced (every limb using its full 64 bits, so the old encoding would have
 /// cost 9 B/limb instead of the fixed 8).

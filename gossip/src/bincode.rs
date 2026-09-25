@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -8,9 +7,8 @@
 
 //! The crate's wire-encoding functions: `bincode` with the frozen
 //! [`DefaultOptions`](::bincode::DefaultOptions) configuration.
-//!
-//! Plain functions, not a port (`ARCHITECTURE.md` §3.2). Authentication sits **ahead** of the
-//! codec, so a forged datagram never reaches [`decode_stream`] (`ARCHITECTURE.md` §5 invariant 5).
+//! Plain functions, not a port. Authentication sits **ahead** of the
+//! codec, so a forged datagram never reaches [`decode_stream`].
 //! `::bincode::…` names the external crate.
 
 use std::error::Error as StdError;
@@ -58,9 +56,7 @@ impl StdError for DecodeError {
 
 /// Append the encoding of `value` to a caller-owned buffer, so a batch frames into one datagram
 /// without per-message allocation.
-///
 /// # Errors
-///
 /// Only if `T`'s `Serialize` implementation fails.
 pub fn encode<T: Serialize>(value: &T, out: &mut Vec<u8>) -> Result<(), EncodeError> {
     use ::bincode::{DefaultOptions, Serializer};
@@ -71,9 +67,7 @@ pub fn encode<T: Serialize>(value: &T, out: &mut Vec<u8>) -> Result<(), EncodeEr
 
 /// Decode a stream of `T` from `bytes`, stopping at a clean end-of-input or at `max_items` —
 /// the cap that keeps a crafted datagram from expanding into unboundedly many messages.
-///
 /// # Errors
-///
 /// If a message fails to deserialize before a clean end-of-input: a corrupt datagram is rejected
 /// wholesale, never half-applied.
 pub fn decode_stream<T: DeserializeOwned>(

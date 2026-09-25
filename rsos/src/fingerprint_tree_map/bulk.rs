@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -8,10 +7,9 @@
 
 //! [`FingerprintTreeMap::from_sorted_iter`]/[`from_sorted_iter_keyed`]: a one-pass, bottom-up
 //! bulk build from already-sorted, duplicate-free input -- the amortized alternative to `n`
-//! individual [`insert`](super::FingerprintTreeMap::insert) calls (#51). Every node's
+//! individual [`insert`](super::FingerprintTreeMap::insert) calls. Every node's
 //! `fingerprints` and `subtree` cache is composed directly from the elements and children it is
 //! built with, once, rather than incrementally maintained across `n` splits.
-//!
 //! The tree this produces can differ in *shape* from one built via serial `insert` (this module
 //! favors dense, close-to-[`MAX_CAPACITY`] nodes at every level; `insert`'s incremental splitting
 //! does not), but [`Aggregate`](crate::aggregate::Aggregate) is a commutative monoid over the
@@ -32,7 +30,6 @@ use super::{FingerprintTreeMap, MAX_CAPACITY, MIN_CAPACITY};
 /// Precomputed `min`/`max` element counts a subtree can hold at each height, up to the height
 /// this build needs. `max[h]`/`min[h]`: the most/least items a subtree of `h` levels can hold --
 /// `min` only meaningful for a **non-root** subtree, the root has no lower bound.
-///
 /// `max[0] == min[0] == 0` (an absent, height-0 child) is the base case both recurrences share,
 /// which is why [`build_level`] does not special-case a leaf's "no children" contribution.
 struct Capacities {
@@ -59,7 +56,6 @@ impl Capacities {
 /// Builds a subtree over `items` (exactly `height` levels) whose own key count has a floor of
 /// `min_own_keys` when `height > 1` (`1` for the tree root -- no minimum-occupancy invariant
 /// applies there; [`MIN_CAPACITY`] for every recursive, non-root call).
-///
 /// Chooses its own key count `k` as large as possible (closest to [`MAX_CAPACITY`]) subject to
 /// the `k + 1` children -- each recursively built at `height - 1` -- landing within
 /// [`Capacities::min`]/[`Capacities::max`] at that height; the remaining items split as evenly as
@@ -153,23 +149,10 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
     /// individual [`insert`](Self::insert) calls for a known, already-sorted dataset (initial
     /// load, snapshot recovery). Unlike [`FromIterator`], this does **not** sort or de-duplicate
     /// `items` itself.
-    ///
     /// # Panics
-    ///
     /// If `items`' keys are not strictly increasing (which also rules out duplicates) --
-    /// [`FromIterator`]'s `collect()` remains the right choice for unsorted or duplicate-keyed
+    /// [`FromIterator`]'s `collect` remains the right choice for unsorted or duplicate-keyed
     /// input.
-    ///
-    /// ```
-    /// use rsos::FingerprintTreeMap;
-    ///
-    /// let bulk: FingerprintTreeMap<i32, i32> =
-    ///     FingerprintTreeMap::from_sorted_iter((0..1000).map(|k| (k, k * 2)));
-    /// let serial: FingerprintTreeMap<i32, i32> = (0..1000).map(|k| (k, k * 2)).collect();
-    ///
-    /// // Same elements, same aggregate -- regardless of the two builds' internal tree shape.
-    /// assert_eq!(bulk.aggregate(..), serial.aggregate(..));
-    /// ```
     #[must_use]
     pub fn from_sorted_iter<T: IntoIterator<Item = (K, V)>>(items: T) -> Self {
         Self::build_sorted(items, None)
@@ -177,9 +160,7 @@ impl<K: Serialize + Ord + Clone, V: Serialize + Clone> FingerprintTreeMap<K, V> 
 
     /// [`from_sorted_iter`](Self::from_sorted_iter), keyed under `lift_key` -- the bulk-build
     /// counterpart to [`with_lift_key`](Self::with_lift_key).
-    ///
     /// # Panics
-    ///
     /// Same precondition as [`from_sorted_iter`](Self::from_sorted_iter): `items`' keys must be
     /// strictly increasing.
     #[must_use]

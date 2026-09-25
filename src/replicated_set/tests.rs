@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -119,10 +118,7 @@ async fn set_nets_enforces_max_nets_at_runtime() {
     );
 }
 
-/// `ReplicatedSet::set_repair_interval` is a thin delegate to
-/// `ReplicatedMap::set_repair_interval` — assert the delegation actually happens, not just
-/// that calling it doesn't panic (same rationale as `set_nets_enforces_max_nets_at_runtime`
-/// above).
+/// `set_repair_interval` must retune the delegated map engine.
 #[tokio::test]
 async fn set_repair_interval_actually_retunes_the_engine() {
     let set = virtual_set(virtual_config());
@@ -132,10 +128,7 @@ async fn set_repair_interval_actually_retunes_the_engine() {
     assert_eq!(set.0.repair_interval(), Duration::from_millis(9));
 }
 
-/// `ReplicatedSet::set_coalesce_window` is a thin delegate to
-/// `ReplicatedMap::set_coalesce_window` — assert the delegation actually happens, not just
-/// that calling it doesn't panic (same rationale as `set_nets_enforces_max_nets_at_runtime`
-/// above).
+/// `set_coalesce_window` must retune the delegated map engine.
 #[tokio::test]
 async fn set_coalesce_window_actually_retunes_the_engine() {
     let set = virtual_set(virtual_config());
@@ -155,8 +148,8 @@ async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
     false
 }
 
-/// #481: `local_addr` forwards to the wrapped map and reports the transport's real bound
-/// address, matching what was configured — mirrors #292's own `ReplicatedMap` test.
+/// `local_addr` forwards to the wrapped map and reports the transport's real bound
+/// address, matching what was configured — mirrors 's own `ReplicatedMap` test.
 #[tokio::test]
 async fn local_addr_matches_the_configured_bind_address() {
     let socket = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
@@ -172,7 +165,7 @@ async fn local_addr_matches_the_configured_bind_address() {
     );
 }
 
-/// #481: `sync_state` forwards to the wrapped map — it starts with no rounds completed and
+/// `sync_state` forwards to the wrapped map — it starts with no rounds completed and
 /// advances as the engine actually runs, rather than returning a default.
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_state_advances_as_the_engine_runs() {
@@ -190,7 +183,7 @@ async fn sync_state_advances_as_the_engine_runs() {
     task.abort();
 }
 
-/// #481: `peers`/`members` forward to the wrapped map and reflect a real converged pair of
+/// `peers`/`members` forward to the wrapped map and reflect a real converged pair of
 /// sets — each only contains the other node's address once a genuine datagram has been
 /// exchanged, so neither is a fixed literal nor an empty default.
 #[tokio::test(flavor = "multi_thread")]
@@ -243,10 +236,7 @@ async fn peers_and_members_reflect_a_converged_pair() {
     tb.abort();
 }
 
-/// `ReplicatedSet::with_persistence` is a thin delegate to `ReplicatedMap::with_persistence` —
-/// assert the delegation actually happens on the success path: membership recovers across a
-/// restart against the same backend, not just that calling it doesn't panic (same rationale as
-/// `set_nets_enforces_max_nets_at_runtime` above).
+/// Persistence must recover set membership and tombstones across restart.
 #[tokio::test]
 async fn with_persistence_recovers_membership_on_restart() {
     let dir = tempfile::tempdir().unwrap();
@@ -280,10 +270,7 @@ impl<K: Send + Sync + 'static, V: Send + Sync + 'static> Persistence<K, V> for F
     }
 }
 
-/// `ReplicatedSet::with_persistence` is a thin delegate to `ReplicatedMap::with_persistence` —
-/// assert the delegation actually happens on the error path too: a backend load failure surfaces
-/// as `Err`, not swallowed or turned into a panic (same rationale as
-/// `with_persistence_recovers_membership_on_restart` above).
+/// Persistence load errors must be returned to the caller.
 #[tokio::test]
 async fn with_persistence_surfaces_load_errors() {
     let set = virtual_set(virtual_config());

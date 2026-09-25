@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -13,13 +12,12 @@
 use super::cutoffs::shared_cutoffs;
 use super::{Comparison, Decision, RefinementPolicy, SplitStride};
 
-/// **Test-only probe (#356), `cfg(reconcile_internal_testing)`-gated.** A fixed stride for every
+/// **Test-only probe, `cfg(reconcile_internal_testing)`-gated.** A fixed stride for every
 /// range, however wide.
-///
 /// A constant is trivially "a function of the data alone", so this satisfies the
 /// oracle-independence [`Comparison`]'s law is about, and cannot be accused of reading the digest.
 /// It is nonetheless *not* progress-making once a range's span falls to `stride` or below, which is
-/// the point: it is the control deciding whether the oracle-coupled probe's (#356) failure is
+/// the point: it is the control deciding whether the oracle-coupled probe's failure is
 /// caused by the oracle coupling or by the span-independent magnitude that came with it. Never a
 /// shipped policy — see
 /// `tests/the_progress_guard_settles_the_two_cases_its_own_tests_miss.rs`.

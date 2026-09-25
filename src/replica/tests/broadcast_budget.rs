@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -8,7 +7,7 @@
 
 use crate::replicated_map::Config;
 
-/// Default budget is 1024, matching `DEFAULT_MAX_CONCURRENT_BROADCASTS` (#83).
+/// Default budget is 1024, matching `DEFAULT_MAX_CONCURRENT_BROADCASTS`.
 #[test]
 fn default_budget_is_1024() {
     assert_eq!(Config::default().max_concurrent_broadcasts, 1024);
@@ -74,7 +73,7 @@ async fn zero_budget_rejects_every_claim() {
     assert_eq!(eng.broadcasts_in_flight_count(), 0);
 }
 
-/// `max_concurrent_broadcasts()` must report the configured, non-zero budget verbatim — it backs
+/// `max_concurrent_broadcasts` must report the configured, non-zero budget verbatim — it backs
 /// `Backpressure::max_in_flight`, so a caller reading it after a rejection must see the real cap,
 /// not an unrelated value (e.g. always `0`, indistinguishable from the zero-budget case above).
 #[tokio::test]

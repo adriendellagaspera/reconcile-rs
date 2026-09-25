@@ -6,46 +6,22 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `rsos`: a Range-Summarizable Order-Statistics Store.
+//! Range-Summarizable Order-Statistics Store.
 //!
-//! Amparore, *Range-Based Set Reconciliation via Range-Summarizable Order-Statistics Stores*
-//! (arXiv:2603.19820): [`Rsos`] is Def. 3.9's seven-operation contract, [`Aggregate`] the Def. 3.5
-//! bundled aggregate `A(S) = (|S|, Σ(S))`, [`lift`] the Def. 3.4 lifting function into `M` =
-//! [`Fingerprint`]. [`FingerprintTreeMap`] is this crate's realization: in-memory, `ArrayVec`-node
-//! B-tree of order 6, meeting Thm. 5.2's `O(h)` bounds.
+//! [`Rsos`] defines ordered storage with range aggregate, rank, select, enumerate, insert, and
+//! delete operations. [`FingerprintTreeMap`] is the in-memory B-tree implementation.
 //!
-//! [`lift`]'s element bound is [`Serialize`](serde::Serialize), not [`Hash`](std::hash::Hash) —
-//! bytes come from this crate's [canonical encoding](encoding).
+//! [`Aggregate`] combines cardinality with a 256-bit additive [`Fingerprint`]. Fingerprints are
+//! computed from this crate's canonical [`encoding`], so elements require
+//! [`Serialize`](serde::Serialize) rather than [`Hash`](std::hash::Hash).
 //!
-//! Def. 3.4 instantiated for a *map*: `U` is the key set, `V` is the payload the lift consults, so
-//! `lift(&k, &v)` is total on `X` because a map assigns one value per key. A set-only RSOS is
-//! `V = ()`. Two values under one key therefore differ in fingerprint but agree in count.
-//!
-//! Positioning, competitors, and the durable design context are documented in
-//! `POSITIONING.md` §2.2/§2.4 and `ARCHITECTURE.md` §7.
-//!
-//! | Def. 3.9 operation | [`Rsos`] trait method | [`FingerprintTreeMap`] inherent method |
-//! |---|---|---|
-//! | `size()` | [`Rsos::size`] | [`len`](FingerprintTreeMap::len) *(+ [`is_empty`](FingerprintTreeMap::is_empty))* |
-//! | `Aggregate(l, u)` | [`Rsos::aggregate`] | [`aggregate`](FingerprintTreeMap::aggregate) |
-//! | `Rank(z)` | [`Rsos::rank`] | [`rank`](FingerprintTreeMap::rank) |
-//! | `Select(r)` | [`Rsos::select`] | [`select`](FingerprintTreeMap::select) |
-//! | `Enumerate(l, u)` | [`Rsos::enumerate`] | [`range`](FingerprintTreeMap::range) |
-//! | `Insert(k, v)` | [`Rsos::insert`] | [`insert`](FingerprintTreeMap::insert) |
-//! | `Delete(k)` | [`Rsos::delete`] | [`remove`](FingerprintTreeMap::remove) |
-//!
-//! The trait speaks the paper's vocabulary, the inherent API Rust's; where the two collide on a
-//! name Rust already owns ([`len`](FingerprintTreeMap::len), `remove`,
-//! [`range`](std::collections::BTreeMap::range) vs [`Iterator::enumerate`]), Rust wins on the
-//! inherent surface.
-
+//! The API follows Amparore, *Range-Based Set Reconciliation via Range-Summarizable
+//! Order-Statistics Stores* (arXiv:2603.19820).
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 pub mod aggregate;
-// Public only under `--cfg reconcile_internal_testing` (AGENTS.md §6), which a dependent's
-// build cannot set — so this is a seam no consumer can reach and 1.0 never freezes. See the
-// module's own docs.
+// Repository-only measurement seam.
 #[cfg(reconcile_internal_testing)]
 pub mod counters;
 #[cfg(not(reconcile_internal_testing))]

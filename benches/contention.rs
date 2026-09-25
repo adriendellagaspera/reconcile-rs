@@ -1,56 +1,14 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `K`-writer contention: write throughput vs writer count `N`, for `FingerprintTreeMap` and for
-//! plain `BTreeMap`, each behind one shared `parking_lot::RwLock` of the exact shape
-//! `src/replica.rs` uses for its `map` field (`Arc<RwLock<FingerprintTreeMap<K, V>>>`).
-//!
-//! Isolates the RSOS contract's own write cost (#445, #359): the `FingerprintTreeMap` arm pays the
-//! lock plus the root-path aggregate maintenance `rsos::fingerprint_tree_map`'s `O(log n)`
-//! `Aggregate(l, u)` bound requires; the `BTreeMap` arm pays the same lock and insert shape with no
-//! aggregate to maintain. The delta between the two arms, at each `N`, is the contract's own share
-//! of the write cost. Full method and results: `benches/README.md`.
-//!
-//! Reports three quantities (#455), none of them a plain fp/btree ratio — that quotient's two
-//! terms both grow with `N`, so it cannot say which one moved:
-//!
-//! - A machine-independent **counted** result (`rsos::counters`, behind
-//!   `--cfg reconcile_internal_testing`): cached aggregates an insert maintains, unaffected by the
-//!   host.
-//! - A **timed** result over [`TRIALS`] repeated trials per `(N, arm)`, arms paired within a trial
-//!   and order-alternated, the whole `(N, trial)` sweep run in one shuffled schedule, reported as
-//!   percentile-bootstrap-interval means (`devkit::stats`).
-//! - **Delta**, `1/X_fp − 1/X_btree` per trial: cancels the shared lock term
-//!   (`1/X_arm = S_arm + H(N)`) to bound the contract's own per-insert cost from above, exact at
-//!   `N = 1` — the statistic the report leads with (#457).
-//!
-//! Throughput stays wall-clock on purpose: lock waiting *is* elapsed time, with no counted proxy
-//! for it.
-//!
-//! **What is, and is not, measured.** Both arms insert into a map pre-filled to [`PREFILL`]
-//! entries, then `N` threads each insert their own disjoint block of fresh keys, one `write()`
-//! acquisition per key — `Replica::just_insert`/gossip receipt's own shape. This is a **lock
-//! contention** benchmark, not a lock-free redesign or a COW prototype — both are #271/#273/#274.
-//!
-//! **Comparability caveat (#281).** Every timed comparison is arm-against-arm on the machine that
-//! produced it; absolute ops/s are not portable across machines. The counted half carries no such
-//! caveat.
-//!
-//! Every parameter is overridable from the environment (#456), and `CONTENTION_RAW=1` emits one
-//! line per trial so several invocations can be pooled into the invocation-level statistics
-//! `benches/README.md` documents — the experimental unit is the invocation, not the trial:
-//!
-//! ```sh
-//! CONTENTION_WRITERS=1,2,4,8,16,32,64,128 CONTENTION_TRIALS=30 cargo bench --bench contention
-//! ```
-//!
-//! Reproduction and results: `benches/README.md`. Not run in CI (only compile-checked); run locally
-//! with `cargo bench --bench contention`.
+// Write-contention benchmark for `FingerprintTreeMap` versus `BTreeMap` behind the same
+// `parking_lot::RwLock`. Reports aggregate-maintenance counts, throughput, and per-trial cost
+// deltas across writer counts. Environment variables control the sweep; `CONTENTION_RAW=1` emits
+// trial-level rows. Run with `cargo bench --bench contention`.
 
 use std::hint::black_box;
 use std::str::FromStr;
@@ -68,41 +26,39 @@ use devkit::contention::{
 use devkit::stats::{diff_ci, excludes_zero, summarize, Summary};
 use reconcile::FingerprintTreeMap;
 
-/// Writer-thread counts swept by default. `1, 2, 4` are below this machine's core count, `8, 16`
-/// push past it deliberately — contention past the core count is exactly the regime a lock-free
-/// redesign (#271) would target, so the sweep needs to show where it starts, not stop at the core
-/// count. Override with `CONTENTION_WRITERS` (#456).
+// Writer-thread counts swept by default. `1, 2, 4` are below this machine's core count, `8, 16`
+// push past it deliberately — contention past the core count is exactly the regime a lock-free
+// redesign would target, so the sweep needs to show where it starts, not stop at the core
+// count. Override with `CONTENTION_WRITERS`.
 const WRITER_COUNTS: &[usize] = &[1, 2, 4, 8, 16];
 
-/// Entries each writer inserts per trial. Large enough that thread-spawn/join overhead (a few µs
-/// per thread) is a small fraction of the timed region even at the smallest `N`.
+// Entries each writer inserts per trial. Large enough that thread-spawn/join overhead (a few µs
+// per thread) is a small fraction of the timed region even at the smallest `N`.
 const OPS_PER_WRITER: usize = 20_000;
 
-/// Entries the map is pre-filled to before writers start, outside the timed region. Gives the
-/// root path a non-trivial depth (`log₆ 100 000 ≈ 6`) — an empty map has no aggregate maintenance
-/// worth contending on, which would understate the RSOS arm's cost.
+// Entries the map is pre-filled to before writers start, outside the timed region. Gives the
+// root path a non-trivial depth (`log₆ 100 000 ≈ 6`) — an empty map has no aggregate maintenance
+// worth contending on, which would understate the RSOS arm's cost.
 const PREFILL: usize = 100_000;
 
-/// Trials per `(N, arm)` retained for the statistics. #455 asks for 20–30; 30 is the top of that
-/// band and still costs seconds, since one trial is already `N * OPS_PER_WRITER` inserts.
+// Trials per `(N, arm)` retained for the statistics. asks for 20–30; 30 is the top of that
+// band and still costs seconds, since one trial is already `N * OPS_PER_WRITER` inserts.
 const TRIALS: usize = 30;
 
-/// Paired trials run and discarded before the sweep proper, at its largest `N` (the most thread
-/// creation and allocation of any point). Absorbs process-startup effects — first-touch page
-/// faults, CPU frequency ramp — which would otherwise be charged to whichever trial the schedule
-/// happens to draw first.
+// Paired trials run and discarded before the sweep proper, at its largest `N` (the most thread
+// creation and allocation of any point). Absorbs process-startup effects — first-touch page
+// faults, CPU frequency ramp — which would otherwise be charged to whichever trial the schedule
+// happens to draw first.
 const WARMUP: usize = 3;
 
-/// Seed for the trial schedule's shuffle. Fixed, so a run is reproducible as an experiment: the
-/// *measurements* vary, the *design* does not.
+// Seed for the trial schedule's shuffle. Fixed, so a run is reproducible as an experiment: the
+// *measurements* vary, the *design* does not.
 const SCHEDULE_SEED: u64 = 20_260_820;
 
-/// Read `name` from the environment, falling back to `default`.
-///
-/// # Panics
-///
-/// If `name` is set but unparseable — a typo in a sweep parameter must not be silently ignored,
-/// leaving a run that quietly measured the default.
+// Read `name` from the environment, falling back to `default`.
+// # Panics
+// If `name` is set but unparseable — a typo in a sweep parameter must not be silently ignored,
+// leaving a run that quietly measured the default.
 fn env_or<T: FromStr>(name: &str, default: T) -> T {
     match std::env::var(name) {
         Err(_) => default,
@@ -112,17 +68,15 @@ fn env_or<T: FromStr>(name: &str, default: T) -> T {
     }
 }
 
-/// Cores this machine will actually run threads on, for flagging the writer counts that exceed it.
-/// Falls back to 1 — the conservative reading, flagging every contended row rather than none.
+// Cores this machine will actually run threads on, for flagging the writer counts that exceed it.
+// Falls back to 1 — the conservative reading, flagging every contended row rather than none.
 fn available_parallelism() -> usize {
     std::thread::available_parallelism().map_or(1, |cores| cores.get())
 }
 
-/// The `N` sweep: `CONTENTION_WRITERS` as a comma-separated list, else [`WRITER_COUNTS`].
-///
-/// # Panics
-///
-/// If the variable is set but malformed.
+// The `N` sweep: `CONTENTION_WRITERS` as a comma-separated list, else [`WRITER_COUNTS`].
+// # Panics
+// If the variable is set but malformed.
 fn writer_counts() -> Vec<usize> {
     match std::env::var("CONTENTION_WRITERS") {
         Err(_) => WRITER_COUNTS.to_vec(),
@@ -170,8 +124,8 @@ fn prefilled_btree_arm(prefill: usize) -> BTreeArm {
     BTreeArm(RwLock::new(map))
 }
 
-/// Run `trials` paired trials for every writer count, `a` = the `FingerprintTreeMap` arm, `b` =
-/// the `BTreeMap` control — see [`devkit::contention::run_sweep`] for the schedule/warmup design.
+// Run `trials` paired trials for every writer count, `a` = the `FingerprintTreeMap` arm, `b` =
+// the `BTreeMap` control — see [`devkit:contention:run_sweep`] for the schedule/warmup design.
 fn run_contention_sweep(counts: &[usize], trials: usize, ops: usize, prefill: usize) -> Vec<Point> {
     let measure_a = |n: usize| {
         let arm = prefilled_fingerprint_arm(prefill);
@@ -207,7 +161,7 @@ fn run_contention_sweep(counts: &[usize], trials: usize, ops: usize, prefill: us
     )
 }
 
-/// The per-`N` table: both arms and the paired ratio, each with its bootstrap interval.
+// The per-`N` table: both arms and the paired ratio, each with its bootstrap interval.
 fn print_throughput_table(points: &[Point], trials: usize, ops: usize, prefill: usize) {
     let cores = available_parallelism();
     println!(
@@ -219,12 +173,12 @@ fn print_throughput_table(points: &[Point], trials: usize, ops: usize, prefill: 
          thread can be preempted while *holding* the lock, stalling every other writer -- and the \
          longer critical section is preempted mid-section more often, so delta inflates for a \
          reason that is the scheduler's, not the contract's. Read those rows as an upper bound \
-         only (#456)."
+         only."
     );
     println!(
         "[contention] Mean with a 95% percentile-bootstrap interval. `delta` is \
          1/X_fp - 1/X_btree: the contract's own per-insert cost, with the shared lock term \
-         cancelled (#457)."
+         cancelled."
     );
     println!(
         "[contention] {:>7} | {:>29} | {:>29} | {:>25} | {:>6} | {:>22}",
@@ -263,11 +217,10 @@ fn print_throughput_table(points: &[Point], trials: usize, ops: usize, prefill: 
     }
 }
 
-/// The claim #359 made and #455 asks to test properly: does the fp/btree ratio *widen* as writer
-/// count grows — that is, does the contract's share of the cost grow with contention?
-///
-/// Two comparisons, both as bootstrap intervals on a difference of means rather than as an
-/// eyeballed overlap of two intervals (overlap is not a test; an interval on the difference is).
+// The claim made and asks to test properly: does the fp/btree ratio *widen* as writer
+// count grows — that is, does the contract's share of the cost grow with contention?
+// Two comparisons, both as bootstrap intervals on a difference of means rather than as an
+// eyeballed overlap of two intervals (overlap is not a test; an interval on the difference is).
 fn print_ratio_trend(points: &[Point]) {
     let Some(baseline) = points.first() else {
         return;
@@ -345,7 +298,7 @@ fn print_ratio_trend(points: &[Point]) {
         }
     }
 
-    // Interval geometry, which #455 asks to see alongside the tests above. Reported as a fact about
+    // Interval geometry, which asks to see alongside the tests above. Reported as a fact about
     // the intervals, never as a substitute for the difference tests: overlapping intervals do not
     // imply the means agree.
     let ratios: Vec<(usize, Summary)> = points
@@ -372,35 +325,31 @@ fn print_ratio_trend(points: &[Point]) {
     );
 }
 
-/// #457's model, checked against the data it is meant to explain.
-///
-/// **Assumptions.** `N` writers in a closed loop, each acquiring one exclusive lock, doing the whole
-/// operation inside it, releasing and immediately retrying — no think time. The lock is a single
-/// server, so system-wide seconds per operation is the critical section plus whatever an
-/// acquisition costs at that writer count: `1/X_arm(N) = S_arm(N) + H(N)`. `H` is a property of the
-/// lock and the contention level, not of what runs inside — the two arms use the same lock type
-/// and the same acquisition pattern — so it is common to both.
-///
-/// **The null this tests.** Take `S_fp − S_btree` to be constant in `N`: the contract does a fixed
-/// amount of extra work per insert, and contention only adds lock time on top. Measure that
-/// constant where nothing waits and the cancellation is exact (`Δ` at the lowest `N`), then
-/// *predict* the RSOS arm from the control arm at every other `N`:
-///
-/// ```text
-/// X_fp_predicted(N) = 1 / ( 1/X_btree(N) + Δ(N_min) )
-/// ```
-///
-/// One parameter, fitted at one point, extrapolated everywhere else — so a residual is a statement
-/// about the model, not a fit artefact. Nothing here names `FingerprintTreeMap`: it applies to any
-/// structure whose per-operation critical section is longer than a baseline's by a fixed amount,
-/// under any global lock.
+//  model, checked against the data it is meant to explain.
+// **Assumptions.** `N` writers in a closed loop, each acquiring one exclusive lock, doing the whole
+// operation inside it, releasing and immediately retrying — no think time. The lock is a single
+// server, so system-wide seconds per operation is the critical section plus whatever an
+// acquisition costs at that writer count: `1/X_arm(N) = S_arm(N) + H(N)`. `H` is a property of the
+// lock and the contention level, not of what runs inside — the two arms use the same lock type
+// and the same acquisition pattern — so it is common to both.
+// **The null this tests.** Take `S_fp − S_btree` to be constant in `N`: the contract does a fixed
+// amount of extra work per insert, and contention only adds lock time on top. Measure that
+// constant where nothing waits and the cancellation is exact (`Δ` at the lowest `N`), then
+// *predict* the RSOS arm from the control arm at every other `N`:
+// ```text
+// X_fp_predicted(N) = 1 / ( 1/X_btree(N) + Δ(N_min) )
+// ```
+// One parameter, fitted at one point, extrapolated everywhere else — so a residual is a statement
+// about the model, not a fit artefact. Nothing here names `FingerprintTreeMap`: it applies to any
+// structure whose per-operation critical section is longer than a baseline's by a fixed amount,
+// under any global lock.
 fn print_model_fit(points: &[Point]) {
     let Some(baseline) = points.first() else {
         return;
     };
     let fixed_cost_secs = summarize(&baseline.delta_ns_per_op).mean * 1e-9;
     println!(
-        "[contention] Model (#457): predict the RSOS arm from the control arm assuming the \
+        "[contention] Model: predict the RSOS arm from the control arm assuming the \
          contract's own cost is the constant {:.0} ns measured at N={}.",
         fixed_cost_secs * 1e9,
         baseline.n
@@ -422,13 +371,12 @@ fn print_model_fit(points: &[Point]) {
     );
 }
 
-/// Validate the harness, not the subject: does running first or second systematically change an
-/// arm's throughput?
-///
-/// Alternating the order keeps such an effect out of the mean, so this cannot invalidate the table
-/// above — but an effect large enough to detect belongs in the write-up, because it is most of the
-/// dispersion the `cv` column reports and a reader would otherwise read that dispersion as
-/// measurement noise.
+// Validate the harness, not the subject: does running first or second systematically change an
+// arm's throughput?
+// Alternating the order keeps such an effect out of the mean, so this cannot invalidate the table
+// above — but an effect large enough to detect belongs in the write-up, because it is most of the
+// dispersion the `cv` column reports and a reader would otherwise read that dispersion as
+// measurement noise.
 fn print_order_effect(points: &[Point]) {
     println!(
         "[contention] Order effect (harness check): mean paired ratio when the fingerprint arm ran \
@@ -454,12 +402,11 @@ fn print_order_effect(points: &[Point]) {
     }
 }
 
-/// The machine-independent half (#454's "stands on its own outside this repo").
-///
-/// Reports how many cached aggregates one insert maintains — the work the RSOS contract mandates
-/// and a plain `BTreeMap`, doing the same descent with no summary to keep, does not do at all. Run
-/// single-threaded, untimed, outside any lock: the number is deterministic, so one pass
-/// characterizes every writer count, and nothing here can perturb the timed phases above.
+// The machine-independent half.
+// Reports how many cached aggregates one insert maintains — the work the RSOS contract mandates
+// and a plain `BTreeMap`, doing the same descent with no summary to keep, does not do at all. Run
+// single-threaded, untimed, outside any lock: the number is deterministic, so one pass
+// characterizes every writer count, and nothing here can perturb the timed phases above.
 #[cfg(reconcile_internal_testing)]
 fn print_counted_summary(prefill: usize) {
     use rsos::counters;
@@ -506,9 +453,7 @@ fn print_counted_summary(_prefill: usize) {
     );
 }
 
-/// Printed report: the counted result, then throughput vs `N` for both arms with intervals, then
-/// the explicit test of whether the ratio moves with `N`. Meant to be read directly and copied into
-/// `benches/README.md`; the Criterion groups below plot the same measurement.
+// Printed report: counted work, throughput intervals, ratio trend, model fit, and order effect.
 fn print_contention_report() {
     let trials = env_or("CONTENTION_TRIALS", TRIALS);
     let ops = env_or("CONTENTION_OPS", OPS_PER_WRITER);
@@ -524,11 +469,8 @@ fn print_contention_report() {
     print_order_effect(&points);
 }
 
-/// Timed Criterion groups for both arms, over the same `N` sweep, with Criterion's own sampling and
-/// `Throughput::Elements` so `target/criterion/report/index.html` plots the same measurement the
-/// report above states. The report, not this group, is what `benches/README.md` quotes: it pairs the
-/// arms within a trial and puts an interval on their ratio, which Criterion — measuring each
-/// benchmark id independently — cannot do.
+// Criterion groups plot the same writer-count sweep; the printed report additionally pairs arms
+// within each trial so it can report intervals on their delta.
 fn writer_contention(c: &mut Criterion) {
     print_contention_report();
 

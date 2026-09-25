@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -14,7 +13,7 @@ use crate::replica::Replica;
 use crate::replicated_map::Config;
 use crate::transport::InMemoryNetwork;
 
-/// `Config::max_clock_drift` (#292) must actually reach the [`HlcClock`](crate::clock::HlcClock)
+/// `Config::max_clock_drift` must actually reach the [`HlcClock`](crate::clock::HlcClock)
 /// [`Replica::new`]/[`Replica::with_transport`] construct — not just the hardcoded
 /// [`MAX_CLOCK_DRIFT`](crate::clock::MAX_CLOCK_DRIFT) default `HlcClock::new` falls back to on its
 /// own. A stamp 500ms in the future sits well inside the default one-hour budget (so a passing

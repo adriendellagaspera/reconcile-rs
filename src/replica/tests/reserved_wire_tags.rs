@@ -1,24 +1,14 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #463 reserved wire tags 5 and 6 as skippable slots; #23 has since consumed tag 5 for a real
-//! [`Message::ConvergenceAck`](super::super::Message::ConvergenceAck) (own tests:
-//! [`convergence_ack`](super::convergence_ack)), leaving tag 6 as the one still reserved. What this file
-//! pins for that remaining tag:
+//! Wire-compatibility tests for reserved message tag 6.
 //!
-//! 1. Its own encoding (golden vector) — a reordering of `Message`'s variants would move it (and
-//!    every tag past it) silently, breaking the reservation.
-//! 2. That a `Reserved6` message packed *alongside* a real message in one datagram does not stop
-//!    the real message from being processed — the whole point of reserving a tag rather than
-//!    leaving an unknown one to drop the datagram wholesale.
-//! 3. That the opaque `Vec<u8>` payload's decode is bounded by the actual bytes available, not by
-//!    whatever length it claims — a lying length prefix must fail cleanly, not allocate on the
-//!    strength of an attacker's say-so (the #463 acceptance item this file exists to discharge).
+//! They pin its encoding, verify that a reserved message does not block sibling messages in the
+//! same datagram, and reject payload lengths larger than the bytes available.
 
 use bincode::{DefaultOptions, Deserializer, Serializer};
 use gossip::auth;
@@ -123,7 +113,7 @@ async fn a_reserved_message_does_not_block_the_rest_of_the_datagram() {
     );
 }
 
-/// #463's acceptance item: the opaque payload's decode must be bounded by the bytes actually
+/// 's acceptance item: the opaque payload's decode must be bounded by the bytes actually
 /// present, not by whatever length it claims. A `Vec<u8>` field decodes through serde's own
 /// `size_hint::cautious` (it never preallocates past a small, fixed cap regardless of a claimed
 /// length), so a lying length prefix must fail cleanly rather than attempt a multi-gigabyte

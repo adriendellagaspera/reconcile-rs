@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -41,7 +40,7 @@ pub(super) const DEFAULT_SOCKET_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 pub(super) const DEFAULT_MAX_PEERS: usize = 1024;
 
 /// Default RTT-scale repair timer (see [`Config::repair_interval`]) — comfortably above the
-/// 0-50 ms RTT sweep `benches/README.md`'s injected-RTT lane measures, comfortably below
+/// 0-50 ms RTT sweep `benches/`'s injected-RTT lane measures, comfortably below
 /// [`reconcile_interval`](Config::reconcile_interval)'s own 1 s default.
 pub(super) const DEFAULT_REPAIR_INTERVAL: Duration = Duration::from_millis(150);
 
@@ -57,7 +56,7 @@ pub(super) const DEFAULT_MAX_CONCURRENT_BULK_DUMPS: usize = 4;
 pub(super) const DEFAULT_MAX_CONCURRENT_BROADCASTS: usize = 1024;
 
 /// Default [`Config::snapshot_change_threshold`]: a periodic snapshot tick writes as soon
-/// as at least one change has landed since the last snapshot, matching the historical
+/// as at least one change has occurred since the last snapshot, matching the
 /// unconditional-write behavior for any node that isn't fully idle.
 pub(super) const DEFAULT_SNAPSHOT_CHANGE_THRESHOLD: usize = 1;
 
@@ -72,30 +71,11 @@ pub const MAX_NETS: usize = 8;
 /// [`with_net`](Config::with_net)); every public field is readable, but `#[non_exhaustive]` means
 /// an external crate must go through a constructor and builders — one construction path, not two
 /// with different guarantees.
-///
-/// ```
-/// use reconcile::{replicated_map::Config, ClusterKey};
-///
-/// let key = ClusterKey::from_hex(
-///     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-/// )
-/// .unwrap();
-///
-/// // The `with_*` builders chain. Real deployments normally set a cluster key;
-/// // `with_insecure_no_key()` is the explicit opt-out.
-/// let config = Config::new(4242)
-///     .with_net("10.1.0.0/16".parse().unwrap())?
-///     .with_cluster_key(key);
-///
-/// assert_eq!(config.port, 4242);
-/// # Ok::<(), reconcile::replicated_map::ConfigError>(())
-/// ```
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct Config {
     /// UDP port to bind, **and** the port this node assumes every peer listens on — gossip does
     /// no per-peer port discovery, so every node in a cluster must share one port.
-    ///
     /// `0` binds to an OS-assigned ephemeral port, which is fine for receiving, but every
     /// outbound datagram to a peer is still addressed to port `0` literally (the OS-assigned port
     /// is never read back) — a node configured this way can never converge with anything, only
@@ -108,7 +88,6 @@ pub struct Config {
     pub listen_addr: IpAddr,
     /// The geographical networks the cluster spans, each a CIDR; declare them with
     /// [`with_net`](Config::with_net). Empty slots are `None`.
-    ///
     /// The **local** net is whichever contains [`listen_addr`](Self::listen_addr) — none matching
     /// means the node warns and treats only itself as local. Remote-net peers are gossiped to
     /// every [`remote_interval`](Self::remote_interval) rounds, to a bounded
@@ -124,12 +103,10 @@ pub struct Config {
     /// cross-network convergence (and tombstone GC) at the cost of WAN traffic.
     pub remote_fanout: usize,
     /// Optional shared cluster secret enabling per-datagram MAC authentication.
-    ///
     /// This is the **primary** key: outgoing datagrams are always sealed with it and it derives
     /// the keyed RSOS fingerprint lift. During a rollout,
     /// [`with_cluster_key_rotation`](Self::with_cluster_key_rotation) also accepts one other key
     /// on receive without changing what this field sends with.
-    ///
     /// `None` is **unauthenticated**: any host reaching the port can forge updates, and
     /// [`RandomProbe`](crate::discovery::RandomProbe) answers any host inside the configured
     /// [`nets`](Self::nets) — a stranger squatting one IP eventually receives the **entire
@@ -148,7 +125,6 @@ pub struct Config {
     pub insecure_no_key: bool,
     /// Identity of this node: the tie-break in the HLC total order. Random at startup when
     /// `None`.
-    ///
     /// Two nodes must never share an id, or equal `(physical, logical)` stamps stop resolving
     /// deterministically. Set one explicitly for a stable ordering across restarts.
     pub node_id: Option<NodeId>,
@@ -157,12 +133,10 @@ pub struct Config {
     pub encrypt: bool,
     /// How long the loop waits for inbound activity before initiating a round: the **background**
     /// anti-entropy cadence (default 1 s). Local writes broadcast immediately, independent of it.
-    ///
     /// This is *not* the loss-recovery path: a datagram dropped in flight is retried on
     /// [`repair_interval`](Self::repair_interval), an RTT-scale timer decoupled from this one —
     /// see its docs. Lowering `reconcile_interval` buys faster *discovery* of a peer that has
     /// sent nothing at all (newly joined, or genuinely diverged), not faster loss repair.
-    ///
     /// Floor it at roughly a few × RTT. Shortening it further does not converge faster on its
     /// own: the diff is multi-round-trip regardless, and this node's own idle timer would
     /// otherwise fire between a holder's paced datagrams mid-transfer and re-issue a full diff
@@ -175,7 +149,7 @@ pub struct Config {
     /// default 32 MiB/s ⇒ ~2 ms between full-size datagrams), the gap between two datagrams of
     /// the same transfer can exceed `repair_interval` too, and the guard's window lapses
     /// mid-transfer. Independent of any of that, steady-state idle chatter to every peer this
-    /// guard does *not* currently cover still balloons as this interval shortens, since that
+    /// guard does not cover still grows as this interval shortens, since that
     /// traffic grows as `1/interval` per local peer. Retunable via
     /// [`set_reconcile_interval`](crate::ReplicatedMap::set_reconcile_interval).
     pub reconcile_interval: Duration,
@@ -183,7 +157,6 @@ pub struct Config {
     /// activity from that peer before this node retries it (default 150 ms) — the RTT-scale
     /// repair timer ensures a single dropped datagram is not left to
     /// [`reconcile_interval`](Self::reconcile_interval)'s background sweep to rediscover.
-    ///
     /// An `EntryFingerprint` round that finds a real difference is answered with real content,
     /// which cancels the pending retry the moment it arrives; a round that resolves to a pure
     /// SKIP (nothing differs) gets an explicit `ConvergenceAck` instead (see `Message`'s docs),
@@ -197,7 +170,6 @@ pub struct Config {
     pub repair_interval: Duration,
     /// Metering rate of a single **bulk** value transfer to one peer (default 32 MiB/s); `None`
     /// bursts back-to-back.
-    ///
     /// An unpaced burst overruns the receiver's socket buffer, and the resulting lull makes this
     /// node's own [`reconcile_interval`](Self::reconcile_interval) re-issue a diff over ranges
     /// still in flight — byte amplification far past the dataset size. Pacing on a background task,
@@ -208,37 +180,31 @@ pub struct Config {
     /// lapse mid-transfer and reopen the same re-initiation, since pacing only guards the sender
     /// against a *concurrent* dump to the same peer. Only the bulk dump is paced; comparisons,
     /// acks and broadcasts go immediately.
-    ///
     /// A nonzero value below 1 MiB/s is clamped up to it, with a warning: below that floor, the
     /// per-peer in-flight mark is held across an effectively unbounded sleep, silently wedging
     /// that peer's sync for the duration of the dump.
     pub bulk_send_rate: Option<usize>,
     /// `SO_RCVBUF` request in bytes, default 8 MiB; `None` leaves the OS default.
-    ///
     /// The kernel clamps rather than failing, so a large request is safe. The stock default holds
     /// too few datagrams for a cold-sync burst, and the excess is dropped in the kernel
     /// (`Udp.RcvbufErrors` in `/proc/net/snmp`), invisible to the application.
     pub recv_buffer_size: Option<usize>,
     /// `SO_SNDBUF` request in bytes, default 8 MiB; `None` leaves the OS default.
-    ///
     /// A larger buffer queues a bulk burst in the kernel instead of failing
     /// `EWOULDBLOCK`/`ENOBUFS`, which the engine would have to retry.
     pub send_buffer_size: Option<usize>,
     /// Maximum age, past or future, of a datagram's sender stamp before it is dropped as a
     /// replay. Authenticated modes only; default 5 minutes.
-    ///
     /// Must tolerate real skew and jitter or legitimate traffic is dropped — [`Duration::ZERO`]
     /// accepts almost nothing. Unvalidated, because too small is stricter, never unsafe.
     pub freshness_window: Duration,
     /// Maximum number of distinct remote peers tracked (default 1024).
-    ///
     /// At capacity an unknown sender's datagram is dropped before any per-sender state is
     /// allocated; tracked senders are unaffected and
     /// [`forget_peer`](crate::ReplicatedMap::forget_peer) frees a slot. Read replicas count too,
     /// so size for members *plus* replicas.
     pub max_peers: usize,
     /// Maximum concurrently active paced bulk dumps across all peers (default 4).
-    ///
     /// Each holds a snapshot of the differing range for the transfer's duration, so M cold peers
     /// would otherwise cost M × dataset memory. An exhausted budget skips the dump before
     /// allocating; the peer's next diff round retries.
@@ -249,7 +215,6 @@ pub struct Config {
     /// [`update`](super::ReplicatedMap::update)/[`insert_bulk`](super::ReplicatedMap::insert_bulk))
     /// the way [`max_concurrent_bulk_dumps`](Self::max_concurrent_bulk_dumps) bounds the ingress
     /// (bulk-dump) side.
-    ///
     /// At the budget, `insert`/`update`/`insert_bulk` skip *only* the eager broadcast for that
     /// call — the local write always applies, and periodic reconciliation
     /// ([`reconcile_interval`](Self::reconcile_interval))/repair recovers the missed push,
@@ -265,16 +230,13 @@ pub struct Config {
     /// Only meaningful once [`with_persistence`](super::ReplicatedMap::with_persistence) has been
     /// called — with the default in-memory backend the snapshot is taken and immediately
     /// discarded.
-    ///
     /// `None` disables the periodic background task entirely — no wakeup, no snapshot IO, ever,
     /// until an explicit [`snapshot_now`](super::ReplicatedMap::snapshot_now) call.
-    ///
     /// Each wakeup still only writes if at least
     /// [`snapshot_change_threshold`](Self::snapshot_change_threshold) changes (local writes,
-    /// gossip applies, and tombstone GC removals) have landed since the last snapshot — so a node
+    /// gossip applies, and tombstone GC removals) have occurred since the last snapshot — so a node
     /// with no activity between wakeups skips the write, and steady-state snapshot IO tracks
     /// change volume rather than firing unconditionally on the clock.
-    ///
     /// Up to this much of the most recent writes are lost on an ungraceful restart (one that skips
     /// [`run`](super::ReplicatedMap::run)'s shutdown flush — see
     /// [`snapshot_now`](super::ReplicatedMap::snapshot_now) for a caller-triggered flush at any
@@ -283,9 +245,7 @@ pub struct Config {
     /// Minimum number of changes (local writes, gossip-applied remote updates, and tombstone GC
     /// removals, each counted once) since the last snapshot before a periodic
     /// [`snapshot_interval`](Self::snapshot_interval) wakeup actually writes one (default `1`).
-    /// At the default, any single change is enough — a fully idle node between wakeups does
-    /// zero snapshot IO, matching the historical always-write behavior for any node that isn't
-    /// idle. Raising it trades a larger post-restart replay window for fewer writes under bursty
+    /// At the default, any single change is enough; a fully idle node performs no periodic snapshot I/O. Raising it trades a larger post-restart replay window for fewer writes under bursty
     /// traffic. Never consulted by [`snapshot_now`](super::ReplicatedMap::snapshot_now), which
     /// always writes when called regardless of how many changes have accumulated.
     pub snapshot_change_threshold: usize,
@@ -297,15 +257,12 @@ pub struct Config {
     pub max_clock_drift: ClockDrift,
     /// How long a local write waits, batched with any other writes, before the accumulated batch
     /// is broadcast to peers as one send loop instead of one broadcast per write. Default
-    /// [`Duration::ZERO`]: no coalescing — every write broadcasts immediately, the historical
-    /// behavior.
-    ///
+    /// [`Duration::ZERO`] disables coalescing, so every write broadcasts immediately.
     /// | constraint | detail |
     /// |---|---|
     /// | latency vs window | peers observe a write up to `coalesce_window` later than with immediate broadcast; a few ms buys far fewer datagrams under a write burst |
     /// | ordering / HLC | same-key writes inside one window collapse to the greatest [`Timestamp`](crate::clock::Timestamp) via [`Entry::merge`](crate::entry::Entry::merge) — the same total order the wire protocol already resolves conflicts with; a value's own stamp is never altered, only when it reaches the wire |
     /// | anti-entropy | this delays only the **eager** push; a coalesced batch lost in transit is retried on [`repair_interval`](Self::repair_interval), with the periodic RBSR sweep ([`reconcile_interval`](Self::reconcile_interval)) as the final backstop |
-    ///
     /// Only the write that finds the pending batch empty spawns the detached flush task, so a
     /// write that joins an already-scheduled window does not itself need an ambient Tokio runtime
     /// — see [`ReplicatedMap::insert`](super::ReplicatedMap::insert)'s `# Panics` for the general
@@ -316,7 +273,6 @@ pub struct Config {
     /// checked at write time by [`try_insert`](super::ReplicatedMap::try_insert)/
     /// [`try_update`](super::ReplicatedMap::try_update), returning
     /// [`WriteRejected::TooLarge`](super::WriteRejected::TooLarge) before any local state changes.
-    ///
     /// An *application-chosen* cap, independent of the wire protocol's own hard ceiling (`65507 -`
     /// authentication overhead — see [`insert`](super::ReplicatedMap::insert)'s "Value-size
     /// ceiling"): the infallible `insert`/`update`/`get_mut`/`upsert` never consult this field, so

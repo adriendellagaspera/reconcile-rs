@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -27,12 +26,10 @@ pub(super) struct BoundedRange<K> {
 }
 
 /// A rank a backend returned that has been **admitted** into that backend's own store.
-///
-/// Its existence is the proof that [`RsosView`]'s **rank-within-store** law (`rank(z) <= size()`)
+/// Its existence is the proof that [`RsosView`]'s **rank-within-store** law (`rank(z) <= size`)
 /// was applied: the only way to obtain one is [`StoreSize::admit`], which performs the clamp, so a
 /// raw answer cannot reach [`RsosView::select`] by accident. A backend that breaks the law therefore
 /// cannot be walked off the end of its own store by a key the remote peer chose.
-///
 /// **State typing**, the shape this workspace already uses wherever untrusted input crosses into
 /// trusted arithmetic: `lww_register::clock`'s `AdmittedTime` (a peer's time, admitted through
 /// `clamped_to_drift`) and `gossip`'s `Payload<Authenticated>`/`Payload<Verified>` (a datagram,
@@ -42,11 +39,10 @@ pub(super) struct BoundedRange<K> {
 pub(super) struct AdmittedRank(usize);
 
 /// The size of the store a rank was answered against, read once.
-///
 /// It carries two properties this driver relies on. It is the **authority that admits** a rank —
 /// `size.admit(raw)`, never `admit(raw, size)` — so the bound and the value it bounds are different
 /// types and cannot be swapped at a call site, which two bare `usize` parameters silently allow
-/// (AGENTS.md §4). And reading it once rather than per use keeps a round's arithmetic
+/// . And reading it once rather than per use keeps a round's arithmetic
 /// self-consistent even against a backend that breaks **one-snapshot-per-round**.
 #[derive(Clone, Copy, Debug)]
 struct StoreSize(usize);
@@ -68,8 +64,7 @@ impl AdmittedRank {
     }
 
     /// The next cut, `stride` further on, or `None` once that would reach `end`.
-    ///
-    /// The result is `< end <= size()`, hence a valid [`RsosView::select`] argument by construction
+    /// The result is `< end <= size`, hence a valid [`RsosView::select`] argument by construction
     /// — the reason the fan-out walks through this rather than through bare `usize` arithmetic.
     /// Saturating, so this never panics regardless of the `overflow-checks` profile setting.
     pub(super) fn cut_before(self, end: AdmittedRank, stride: usize) -> Option<AdmittedRank> {
@@ -80,7 +75,6 @@ impl AdmittedRank {
 
 /// The one way [`BoundedRange::parse`] can fail: the segment's start ranks *after* its end in the
 /// store it was checked against.
-///
 /// Carries both ranks as the backend returned them — unbounded — so the drop can name the numbers
 /// that made the segment malformed instead of only its category.
 pub(super) struct InvertedRange {

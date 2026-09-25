@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -9,7 +8,6 @@
 //! `reconcile_internal_testing`-only driving scaffolding for adversarial/oracle-dependent
 //! `RefinementPolicy` probes: a reduced-width store and a driver that **proves** a stall instead
 //! of inferring one from a round cap.
-//!
 //! Scope is the store and driver only — this crate carries no collision-rate tallying, confidence
 //! intervals, or policy-wrapper instrumentation; that is the minimal slice
 //! `shipped_policies_always_progress.rs`'s sibling invariant-13 coverage needs.
@@ -130,7 +128,6 @@ pub fn balanced_swap(rng: &mut StdRng, n: usize, swap_size: usize) -> (Vec<u64>,
 }
 
 /// Draw from `rng` until landing on a value in neither `a` nor `b`.
-///
 /// Generic over `Rng` (not tied to `StdRng`) so a test can drive it with a scripted sequence of
 /// "random" draws instead of a real generator, to exercise the rejection loop deterministically.
 fn unique_candidate<R: Rng + ?Sized>(rng: &mut R, a: &[u64], b: &[u64]) -> u64 {
@@ -197,7 +194,6 @@ fn state_recurred(state: &[RangeAggregate<u64>], active: &[RangeAggregate<u64>])
 
 /// Reconcile `a` against `b` under `policy`, alternating which peer answers, until the active
 /// family empties, a state recurs, or [`MAX_ROUNDS`] rounds pass.
-///
 /// `rng` is `protocol_round_with_policy`'s own injected cut-offset seam, reused across every round
 /// of this drive — this harness proves stalls by exact state recurrence (`state_hash`/
 /// `state_recurred`), which only a policy that never reaches a real `Decision::Split` (every
@@ -214,7 +210,7 @@ pub fn drive<P: RefinementPolicy>(
 }
 
 /// [`drive`] with a **policy per peer**. A refinement policy is a purely local choice this crate
-/// never negotiates (`ARCHITECTURE.md` §3.1), so the two sides can disagree — and progress is a
+/// never negotiates, so the two sides can disagree — and progress is a
 /// *joint* property, which makes "does one bad peer suffice?" a different question from "do two?".
 pub fn drive_pair<A: RefinementPolicy, B: RefinementPolicy>(
     a: &NarrowStore,

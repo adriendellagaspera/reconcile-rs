@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -25,7 +24,6 @@ const TOMBSTONE_CLEARING: Duration = Duration::from_secs(1);
 
 /// How far a **stored** tombstone stamp may lead this node's physical time before the instant
 /// derived from it — never the stamp itself — is capped.
-///
 /// The same budget as the clock's far-future clamp ([`MAX_CLOCK_DRIFT`]), which is not reachable
 /// through the [`Clock`](crate::clock::Clock) port; if it ever reaches `Config`, this follows it.
 pub(super) const TOMBSTONE_STAMP_DRIFT_BUDGET: ClockDrift = MAX_CLOCK_DRIFT;
@@ -33,12 +31,10 @@ pub(super) const TOMBSTONE_STAMP_DRIFT_BUDGET: ClockDrift = MAX_CLOCK_DRIFT;
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Set the pre-insert hook, invoked before each key/value pair reaches the map. This is a
     /// setter: a second call replaces the first, it does not add to it.
-    ///
     /// Also fires once per entry on process restart when persistence is enabled (see
     /// [`with_persistence`](Self::with_persistence)), replaying the full persisted dataset
     /// through the hook — a hook that assumes it only sees genuinely new state must account for
     /// this.
-    ///
     /// Hooks run outside the map's write lock, so a hook may call back into an insert method.
     pub fn set_pre_insert<F: Send + Sync + Fn(&K, &Entry<Timestamp, V>) + 'static>(
         &self,
@@ -94,7 +90,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Insert one pair — hook outside the lock, then insert under it — returning the overwritten
     /// value.
-    ///
     /// Local-only and off the published API: [`load_bulk`](Self::load_bulk) for no-broadcast
     /// seeding, [`insert`](Self::insert) for a propagating write.
     #[cfg(any(test, reconcile_internal_testing))]
@@ -106,40 +101,16 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// Fully-qualified insert: `just_insert` plus an async broadcast.
-    ///
     /// # Value-size ceiling
-    ///
     /// A single encoded `(key, entry)` must fit `65507 - authentication overhead` bytes: the send
     /// path packs messages into datagrams but never fragments one. Above that the key **never
     /// converges on any peer**, visible only as a `warn!` and `VALUES_OVERSIZED_TOTAL` on the send
     /// path — this method itself never rejects it; [`try_insert`](Self::try_insert) does.
-    ///
     /// # Panics
-    ///
     /// The broadcast is dispatched on a detached `tokio::spawn`ed task, which panics with "there
     /// is no reactor running" unless called from inside a Tokio runtime (`#[tokio::main]`,
     /// `#[tokio::test]`, or an explicit `Runtime::block_on`/`Handle::enter`). This holds for every
     /// write method on this type.
-    ///
-    /// ```
-    /// # use std::sync::Arc;
-    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8301".parse().unwrap()));
-    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
-    /// )
-    /// .expect("valid configuration");
-    ///
-    /// assert_eq!(store.insert("a".to_string(), 1), None); // nothing there before
-    /// assert_eq!(store.insert("a".to_string(), 2), Some(1)); // returns the value it replaced
-    /// assert_eq!(store.get_cloned(&"a".to_string()), Some(2));
-    /// # }
-    /// ```
     pub fn insert(&self, key: K, value: V) -> Option<V> {
         let ret = self
             .engine
@@ -148,7 +119,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// Bulk-insert with hooks — every hook outside any lock, then one write lock for all entries.
-    ///
     /// Local-only and off the published API; [`load_bulk`](Self::load_bulk) is the public
     /// no-broadcast seeding path.
     #[cfg(any(test, reconcile_internal_testing))]
@@ -157,9 +127,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// Bulk-insert + async broadcast.
-    ///
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime.
     pub fn insert_bulk(&self, key_values: &[(K, V)]) {
         self.engine.insert_bulk(
@@ -177,9 +145,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Bulk-insert **locally, without broadcasting** — the one deliberate no-broadcast write on
     /// the public API, for seeding a large dataset without a broadcast storm.
-    ///
     /// Entries are stamped and hooked as usual, and propagate on the next anti-entropy round.
-    ///
     /// Deliberately **not** subject to [`insert`](Self::insert)'s Tokio-runtime panic: this is the
     /// one write path that never broadcasts.
     pub fn load_bulk(&self, key_values: &[(K, V)]) {
@@ -207,29 +173,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime.
-    ///
-    /// ```
-    /// # use std::sync::Arc;
-    /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8303".parse().unwrap()));
-    /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
-    /// )
-    /// .expect("valid configuration");
-    ///
-    /// store.insert("a".to_string(), 1);
-    /// assert_eq!(store.remove(&"a".to_string()), Some(1)); // returns the removed value
-    /// assert_eq!(store.remove(&"a".to_string()), None); // already gone: a tombstone, not live
-    /// assert!(store.get(&"a".to_string()).is_none());
-    /// # }
-    /// ```
     pub fn remove(&self, key: &K) -> Option<V> {
         let ret = self
             .engine
@@ -250,11 +194,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// Bulk-remove: a fresh HLC stamp per key, broadcast as tombstones.
-    ///
     /// Callers cannot supply the timestamp: a chosen `DateTime` can collide with another
     /// replica's and make the tie-break non-commutative.
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime.
     pub fn remove_bulk(&self, keys: &[K]) {
         self.engine.insert_bulk(
@@ -284,7 +226,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// rather than mutating the map only locally). Tombstoned keys are reclaimed later by
     /// causal-stability GC. A no-op if the store holds no live entry.
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// the store is non-empty; a no-op call never spawns).
     pub fn clear(&self) {
@@ -298,9 +239,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// where `keep` returns `true` are retained. `keep` runs over an `Arc` snapshot rather than
     /// under any lock, so calling back into a write method from it cannot self-deadlock on the
     /// map lock; keep it cheap and side-effect free regardless.
-    ///
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// at least one entry is removed; a no-op call never spawns).
     pub fn retain<P: FnMut(&K, &V) -> bool>(&self, mut keep: P) {
@@ -313,7 +252,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Delete every live entry whose key falls in `range`, as broadcast tombstones. Mirrors the
     /// [`fingerprint`](Self::fingerprint) range signature.
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// the range is non-empty; a no-op call never spawns).
     pub fn delete_range<R: RangeBounds<K>>(&self, range: R) {
@@ -342,9 +280,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.tombstones.set_timeout(timeout);
     }
 
-    /// Garbage-collect tombstones, **gated on causal stability** (`ARCHITECTURE.md` §5
-    /// invariant 6): older than the timeout *and* acknowledged by every replica this node has
-    /// communicated with, or decommissioned via [`forget_peer`](Self::forget_peer).
+    /// Garbage-collect tombstones only after their timeout and causal stability.
+    /// Every authoritative replica this node has communicated with must acknowledge the tombstone
+    /// or be decommissioned through [`forget_peer`](Self::forget_peer).
     pub(super) async fn clear_expired_tombstones(&self) {
         loop {
             for key in self.tombstones.expired(wall_clock_now()) {

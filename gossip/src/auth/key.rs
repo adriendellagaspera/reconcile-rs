@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -27,8 +26,7 @@ impl ClusterKey {
     }
 
     /// Parse a cluster key from `2 * KEY_LEN` (64) hex characters, case-insensitive.
-    ///
-    /// The one parse this type exists to own — see AGENTS.md §4 — rather than every caller
+    /// The one parse this type exists to own — see — rather than every caller
     /// hand-rolling `u8::from_str_radix` over byte pairs.
     pub fn from_hex(hex: &str) -> Result<Self, ClusterKeyError> {
         if hex.len() != KEY_LEN * 2 {
@@ -46,28 +44,10 @@ impl ClusterKey {
         &self.0
     }
 
-    /// Derive a 32-byte subkey for `rsos`'s keyed range-fingerprint lift, independent of the
-    /// datagram MAC this key also seals — a BLAKE3 `derive_key` context-separated subkey, not
-    /// these raw bytes, so a leak of one purpose's key does not hand over the other's.
+    /// Derive a context-separated 32-byte key for the range-fingerprint lift.
     ///
-    /// Returns raw bytes rather than an `rsos::LiftKey`: `gossip` cannot depend on `rsos` (AGENTS.md
-    /// §9 — no edge between the two adapter/leaf crates in `ARCHITECTURE.md` §2's graph), so
-    /// `reconcile`, which depends on both, is the one that wraps the result with
-    /// `rsos::LiftKey::new`.
-    ///
-    /// ```
-    /// use reconcile_gossip::auth::ClusterKey;
-    ///
-    /// let key = ClusterKey::new([7; 32]);
-    ///
-    /// // Deterministic: the same cluster key always derives the same lift key, which is what lets
-    /// // every node in the cluster compute matching fingerprints independently.
-    /// assert_eq!(key.derive_lift_key(), key.derive_lift_key());
-    ///
-    /// // Independent of the raw cluster key bytes -- not just those bytes echoed back.
-    /// assert_ne!(key.derive_lift_key(), [7; 32]);
-    /// ```
-    #[must_use]
+    /// Raw bytes are returned so `gossip` stays independent of `rsos`; the facade wraps them in
+    /// the domain type.
     pub fn derive_lift_key(&self) -> [u8; KEY_LEN] {
         blake3::derive_key(
             "reconcile-rs 2026-08-25 rsos::fingerprint lift key",
@@ -146,9 +126,7 @@ impl Keys {
 impl Authenticator {
     /// Build an authenticator from an optional cluster key and whether to encrypt. No rotation:
     /// see [`with_rotation`](Self::with_rotation) to also accept prior keys on the verify path.
-    ///
     /// # Errors
-    ///
     /// If `encrypt` is `true` and the crate was built without the `encryption` feature.
     pub fn new(key: Option<ClusterKey>, encrypt: bool) -> Result<Self, EncryptionFeatureDisabled> {
         Self::with_rotation(key.map(Keys::single), encrypt)
@@ -156,9 +134,7 @@ impl Authenticator {
 
     /// Build an authenticator from an optional [`Keys`] (a primary key to seal with, plus
     /// prior keys still accepted on the verify path) and whether to encrypt.
-    ///
     /// # Errors
-    ///
     /// If `encrypt` is `true` and the crate was built without the `encryption` feature.
     pub fn with_rotation(
         keys: Option<Keys>,

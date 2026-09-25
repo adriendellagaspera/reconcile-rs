@@ -1,36 +1,9 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
-
-//! A Kubernetes-native reconcile node — the example behind `examples/k8s/`.
-//!
-//! It binds to its pod IP, derives a stable node identity from the pod name, discovers its peers by
-//! resolving a headless `Service` over DNS, and exposes a `/metrics` endpoint for the kubelet
-//! probes. Everything is taken from the environment (the Kubernetes downward API + a ConfigMap /
-//! Secret), so the same image works for every replica. See `examples/k8s/base/` for the manifests
-//! and `examples/k8s/kind/` for a local playground.
-//!
-//! To make reconciliation *observable*, it also runs a small **demo** behaviour (clearly fenced
-//! below with `--- demo ---` markers — delete those two blocks for a bare production node):
-//!
-//!   * every few seconds the pod writes one key for itself — `heartbeat/<pod-name>` — with the
-//!     current time as its value;
-//!   * a pre-insert hook logs each key the first time it appears in the local store.
-//!
-//! Because the hook fires for updates merged *from peers* too, `kubectl logs reconcile-2` shows the
-//! node learning about `heartbeat/reconcile-0`, `heartbeat/reconcile-1`, … as gossip reconciles the
-//! cluster — i.e. you watch the replicas converge in real time, straight from the logs.
-//!
-//! Run it locally:
-//!
-//! ```sh
-//! POD_IP=127.0.0.1 RECONCILE_DNS_NAME=localhost \
-//!   cargo run --release --example k8s --features metrics-prometheus
-//! ```
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
@@ -48,8 +21,8 @@ use reconcile::{replicated_map::Config, ClusterKey, NodeId, ReplicatedMap};
 
 /// Serve a bare-bones readiness probe on `addr`: `200 OK` once `store` has completed at least one
 /// reconciliation round, `503` before that. Unlike `/metrics` (always `200` once the process is
-/// up), this answers "is this node synced", the gap #292 calls out — a cold replica no longer
-/// reports Ready while still serving empty reads.
+/// up), this answers whether the node has completed reconciliation rather than only whether the
+/// process is alive.
 async fn serve_readiness(addr: SocketAddr, store: ReplicatedMap<String, String>) {
     let listener = TcpListener::bind(addr)
         .await
@@ -165,7 +138,7 @@ async fn main() {
     {
         let seen = seen.clone();
         store.set_pre_insert(move |key: &String, value| {
-            // `value.value()` is `None` for a tombstone (a delete); only announce live keys.
+            // `value.value` is `None` for a tombstone (a delete); only announce live keys.
             if value.value().is_some() && seen.lock().unwrap().insert(key.clone()) {
                 info!(%key, "store now holds this key (local write or reconciled from a peer)");
             }

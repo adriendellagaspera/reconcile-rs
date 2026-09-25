@@ -1,19 +1,17 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #420: pins `RefinementPolicy`'s progress law (`rbsr/src/policy.rs`, "Law: eventual progress")
+//! pins `RefinementPolicy`'s progress law (`rbsr/src/policy.rs`, "Law: eventual progress")
 //! for every *shipped* policy — whenever [`Comparison::span`] is greater than one, a
 //! [`Decision::Split`] must choose a stride strictly below the span. That is what makes the
-//! driver's own guard (`ARCHITECTURE.md` §5 invariant 13) a backstop for the shipped policies
+//! driver's own guard a backstop for the shipped policies
 //! rather than something they lean on: catching a regression here, at the policy, is cheaper than
 //! catching it as a forced-`Enumerate` fallback at the driver.
-//!
-//! The oracle-coupled probe (#356) is deliberately excluded — it exists to violate this law,
+//! The oracle-coupled probe is deliberately excluded — it exists to violate this law,
 //! `cfg(reconcile_internal_testing)`-gated so it can never ship.
 
 #![forbid(unsafe_code)]
@@ -28,7 +26,7 @@ use rsos::{Aggregate, Fingerprint};
 
 /// A comparison over two arbitrary same-shaped aggregates. The fingerprint limbs are free
 /// parameters (not tied to `local`/`remote`) so a policy cannot pass by accident correlating span
-/// with fingerprint content — the exact coupling #356's counter-example exploited.
+/// with fingerprint content — the exact coupling 's counter-example exploited.
 fn comparison(local: usize, remote: usize, local_limb: u64, remote_limb: u64) -> Comparison {
     Comparison::new(
         Aggregate::new(local, Fingerprint([local_limb, 0, 0, 0])),

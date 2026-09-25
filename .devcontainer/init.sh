@@ -3,9 +3,6 @@ set -euo pipefail
 
 export PATH="/usr/local/cargo/bin:/usr/local/rustup/bin:$PATH"
 
-# This script runs in two modes:
-#  - create: heavy setup (cargo update/fetch)
-#  - start : lightweight link hook & version check
 mode=${1:-start}
 
 echo "🚀 Running init tasks (mode=$mode)..."
@@ -24,7 +21,6 @@ if [[ "$mode" == "start" ]]; then
     workspace_root="/workspace"
   fi
 
-  # Both tiers of the gate, see AGENTS.md §3
   for hook in pre-commit pre-push; do
     hook_path="$workspace_root/.git/hooks/$hook"
     if [[ -d "$workspace_root/.git" ]] && [[ ! -L "$hook_path" ]]; then

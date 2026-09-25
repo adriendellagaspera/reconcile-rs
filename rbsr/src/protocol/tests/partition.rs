@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -11,9 +10,7 @@ use rsos::Fingerprint;
 
 use super::*;
 
-/// `child_ranges` are consecutive, disjoint, and their union is `(−∞, +∞)` — `ARCHITECTURE.md` §5
-/// invariant 10, factored out so both the plain and the shifted-cut tests below assert it the same
-/// way.
+/// Assert that children are consecutive, disjoint, and cover the unbounded parent.
 fn assert_partitions_the_unbounded_parent(child_ranges: &[RangeAggregate<i32>]) {
     assert!(child_ranges.len() > 1);
 
@@ -31,7 +28,7 @@ fn assert_partitions_the_unbounded_parent(child_ranges: &[RangeAggregate<i32>]) 
     }
 }
 
-/// `ARCHITECTURE.md` §5 invariant 10, under any policy.
+/// Every split partitions the parent range.
 #[test]
 fn split_children_partition_the_parent_range() {
     let store = tree(&(0..400).collect::<Vec<_>>());
@@ -39,10 +36,7 @@ fn split_children_partition_the_parent_range() {
     assert_partitions_the_unbounded_parent(&child_ranges);
 }
 
-/// `ARCHITECTURE.md` §5 invariant 10, re-asserted under the session-random cut offset: the
-/// partition holds for every draw, not only the seed `round()` fixes. `397` (not `400`) so the
-/// default stride (25 at `b=16`) does not divide the span evenly — otherwise there is no
-/// undersized block for the shift to move and every draw would coincide by construction.
+/// Randomized cut offsets must preserve the parent partition for every draw.
 #[test]
 fn split_children_partition_the_parent_range_under_every_shift() {
     let store = tree(&(0..397).collect::<Vec<_>>());
@@ -61,10 +55,7 @@ fn split_children_partition_the_parent_range_under_every_shift() {
     }
 }
 
-/// `ARCHITECTURE.md` §5 invariant 13 "by construction": every child a shifted SPLIT emits is
-/// strictly narrower than the parent, for every draw — the shift only moves which block is
-/// undersized, it never produces the single-child identity split
-/// [`Decision::Split`]'s docs reserve for `span() <= 1`, nor an empty one.
+/// Every shifted split child must be non-empty and strictly narrower than its parent.
 #[test]
 fn shifted_split_never_emits_an_empty_or_non_narrowing_child() {
     let store = tree(&(0..397).collect::<Vec<_>>());
@@ -123,7 +114,7 @@ fn different_seeds_draw_different_cut_positions() {
     );
 }
 
-/// `actual_span` is `end_index.get() - start_index.get()`, never assumed to start at rank `0` --
+/// `actual_span` is `end_index.get - start_index.get`, never assumed to start at rank `0` --
 /// every other test in this file segments the *whole* store, where `start_index == 0` makes that
 /// subtraction arithmetically indistinguishable from addition. This segment starts at rank `50`,
 /// where the two diverge sharply (`397 - 50 = 347` vs. `397 + 50 = 447`, past the end of the
@@ -208,12 +199,7 @@ fn block_count_is_the_ceiling_of_actual_span_over_stride() {
     assert_eq!(block_count(0, 25), 0, "an empty span is zero blocks");
 }
 
-/// `ARCHITECTURE.md` §5 invariant 10's sizing half, direct rather than structural: every shifted
-/// SPLIT child is exactly `stride`-sized except one `remainder`-sized block, for every draw — not
-/// just "some partition of the parent, however sized" (which
-/// `split_children_partition_the_parent_range_under_every_shift` already covers, and a `block`
-/// counter that never advances could still satisfy by accident: it would just reproduce the old
-/// always-last placement for every seed, which still partitions correctly).
+/// Every shifted split has stride-sized children except for one remainder-sized child.
 #[test]
 fn exactly_one_child_is_remainder_sized_the_rest_are_stride_sized() {
     const STRIDE: usize = 25;

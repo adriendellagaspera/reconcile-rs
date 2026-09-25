@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -28,7 +27,6 @@ fn bulk_updates(n: u64, value_len: usize) -> Vec<Msg> {
 
 /// Send `messages` (unauthenticated, to a discard address — the datagrams go nowhere on an
 /// unconnected UDP socket) at `rate` and return how long it took.
-///
 /// Bounded by an outer timeout well above any legitimate pacing delay this module exercises:
 /// a broken pacing calculation (e.g. a duration derived from multiplying instead of dividing)
 /// produces an astronomically large but finite `Duration`, which `sleep` then waits out
@@ -79,7 +77,7 @@ async fn bulk_send_rate_meters_the_transfer() {
     );
 }
 
-/// A `None` rate is the historical unpaced behaviour, and an explicit `0` is treated as "no
+/// A `None` rate is the unpaced behaviour, and an explicit `0` is treated as "no
 /// pacing" rather than dividing by zero.
 #[tokio::test]
 async fn zero_or_none_rate_does_not_pace() {
@@ -89,7 +87,7 @@ async fn zero_or_none_rate_does_not_pace() {
 }
 
 /// A nonzero `bulk_send_rate` below the floor is clamped up to it rather than holding the
-/// per-peer in-flight mark across an effectively unbounded sleep (#331). Zero and `None`
+/// per-peer in-flight mark across an effectively unbounded sleep. Zero and `None`
 /// still pass through unpaced.
 #[tokio::test]
 async fn tiny_bulk_send_rate_is_clamped_to_the_floor() {

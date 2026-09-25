@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,10 +6,8 @@
 // except according to those terms.
 
 //! Property 4: adversarial RSOS backends.
-//!
-//! `RsosView` is public, so a backend's answers are untrusted input (ARCHITECTURE.md §5 inv. 9).
+//! `RsosView` is public, so a backend's answers are untrusted input.
 //! `rbsr/src/protocol.rs` carries the worked example; this is the property behind it.
-//!
 //! The whole module is gated on `reconcile_internal_testing` (only `RsosView` needs the seam, and
 //! that cfg is off by default), so the gate sits at the file level rather than per-item — an
 //! `#[cfg]` on each item individually would leave the imports below unused, and thus warn, whenever
@@ -24,7 +21,7 @@ use rbsr::{protocol_round, RangeAggregate};
 use rsos::Fingerprint;
 
 /// `rank` supplied by the test rather than derived from contents, so it can point anywhere —
-/// including past `size()`, which `RsosView`'s rank-within-store law forbids. `select` indexes a
+/// including past `size`, which `RsosView`'s rank-within-store law forbids. `select` indexes a
 /// `Vec`, so it panics
 /// out of bounds: the trap the driver must not spring.
 struct HostileRanks {
@@ -45,7 +42,7 @@ impl rbsr::RsosView<u64> for HostileRanks {
 
     fn rank(&self, z: &u64) -> usize {
         // Deterministic per key — the driver ranks both bounds and compares the two answers — but
-        // otherwise unconstrained, and free to exceed `size()`.
+        // otherwise unconstrained, and free to exceed `size`.
         self.rank_answers[(*z as usize) % self.rank_answers.len()]
     }
 
@@ -58,7 +55,7 @@ proptest! {
     #![proptest_config(ProptestConfig { cases: 256, ..ProptestConfig::default() })]
 
     /// No backend answer, and no peer segment, may panic the driver. Rank answers range well past
-    /// any plausible `size()`, so the bound is exercised rather than merely present; the tally
+    /// any plausible `size`, so the bound is exercised rather than merely present; the tally
     /// check catches a "fix" that drops such segments instead.
     #[test]
     fn no_backend_answer_can_drive_the_protocol_out_of_bounds(

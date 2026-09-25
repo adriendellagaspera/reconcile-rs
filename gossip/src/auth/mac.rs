@@ -1,19 +1,17 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! The keyed MAC backends selected by the `mac-*` Cargo features (AGENTS.md §6), plus the tag
+//! The keyed MAC backends selected by the `mac-*` Cargo features, plus the tag
 //! type they produce.
 
 use super::{ClusterKey, TAG_LEN};
 
 /// A MAC tag. Can only be produced by a [`Mac`] backend.
-///
-/// Crate-private, along with [`Mac`] itself — see [`Mac`]'s docs for why (#285).
+/// Crate-private, along with [`Mac`] itself — see [`Mac`]'s docs for why.
 pub(crate) struct Tag([u8; TAG_LEN]);
 
 impl Tag {
@@ -23,9 +21,8 @@ impl Tag {
 }
 
 /// The keyed MAC primitive: one backend per `mac-*` feature, aliased as [`ClusterMac`].
-///
-/// Crate-private (#285): `Tag`'s field and `ClusterKey`'s bytes are both unreachable outside this
-/// crate, so an external implementation could only ever be `todo!()` — a trait that looks
+/// Crate-private: `Tag`'s field and `ClusterKey`'s bytes are both unreachable outside this
+/// crate, so an external implementation could only ever be `todo!` — a trait that looks
 /// implementable and is not is worse than one that is honestly closed. Third-party MAC backends
 /// are not a supported extension point; open this (and `Tag`/`ClusterKey::as_bytes`) deliberately,
 /// with a compiling external example, if that changes.
@@ -34,7 +31,6 @@ pub(crate) trait Mac {
     fn tag(key: &ClusterKey, message: &[u8]) -> Tag;
 
     /// Constant-time check that `tag` authenticates `message` under `key`.
-    ///
     /// `tag` is untrusted wire input; a wrong length yields `false`.
     fn verify(key: &ClusterKey, message: &[u8], tag: &[u8]) -> bool;
 }

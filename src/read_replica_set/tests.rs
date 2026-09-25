@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -64,7 +63,7 @@ fn virtual_read_set(config: Config) -> ReadReplicaSet<i32> {
     )
 }
 
-/// #377: a freshly constructed `ReadReplicaSet` holds no member, and `contains`/`len`/
+/// a freshly constructed `ReadReplicaSet` holds no member, and `contains`/`len`/
 /// `is_empty`/`keys` agree on that.
 #[tokio::test]
 async fn fresh_replica_has_no_members() {
@@ -76,7 +75,7 @@ async fn fresh_replica_has_no_members() {
     assert!(replica.keys().is_empty());
 }
 
-/// #294: after converging with a real dated peer, `value_fingerprint` must actually reflect
+/// after converging with a real dated peer, `value_fingerprint` must actually reflect
 /// the received members (not a default/zero `Fingerprint`), and the deprecated `fingerprint`
 /// alias must forward to it — a mutant that no-ops either would pass any test that never
 /// compares its result to the real, non-default value.
@@ -144,9 +143,9 @@ async fn value_fingerprint_and_its_deprecated_alias_reflect_converged_content() 
     assert_eq!(replica.fingerprint(..), value_fingerprint);
 }
 
-/// #294: `start_reconciliation` (the public wrapper) must actually send a value-only
+/// `start_reconciliation` (the public wrapper) must actually send a value-only
 /// comparison round to the seeded peer — a mutant that no-ops its body would leave the peer's
-/// socket silent forever, which this test's `recv_from` would then time out on. No `run()`
+/// socket silent forever, which this test's `recv_from` would then time out on. No `run`
 /// loop is spawned on either side, so nothing but this call can produce the datagram.
 #[tokio::test]
 async fn start_reconciliation_wrapper_actually_transmits() {
@@ -194,8 +193,8 @@ async fn start_reconciliation_wrapper_actually_transmits() {
     assert_eq!(from.ip(), replica_addr);
 }
 
-/// #30: `with_discovery`/`with_discovery_interval` actually forward into the wrapped
-/// `ReadReplicaMap`'s `run()` loop — a replica configured with discovery alone (no
+/// `with_discovery`/`with_discovery_interval` actually forward into the wrapped
+/// `ReadReplicaMap`'s `run` loop — a replica configured with discovery alone (no
 /// `with_seed`) still converges once discovery resolves the dated peer.
 #[tokio::test(flavor = "multi_thread")]
 async fn with_discovery_converges_without_with_seed() {
@@ -271,7 +270,7 @@ async fn with_discovery_converges_without_with_seed() {
     );
 }
 
-/// #30: `with_dns_discovery` must actually wire a `DnsDiscovery` source into the replica, not
+/// `with_dns_discovery` must actually wire a `DnsDiscovery` source into the replica, not
 /// silently no-op — resolving "localhost" finds a dated peer bound on loopback, with no
 /// `with_seed` needed.
 #[tokio::test(flavor = "multi_thread")]
@@ -339,8 +338,8 @@ async fn with_dns_discovery_converges_via_localhost_resolution() {
     );
 }
 
-/// #8: `local_addr` forwards to the wrapped `ReadReplicaMap` and reports the transport's real
-/// bound address, matching what was configured — mirrors #292's own `ReplicatedMap` test and
+/// `local_addr` forwards to the wrapped `ReadReplicaMap` and reports the transport's real
+/// bound address, matching what was configured — mirrors 's own `ReplicatedMap` test and
 /// `ReadReplicaMap`'s own `local_addr_matches_the_configured_bind_address`.
 #[tokio::test]
 async fn local_addr_matches_the_configured_bind_address() {
@@ -359,8 +358,8 @@ async fn local_addr_matches_the_configured_bind_address() {
     );
 }
 
-/// #8: `sync_state` forwards to the wrapped `ReadReplicaMap` — it starts with no rounds
-/// initiated and advances once `run()` is actually driving the replica, rather than returning a
+/// `sync_state` forwards to the wrapped `ReadReplicaMap` — it starts with no rounds
+/// initiated and advances once `run` is actually driving the replica, rather than returning a
 /// default.
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_state_advances_as_the_replica_runs() {
@@ -381,7 +380,7 @@ async fn sync_state_advances_as_the_replica_runs() {
     task.abort();
 }
 
-/// #8: `seed_peer` forwards to the wrapped `ReadReplicaMap` — the `&self` counterpart of
+/// `seed_peer` forwards to the wrapped `ReadReplicaMap` — the `&self` counterpart of
 /// `with_seed`, it registers a brand-new peer so it is immediately visible via `peers`.
 #[tokio::test]
 async fn seed_peer_registers_a_peer_visible_via_peers() {
@@ -399,9 +398,9 @@ async fn seed_peer_registers_a_peer_visible_via_peers() {
     );
 }
 
-/// #8: `set_reconcile_interval` forwards to the wrapped `ReadReplicaMap` and actually retunes
+/// `set_reconcile_interval` forwards to the wrapped `ReadReplicaMap` and actually retunes
 /// `run`'s idle re-initiation cadence at runtime — a 3600s configured interval that is never
-/// retuned would leave `rounds` at `1` (the unconditional round fired at `run()` entry) for the
+/// retuned would leave `rounds` at `1` (the unconditional round fired at `run` entry) for the
 /// entire test window.
 #[tokio::test(flavor = "multi_thread")]
 async fn set_reconcile_interval_actually_retunes_the_idle_timeout() {

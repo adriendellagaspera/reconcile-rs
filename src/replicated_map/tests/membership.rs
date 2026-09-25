@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -77,7 +76,7 @@ async fn start_reconciliation_actually_drives_a_round() {
 
     let task_a = tokio::spawn(a.clone().run(CancellationToken::new()));
     let task_b = tokio::spawn(b.clone().run(CancellationToken::new()));
-    // `run()` fires an unconditional round-0 comparison the instant it starts, independent of
+    // `run` fires an unconditional round-0 comparison the instant it starts, independent of
     // `start_reconciliation` ever being called explicitly again — seed the peers only *after*
     // that has already happened with nobody to reach, or it alone would converge this test
     // regardless of whether the wrapper under test does anything at all. B never learns of A,
@@ -254,7 +253,7 @@ async fn bulk_dumps_in_flight_count_reflects_a_dump_actually_in_progress() {
     );
 }
 
-/// `broadcasts_in_flight_count` (#83) must reflect the engine's real, live counter, not a
+/// `broadcasts_in_flight_count` must reflect the engine's real, live counter, not a
 /// constant: claims/releases a slot directly through the engine (both crate-visible from this
 /// test module) and checks the wrapper reports each transition.
 #[tokio::test]
@@ -283,7 +282,7 @@ async fn set_remote_interval_actually_retunes_the_cross_network_cadence() {
 
     let net = InMemoryNetwork::new();
     let port = 5102u16;
-    // With no net declared, `Replica` falls back to a flat `127.0.0.1/8` "historical loopback
+    // With no net declared, `Replica` falls back to a flat `127.0.0.1/8` " loopback
     // cluster" where every loopback peer is local (contacted every round, bypassing
     // `remote_interval` entirely) — declaring A's own net is what actually makes B remote from
     // A's perspective. B is deliberately left on that flat-loopback fallback rather than also
@@ -321,7 +320,7 @@ async fn set_remote_interval_actually_retunes_the_cross_network_cadence() {
 
     let task_a = tokio::spawn(a.clone().run(CancellationToken::new()));
     let task_b = tokio::spawn(b.clone().run(CancellationToken::new()));
-    // `run()` fires round 0 synchronously, before `reconcile_interval` is ever consulted — with
+    // `run` fires round 0 synchronously, before `reconcile_interval` is ever consulted — with
     // no peer known yet, that round reaches nobody. Only *after* letting several rounds tick
     // past (advancing the round counter well past 0, which `round % remote_interval == 0`
     // would otherwise trivially satisfy) do we introduce the peer and the starved interval.
@@ -371,7 +370,7 @@ async fn set_remote_fanout_actually_retunes_the_cross_network_sample_size() {
 
     let net = InMemoryNetwork::new();
     let port = 5106u16;
-    // With no net declared, `Replica` falls back to a flat `127.0.0.1/8` "historical loopback
+    // With no net declared, `Replica` falls back to a flat `127.0.0.1/8` " loopback
     // cluster" where every loopback peer is local (contacted every round, bypassing
     // `remote_fanout` entirely) — declaring A's own net is what actually makes B remote from A's
     // perspective. B is deliberately left on that flat-loopback fallback rather than also
@@ -476,8 +475,8 @@ async fn set_reconcile_interval_actually_retunes_the_round_cadence() {
         Arc::new(net_fabric.bind(SocketAddr::new(b_ip, port))),
     )
     .expect("valid configuration");
-    // Retuned before `run()` ever starts, so it is already in effect the first time the round
-    // loop consults it (right after the unconditional round-0 call `run()` always makes, which
+    // Retuned before `run` ever starts, so it is already in effect the first time the round
+    // loop consults it (right after the unconditional round-0 call `run` always makes, which
     // never honors `reconcile_interval` at all — retuning *after* that first wait has already
     // begun would not unstick it, since the interval is only re-read at the top of each
     // iteration).
@@ -486,7 +485,7 @@ async fn set_reconcile_interval_actually_retunes_the_round_cadence() {
 
     let task_a = tokio::spawn(a.clone().run(CancellationToken::new()));
     let task_b = tokio::spawn(b.clone().run(CancellationToken::new()));
-    // A only learns of B after round 0 (fires unconditionally and instantly on `run()` entry)
+    // A only learns of B after round 0 (fires unconditionally and instantly on `run` entry)
     // has already happened with no peer to reach; B never learns of A at all, so B can never
     // independently pull — the only path is A pushing on its own retuned cadence.
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -513,7 +512,7 @@ async fn set_reconcile_interval_actually_retunes_the_round_cadence() {
 }
 
 /// `set_repair_interval` must actually retune the underlying engine's repair timer, not be a
-/// no-op setter -- `repair_interval()` reads the same value the repair loop reads.
+/// no-op setter -- `repair_interval` reads the same value the repair loop reads.
 #[tokio::test]
 async fn set_repair_interval_actually_retunes_the_repair_timer() {
     let store = virtual_map::<i32, i32>(virtual_config());

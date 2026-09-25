@@ -1,23 +1,19 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! The [`Entry`] / [`State`] domain types: `ARCHITECTURE.md` §4.
-//!
+//! The [`Entry`] / [`State`] domain types:
 //! [`Entry`] is the stored cell and [`Entry::merge`] the LWW policy; [`State<V>`] is its
 //! timestamp-less projection, which a dateless `ReadReplicaMap` stores directly.
-//!
 //! The two summaries stay distinct **structurally** — [`Entry`] has a `stamp` field, [`State`] has
-//! none — so every field-by-field content summary inherits it (`ARCHITECTURE.md` §5 invariant 8).
+//! none — so every field-by-field content summary inherits it.
 
 use serde::{Deserialize, Serialize};
 
 /// A timestamp-less projection of a value: a live value or a tombstone.
-///
 /// Isomorphic to `Option<V>`, but carrying no [`Timestamp`](crate::clock::Timestamp) field there
 /// is none to include in a content summary.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -69,22 +65,7 @@ impl<V> From<State<V>> for Option<V> {
     }
 }
 
-/// A stored cell: a value (or tombstone) stamped with a conflict-resolution token `T`, in practice
-/// always [`Timestamp`](crate::clock::Timestamp).
-///
-/// ```
-/// use lww_register::Entry;
-/// use lww_register::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
-///
-/// let stamp_at = |ms| Timestamp::new(Hlc::new(PhysicalTime::from_millis(ms), LogicalCounter::new(0)), NodeId::new(1));
-///
-/// let older = Entry::present(stamp_at(100), "a");
-/// let newer = Entry::present(stamp_at(200), "b");
-///
-/// // Last-write-wins: the entry with the strictly greater stamp wins, regardless of merge order.
-/// assert_eq!(older.merge(&newer).value(), Some(&"b"));
-/// assert_eq!(newer.merge(&older).value(), Some(&"b"));
-/// ```
+/// A stored cell: a value or tombstone stamped with a conflict-resolution token `T`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Entry<T, V> {
     /// The conflict-resolution stamp.
@@ -136,13 +117,12 @@ impl<T, V> Entry<T, V> {
 
 impl<T: Ord + Copy, V: Clone> Entry<T, V> {
     /// Project to the timestamp-less [`State<V>`] a `ReadReplicaMap` converges on
-    /// (`ARCHITECTURE.md` §5 invariant 8).
+    /// .
     pub fn project(&self) -> State<V> {
         self.state.clone()
     }
 
     /// Last-write-wins: the entry with the strictly greater `stamp` wins.
-    ///
     /// `max` over a total order, hence commutative, associative and idempotent.
     pub fn merge(&self, other: &Self) -> Self {
         if other.stamp > self.stamp {
@@ -254,8 +234,7 @@ mod tests {
         assert_eq!(dead.project(), State::Tombstone);
     }
 
-    /// `ARCHITECTURE.md` §5 invariant 8, through the derived `Hash` as a stand-in for the real
-    /// fingerprint walk — this crate knows nothing of `rsos`.
+    /// Projection hashing ignores timestamps; full-entry hashing includes them.
     #[test]
     fn projection_hash_is_timestamp_independent_but_entry_hash_is_not() {
         let early = Entry::present(

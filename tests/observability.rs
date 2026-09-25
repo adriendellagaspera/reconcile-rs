@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,10 +6,9 @@
 // except according to those terms.
 
 //! Smoke tests for the observability instrumentation.
-//!
 //! These tests deliberately exercise only the **synchronous, same-thread** paths:
 //! `tracing::subscriber::set_default` and `metrics::with_local_recorder` are both
-//! thread-local, so events emitted on `tokio::spawn`-ed tasks (the `run()` loop) are out of
+//! thread-local, so events emitted on `tokio::spawn`-ed tasks (the `run` loop) are out of
 //! scope here. Running on a `current_thread` runtime keeps the `async` work on the test thread
 //! so the lifecycle events of `ReplicatedMap::new` are captured.
 
@@ -67,7 +65,6 @@ async fn logged_store<K: Key + Hash, V: Value>(config: Config) -> ReplicatedMap<
 }
 
 /// Keep every `tracing` callsite hot for the whole binary.
-///
 /// Callsite interest is cached **globally** while these tests install thread-local subscribers, so
 /// a store built under `NoSubscriber` would register `Interest::never` and silence that callsite
 /// for every other test.
@@ -196,7 +193,7 @@ async fn local_mutations_increment_metric_counters() {
     assert_eq!(removes, 1, "expected one removal to be counted");
 }
 
-/// #83: `insert` at an exhausted write-broadcast egress budget must still apply the write, and
+/// `insert` at an exhausted write-broadcast egress budget must still apply the write, and
 /// must count the skipped broadcast — `try_claim_broadcast_slot`/`record_broadcast_backpressure`
 /// both run synchronously inside `insert` (before any `.await` point), so a zero budget makes the
 /// skip, and its count, deterministic here.
@@ -235,7 +232,7 @@ async fn broadcast_backpressure_increments_the_counter_at_a_zero_budget() {
     );
 }
 
-/// #27: a failed snapshot write increments `reconcile_persistence_failures_total` and raises
+/// a failed snapshot write increments `reconcile_persistence_failures_total` and raises
 /// `reconcile_persistence_failures_current`; a subsequent success resets the gauge to `0`.
 #[cfg(feature = "metrics")]
 #[tokio::test(flavor = "current_thread")]
@@ -315,10 +312,9 @@ async fn persistence_failures_recorded_as_counter_and_gauge_resets_on_success() 
     );
 }
 
-/// #27: a reconciliation round refreshes the "state right now" gauges — `reconcile_entries_current`
+/// a reconciliation round refreshes the "state right now" gauges — `reconcile_entries_current`
 /// (live only) and `reconcile_tombstones_current` here, since local `insert`/`remove` calls give
 /// direct control over both without needing a peer.
-///
 /// Uses `metrics::set_default_local_recorder` (an RAII guard), not `with_local_recorder` (a
 /// synchronous closure) as the other tests in this file do: `start_reconciliation` is `async`, and
 /// only the guard form can stay set across its `.await` points.
@@ -360,7 +356,7 @@ async fn reconciliation_round_refreshes_the_state_gauges() {
     assert_eq!(tombstones_current, Some(1.0), "one tombstone (key 2)");
 }
 
-/// #294: a `Config` field a `ReadReplicaMap` cannot act on (it mints no timestamps and runs no
+/// a `Config` field a `ReadReplicaMap` cannot act on (it mints no timestamps and runs no
 /// bulk-transfer machinery) must not silently do nothing — a WARN naming the field is the only
 /// observable trace `warn_on_ignored_config_fields` leaves, so assert on it directly rather than
 /// only on the function having run.
@@ -388,7 +384,7 @@ async fn read_replica_warns_about_config_fields_it_cannot_honour() {
     );
 }
 
-/// #83: `max_concurrent_broadcasts` is another field a `ReadReplicaMap` cannot act on (it never
+/// `max_concurrent_broadcasts` is another field a `ReadReplicaMap` cannot act on (it never
 /// originates a local write, so there is no egress path for the field to bound) — the warning
 /// above only exercises `remote_fanout` as its one representative field, so this checks the
 /// `max_concurrent_broadcasts` branch of the same `if field != default` chain directly.
@@ -441,8 +437,8 @@ async fn read_replica_stays_quiet_when_no_ignored_field_is_set() {
     );
 }
 
-/// #294: `warn_on_ignored_config_fields` warns about `nets` specifically when more than one
-/// network is declared (a `ReadReplicaMap` only ever tracks one) — the `local_config()`-based
+/// `warn_on_ignored_config_fields` warns about `nets` specifically when more than one
+/// network is declared (a `ReadReplicaMap` only ever tracks one) — the `local_config`-based
 /// tests above all use exactly one net, which cannot distinguish "more than one" from "fewer than
 /// one", so this asserts the boundary directly on both sides.
 #[tokio::test(flavor = "current_thread")]

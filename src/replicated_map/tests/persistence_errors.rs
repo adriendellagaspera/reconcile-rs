@@ -1,17 +1,16 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `PersistenceLoadError` display-text coverage, split out of `persistence.rs` (#99) to keep that
-//! file under AGENTS.md §3's file-size budget.
+//! `PersistenceLoadError` display-text coverage, split out of `persistence.rs` to keep that
+//! file under 's file-size budget.
 
 use crate::replicated_map::PersistenceLoadError;
 
-/// #99: `PersistenceLoadError`'s `Display` text is user-facing (it's what `with_persistence`
+/// `PersistenceLoadError`'s `Display` text is user-facing (it's what `with_persistence`
 /// returns as an error) — assert its actual content for both variants, not merely that formatting them
 /// doesn't panic.
 #[test]

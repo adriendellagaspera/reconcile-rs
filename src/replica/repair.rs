@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,8 +6,7 @@
 // except according to those terms.
 
 //! RTT-scale repair for a lost comparison-round, ack, or bulk-transfer datagram.
-//!
-//! Before this, the only thing that ever re-issued a comparison round was
+//! the only thing that ever re-issued a comparison round was
 //! [`start_reconciliation`](super::Replica::start_reconciliation)'s own idle timeout —
 //! `reconcile_interval`, seconds by default. A datagram dropped in flight was therefore repaired
 //! on that cadence, not on RTT, however small the actual network loss. This tracks, per peer, a

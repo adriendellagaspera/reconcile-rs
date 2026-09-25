@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -35,9 +34,8 @@ fn store_with_ceiling(port: u16, max_value_size: usize) -> ReplicatedMap<String,
     .expect("valid configuration")
 }
 
-/// #82: `Config::max_value_size` is unset by default, so `try_insert` on a default `Config`
+/// `Config::max_value_size` is unset by default, so `try_insert` on a default `Config`
 /// behaves exactly like `insert` — never rejecting, however large the value.
-///
 /// `#[tokio::test]`: an accepted `try_insert` reaches `insert`'s broadcast, which needs an
 /// ambient Tokio runtime like every other successful write (`insert`'s `# Panics`).
 #[tokio::test]
@@ -54,7 +52,6 @@ async fn try_insert_without_max_value_size_never_rejects() {
 
 /// A value that encodes at or under the configured ceiling is accepted; one over it is rejected
 /// with the actual encoded size and the configured ceiling, not placeholder values.
-///
 /// `#[tokio::test]`: the accepted `try_insert` below reaches `insert`'s broadcast, which needs an
 /// ambient Tokio runtime (`insert`'s `# Panics`) — unlike a purely-rejected call, see
 /// [`try_insert_rejection_needs_no_tokio_runtime_and_touches_no_local_state`].
@@ -90,7 +87,7 @@ fn try_insert_rejection_needs_no_tokio_runtime_and_touches_no_local_state() {
     assert_eq!(store.get_cloned(&"a".to_string()), None);
 }
 
-/// `try_update`'s rejection leaves the previously stored value exactly as it was — the mutation
+/// `try_update`'s rejection leaves the stored value exactly as it was — the mutation
 /// ran against a private clone that is discarded, never stored.
 #[tokio::test]
 async fn try_update_rejection_leaves_the_stored_value_untouched() {
@@ -163,7 +160,7 @@ fn write_rejected_display_delegates_to_the_wrapped_cause() {
     );
 }
 
-/// `WriteRejected::source()` exposes the wrapped cause through the standard `Error` trait, so a
+/// `WriteRejected::source` exposes the wrapped cause through the standard `Error` trait, so a
 /// caller matching on `dyn Error` (rather than `WriteRejected` directly) still reaches it.
 #[test]
 fn write_rejected_source_exposes_the_wrapped_cause() {
@@ -207,7 +204,7 @@ async fn try_insert_accepts_a_value_whose_encoded_size_exactly_equals_the_ceilin
     assert_eq!(err.max_value_size, 8);
 }
 
-/// #82/#83 composition: `try_insert` checks the value's size *before* claiming a broadcast slot,
+/// / composition: `try_insert` checks the value's size *before* claiming a broadcast slot,
 /// so a zero egress budget never masks a size rejection as `Backpressure` — the caller learns the
 /// real reason even when both checks would otherwise fail.
 #[test]

@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,7 +6,6 @@
 // except according to those terms.
 
 //! The file-backed [`Persistence`] adapter for a replicated map.
-//!
 //! This module holds the half of persistence that touches the outside world: [`FileSnapshot`], a
 //! durable backend that writes a whole [`PersistedState`] to one file as
 //! `magic || version || bincode(state)`, atomically. The port it implements
@@ -15,9 +13,8 @@
 //! [`InMemoryPersistence`](lww_register::persistence::InMemoryPersistence) default live in the
 //! infrastructure-free `lww-register` crate — the domain owns the contract, this adapter owns the
 //! filesystem and the codec.
-//!
 //! One type with no standalone reuse value outside this workspace, so it stays folded into
-//! `reconcile` rather than earning its own crate (`ARCHITECTURE.md` §2). [`FileSnapshot`] is
+//! `reconcile` rather than earning its own crate. [`FileSnapshot`] is
 //! re-exported from [`crate::persistence`] and from the crate root.
 
 use std::fs;
@@ -30,7 +27,6 @@ use serde::Serialize;
 use lww_register::persistence::{PersistedState, Persistence};
 
 /// On-disk snapshot header: a 4-byte magic then a little-endian `u32` format version.
-///
 /// The body is bincode, not self-describing, so without this a format change would be silently
 /// misread into a plausible-but-wrong state — dropping tombstones and re-enabling resurrection.
 /// A pre-header snapshot is rejected the same way.
@@ -99,32 +95,9 @@ where
 }
 
 /// A durable, file-based [`Persistence`] backend holding one bincode-encoded snapshot.
-///
 /// Saves are **atomic**: written to a sibling `*.tmp`, flushed, then renamed over the target, then
 /// the containing directory is synced (best-effort — some filesystems do not support syncing a
 /// directory handle) so the rename itself survives a crash, not only the file's bytes.
-///
-/// ```
-/// use reconcile::{
-///     Entry, FileSnapshot, Hlc, LogicalCounter, NodeId, Persistence, PersistedState,
-///     PhysicalTime, Timestamp,
-/// };
-///
-/// let dir = tempfile::tempdir().unwrap();
-/// let backend = FileSnapshot::new(dir.path().join("snapshot")); // does not exist yet
-///
-/// let first: Option<PersistedState<String, i32>> = backend.load().unwrap();
-/// assert!(first.is_none()); // nothing saved yet
-///
-/// let stamp = Timestamp::new(Hlc::new(PhysicalTime::from_millis(0), LogicalCounter::new(0)), NodeId::new(1));
-/// let state = PersistedState::from(vec![("a".to_string(), Entry::present(stamp, 1))]);
-/// backend.save(&state).unwrap();
-///
-/// // A fresh FileSnapshot pointed at the same path reads back what was saved -- this is what
-/// // lets a restarted node recover instead of rejoining the cluster as an empty replica.
-/// let loaded: PersistedState<String, i32> = backend.load().unwrap().unwrap();
-/// assert_eq!(loaded.entries, state.entries);
-/// ```
 #[derive(Clone, Debug)]
 pub struct FileSnapshot {
     path: PathBuf,
@@ -165,7 +138,7 @@ where
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
         let tmp = self.tmp_path();
         // Write to a temporary file, flush it, then atomically rename over the target so a crash
-        // mid-write cannot corrupt a previously good snapshot.
+        // mid-write cannot corrupt a good snapshot.
         {
             use std::io::Write;
             let mut file = fs::File::create(&tmp)?;
@@ -308,7 +281,7 @@ mod tests {
     fn headerless_legacy_snapshot_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("snapshot.bin");
-        // Raw bincode body with no header prefix — the historical on-disk shape.
+        // Raw bincode body with no header prefix — the on-disk shape.
         let body = bincode::serialize(&sample_state()).unwrap();
         fs::write(&path, &body).unwrap();
         let backend = FileSnapshot::new(&path);

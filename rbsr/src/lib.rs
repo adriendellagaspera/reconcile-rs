@@ -6,83 +6,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `rbsr`: Range-Based Set Reconciliation (Meyer, arXiv:2212.13567, IEEE SRDS 2023; over an RSOS
-//! backend, Amparore, arXiv:2603.19820 §4).
+//! Transport-independent Range-Based Set Reconciliation.
 //!
-//! Mechanism only — no sockets, no encoding, no scheduling, no notion of a value.
-//! [`initial_ranges`] emits the outer range `(−∞, +∞)`; [`protocol_round`] answers one round of
-//! active ranges; the caller alternates rounds between the peers until nothing is left.
+//! [`initial_ranges`] starts a reconciliation. [`protocol_round`] advances one side by comparing
+//! [`RangeAggregate`] values and producing ranges to enumerate or refine. Callers alternate rounds
+//! until no active ranges remain.
 //!
-//! | Paper (§4, Def. 3.3, Algorithm 1) | This crate |
-//! |---|---|
-//! | active ranges | `Vec<`[`RangeAggregate`]`>` — [`initial_ranges`]' return, [`protocol_round`]'s `active_ranges` |
-//! | outer range | [`initial_ranges`], fixed to `(−∞, +∞)` |
-//! | protocol round | one [`protocol_round`] call |
-//! | SKIP | the range is written to neither output vector |
-//! | IDLIST | an [`EnumerationRange`] in `enumeration_ranges`, enumerated by the caller ([`rsos::Rsos::enumerate`]) |
-//! | SPLIT / child ranges | [`RangeAggregate`]s in `child_ranges`, each carrying this peer's [`rsos::Aggregate`] |
-//! | unresolved | what the caller has yet to feed back into [`protocol_round`] |
-//! | symmetric difference `Δ(X, Y)` (Def. 3.3) | the union of everything reported through `enumeration_ranges` on both sides |
-//! | local symmetric difference `Δ_{l,u}(X, Y)` | one [`EnumerationRange`] `(l, u)` |
-//! | balanced `b`-partition (Def. 3.8), cut by `Rank`/`Select` | the fan-out inside [`protocol_round`], cut by [`RsosView::select`], width chosen by a [`RefinementPolicy`] |
-//! | comparison value `f_Y` (Def. 3.6) | a [`RangeAggregate`]'s whole [`rsos::Aggregate`] — equality on `(fingerprint, size)`, never the fingerprint alone |
-//! | Algorithm 1's `t` and `b` | the two knobs of a [`RefinementPolicy`] |
+//! [`RsosView`] is the read-only store contract and is implemented for every [`rsos::Rsos`].
+//! [`RefinementPolicy`] controls local refinement only; it is never negotiated on the wire.
 //!
-//! The default [`FixedFanOut`] uses `b = 16` with small-range enumeration cutoffs. The
-//! engineering benchmark in `benches/protocol.rs` prices that shipped default in total bytes,
-//! messages, ranges and local RSOS queries; it does not maintain a comparative policy leaderboard.
-//! [`SqrtFanOut`] and [`EnumerateBelowThreshold`] remain public alternatives for callers whose
-//! workload justifies a different local refinement policy.
-//!
-//! **Cut offsets are randomized per session** (Meyer §5.1): [`protocol_round`]'s injected `rng`
-//! shifts which of a split's children absorbs the one block a fixed stride does not divide evenly,
-//! so two sessions over identical stores draw different boundaries below the outer range. Defense
-//! this buys and does not: `ARCHITECTURE.md` §7, "Defense against a correlated false SKIP".
-//!
-//! **The refinement policy is local and never negotiated** (`ARCHITECTURE.md` §3.1): peers running
-//! different policies converge, so swapping one is a behaviour change, never a wire break.
-//! [`protocol_round_with_policy`] takes the seam; [`FixedFanOut`] (default), [`SqrtFanOut`]
-//! (`⌊√m⌋`, `Θ(√n)` communication, `Θ(log log n)` rounds) and [`EnumerateBelowThreshold`]
-//! (Algorithm 1 as written) ship as local choices.
-//!
-//! [`RsosView`] is four of Def. 3.9's five queries -- `Enumerate` stays with the caller, see the
-//! IDLIST row above -- blanket-implemented for
-//! every [`rsos::Rsos`], so any backend works with no per-type code here.
-//!
-//! ```
-//! use rand::SeedableRng;
-//! use rsos::FingerprintTreeMap;
-//! use rbsr::{initial_ranges, protocol_round};
-//!
-//! let mut a = FingerprintTreeMap::new();
-//! let mut b = FingerprintTreeMap::new();
-//! for i in 0..20 {
-//!     a.insert(i, i);
-//!     b.insert(i, i);
-//! }
-//! a.insert(999, 999); // only `a` has this key
-//!
-//! // Alternate rounds between the two sides until nothing is left to resolve -- this is the
-//! // driving loop a transport layer (like `reconcile`'s gossip adapter) runs over the wire.
-//! // `rng` is this session's injected cut-offset randomness -- one seam, reused every round.
-//! let mut active = initial_ranges(&a);
-//! let (mut responder, mut advertiser) = (&b, &a);
-//! let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-//! let mut enumerated = 0;
-//! while !active.is_empty() {
-//!     let mut children = Vec::new();
-//!     let mut enumerations = Vec::new();
-//!     let outcome =
-//!         protocol_round(responder, active, &mut children, &mut enumerations, &mut rng);
-//!     enumerated += outcome.enumerated();
-//!     active = children;
-//!     std::mem::swap(&mut responder, &mut advertiser);
-//! }
-//!
-//! // The one-element difference was found.
-//! assert!(enumerated > 0);
-//! ```
-
+//! The implementation follows Meyer, *Range-Based Set Reconciliation* (arXiv:2212.13567) over the
+//! RSOS interface described by Amparore (arXiv:2603.19820). Equality uses both range cardinality and
+//! fingerprint.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
@@ -98,9 +33,7 @@ pub use policy::{
 };
 #[cfg(reconcile_internal_testing)]
 pub use policy::{ConstantStrideSplit, SpanHashedStrideSplit, STRIDE_SPREAD};
-// Driving scaffolding for the `reconcile_internal_testing`-only oracle-dependent-policy probes:
-// a reduced-width store and a driver that proves a stall rather than inferring one from a round
-// cap. Consumed by this crate's own invariant-13 coverage.
+// Repository-only probe harness.
 #[cfg(reconcile_internal_testing)]
 pub use probe_harness::{
     balanced_swap, drive, drive_pair, Drive, NarrowStore, Termination, DRIVE_STORE_SIZE,
@@ -111,7 +44,5 @@ pub use protocol::{
 };
 pub use rsos_view::RsosView;
 
-// Re-exported so a caller building a `RangeAggregate` (whose `aggregate` field is an
-// `rsos::Aggregate`) never needs its own, independently-versioned dependency on `rsos` — the same
-// reasoning used by the facade crate as well.
+// Keep the `rsos` version used by public signatures directly reachable.
 pub use rsos;

@@ -1,13 +1,11 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! The [`Transport`] port and its [`UdpTransport`]/[`InMemoryTransport`] adapters
-//! (`ARCHITECTURE.md` §3.2).
+//! The [`Transport`] port and its [`UdpTransport`]/[`InMemoryTransport`] adapters.
 
 use std::io;
 use std::net::SocketAddr;
@@ -19,38 +17,11 @@ use tokio::net::UdpSocket;
 use tracing::{debug, warn};
 
 /// Connectionless datagram I/O over [`SocketAddr`].
-///
 /// # Implementing your own
-///
-/// #297: every type this trait's signature names — `io::Result`, `SocketAddr`, the
+/// every type this trait's signature names — `io::Result`, `SocketAddr`, the
 /// `#[async_trait]` macro itself — is either `std` or re-exported from this crate (or
 /// `reconcile`), so an external implementation never has to independently depend on
 /// `async-trait` and match its version to this crate's:
-///
-/// ```
-/// use std::io;
-/// use std::net::SocketAddr;
-///
-/// use reconcile_gossip::async_trait;
-/// use reconcile_gossip::transport::Transport;
-///
-/// struct NullTransport;
-///
-/// #[async_trait]
-/// impl Transport for NullTransport {
-///     async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-///         Ok((buf.len(), self.local_addr()?))
-///     }
-///
-///     async fn send_to(&self, buf: &[u8], _dst: &SocketAddr) -> io::Result<usize> {
-///         Ok(buf.len())
-///     }
-///
-///     fn local_addr(&self) -> io::Result<SocketAddr> {
-///         Ok("0.0.0.0:0".parse().unwrap())
-///     }
-/// }
-/// ```
 #[async_trait]
 pub trait Transport: Send + Sync + 'static {
     /// Receive one datagram into `buf`, returning the number of bytes read and the sender address.
@@ -76,9 +47,7 @@ impl UdpTransport {
     /// Bind a UDP socket at `addr` and size its kernel send/receive buffers, returning the ready
     /// transport. `recv_buffer_size` / `send_buffer_size` size `SO_RCVBUF` / `SO_SNDBUF`
     /// respectively; `None` leaves the inherited OS default.
-    ///
     /// # Errors
-    ///
     /// Returns an `io::Error` if the socket cannot be bound to `addr` (e.g. the port is in use).
     pub async fn bind(
         addr: SocketAddr,
@@ -97,7 +66,6 @@ impl UdpTransport {
 }
 
 /// Apply the requested `SO_RCVBUF` / `SO_SNDBUF` sizes; `None` leaves the OS default.
-///
 /// The kernel clamps an over-large request rather than failing, so clamping is a `debug`, not a
 /// warning. Linux `getsockopt` reports the doubled value, so a honoured request reads back larger
 /// than asked.
@@ -151,7 +119,6 @@ impl Transport for UdpTransport {
 /// An in-process [`Transport`] over a shared [`InMemoryNetwork`]: reliable and FIFO per
 /// sender→receiver pair, so convergence is deterministic on a single-threaded runtime. A datagram
 /// to an unbound address is dropped, as with UDP.
-///
 /// Public, not test-gated, so downstream crates can drive a deterministic cluster of their own.
 pub use in_memory::{InMemoryNetwork, InMemoryTransport};
 

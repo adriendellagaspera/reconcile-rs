@@ -13,18 +13,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # Hermeticity: proptest picks a random seed per run unless pinned, which makes
-  # mutation outcomes non-deterministic. See scripts/check-mutation-gate.sh.
   PROPTEST_RNG_SEED: "20260817"
 
 jobs:
-  # Same rationale as main.yml's `changes` job: a doc-only or workflow-only PR
-  # cannot change cargo-mutants' verdict, and a full baseline build is the
-  # expensive part of this workflow, so skip it rather than pay for nothing.
-  # `schedule`/`workflow_dispatch` have no PR to diff against, so `nightly` below
-  # is never gated on this output. `merge_group` gives `paths-filter` no base to
-  # diff against either (same as main.yml's `changes` job) -- the filter step is
-  # skipped there and `pr-diff` below runs unconditionally instead.
   changes:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -44,34 +35,10 @@ jobs:
               - '.cargo/mutants.toml'
               - '.github/workflows/mutants.yml'
 
-  # Gates every PR on the mutants introduced by that PR only. Typical PR: 5-20
-  # mutants, 2-8 min. Measured on this repo, a 492-line diff produced 73 mutants.
-  #
-  # #427/#452 is the outlier a single job doesn't budget for: a wholesale file-move split
-  # (mirroring #421/#425) shows git diff its *entire* moved content as changed, not just the
-  # seams that actually moved, so the in-diff mutant count scales with the file's size rather
-  # than the PR's real logic delta -- 1543 moved lines produced 247 mutants here, an order of
-  # magnitude past "typical". Two attempts (90 min, then 180 min) both died at ~90-94 min via an
-  # identical "runner has received a shutdown signal", stopped at nearly the same mutant both
-  # times, with zero missed either time. Sharding the *same* --in-diff mutant set across four
-  # runners keeps each leg bounded; after #438's target-directory and network-resource isolation,
-  # check-mutation-gate.sh can also use three cargo-mutants workers inside each shard. The shards
-  # are still useful for pathological moved-file diffs, while a normal 5-20-mutant PR usually has
-  # work in only one shard. Round-robin (not the default `slice`) spreads slow and fast mutants
-  # evenly, same rationale as `nightly`'s own comment.
-  #
-  # Runs on `merge_group` too (main.yml `changes` job's rationale: the queue validates a
-  # *combination* no single pull request tested, so it never filters). `github.base_ref` is only
-  # populated for `pull_request`/`pull_request_target` events, so the base ref is resolved per
-  # event instead: `merge_group.base_sha` pins to the queue entry's actual base commit rather than
-  # whatever `origin/main`'s tip has moved to by the time this job runs.
   pr-diff:
     needs: changes
     if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
-    # 45 min leaves ~2x headroom over a normal PR's 2-8 min and over a #452-scale diff's ~20-25
-    # min/shard at the CI runner's observed per-mutant rate, while staying well clear of the
-    # ~90-94 min mark both single-job attempts died at.
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -84,7 +51,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          # Pin: mutants.out/ file formats are explicitly documented as unstable.
           tool: cargo-mutants@27.1.0
       - name: Resolve mutation-gate base ref
         id: base
@@ -94,11 +60,6 @@ jobs:
           else
             echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
           fi
-      # scripts/check-mutation-gate.sh is the single source of truth for this command (AGENTS.md
-      # §10: a rule enforced by eye, or reimplemented ad hoc in a workflow, belongs in a script
-      # both this job and a contributor's local run call) -- it also carries the `--workspace`
-      # rationale (in-diff otherwise scopes to the root `reconcile` package only), the
-      # PROPTEST_RNG_SEED hermeticity note, and the shard argument's own reasoning.
       - run: ./scripts/check-mutation-gate.sh "${{ steps.base.outputs.ref }}" "${{ matrix.shard }}/4"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -106,17 +67,6 @@ jobs:
           name: mutants-incremental-${{ matrix.shard }}
           path: mutants.out
 
-  # Mirrors main.yml's `ci-success`, for the same reason: branch protection pins a required
-  # check by job name, so this workflow needs its own stable aggregate rather than pointing
-  # protection straight at `pr-diff`. Pointing at `pr-diff` directly is doubly wrong here --
-  # `changes` skips it on a doc-only or workflow-only PR (header comment above), and a required
-  # check that a skip leaves pending forever blocks the merge instead of passing it. `if:
-  # always()` and the skip/failure treatment are exactly main.yml's `ci-success` reasoning;
-  # see that job's comment for the detail.
-  #
-  # Also gated on `merge_group`, not just `pull_request`: without it, this job -- and therefore
-  # the required check -- never runs on a merge-queue entry, and branch protection blocks the
-  # queue on a check that can't report either way.
   mutants-success:
     name: mutants-success
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
@@ -131,15 +81,6 @@ jobs:
         echo "::error::one or more mutation-gate jobs failed or were cancelled"
         exit 1
 
-  # Full workspace sweep (~1400 mutants), sharded 8 ways so each job lands at
-  # ~20-35 min. Reported as a trend, NOT gated: a whole-repo mutation score is a
-  # number to watch, not a wall — hence `continue-on-error` and no `mutants-success`
-  # dependency (contrast `pr-diff` above, which `mutants-success` does require).
-  #
-  # `!= 'merge_group'` is load-bearing now that `merge_group` is a trigger (added for `pr-diff`
-  # above): without it, this condition -- originally just "not a PR" -- would also match every
-  # merge-queue entry and run the full ~60 min 8-shard sweep on each one, which `pr-diff` (already
-  # gating the queue on the incremental diff) makes redundant.
   nightly:
     if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
     runs-on: ubuntu-latest
@@ -155,19 +96,6 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-mutants@27.1.0
-      # round-robin spreads cheap/expensive mutants evenly across shards;
-      # the default `slice` groups them, so one shard gets all the slow ones.
-      #
-      # No `--iterate`: it skips mutants recorded as already-caught in
-      # mutants.out/previously_caught.txt, but this job checks out fresh and never restores
-      # that file from a prior run's artifact, so the file is always empty and the flag is
-      # presently a no-op. Don't add it back without also restoring the artifact -- and if
-      # that restoration is ever added, keep a periodic run with no `--iterate` alongside it
-      # (upstream cargo-mutants recommends this), since an always-iterating job never re-checks
-      # a mutant it once caught.
-      # #330: `--all-features` (via .cargo/mutants.toml's `all_features = true`) no longer implies
-      # the `reconcile::testing` seam -- internal-testing is a `--cfg`, not a Cargo feature; see
-      # main.yml's equivalent RUSTFLAGS additions from the same migration.
       - env:
           RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
         run: >

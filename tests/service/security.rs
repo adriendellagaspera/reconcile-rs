@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,7 +6,7 @@
 // except according to those terms.
 
 //! Auth, encryption, malformed input, and replay: the wire layer's security guarantees
-//! (AGENTS.md §8), exercised end-to-end rather than unit-tested against `gossip` directly.
+//! exercised end-to-end rather than unit-tested against `gossip` directly.
 
 use std::time::Duration;
 
@@ -109,7 +108,7 @@ async fn test_malformed_datagram_does_not_crash() {
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
 
-    // 0x02 is an invalid bincode enum tag for `Message`; before the fix this panicked the
+    // 0x02 is an invalid bincode enum tag for `Message`; when the invariant is broken this panicked the
     // receive loop. Send it to both nodes' protocol sockets from an unrelated socket.
     let attacker = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
     attacker.send_to(&[0x02], (addr1, port)).await.unwrap();
@@ -277,7 +276,7 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
 
     // A minimal `Ack` message: bincode variant index 2, key=0 (i32), version token=0 (u64).
     // If the freshness check were absent, this would reach the handler and do nothing (no tombstone
-    // for key=0 exists).  With the freshness check, it never reaches the handler at all.
+    // for key=0 exists). With the freshness check, it never reaches the handler at all.
     let mut payload = Vec::new();
     payload.extend_from_slice(&2u32.to_le_bytes()); // Ack variant index
     payload.extend_from_slice(&0i32.to_le_bytes()); // key = 0
@@ -369,8 +368,7 @@ async fn replayed_sealed_datagram_is_rejected() {
 }
 
 /// A decommissioned peer's captured datagram, replayed while still fresh, must be rejected and
-/// must not re-add the peer to membership (AGENTS.md §8).
-///
+/// must not re-add the peer to membership.
 /// Evicting the peer's replay state would make the replay read as first contact.
 #[cfg(reconcile_internal_testing)]
 #[tokio::test(flavor = "multi_thread")]

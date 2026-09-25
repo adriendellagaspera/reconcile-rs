@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -26,7 +25,7 @@ async fn get_returns_integrated_value() {
     assert_eq!(read_replica.len(), 1);
 }
 
-/// `snapshot` (#34) hands back an `Arc` over the exact same tree `get`/`len` read from: a live
+/// `snapshot` hands back an `Arc` over the exact same tree `get`/`len` read from: a live
 /// entry integrated before the snapshot was taken is visible in it, and a tombstone is present
 /// (not filtered) since `snapshot` exposes the raw `State` wire representation.
 #[tokio::test]
@@ -163,7 +162,7 @@ async fn value_fingerprint_is_timestamp_independent() {
     );
 }
 
-/// #294: the deprecated `fingerprint` alias must actually forward to `value_fingerprint`, not
+/// the deprecated `fingerprint` alias must actually forward to `value_fingerprint`, not
 /// just compile — a mutant that no-ops it and returns a default `Fingerprint` would pass any
 /// test that never compares its result to the real one.
 #[test]

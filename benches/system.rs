@@ -1,30 +1,14 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! System-level, end-to-end benchmarks driving the **public** `ReplicatedMap` API (point-read
-//! latency vs `HashMap`/`BTreeMap`, per-entry memory footprint (both a `size_of` fact and a real
-//! per-entry heap-cost measurement, #28/#47), bulk-load throughput, cold anti-entropy convergence
-//! between two in-process nodes, gossip fan-out and propagation latency as node count grows,
-//! convergence under injected RTT and loss, and durable rejoin — snapshot-load time alone, then
-//! reconverge time and wire bytes for a snapshot-resumed rejoin against a cold one). Unlike the
-//! `bench` target, these reach no crate internals, so they need no feature gate. `point_read`/
-//! `bulk_load`/`heap_footprint` each carry a `_heap` or inline heap-indirected (`String -> Vec<u8>`)
-//! variant alongside the `Copy` (`u32 -> u32`) baseline, isolating #28's confound #1 (key/value
-//! types).
-//!
-//! The `*_rtt` lanes answer the round-trip question: every other benchmark here runs at RTT ≈ 0,
-//! which prices bytes and zeroes round-trips — the axis RBSR is worst on. They run over the seeded
-//! delay/loss decorator in `gossip::netem`, whose module docs carry the model and the `turmoil`
-//! evaluation.
-//!
-//! Reproduction and interpretation are documented in `benches/README.md`. Not run in CI (only
-//! compile-checked); run locally with `cargo bench --bench system`.
-
+// End-to-end benchmarks over the public `ReplicatedMap` API.
+// Covers point reads, bulk loading, memory footprint, convergence, fan-out, propagation,
+// injected latency/loss, persistence reload, and reconciliation cadence.
+// Run with `cargo bench --bench system`.
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{BTreeMap, HashMap};
 use std::hint::black_box;
@@ -49,18 +33,17 @@ use reconcile::{
 
 use gossip::netem::{Link, Netem, NetemTransport, Probability, Rtt, Seed};
 
-/// Dataset sizes swept by the size-parameterised benchmarks (log scale).
+// Dataset sizes swept by the size-parameterised benchmarks (log scale).
 const SIZES: &[usize] = &[10, 100, 1_000, 10_000, 100_000];
 
-/// `point_read`/`bulk_load`/`heap_footprint`'s own sweep: [`SIZES`] by default, so a plain `cargo
-/// bench` stays fast (`benches/README.md`), extendable past 100k without a source edit via
-/// `RECONCILE_BENCH_SIZES` (a comma-separated override, the same env-var-configurability
-/// `contention.rs` uses) — #28's "sweep reaches ≥ 1M (opt-in for the largest)":
-///
-/// ```sh
-/// RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000 cargo bench --bench system -- point_read
-/// RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000,4000000 cargo bench --bench system -- bulk_load
-/// ```
+// `point_read`/`bulk_load`/`heap_footprint`'s own sweep: [`SIZES`] by default, so a plain `cargo
+// bench` stays fast, extendable past 100k without a source edit via
+// `RECONCILE_BENCH_SIZES` (a comma-separated override, the same env-var-configurability
+// `contention.rs` uses) — 's "sweep reaches ≥ 1M (opt-in for the largest)":
+// ```sh
+// RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000 cargo bench --bench system -- point_read
+// RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000,4000000 cargo bench --bench system -- bulk_load
+// ```
 fn size_sweep() -> Vec<usize> {
     match std::env::var("RECONCILE_BENCH_SIZES") {
         Ok(v) => v
@@ -75,23 +58,17 @@ fn size_sweep() -> Vec<usize> {
     }
 }
 
-/// Deterministic `(key, value)` corpus: sequential keys keep every backend's layout comparable.
+// Deterministic `(key, value)` corpus: sequential keys keep every backend's layout comparable.
 fn corpus(n: usize) -> Vec<(u32, u32)> {
     (0..n as u32)
         .map(|k| (k, k.wrapping_mul(2_654_435_761)))
         .collect()
 }
 
-/// Payload length of the heap-indirected corpus's value, in bytes — matching one of #47's own
-/// headline dataset shapes (its 64 B/256 B rows) so `heap_footprint`'s numbers below are directly
-/// comparable to that issue's external-prototype table rather than an arbitrary size.
+// Value size for the heap-indirected memory-footprint corpus.
 const HEAP_VALUE_LEN: usize = 64;
 
-/// Deterministic heap-indirected `(key, value)` corpus: `String` key, `Vec<u8>` value — the type
-/// pair every external-prototype table in #47/#51/#52 measured, and #28's confound #1 (key/value
-/// types) isolated from `corpus`'s `Copy` `u32 -> u32` baseline. Zero-padded decimal keys keep
-/// lexicographic order matching `corpus`'s numeric order, so both corpora exercise the same
-/// sequential-insertion shape.
+// Deterministic `String -> Vec<u8>` corpus; zero-padded keys preserve numeric ordering.
 fn corpus_heap(n: usize, value_len: usize) -> Vec<(String, Vec<u8>)> {
     (0..n as u32)
         .map(|k| {
@@ -112,14 +89,14 @@ fn log_group<'a>(
     group
 }
 
-/// Tracks live heap bytes through the global allocator, powering [`heap_footprint`]'s real
-/// per-entry measurement for #47 — see that function's docs for the methodology and its limits.
-/// Wraps [`System`]; every other allocation in this binary (Criterion's own, tokio's, ...) also
-/// flows through it, which is why [`heap_footprint`] snapshots [`LIVE_BYTES`] immediately around
-/// the one call it means to price rather than trusting a running total.
+// Tracks live heap bytes through the global allocator, powering [`heap_footprint`]'s real
+// per-entry measurement for — see that function's docs for the methodology and its limits.
+// Wraps [`System`]; every other allocation in this binary (Criterion's own, tokio's,...) also
+// flows through it, which is why [`heap_footprint`] snapshots [`LIVE_BYTES`] immediately around
+// the one call it means to price rather than trusting a running total.
 struct CountingAllocator;
 
-/// Net bytes currently outstanding through [`CountingAllocator`], process-wide.
+// Net bytes currently outstanding through [`CountingAllocator`], process-wide.
 static LIVE_BYTES: AtomicI64 = AtomicI64::new(0);
 
 // SAFETY: every call forwards to `System`, the platform default `GlobalAlloc`, unchanged except
@@ -150,20 +127,20 @@ unsafe impl GlobalAlloc for CountingAllocator {
 #[global_allocator]
 static ALLOCATOR: CountingAllocator = CountingAllocator;
 
-/// A fresh port per call — `Config::port` must be nonzero — so many [`loaded_store`]s can coexist.
-/// Cycles through `20_000..60_000` rather than a raw `fetch_add` on a `u16` counter: `bulk_load`'s
-/// `iter_batched` setup closure calls this once per warm-up/measured iteration, and a cheap
-/// closure (small `size`) runs it tens of thousands of times inside Criterion's 3 s warm-up alone —
-/// enough to overflow a bare `AtomicU16` and hand `Config::port` a wrapped `0`, which it rejects.
-/// UDP sockets release their port immediately on drop (no `TIME_WAIT`, unlike TCP), so cycling back
-/// through an already-used port is safe once its `ReplicatedMap` has gone out of scope.
+// A fresh port per call — `Config::port` must be nonzero — so many [`loaded_store`]s can coexist.
+// Cycles through `20_000..60_000` rather than a raw `fetch_add` on a `u16` counter: `bulk_load`'s
+// `iter_batched` setup closure calls this once per warm-up/measured iteration, and a cheap
+// closure (small `size`) runs it tens of thousands of times inside Criterion's 3 s warm-up alone —
+// enough to overflow a bare `AtomicU16` and hand `Config::port` a wrapped `0`, which it rejects.
+// UDP sockets release their port immediately on drop (no `TIME_WAIT`, unlike TCP), so cycling back
+// through an already-used port is safe once its `ReplicatedMap` has gone out of scope.
 fn next_bench_port() -> u16 {
     static NEXT: AtomicU32 = AtomicU32::new(0);
     let i = NEXT.fetch_add(1, Ordering::Relaxed);
     20_000 + (i % 40_000) as u16
 }
 
-/// An in-process, peerless store loaded with `kvs`.
+// An in-process, peerless store loaded with `kvs`.
 fn loaded_store(rt: &Runtime, kvs: &[(u32, u32)]) -> ReplicatedMap<u32, u32> {
     rt.block_on(async {
         let store = ReplicatedMap::<u32, u32>::new(
@@ -181,7 +158,7 @@ fn loaded_store(rt: &Runtime, kvs: &[(u32, u32)]) -> ReplicatedMap<u32, u32> {
     })
 }
 
-/// As [`loaded_store`], for the heap-indirected `String -> Vec<u8>` type pair.
+// As [`loaded_store`], for the heap-indirected `String -> Vec<u8>` type pair.
 fn loaded_store_heap(rt: &Runtime, kvs: &[(String, Vec<u8>)]) -> ReplicatedMap<String, Vec<u8>> {
     rt.block_on(async {
         let store = ReplicatedMap::<String, Vec<u8>>::new(
@@ -199,7 +176,7 @@ fn loaded_store_heap(rt: &Runtime, kvs: &[(String, Vec<u8>)]) -> ReplicatedMap<S
     })
 }
 
-/// Point-read latency: `ReplicatedMap::get` against std collections at the same sizes.
+// Point-read latency: `ReplicatedMap::get` against std collections at the same sizes.
 fn point_read(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "point_read");
@@ -223,9 +200,9 @@ fn point_read(c: &mut Criterion) {
     group.finish();
 }
 
-/// As [`point_read`], for the heap-indirected `String -> Vec<u8>` type pair (#28's confound #1) —
-/// isolates whether `point_read`'s ratio against `HashMap`/`BTreeMap` is a property of the B-tree
-/// descent or an artefact of `Copy` keys/values never chasing a pointer.
+// As [`point_read`], for the heap-indirected `String -> Vec<u8>` type pair —
+// isolates whether `point_read`'s ratio against `HashMap`/`BTreeMap` is a property of the B-tree
+// descent or an artefact of `Copy` keys/values never chasing a pointer.
 fn point_read_heap(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "point_read_heap");
@@ -249,7 +226,7 @@ fn point_read_heap(c: &mut Criterion) {
     group.finish();
 }
 
-/// Bulk-load throughput: `insert_bulk` of `N` fresh entries into an empty store.
+// Bulk-load throughput: `insert_bulk` of `N` fresh entries into an empty store.
 fn bulk_load(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "bulk_load");
@@ -269,11 +246,11 @@ fn bulk_load(c: &mut Criterion) {
     group.finish();
 }
 
-/// As [`bulk_load`], for the heap-indirected `String -> Vec<u8>` type pair — #51's own external
-/// prototype measured this type pair, not `u32 -> u32`; this is `insert_bulk`'s counterpart.
-/// `bulk_load_just_insert` (`benches/bench.rs`) is the per-entry `just_insert` counterpart to both
-/// this and `bulk_load` — it needs a `reconcile_internal_testing` seam this feature-gate-free
-/// binary cannot reach (`benches/README.md`).
+// As [`bulk_load`], for the heap-indirected `String -> Vec<u8>` type pair — 's own external
+// Heap-indirected counterpart to the `u32 -> u32` bulk-load case.
+// `bulk_load_just_insert` (`benches/bench.rs`) is the per-entry `just_insert` counterpart to both
+// this and `bulk_load` — it needs a `reconcile_internal_testing` seam this feature-gate-free
+// binary cannot reach.
 fn bulk_load_heap(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "bulk_load_heap");
@@ -291,8 +268,8 @@ fn bulk_load_heap(c: &mut Criterion) {
     group.finish();
 }
 
-/// One-shot report of the fixed per-entry footprint of the dated cell vs the value-only mirror
-/// projection, across value payload sizes. Printed rather than timed (it is a compile-time fact).
+// One-shot report of the fixed per-entry footprint of the dated cell vs the value-only mirror
+// projection, across value payload sizes. Printed rather than timed (it is a compile-time fact).
 fn memory_footprint(c: &mut Criterion) {
     fn report<const N: usize>() {
         let dated = std::mem::size_of::<Entry<Timestamp, [u8; N]>>();
@@ -313,37 +290,33 @@ fn memory_footprint(c: &mut Criterion) {
     });
 }
 
-/// Real per-entry heap-cost measurement for #47: live heap bytes the global allocator reports
-/// growing across one `ReplicatedMap::load_bulk` call of an `N`-entry corpus, divided by `N`.
-/// Printed, like `memory_footprint`, rather than timed — a byte count, not a duration — over both
-/// `size_sweep()` and both type pairs `point_read`/`bulk_load` cover, so a `RECONCILE_BENCH_SIZES`
-/// override extends this too.
-///
-/// # Methodology
-///
-/// [`CountingAllocator`] nets every allocation's requested [`Layout::size`] against every
-/// deallocation's, so [`LIVE_BYTES`] is the bytes outstanding through this process's allocator at
-/// any instant. Each measurement: build the `N`-entry corpus and an empty, peerless store (both
-/// outside the snapshot window, so corpus storage and socket/runtime setup never enter the delta),
-/// snapshot `LIVE_BYTES`, call `store.load_bulk(&corpus)` — synchronous and non-broadcasting, so
-/// nothing else in the process allocates concurrently with it — snapshot again, and divide the
-/// delta by `N`.
-///
-/// # Limits — read before comparing this to #47's RSS-based headline
-///
-/// - **Requested, not granted, bytes.** A real allocator (glibc `malloc` here) rounds a request up
-///   to its own size class; actual heap growth is `>=` this count, never less. This number is a
-///   **floor** on real RSS growth, not an apples-to-apples read of #47's `/usr/bin/time`-style
-///   measurement — a gap is *at least* allocator rounding, not by itself evidence against the
-///   structural (`ArrayVec`-slack / fingerprint-cache / dated-value-wrapper) decomposition there.
-/// - **No fragmentation, no arena overhead counted.** Freed-but-unreused heap holes, `malloc`'s own
-///   per-chunk bookkeeping, and address space the allocator reserves ahead of demand are all
-///   invisible to a requested-bytes count, for the same reason.
-/// - **Net delta, not gross.** A tree rebalance that frees and reallocates a node nets to ~0 here
-///   even though the freed bytes were real, transient heap pressure — this measures the *result*
-///   of loading `N` entries, not every allocation the tree performed to get there.
-/// - **Single global allocator, single timed window.** Valid only because `load_bulk` is
-///   synchronous and never spawns — true here, not a general property of this technique.
+// Real per-entry heap-cost measurement for: live heap bytes the global allocator reports
+// growing across one `ReplicatedMap::load_bulk` call of an `N`-entry corpus, divided by `N`.
+// Printed, like `memory_footprint`, rather than timed — a byte count, not a duration — over both
+// `size_sweep` and both type pairs `point_read`/`bulk_load` cover, so a `RECONCILE_BENCH_SIZES`
+// override extends this too.
+// # Methodology
+// [`CountingAllocator`] nets every allocation's requested [`Layout::size`] against every
+// deallocation's, so [`LIVE_BYTES`] is the bytes outstanding through this process's allocator at
+// any instant. Each measurement: build the `N`-entry corpus and an empty, peerless store (both
+// outside the snapshot window, so corpus storage and socket/runtime setup never enter the delta),
+// snapshot `LIVE_BYTES`, call `store.load_bulk(&corpus)` — synchronous and non-broadcasting, so
+// nothing else in the process allocates concurrently with it — snapshot again, and divide the
+// delta by `N`.
+// # Limits — read before comparing this to 's RSS-based headline
+// - **Requested, not granted, bytes.** A real allocator (glibc `malloc` here) rounds a request up
+//  to its own size class; actual heap growth is `>=` this count, never less. This number is a
+//  **floor** on real RSS growth, not an apples-to-apples read of 's `/usr/bin/time`-style
+//  measurement — a gap is *at least* allocator rounding, not by itself evidence against the
+//  structural (`ArrayVec`-slack / fingerprint-cache / dated-value-wrapper) decomposition there.
+// - **No fragmentation, no arena overhead counted.** Freed-but-unreused heap holes, `malloc`'s own
+//  per-chunk bookkeeping, and address space the allocator reserves ahead of demand are all
+//  invisible to a requested-bytes count, for the same reason.
+// - **Net delta, not gross.** A tree rebalance that frees and reallocates a node nets to ~0 here
+//  even though the freed bytes were real, transient heap pressure — this measures the *result*
+//  of loading `N` entries, not every allocation the tree performed to get there.
+// - **Single global allocator, single timed window.** Valid only because `load_bulk` is
+//  synchronous and never spawns — true here, not a general property of this technique.
 fn heap_footprint(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
 
@@ -360,7 +333,7 @@ fn heap_footprint(c: &mut Criterion) {
 
     for size in size_sweep() {
         // u32 -> u32: `Copy`, no heap indirection of its own, isolating the tree's own per-entry
-        // structural overhead (#47's three causes) from any heap cost the value type would add.
+        // structural overhead from any heap cost the value type would add.
         let kvs = corpus(size);
         let store = loaded_store(&rt, &[]);
         let before = LIVE_BYTES.load(Ordering::Relaxed);
@@ -375,7 +348,7 @@ fn heap_footprint(c: &mut Criterion) {
         );
         drop((kvs, store));
 
-        // String -> Vec<u8>: the heap-indirected type pair #47's external prototype measured.
+        // Heap-indirected String -> Vec<u8> case.
         let kvs = corpus_heap(size, HEAP_VALUE_LEN);
         let raw = kvs.first().map_or(0, |(k, v)| k.len() + v.len());
         let store = loaded_store_heap(&rt, &[]);
@@ -393,13 +366,13 @@ fn heap_footprint(c: &mut Criterion) {
     });
 }
 
-/// #47: requested live-heap growth from overwriting 1% of keys while retaining both
-/// dated and value-only pre-mutation snapshots. This isolates persistent-tree COW pressure
-/// from the steady-state baseline in heap_footprint. Each dataset is seeded *before* the
-/// measurement window; updates are also constructed beforehand. The first delta includes
-/// allocations of forked nodes still reachable from pinned snapshots. The second is the
-/// net delta after releasing them (not peak RSS). As with heap_footprint, the counting
-/// allocator reports requested bytes, not allocator metadata or resident pages.
+// requested live-heap growth from overwriting 1% of keys while retaining both
+// dated and value-only pre-mutation snapshots. This isolates persistent-tree COW pressure
+// from the steady-state baseline in heap_footprint. Each dataset is seeded *before* the
+// measurement window; updates are also constructed beforehand. The first delta includes
+// allocations of forked nodes still reachable from pinned snapshots. The second is the
+// net delta after releasing them (not peak RSS). As with heap_footprint, the counting
+// allocator reports requested bytes, not allocator metadata or resident pages.
 fn heap_footprint_cow(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     for size in size_sweep().into_iter().filter(|&size| size >= 1_000) {
@@ -458,13 +431,12 @@ fn heap_footprint_cow(c: &mut Criterion) {
     });
 }
 
-/// A fresh, unique loopback address pair for one cold-sync iteration (avoids rebind collisions
-/// across Criterion's repeated samples). Both peers share the port; only the address differs.
-///
-/// 64 pairs per third octet, 256 third octets. The pair occupies host octets `2p+1` and `2p+2`, so
-/// `p` has to stay under 127 for the *second* of them to remain an octet: a wider mask overflows on
-/// the 128th call, which the release profile's `overflow-checks = true` (`Cargo.toml`) turns into a
-/// panic partway through the benchmark rather than a wrong address.
+// A fresh, unique loopback address pair for one cold-sync iteration (avoids rebind collisions
+// across Criterion's repeated samples). Both peers share the port; only the address differs.
+// 64 pairs per third octet, 256 third octets. The pair occupies host octets `2p+1` and `2p+2`, so
+// `p` has to stay under 127 for the *second* of them to remain an octet: a wider mask overflows on
+// the 128th call, which the release profile's `overflow-checks = true` (`Cargo.toml`) turns into a
+// panic partway through the benchmark rather than a wrong address.
 fn fresh_pair() -> (IpAddr, IpAddr) {
     static N: AtomicU32 = AtomicU32::new(0);
     let i = N.fetch_add(1, Ordering::Relaxed);
@@ -476,10 +448,9 @@ fn fresh_pair() -> (IpAddr, IpAddr) {
     )
 }
 
-/// Cold-sync: how long an empty node takes to converge with a full one purely via anti-entropy.
-///
-/// A is loaded before it has any peer, so nothing is broadcast eagerly; timed from spawning the
-/// run loops until B's fingerprint matches A's.
+// Cold-sync: how long an empty node takes to converge with a full one purely via anti-entropy.
+// A is loaded before it has any peer, so nothing is broadcast eagerly; timed from spawning the
+// run loops until B's fingerprint matches A's.
 fn cold_sync(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let port = 9_500;
@@ -532,12 +503,12 @@ fn cold_sync(c: &mut Criterion) {
     group.finish();
 }
 
-/// A [`Transport`] wrapper tallying every datagram this node *sends* — fan-out is a send-side
-/// cost, so receipts are not counted. Generic so it can wrap either a bare [`InMemoryTransport`]
-/// (the RTT-free lanes) or a [`NetemTransport`]-decorated one (the RTT-swept lanes): wrapping
-/// *outside* `NetemTransport` counts what the application handed to `send_to`, ahead of the
-/// impairment draw, so a dropped datagram still counts as sent — matching `gossip_fanout`'s own
-/// "sent" definition, unaffected by the link.
+// A [`Transport`] wrapper tallying every datagram this node *sends* — fan-out is a send-side
+// cost, so receipts are not counted. Generic so it can wrap either a bare [`InMemoryTransport`]
+// (the RTT-free lanes) or a [`NetemTransport`]-decorated one (the RTT-swept lanes): wrapping
+// *outside* `NetemTransport` counts what the application handed to `send_to`, ahead of the
+// impairment draw, so a dropped datagram still counts as sent — matching `gossip_fanout`'s own
+// "sent" definition, unaffected by the link.
 struct CountingTransport<T: Transport> {
     inner: T,
     datagrams_sent: Arc<AtomicU64>,
@@ -562,19 +533,18 @@ impl<T: Transport> Transport for CountingTransport<T> {
     }
 }
 
-/// A [`CountingTransport`]'s counters, readable after the transport has been moved into a store.
+// A [`CountingTransport`]'s counters, readable after the transport has been moved into a store.
 #[derive(Clone, Default)]
 struct TrafficCounters {
     datagrams_sent: Arc<AtomicU64>,
     bytes_sent: Arc<AtomicU64>,
 }
 
-/// `n` distinct loopback addresses for one mesh. Each call uses a fresh third octet, so meshes
-/// built by separate calls never collide even if their `InMemoryNetwork`s somehow did.
-///
-/// The octet cycles rather than growing: the RTT lanes rebuild their cluster once per iteration,
-/// thousands of times per run, and each mesh's own `InMemoryNetwork` already isolates it — whereas
-/// a 256th block would not be an address at all.
+// `n` distinct loopback addresses for one mesh. Each call uses a fresh third octet, so meshes
+// built by separate calls never collide even if their `InMemoryNetwork`s somehow did.
+// The octet cycles rather than growing: the RTT lanes rebuild their cluster once per iteration,
+// thousands of times per run, and each mesh's own `InMemoryNetwork` already isolates it — whereas
+// a 256th block would not be an address at all.
 fn mesh_addrs(n: usize) -> Vec<IpAddr> {
     static BLOCK: AtomicU32 = AtomicU32::new(1);
     let block = BLOCK.fetch_add(1, Ordering::Relaxed) % 254 + 1;
@@ -584,9 +554,9 @@ fn mesh_addrs(n: usize) -> Vec<IpAddr> {
         .collect()
 }
 
-/// `n` in-process nodes on a fresh [`InMemoryNetwork`], each endpoint handed to `wrap` before it
-/// reaches the store. **Unseeded**: who knows whom is the caller's decision, and the two families
-/// of benchmark built on this differ on exactly that (see [`full_mesh_seed`]).
+// `n` in-process nodes on a fresh [`InMemoryNetwork`], each endpoint handed to `wrap` before it
+// reaches the store. **Unseeded**: who knows whom is the caller's decision, and the two families
+// of benchmark built on this differ on exactly that (see [`full_mesh_seed`]).
 fn mesh_with<T: Transport>(
     n: usize,
     port: u16,
@@ -611,7 +581,7 @@ fn mesh_with<T: Transport>(
     (stores, addrs)
 }
 
-/// Seed every node with every other, so a measurement excludes peer-discovery time.
+// Seed every node with every other, so a measurement excludes peer-discovery time.
 fn full_mesh_seed(stores: &[ReplicatedMap<u32, u32>], addrs: &[IpAddr]) {
     for (i, store) in stores.iter().enumerate() {
         for (j, &addr) in addrs.iter().enumerate() {
@@ -622,9 +592,9 @@ fn full_mesh_seed(stores: &[ReplicatedMap<u32, u32>], addrs: &[IpAddr]) {
     }
 }
 
-/// `n` in-process, [`CountingTransport`]-wrapped nodes on a fresh [`InMemoryNetwork`],
-/// **unseeded** like [`mesh_with`] — the families built on this differ on who seeds whom. The
-/// returned counters share index with the stores.
+// `n` in-process, [`CountingTransport`]-wrapped nodes on a fresh [`InMemoryNetwork`],
+// **unseeded** like [`mesh_with`] — the families built on this differ on who seeds whom. The
+// returned counters share index with the stores.
 fn counted_mesh(
     n: usize,
     port: u16,
@@ -647,17 +617,17 @@ fn counted_mesh(
     (stores, addrs, counters)
 }
 
-/// `n` in-process nodes on a fresh [`InMemoryNetwork`], **full-mesh-seeded** so the measurement
-/// excludes peer-discovery time. The returned counters share index with the stores.
+// `n` in-process nodes on a fresh [`InMemoryNetwork`], **full-mesh-seeded** so the measurement
+// excludes peer-discovery time. The returned counters share index with the stores.
 fn build_mesh(n: usize, port: u16) -> (Vec<ReplicatedMap<u32, u32>>, Vec<TrafficCounters>) {
     let (stores, addrs, counters) = counted_mesh(n, port);
     full_mesh_seed(&stores, &addrs);
     (stores, counters)
 }
 
-/// As [`build_mesh`], but every node's `Config::coalesce_window` is `window` instead of the
-/// default `Duration::ZERO` — not built on [`mesh_with`], since only this benchmark needs a
-/// per-node `Config` knob beyond the shared defaults.
+// As [`build_mesh`], but every node's `Config::coalesce_window` is `window` instead of the
+// default `Duration::ZERO` — not built on [`mesh_with`], since only this benchmark needs a
+// per-node `Config` knob beyond the shared defaults.
 fn build_mesh_coalescing(
     n: usize,
     port: u16,
@@ -692,10 +662,10 @@ fn build_mesh_coalescing(
     (stores, counters)
 }
 
-/// As [`build_mesh`], but every outbound datagram crosses `link` first: [`CountingTransport`]
-/// wraps a [`NetemTransport`]-decorated [`InMemoryTransport`] rather than a bare one, so the
-/// count is unaffected by the link while the send-loop wall time (timed separately, by the
-/// caller) is not. Call inside a runtime, like [`netem_mesh`].
+// As [`build_mesh`], but every outbound datagram crosses `link` first: [`CountingTransport`]
+// wraps a [`NetemTransport`]-decorated [`InMemoryTransport`] rather than a bare one, so the
+// count is unaffected by the link while the send-loop wall time (timed separately, by the
+// caller) is not. Call inside a runtime, like [`netem_mesh`].
 fn build_mesh_rtt(
     n: usize,
     port: u16,
@@ -718,8 +688,8 @@ fn build_mesh_rtt(
     (stores, counters)
 }
 
-/// `n` in-process nodes whose every outbound datagram crosses `link`. **Unseeded**, like
-/// [`mesh_with`]. Call inside a runtime: each node's decorator spawns a delivery pump.
+// `n` in-process nodes whose every outbound datagram crosses `link`. **Unseeded**, like
+// [`mesh_with`]. Call inside a runtime: each node's decorator spawns a delivery pump.
 fn netem_mesh(
     n: usize,
     port: u16,
@@ -731,8 +701,8 @@ fn netem_mesh(
     })
 }
 
-/// Cooperatively yields until `counter` reaches `target`, instead of sleeping: in-process delivery
-/// has no I/O latency to wait out, only scheduler turns.
+// Cooperatively yields until `counter` reaches `target`, instead of sleeping: in-process delivery
+// has no I/O latency to wait out, only scheduler turns.
 async fn wait_for(counter: &AtomicU64, target: u64) {
     for _ in 0..1_000_000 {
         if counter.load(Ordering::Relaxed) >= target {
@@ -743,18 +713,17 @@ async fn wait_for(counter: &AtomicU64, target: u64) {
     panic!("gossip benchmark: counter did not reach {target} in time");
 }
 
-/// Node counts for `gossip_fanout`: send-side only, no running receive loop, so this stays cheap
-/// out to a few hundred simulated peers.
+// Node counts for `gossip_fanout`: send-side only, no running receive loop, so this stays cheap
+// out to a few hundred simulated peers.
 const FANOUT_NODE_COUNTS: &[usize] = &[2, 4, 8, 16, 32, 64, 128];
 
-/// Node counts for `gossip_propagation`, smaller than `FANOUT_NODE_COUNTS`: every node runs a live
-/// loop on one runtime, so past a few dozen this measures scheduler and lock contention. Caveats:
-/// `benches/README.md`.
+// Node counts for `gossip_propagation`; every node runs a live loop on one runtime, so the grid is
+// kept small enough to limit scheduler and lock contention.
 const PROPAGATION_NODE_COUNTS: &[usize] = &[2, 4, 8, 16, 32];
 
-/// Gossip fan-out: what one node sends for a single write as `N` grows. `Replica::broadcast` is
-/// unbounded — only the periodic WAN round is capped by `remote_fanout` — so this quantifies that
-/// `O(N)` cost (`POSITIONING.md` §1.2). Traffic is printed, not timed: it is exact, not a statistic.
+// Gossip fan-out: what one node sends for a single write as `N` grows. `Replica::broadcast` is
+// unbounded — only the periodic WAN round is capped by `remote_fanout` — so this quantifies that
+// `O(N)` cost. Traffic is printed, not timed: it is exact, not a statistic.
 fn gossip_fanout(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "gossip_fanout");
@@ -800,8 +769,8 @@ fn gossip_fanout(c: &mut Criterion) {
     group.finish();
 }
 
-/// Write→read propagation latency as `N` grows, with every node running its real loop — the full
-/// send/receive/apply path, and the steady-state counterpart to `cold_sync`.
+// Write→read propagation latency as `N` grows, with every node running its real loop — the full
+// send/receive/apply path, and the steady-state counterpart to `cold_sync`.
 fn gossip_propagation(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "gossip_propagation");
@@ -846,24 +815,24 @@ fn gossip_propagation(c: &mut Criterion) {
     group.finish();
 }
 
-/// Node count for `broadcast_coalescing` — held equal to the fixed-`N` lanes above.
+// Node count for `broadcast_coalescing` — held equal to the fixed-`N` lanes above.
 const COALESCING_NODES: usize = 8;
-/// Distinct keys one write burst touches.
+// Distinct keys one write burst touches.
 const COALESCING_KEYS: u32 = 16;
-/// Writes per burst, deliberately `> COALESCING_KEYS`: a coalescing window then collapses
-/// same-key repeats (`Entry::merge`) as well as merely batching distinct keys — the two
-/// mechanisms #187 asks for, exercised together, the way a hot-key write burst would in practice.
+// Writes per burst, deliberately `> COALESCING_KEYS`: a coalescing window then collapses
+// same-key repeats (`Entry::merge`) as well as merely batching distinct keys — the two
+// mechanisms asks for, exercised together, the way a hot-key write burst would in practice.
 const COALESCING_WRITES: u32 = 64;
-/// The coalescing window measured against the uncoalesced (`Duration::ZERO`) baseline.
+// The coalescing window measured against the uncoalesced (`Duration::ZERO`) baseline.
 const COALESCING_WINDOW: Duration = Duration::from_millis(5);
 
-/// Broadcast coalescing (#187): datagrams/bytes the origin sends for one write burst, coalesced
-/// against uncoalesced, and the wall time from the burst's first write to every peer converging on
-/// its final per-key state (last write per key — `HlcClock`'s monotonic `now()` makes that
-/// unambiguous for a single origin, the same closed-form target
-/// `src/replica/tests/coalescing.rs`'s proptest checks). Convergence is *awaited*, not assumed, so
-/// this also demonstrates the "at equal convergence" half of #187's acceptance criterion: a run
-/// that failed to collapse and re-deliver every key correctly would simply never finish.
+// Broadcast coalescing: datagrams/bytes the origin sends for one write burst, coalesced
+// against uncoalesced, and the wall time from the burst's first write to every peer converging on
+// its final per-key state (last write per key — `HlcClock`'s monotonic `now` makes that
+// unambiguous for a single origin, the same closed-form target
+// `src/replica/tests/coalescing.rs`'s proptest checks). Convergence is *awaited*, not assumed, so
+// this also demonstrates the "at equal convergence" half of 's acceptance criterion: a run
+// that failed to collapse and re-deliver every key correctly would simply never finish.
 fn broadcast_coalescing(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "broadcast_coalescing");
@@ -938,9 +907,9 @@ fn broadcast_coalescing(c: &mut Criterion) {
     group.finish();
 }
 
-/// Round-trip times swept by the `*_rtt` lanes: loopback, a datacentre fabric, a LAN, a
-/// same-continent WAN, an intercontinental one. Stated as RTT because that is what an operator
-/// measures; the decorator injects half of each in either direction.
+// Round-trip times swept by the `*_rtt` lanes: loopback, a datacentre fabric, a LAN, a
+// same-continent WAN, an intercontinental one. Stated as RTT because that is what an operator
+// measures; the decorator injects half of each in either direction.
 fn rtt_sweep() -> Vec<Rtt> {
     [0.0, 0.1, 1.0, 10.0, 50.0]
         .into_iter()
@@ -948,25 +917,25 @@ fn rtt_sweep() -> Vec<Rtt> {
         .collect()
 }
 
-/// Loss rates swept alongside the RTT sweep — the band a healthy WAN path sits in. Held at
-/// [`LOSS_LANE_RTT`] so the loss lane varies one thing.
+// Loss rates swept alongside the RTT sweep — the band a healthy WAN path sits in. Held at
+// [`LOSS_LANE_RTT`] so the loss lane varies one thing.
 fn loss_sweep() -> Vec<Probability> {
     [0.1, 1.0].into_iter().map(Probability::percent).collect()
 }
 
-/// The RTT the loss lane runs at.
+// The RTT the loss lane runs at.
 const LOSS_LANE_RTT: f64 = 1.0;
 
-/// Datagrams per delay calibration point. Small: at the top of the sweep each one costs a full
-/// one-way delay, and the quantity is a mean, not a tail.
+// Datagrams per delay calibration point. Small: at the top of the sweep each one costs a full
+// one-way delay, and the quantity is a mean, not a tail.
 const CALIBRATION_DATAGRAMS: usize = 50;
 
-/// Datagrams per loss calibration point. Large, and at zero delay so it stays cheap: 0.1 % of
-/// anything smaller rounds to no drops at all.
+// Datagrams per loss calibration point. Large, and at zero delay so it stays cheap: 0.1 % of
+// anything smaller rounds to no drops at all.
 const LOSS_CALIBRATION_DATAGRAMS: usize = 20_000;
 
-/// Send `datagrams` one at a time across `link`, returning the observed one-way delivery latency
-/// (mean, worst) and the loss the model actually realized.
+// Send `datagrams` one at a time across `link`, returning the observed one-way delivery latency
+// (mean, worst) and the loss the model actually realized.
 async fn probe_link(link: Link, datagrams: usize, port: u16) -> (Duration, Duration, f64) {
     let network = InMemoryNetwork::new();
     let addrs = mesh_addrs(2);
@@ -1003,10 +972,10 @@ async fn probe_link(link: Link, datagrams: usize, port: u16) -> (Duration, Durat
     (total / delivered.max(1), worst, impairments.loss_fraction())
 }
 
-/// Calibrate the instrument before reading anything it produces: configured one-way delay against
-/// observed, configured loss against realized. Printed rather than timed, like `memory_footprint`
-/// — and the reason the sweeps below can be quoted as measurements of the protocol rather than of
-/// tokio's timer, which rounds a sleep up to the next millisecond (`gossip::netem`).
+// Calibrate the instrument before reading anything it produces: configured one-way delay against
+// observed, configured loss against realized. Printed rather than timed, like `memory_footprint`
+// — and the reason the sweeps below can be quoted as measurements of the protocol rather than of
+// tokio's timer, which rounds a sleep up to the next millisecond (`gossip::netem`).
 fn netem_calibration(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     println!(
@@ -1054,14 +1023,14 @@ fn netem_calibration(c: &mut Criterion) {
     });
 }
 
-/// Dataset sizes for the cold-sync RTT lane, deliberately below `cold_sync`'s: the quantity of
-/// interest is the *delta* against RTT 0 in the same harness, not the size curve `cold_sync`
-/// already draws, and at 50 ms every sample costs the whole round-trip chain.
+// Dataset sizes for the cold-sync RTT lane, deliberately below `cold_sync`'s: the quantity of
+// interest is the *delta* against RTT 0 in the same harness, not the size curve `cold_sync`
+// already draws, and at 50 ms every sample costs the whole round-trip chain.
 const RTT_SIZES: &[usize] = &[1_000, 10_000];
 
-/// One cold-sync convergence over `link`, `iters` times: an empty node seeded to a full one, timed
-/// from spawning both run loops until the fingerprints match. A fresh two-node network per
-/// iteration, so no state and no impairment carries over.
+// One cold-sync convergence over `link`, `iters` times: an empty node seeded to a full one, timed
+// from spawning both run loops until the fingerprints match. A fresh two-node network per
+// iteration, so no state and no impairment carries over.
 async fn cold_sync_over(kvs: &[(u32, u32)], link: Link, iters: u64) -> Duration {
     let mut total = Duration::ZERO;
     for _ in 0..iters {
@@ -1092,9 +1061,9 @@ async fn cold_sync_over(kvs: &[(u32, u32)], link: Link, iters: u64) -> Duration 
     total
 }
 
-/// `cold_sync` across the RTT sweep and a loss lane: what the round-trip chain costs once
-/// round-trips are not free. The RTT-0 column is the same harness with a perfect link, so the
-/// delta is the injected network and nothing else.
+// `cold_sync` across the RTT sweep and a loss lane: what the round-trip chain costs once
+// round-trips are not free. The RTT-0 column is the same harness with a perfect link, so the
+// delta is the injected network and nothing else.
 fn cold_sync_rtt(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "cold_sync_rtt");
@@ -1121,15 +1090,15 @@ fn cold_sync_rtt(c: &mut Criterion) {
     group.finish();
 }
 
-/// Node count for the propagation RTT lane: fixed and modest. `gossip_propagation` already sweeps
-/// `N` at RTT ≈ 0 and starts measuring its own scheduler past a few dozen, so holding `N` still is
-/// what makes the sweep vary one thing.
+// Node count for the propagation RTT lane: fixed and modest. `gossip_propagation` already sweeps
+// `N` at RTT ≈ 0 and starts measuring its own scheduler past a few dozen, so holding `N` still is
+// what makes the sweep vary one thing.
 const PROPAGATION_RTT_NODES: usize = 8;
 
-/// `gossip_propagation` across the RTT sweep and a loss lane. A write is broadcast to every peer at
-/// once, so this asks whether propagation is one hop (≈ RTT/2, flat in `N`) or a chain — and, in
-/// the loss lane, what a dropped broadcast now costs on [`Config::repair_interval`]'s RTT-scale
-/// timer (#23) rather than on the next `reconcile_interval` anti-entropy round.
+// `gossip_propagation` across the RTT sweep and a loss lane. A write is broadcast to every peer at
+// once, so this asks whether propagation is one hop (≈ RTT/2, flat in `N`) or a chain — and, in
+// the loss lane, what a dropped broadcast now costs on [`Config::repair_interval`]'s RTT-scale
+// timer rather than on the next `reconcile_interval` anti-entropy round.
 fn gossip_propagation_rtt(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "gossip_propagation_rtt");
@@ -1188,20 +1157,20 @@ fn gossip_propagation_rtt(c: &mut Criterion) {
     group.finish();
 }
 
-/// Node count for the fan-out RTT lane: held equal to [`PROPAGATION_RTT_NODES`] so the two lanes
-/// are directly comparable at the same `N` (#187 asked for both `gossip_fanout` and
-/// `gossip_propagation` to get an RTT-swept counterpart; #280 shipped only the latter).
+// Node count for the fan-out RTT lane: held equal to [`PROPAGATION_RTT_NODES`] so the two lanes
+// are directly comparable at the same `N` ( asked for both `gossip_fanout` and
+// `gossip_propagation` to get an RTT-swept counterpart; shipped only the latter).
 const FANOUT_RTT_NODES: usize = PROPAGATION_RTT_NODES;
 
-/// `gossip_fanout` across the RTT sweep and a loss lane: whether the origin's send-side fan-out
-/// cost — datagrams/bytes handed to the transport, and the send-loop wall time — depends on RTT.
-/// Unlike [`gossip_propagation_rtt`], expected and confirmed **flat**:
-/// [`NetemTransport::send_to`](gossip::netem::NetemTransport::send_to) queues (or drops) a datagram and
-/// returns immediately, before the injected delay elapses — the origin never waits on delivery, so
-/// there is no round trip for RTT to lengthen. [`CountingTransport`] wraps *outside* the decorator
-/// for exactly this reason: it counts what `Replica::broadcast` handed to `send_to`, matching
-/// `gossip_fanout`'s own "sent" definition, unaffected by whether the link later drops or delays
-/// the datagram.
+// `gossip_fanout` across the RTT sweep and a loss lane: whether the origin's send-side fan-out
+// cost — datagrams/bytes handed to the transport, and the send-loop wall time — depends on RTT.
+// Unlike [`gossip_propagation_rtt`], expected and confirmed **flat**:
+// [`NetemTransport::send_to`](gossip::netem::NetemTransport::send_to) queues (or drops) a datagram and
+// returns immediately, before the injected delay elapses — the origin never waits on delivery, so
+// there is no round trip for RTT to lengthen. [`CountingTransport`] wraps *outside* the decorator
+// for exactly this reason: it counts what `Replica::broadcast` handed to `send_to`, matching
+// `gossip_fanout`'s own "sent" definition, unaffected by whether the link later drops or delays
+// the datagram.
 fn gossip_fanout_rtt(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "gossip_fanout_rtt");
@@ -1266,10 +1235,10 @@ fn gossip_fanout_rtt(c: &mut Criterion) {
     group.finish();
 }
 
-/// Durable rejoin, part 1: time to reload a persisted snapshot of `N` entries from disk alone
-/// (the local-I/O component of the cost a restarting node pays before rejoining). The snapshot
-/// is written once in setup. Part 2, below, prices the other component — the network catch-up —
-/// against a cold join.
+// Durable rejoin, part 1: time to reload a persisted snapshot of `N` entries from disk alone
+// (the local-I/O component of the cost a restarting node pays before rejoining). The snapshot
+// is written once in setup. Part 2, below, prices the other component — the network catch-up —
+// against a cold join.
 fn durable_rejoin_load(c: &mut Criterion) {
     let mut group = log_group(c, "durable_rejoin");
     for &size in SIZES {
@@ -1304,25 +1273,25 @@ fn durable_rejoin_load(c: &mut Criterion) {
     group.finish();
 }
 
-/// Writes applied to the surviving peer while the restarting node is presumed down — the delta a
-/// snapshot rejoin must catch up on. Fixed across dataset sizes rather than scaled with them: the
-/// claim under test (#172) is that snapshot-rejoin cost tracks the *churn*, not the dataset, and
-/// holding the churn constant while `size` grows is what lets the sweep below show that.
+// Writes applied to the surviving peer while the restarting node is presumed down — the delta a
+// snapshot rejoin must catch up on. Fixed across dataset sizes rather than scaled with them: the
+// claim under test is that snapshot-rejoin cost tracks the *churn*, not the dataset, and
+// holding the churn constant while `size` grows is what lets the sweep below show that.
 const REJOIN_CHURN: usize = 100;
 
-/// Port for [`durable_rejoin_network`]'s [`InMemoryNetwork`]s. Reused across calls: each call
-/// builds its own isolated network, so — as with [`build_mesh`]'s ports — collisions are only
-/// possible within one network, and [`mesh_addrs`] already keeps every call's addresses distinct.
+// Port for [`durable_rejoin_network`]'s [`InMemoryNetwork`]s. Reused across calls: each call
+// builds its own isolated network, so — as with [`build_mesh`]'s ports — collisions are only
+// possible within one network, and [`mesh_addrs`] already keeps every call's addresses distinct.
 const REJOIN_PORT: u16 = 9_850;
 
-/// One rejoin: `prefix` is loaded into the surviving peer `A` first; when `resume_from_snapshot`,
-/// it is then snapshotted to an on-disk backend and that snapshot restored into the restarting
-/// peer `B` via [`ReplicatedMap::with_persistence`] — disk load included in the timed region,
-/// since that is genuinely part of what a restarting process waits on — before `churn` lands on
-/// `A` and `B` rejoins. When `resume_from_snapshot` is false, `B` starts empty and must pull
-/// `prefix` **and** `churn` cold, exactly as [`cold_sync`]. Returns wall time to reconverge and
-/// total wire bytes (both peers' sends summed — nothing is lost here, so that is also what was
-/// received, [`build_mesh`]'s counting convention).
+// One rejoin: `prefix` is loaded into the surviving peer `A` first; when `resume_from_snapshot`,
+// it is then snapshotted to an on-disk backend and that snapshot restored into the restarting
+// peer `B` via [`ReplicatedMap::with_persistence`] — disk load included in the timed region,
+// since that is genuinely part of what a restarting process waits on — before `churn` lands on
+// `A` and `B` rejoins. When `resume_from_snapshot` is false, `B` starts empty and must pull
+// `prefix` **and** `churn` cold, exactly as [`cold_sync`]. Returns wall time to reconverge and
+// total wire bytes (both peers' sends summed — nothing is lost here, so that is also what was
+// received, [`build_mesh`]'s counting convention).
 async fn rejoin_once(
     prefix: &[(u32, u32)],
     churn: &[(u32, u32)],
@@ -1381,11 +1350,11 @@ async fn rejoin_once(
     (elapsed, bytes)
 }
 
-/// Durable rejoin, part 2: reconverge time and total wire bytes for a restarting node that
-/// resumes from an on-disk snapshot against one that rejoins cold (empty, as [`cold_sync`]).
-/// Answers #172's own out-of-repo numbers (51 200 keys / 50 MiB: 0.52 s / 0.76 MiB from snapshot
-/// vs 4.6 s / 56.3 MiB cold) with a reproducible, in-repo harness instead of a one-off external
-/// measurement.
+// Durable rejoin, part 2: reconverge time and total wire bytes for a restarting node that
+// resumes from an on-disk snapshot against one that rejoins cold (empty, as [`cold_sync`]).
+// Answers 's own out-of-repo numbers (51 200 keys / 50 MiB: 0.52 s / 0.76 MiB from snapshot
+// vs 4.6 s / 56.3 MiB cold) with a reproducible, in-repo harness instead of a one-off external
+// measurement.
 fn durable_rejoin_network(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = log_group(c, "durable_rejoin");

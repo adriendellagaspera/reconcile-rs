@@ -6,20 +6,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `lww-register`: the state-based LWW-Register CRDT domain of `reconcile-rs`.
+//! Last-write-wins register domain used by `reconcile`.
 //!
-//! **⚠ Implementation detail. Depend on [`reconcile`](https://crates.io/crates/reconcile)
-//! instead** — published only because cargo has no vendoring, and anything here may change or
-//! disappear in any release, patch included.
+//! This crate defines register entries, timestamps and clock arithmetic, key/value bounds, and the
+//! persistence contract. It contains no network, async-runtime, wire-codec, or wall-clock adapter.
 //!
-//! - [`entry`] — the register cell, its tombstone state, and the LWW merge.
-//! - [`clock`] — [`clock::Timestamp`], the [`clock::Clock`] port, the HLC arithmetic.
-//! - [`persistence`] — the [`persistence::Persistence`] port and its in-memory backend.
-//! - [`bounds`] — the [`bounds::Key`]/[`bounds::Value`] data-bound bundles.
-//!
-//! Infrastructure-free by construction: `ARCHITECTURE.md` §2.1, gated by
-//! `scripts/check-domain-purity.sh`.
-
+//! Applications should normally depend on
+//! [`reconcile`](https://crates.io/crates/reconcile), which re-exports the supported API.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 

@@ -1,12 +1,11 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Tests for the write-broadcast egress budget (#83): `Config::max_concurrent_broadcasts`,
+//! Tests for the write-broadcast egress budget: `Config::max_concurrent_broadcasts`,
 //! `ReplicatedMap::try_insert`/`try_update`, and the infallible `insert`'s
 //! skip-only-the-broadcast behavior at the same budget. A budget of `0` makes the exhausted case
 //! fully deterministic (no need to race a real in-flight send): `n < 0` never holds, so every
@@ -42,7 +41,7 @@ async fn isolated(port: u16, addr: &str) -> ReplicatedMap<i32, i32> {
 /// `Backpressure` is `#[non_exhaustive]`, so this crate cannot build one via struct-literal
 /// syntax to compare against — assert on its public fields and `Display` output instead (the
 /// latter also proves the `Display` impl actually formats the real fields, not a stub). Also
-/// asserts the rejection is actually `WriteRejected::Backpressure`, not `TooLarge` (#82) — these
+/// asserts the rejection is actually `WriteRejected::Backpressure`, not `TooLarge` — these
 /// tests use plain `i32` values, so a `TooLarge` rejection here would mean the zero-budget claim
 /// never even ran.
 fn assert_zero_budget_backpressure(err: WriteRejected) {
@@ -127,7 +126,7 @@ async fn try_update_rejects_and_leaves_the_map_untouched_at_a_zero_budget() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn try_update_on_an_absent_key_still_rejects_at_a_zero_budget() {
-    // #83's all-or-nothing guarantee claims the slot *before* checking liveness, so even the
+    // 's all-or-nothing guarantee claims the slot *before* checking liveness, so even the
     // branch `update` treats as a free no-op is budget-gated here.
     let store = isolated_config(config(8324, "127.0.0.245").with_max_concurrent_broadcasts(0));
 
@@ -138,7 +137,7 @@ async fn try_update_on_an_absent_key_still_rejects_at_a_zero_budget() {
     );
 }
 
-/// A zero egress budget must never fail the infallible `insert` (#83's compatibility
+/// A zero egress budget must never fail the infallible `insert` ('s compatibility
 /// requirement) — only silently skip the eager push, leaving anti-entropy as the sole remaining
 /// delivery path. That path is starved here by a `reconcile_interval` far beyond the test's
 /// deadline, so a peer receiving the value could only mean the broadcast slipped through the

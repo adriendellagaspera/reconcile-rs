@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -8,7 +7,6 @@
 
 //! What one full RBSR reconciliation costs, counted rather than timed: messages, advertised
 //! ranges, refinement bytes, datagrams/fragments, IDLIST outcomes and local RSOS queries.
-//!
 //! Drives `rsos`/`rbsr` directly — no dependency on any wire format, so a caller prices whatever
 //! payload shape it ships by passing [`reconcile`] a pricing closure, rather than this crate
 //! assuming one.
@@ -53,8 +51,7 @@ impl Add for Queries {
 }
 
 /// A read-only RSOS tallying the three query kinds [`reconcile`] performs.
-///
-/// Implements `rsos::Rsos`, not `rbsr::RsosView`: the blanket impl makes a second `RsosView` impl
+/// Implements `rsos:Rsos`, not `rbsr:RsosView`: the blanket impl makes a second `RsosView` impl
 /// a coherence conflict.
 pub struct Counting<'a, S> {
     inner: &'a S,
@@ -136,7 +133,7 @@ pub struct Cost {
     /// Total `RangeAggregate`s advertised across every message.
     pub ranges: usize,
     /// Total bincode-encoded bytes of those aggregates. The refinement half of
-    /// [`total_bytes`](Cost::total_bytes); it does not move with the enumerated payload.
+    /// `Cost::total_bytes`; it does not move with the enumerated payload.
     pub refinement_bytes: usize,
     /// Datagrams the refinement batches become, at [`MAX_DATAGRAM_PAYLOAD`] per datagram.
     pub datagrams: usize,
@@ -150,7 +147,7 @@ pub struct Cost {
     pub enumerations: usize,
     pub enumerated_elements: usize,
     /// What those elements cost on the wire, one entry per payload variant `price_element`
-    /// returned — the value half of [`total_bytes`](Cost::total_bytes). Empty when `reconcile` was
+    /// returned — the value half of [`Cost::total_bytes`]. Empty when `reconcile` was
     /// called with `price_element: None`.
     pub enumerated_bytes: Vec<usize>,
     /// Local RSOS queries, summed over both peers.
@@ -181,7 +178,7 @@ impl Cost {
 
 /// The payload-independent half of a [`Cost`]: every outcome the driver reached, none of the bytes
 /// they encoded to — `datagrams`/`fragments` sit on the byte side, being ceilings over
-/// [`Cost::refinement_bytes`].
+/// `Cost::refinement_bytes`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Decisions {
     pub messages: usize,
@@ -194,18 +191,13 @@ pub struct Decisions {
 /// Drive both peers to convergence under `policy`, counting what crosses the wire. Every
 /// mismatching range is resolved or strictly refined, so the loop terminates; the guard is a bug
 /// net.
-///
 /// Both peers run the same policy — they need not, but a mixed pair would measure neither.
-///
 /// `price_element`, when `Some`, is called once per enumerated element (its key) and must return
 /// the wire-encoded byte length(s) of whatever the caller's own transport would ship for it — one
 /// entry per payload variant to price side by side. `None` counts enumerated elements without
 /// pricing them, for a timed drive where encoding a real payload would put the caller's own
 /// encoder inside the measurement.
-///
-/// `rng` is `protocol_round_with_policy`'s injected cut-offset seam (rbsr's ARCHITECTURE.md §7,
-/// "Defense against a correlated false SKIP"), reused across every round of this drive — the same
-/// pattern a real deployment's `Replica`/`ReadReplicaMap` follow with their own session RNG.
+/// `rng` supplies the session-scoped randomized split offset and is reused across all rounds.
 pub fn reconcile<S: Rsos<u64>>(
     a: &S,
     b: &S,
@@ -219,7 +211,7 @@ pub fn reconcile<S: Rsos<u64>>(
     let mut responder_is_b = true;
 
     while !active.is_empty() {
-        // `DefaultOptions` matches `gossip::bincode::encode`'s own encoder config (little-endian,
+        // `DefaultOptions` matches `gossip:bincode:encode`'s own encoder config (little-endian,
         // varint integers) — only the length is needed here, never the bytes themselves.
         let round_bytes: usize = active
             .iter()

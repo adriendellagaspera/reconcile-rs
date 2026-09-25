@@ -1,12 +1,11 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #30: the introspection/lifecycle accessors closed by that issue —
+//! the introspection/lifecycle accessors closed by that issue —
 //! `local_addr`/`sync_state`/`seed_peer`/`set_reconcile_interval` — mirroring
 //! `replicated_map/tests/lifecycle.rs`'s equivalent coverage for `ReplicatedMap`.
 
@@ -37,7 +36,7 @@ async fn local_addr_matches_the_configured_bind_address() {
     );
 }
 
-/// `sync_state` starts with no rounds initiated and advances once `run()` is actually driving the
+/// `sync_state` starts with no rounds initiated and advances once `run` is actually driving the
 /// replica — a mutant that no-ops the round counter or the `last_round_at` write would leave this
 /// at its initial `0`/`None` forever.
 #[tokio::test(flavor = "multi_thread")]
@@ -91,7 +90,7 @@ async fn seed_peer_registers_and_refreshes_a_peer() {
 
 /// `set_reconcile_interval` must actually retune `run`'s idle re-initiation cadence at runtime,
 /// mirroring `ReplicatedMap::set_reconcile_interval`'s own test: a 3600s configured interval that
-/// is never retuned would leave `rounds` at `1` (the unconditional round fired at `run()` entry)
+/// is never retuned would leave `rounds` at `1` (the unconditional round fired at `run` entry)
 /// for the entire test window.
 #[tokio::test(flavor = "multi_thread")]
 async fn set_reconcile_interval_actually_retunes_the_idle_timeout() {

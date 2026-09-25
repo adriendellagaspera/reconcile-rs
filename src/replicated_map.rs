@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -61,8 +60,7 @@ const DEFAULT_DISCOVERY_MISS_THRESHOLD: u32 = 3;
 const DEFAULT_DISCOVERY_DECOMMISSION_FLOOR: Duration = Duration::from_secs(600);
 
 /// Core service wrapping a key-value map, reconciled with peers over the network.
-///
-/// Wraps its [`FingerprintTreeMap`](crate::FingerprintTreeMap)'s insertion and deletion; `run()`
+/// Wraps its [`FingerprintTreeMap`](crate::FingerprintTreeMap)'s insertion and deletion; `run`
 /// must be called to synchronize. Peers come from [`with_seed`](ReplicatedMap::with_seed) and from
 /// periodic probing of the declared networks.
 pub struct ReplicatedMap<K, V>
@@ -105,7 +103,6 @@ where
     /// Consecutive snapshot-write failures since the last success; `0` while healthy. Backs the
     /// `reconcile_persistence_failures_current` gauge (behind the `metrics` feature), but tracked
     /// unconditionally since [`on_persistence_error`] callers want it too.
-    ///
     /// [`on_persistence_error`]: Self::on_persistence_error
     persistence_consecutive_failures: Arc<AtomicUsize>,
     /// Invoked with the [`io::Error`] whenever a snapshot write fails — see
@@ -143,23 +140,8 @@ where
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Create a `ReplicatedMap`, binding the gossip UDP socket.
-    ///
     /// # Errors
-    ///
     /// If the socket cannot be bound to `(config.listen_addr, config.port)`.
-    ///
-    /// ```
-    /// use reconcile::{replicated_map::Config, ReplicatedMap};
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() -> std::io::Result<()> {
-    /// let store = ReplicatedMap::<String, i32>::new(Config::new(8081).with_insecure_no_key()).await?;
-    ///
-    /// store.insert("a".to_string(), 1);
-    /// assert_eq!(store.get_cloned(&"a".to_string()), Some(1));
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn new(config: Config) -> Result<Self, ConstructionError> {
         let snapshot_interval = config.snapshot_interval;
         let snapshot_change_threshold = config.snapshot_change_threshold;
@@ -172,23 +154,10 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Create a `ReplicatedMap` over a caller-supplied [`Transport`] instead of the default UDP
     /// one — a different datagram transport, or a lossy one to test convergence under adversity.
-    ///
     /// The caller has already done the I/O binding step; configuration validation remains
     /// fallible. An unreliable transport cannot violate an invariant, since the protocol already
     /// assumes loss, duplication and reordering — unlike an injected [`Clock`](crate::Clock)
     /// ([`new_with_clock`](Self::new_with_clock)'s docs cover what a non-conformant one breaks).
-    ///
-    /// ```rust,no_run
-    /// # use std::sync::Arc;
-    /// # use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8080".parse().unwrap()));
-    /// let store = ReplicatedMap::<String, String>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
-    /// )
-    /// .unwrap();
-    /// ```
     pub fn new_with_transport(
         config: Config,
         transport: Arc<dyn Transport>,
@@ -202,58 +171,11 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         ))
     }
 
-    /// Create a `ReplicatedMap` over the default UDP transport, but a caller-supplied
-    /// [`Clock`](crate::Clock) instead of the default `HlcClock` — e.g. to drive deterministic
-    /// ordering in a dependent crate's own tests, the way
-    /// [`InMemoryNetwork`](crate::InMemoryNetwork) does for `Transport`.
+    /// Create a `ReplicatedMap` over UDP with a caller-supplied [`Clock`](crate::Clock).
     ///
-    /// # Risks of a non-conformant `Clock`
-    ///
-    /// The store trusts `clock` completely: every write and every received timestamp is ordered
-    /// only by what it returns, and nothing here re-derives or cross-checks physical time. This is
-    /// **not** like [`new_with_transport`](Self::new_with_transport)'s transport swap, where an
-    /// unreliable transport cannot violate an invariant because the protocol already assumes loss,
-    /// duplication and reordering — a broken `Clock` can. Concretely, the naive implementation
-    /// (read the wall clock, stamp `logical = 0`) compiles and type-checks cleanly:
-    ///
-    /// - **Non-monotonic `now()`.** Two same-millisecond local writes to a key can mint an equal
-    ///   `(physical, logical, node_id)`. `Entry::merge`'s strict `>` (`ARCHITECTURE.md` §5
-    ///   invariant 2) then keeps each replica's own value regardless of merge order — the
-    ///   fingerprints never agree and the anti-entropy round re-exchanges that key forever.
-    /// - **`observe(t)` not chased by a later `now() > t`.** A causally-later local write can end
-    ///   up ordered *before* the remote write it was caused by.
-    /// - **A clamping `observe_trusted`.** A backward wall-clock step across a restart (NTP
-    ///   correction, VM pause, manual clock set) leaves the post-restart clock below this node's
-    ///   own already-persisted stamps, and only a clamp-free `observe_trusted` restores it — a
-    ///   clamped one silently shadows this node's own pre-restart writes.
-    ///
-    /// None of this panics, errors, or logs by default — it surfaces as writes that mysteriously
-    /// do not stick, or a cluster that never converges. There is no way to gate this at the type
-    /// level: monotonicity is a runtime property of an arbitrary implementation, not something
-    /// expressible in [`Clock`](crate::Clock)'s signature. **Run
-    /// [`assert_conformance`](crate::clock::assert_conformance) over `clock` before passing it
-    /// here** — its own documentation goes through each failure mode in more detail.
-    ///
-    /// ```rust,no_run
-    /// # use std::sync::Arc;
-    /// # use reconcile::clock::{assert_conformance, Clock, NodeId, Timestamp};
-    /// # use reconcile::{replicated_map::Config, ReplicatedMap};
-    /// # struct MyClock;
-    /// # impl Clock for MyClock {
-    /// #     fn now(&self) -> Timestamp { unimplemented!() }
-    /// #     fn node_id(&self) -> NodeId { NodeId::new(1) }
-    /// #     fn observe(&self, _: Timestamp) {}
-    /// #     fn observe_trusted(&self, _: Timestamp) {}
-    /// # }
-    /// # async fn example() -> std::io::Result<()> {
-    /// let clock = Arc::new(MyClock);
-    /// assert_conformance(&*clock); // panics here, not after it has shipped, if `clock` is broken
-    /// let store =
-    ///     ReplicatedMap::<String, String>::new_with_clock(Config::default().with_insecure_no_key(), clock)
-    ///         .await?;
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// The clock defines timestamp ordering for all local and observed writes. It must satisfy the
+    /// [`Clock`](crate::Clock) contract; [`assert_conformance`](crate::clock::assert_conformance)
+    /// can validate an implementation before use.
     pub async fn new_with_clock(
         config: Config,
         clock: Arc<dyn crate::clock::Clock>,
@@ -296,14 +218,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// This node's HLC identity: the `node_id` on every [`Timestamp`](crate::clock::Timestamp) it mints.
-    ///
     /// Random per construction unless pinned with [`Config::with_node_id`].
     pub fn node_id(&self) -> NodeId {
         self.engine.node_id()
     }
 
     /// Provides the address of a known peer to the store
-    ///
     /// This is optional, but reduces the time to connect to existing peers
     pub fn with_seed(self, peer: IpAddr) -> Self {
         let now = Instant::now();
@@ -313,9 +233,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Register or refresh a known peer at runtime — the `&self` counterpart of
     /// [`with_seed`](Self::with_seed), and what a discovery source feeds in.
-    ///
     /// Re-arms the peer-expiration window and makes the address a gossip target. Never grants
-    /// causal-stability membership (`ARCHITECTURE.md` §5 invariant 6).
+    /// causal-stability membership.
     pub fn seed_peer(&self, peer: IpAddr) {
         self.engine.seed_peer(peer);
     }

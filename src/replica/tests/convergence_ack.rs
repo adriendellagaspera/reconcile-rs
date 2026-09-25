@@ -1,12 +1,11 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #23: an `EntryFingerprint` round that converges with nothing else to send back now gets a real
+//! an `EntryFingerprint` round that converges with nothing else to send back gets a real
 //! [`Message::ConvergenceAck`] reply, instead of leaving the sender to ride out a bounded,
 //! unacknowledged retry on `repair_interval`.
 
@@ -77,7 +76,7 @@ async fn feed_and_capture_reply(
     send_buf
 }
 
-/// The core #23 behavior: an `EntryFingerprint` describing exactly what this (empty) engine
+/// an `EntryFingerprint` describing exactly what this (empty) engine
 /// already holds converges as a pure SKIP -- `rbsr` itself has nothing to send back -- and must
 /// still get an explicit `ConvergenceAck` reply rather than silence.
 #[tokio::test]
@@ -159,7 +158,7 @@ async fn a_round_that_finds_a_real_difference_is_not_also_acked() {
 
 /// The receiving side of the same mechanism: a `ConvergenceAck` is proof the peer engages with
 /// the dated comparison protocol, exactly like a real
-/// `EntryFingerprint`/`EntryUpdate`/`TombstoneAck` -- `run()` only grants peers/members
+/// `EntryFingerprint`/`EntryUpdate`/`TombstoneAck` -- `run` only grants peers/members
 /// membership when `spoke_dated` is true (mirrors
 /// [`handle_messages_return_value`](super::handle_messages_return_value)'s coverage of the other
 /// message shapes).

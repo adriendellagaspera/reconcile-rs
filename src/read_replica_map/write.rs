@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -156,7 +155,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                 | Message::EntryUpdate(_)
                 | Message::TombstoneAck(_)
                 | Message::ConvergenceAck => {}
-                // #463: reserved, never sent by this version.
+                // reserved, never sent by this version.
                 Message::Reserved6(_) => {}
             }
         }
@@ -196,7 +195,6 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
 
     /// Run the read replica's reconciliation loop forever. Spawn this on a task; the read replica
     /// converges to the dated cluster's current values and reflects deletions as tombstones.
-    ///
     /// Alongside it, drives the discovery task ([`with_discovery`](Self::with_discovery)) when one
     /// is configured — a no-op otherwise.
     pub async fn run(self) {

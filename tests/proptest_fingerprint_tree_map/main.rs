@@ -1,40 +1,12 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Property-based / generative tests, split by concern (AGENTS.md §10/#427). Cargo discovers this
-//! directory as the `proptest_fingerprint_tree_map` integration-test binary via `main.rs`, same as
-//! a `[[bin]]` target -- every module below runs independently, so (unlike `tests/service/`) there
-//! is no shared `support` module.
-//!
-//! These exercise the two invariants that matter most for a reconciliation
-//! library and that fixed-seed example tests cannot cover exhaustively:
-//!
-//! 1. The hand-rolled B-tree (`FingerprintTreeMap`) behaves like a `BTreeMap` oracle for
-//!    every random `insert`/`remove`/`get`/`range` sequence, and its internal
-//!    [`FingerprintTreeMap::check_invariants`] holds after *every* mutation (this is where
-//!    the `TODO` rebalancing edge cases in `rsos/src/fingerprint_tree_map.rs` would surface) --
-//!    [`btreemap_oracle`].
-//! 2. Any two stores converge to identical state after running the full diff
-//!    loop, the returned diff ranges equal the true symmetric difference of the
-//!    key sets, and convergence survives reordered, duplicated and dropped
-//!    messages — modelling the lossy UDP transport. Convergence is also checked
-//!    under every shipped `RefinementPolicy` and under *mixed* pairs of them,
-//!    which is the property that makes the policy swappable without a protocol
-//!    break -- [`diff_convergence`].
-//!
-//! 3. A cloned `FingerprintTreeMap` -- and its `aggregate(..)` -- is unaffected by any later
-//!    mutation of the tree it was cloned from, and vice versa — the property that makes
-//!    `Clone`'s newly shallow, `Arc`-sharing implementation (#41) safe to treat as a full
-//!    snapshot — [`cow_snapshots`].
-//!
-//! Plus two narrower oracles: encoding injectivity/order-independence
-//! ([`encoding_injectivity`]) and driving the diff protocol with an adversarial `RsosView`
-//! backend ([`adversarial_rsos`]).
+// Property tests for FingerprintTreeMap invariants, encoding, snapshots, and RBSR convergence.
+// Each module owns the property it exercises.
 
 mod adversarial_rsos;
 mod btreemap_oracle;

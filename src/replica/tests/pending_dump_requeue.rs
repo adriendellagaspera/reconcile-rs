@@ -1,12 +1,11 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Regression test for #516: a `differences` batch that loses the per-peer dump-slot race
+//! a `differences` batch that loses the per-peer dump-slot race
 //! (`try_claim_dump_slot` allows only one bulk dump in flight per peer) must be requeued and
 //! drained once that slot frees, not silently dropped.
 
@@ -31,12 +30,11 @@ fn live_view(eng: &Replica<u32, u32>) -> BTreeMap<u32, u32> {
 }
 
 /// A single `start_reconciliation` fully resolves a wide scattered divergence. `n = 10 000`,
-/// `d = 1 000` scattered is #516's own repro: reliably produces enough recursive `SPLIT`/
+/// `d = 1 000` scattered is 's own repro: reliably produces enough recursive `SPLIT`/
 /// `ENUMERATE` traffic that at least one `ENUMERATE` batch is discovered while another dump to
 /// the same peer is already in flight, so it must lose the per-peer dump-slot race — pre-fix,
 /// that batch (and everything else `just_remove`d in the same range) is silently dropped and
 /// never repaired.
-///
 /// `reconcile_interval` is set far longer than this test's own deadline, so convergence within
 /// that deadline can only come from the requeue-and-drain fix (`stash_pending_dump`/
 /// `spawn_paced_send`'s own loop) — never from the idle timeout papering over a lost batch, which
@@ -87,7 +85,7 @@ async fn wide_scattered_divergence_converges_on_a_single_round() {
     }
     assert_eq!(live_view(&b), want, "cold-sync bootstrap did not settle");
 
-    // 1000 scattered keys, out of 10 000 -- #516's own repro.
+    // 1000 scattered keys, out of 10 000 -- 's own repro.
     const D: u32 = 1_000;
     let missing: Vec<u32> = (1..=D as u64)
         .map(|i| ((N as u64 / (D as u64 + 1)) * i) as u32)

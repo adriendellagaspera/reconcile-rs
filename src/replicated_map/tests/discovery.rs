@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -60,7 +59,7 @@ impl Discovery for FakeDiscovery {
     }
 }
 
-/// A discovery source that never lies about its kind — used to prove `with_discovery` rejects
+/// A discovery source with a fixed kind, for testing `with_discovery` kind validation.
 /// a speculative source unconditionally.
 struct SpeculativeDiscovery;
 
@@ -74,7 +73,7 @@ impl Discovery for SpeculativeDiscovery {
     }
 }
 
-/// #98: a speculative source is rejected, unconditionally — never accepted then silently causing
+/// a speculative source is rejected, unconditionally — never accepted then silently causing
 /// live members to be wrongly decommissioned (absences from a speculative source must never
 /// release the causal-stability GC gate).
 #[tokio::test]
@@ -199,8 +198,7 @@ async fn discovery_blip_does_not_decommission() {
     handle.abort();
 }
 
-/// #27: each discovery blip increments `reconcile_discovery_failures_total`.
-///
+/// each discovery blip increments `reconcile_discovery_failures_total`.
 /// `#[tokio::test]` (default flavor: `current_thread`), driving `discover_periodically` directly
 /// via `timeout` rather than `tokio::spawn`ing it onto another worker thread — `metrics`' local
 /// recorder is thread-local, so a spawned task on a `multi_thread` runtime would record
@@ -239,7 +237,7 @@ async fn discovery_failure_increments_the_failure_counter() {
     );
 }
 
-/// #27: a run of transient discovery failures must never advance `last_successful_discovery_at`
+/// a run of transient discovery failures must never advance `last_successful_discovery_at`
 /// (`SyncState`'s field for a caller's own readiness/alerting), and a subsequent success must.
 #[tokio::test(flavor = "multi_thread")]
 async fn last_successful_discovery_at_advances_only_on_success() {
@@ -306,7 +304,7 @@ fn member_presence_pending_tombstone_acks_require_the_wall_time_floor() {
 
 /// A member with an unacknowledged tombstone survives past `miss_threshold` and is
 /// decommissioned only once its absence clears the wall-time floor
-/// (`ARCHITECTURE.md` §5 invariant 6).
+/// .
 #[tokio::test(flavor = "multi_thread")]
 async fn pending_tombstone_acks_hold_decommission_past_the_miss_threshold() {
     let member: IpAddr = "127.0.0.210".parse().unwrap();
@@ -418,7 +416,7 @@ async fn a_continuously_present_member_is_never_decommissioned() {
             .with_discovery(Arc::new(AlwaysPresent(peer)))
             .unwrap();
     // Seed the peer as a known member directly, bypassing a real handshake, so it appears in
-    // `members_snapshot()` from round one.
+    // `members_snapshot` from round one.
     store.engine.members.write().insert(peer);
 
     let _ = tokio::time::timeout(Duration::from_millis(80), store.discover_periodically()).await;
