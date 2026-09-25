@@ -133,7 +133,7 @@ pub struct Cost {
     /// Total `RangeAggregate`s advertised across every message.
     pub ranges: usize,
     /// Total bincode-encoded bytes of those aggregates. The refinement half of
-    /// [`total_bytes`](Cost:total_bytes); it does not move with the enumerated payload.
+    /// `Cost::total_bytes`; it does not move with the enumerated payload.
     pub refinement_bytes: usize,
     /// Datagrams the refinement batches become, at [`MAX_DATAGRAM_PAYLOAD`] per datagram.
     pub datagrams: usize,
@@ -178,7 +178,7 @@ impl Cost {
 
 /// The payload-independent half of a [`Cost`]: every outcome the driver reached, none of the bytes
 /// they encoded to — `datagrams`/`fragments` sit on the byte side, being ceilings over
-/// [`Cost:refinement_bytes`].
+/// `Cost::refinement_bytes`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Decisions {
     pub messages: usize,

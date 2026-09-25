@@ -61,18 +61,10 @@ pub(crate) enum EndBound<K> {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct KeyRange<K>(StartBound<K>, EndBound<K>);
 
-/// A `KeyRange` paired with the [`Aggregate`] over it: the unit the RBSR protocol exchanges.
-/// # Wire layout
-/// bincode inlines both fields positionally, in declaration order, with no length prefix or tag
-/// on the struct itself — only its two fields carry framing:
-/// 1. `range.0` (the start bound): a `u32` variant tag (`0` = `Unbounded`, `1` = `Included`),
-///  followed by the key `K`'s own encoding when `Included`.
-/// 2. `range.1` (the end bound): the same shape (`0` = `Unbounded`, `1` = `Excluded`).
-/// 3. `aggregate`: [`Aggregate`]'s own fields, in *its* declaration order — currently
-///  `fingerprint` (four `u64` limbs) then `size` (a `u64`), each bincode's variable-length
-///  integer encoding.
-/// This layout is pinned by a golden vector in `reconcile`'s `tests/wire_format.rs`; reordering
-/// any field here or in [`Aggregate`] is a protocol break, not a refactor.
+/// A key range paired with its [`Aggregate`], as exchanged by the protocol.
+///
+/// Wire encoding follows field declaration order. Changing the order or representation of these
+/// fields is a wire-format change.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RangeAggregate<K> {
     range: KeyRange<K>,
