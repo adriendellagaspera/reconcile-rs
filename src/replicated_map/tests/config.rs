@@ -13,7 +13,7 @@ use crate::{
     ReadReplicaMap, ReplicatedMap,
 };
 
-use super::ephemeral_config;
+use super::virtual_config;
 
 /// Construction rejects an omitted security choice as a typed configuration error before any
 /// transport is bound. Full and read replicas share the same contract.
@@ -140,7 +140,7 @@ fn with_nets_rejects_a_batch_past_max_nets() {
 #[test]
 fn config_debug_redacts_cluster_key_but_not_its_presence() {
     let key_bytes = [0xABu8; 32];
-    let with_key = ephemeral_config().with_cluster_key(gossip::auth::ClusterKey::new(key_bytes));
+    let with_key = virtual_config().with_cluster_key(gossip::auth::ClusterKey::new(key_bytes));
     let debug = format!("{with_key:?}");
     assert!(
         debug.contains("<redacted>"),
@@ -151,7 +151,7 @@ fn config_debug_redacts_cluster_key_but_not_its_presence() {
         "raw key bytes must not appear in Debug output: {debug}"
     );
 
-    let without_key = ephemeral_config();
+    let without_key = virtual_config();
     let debug = format!("{without_key:?}");
     assert!(
         debug.contains("cluster_key: None"),
