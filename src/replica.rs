@@ -63,7 +63,7 @@ pub(crate) struct Replica<K, V> {
     inner: Arc<Inner<K, V>>,
 }
 
-/// Shared, refcounted state of a [`Replica`]; see that struct for the rationale.
+/// Shared, refcounted state of a [`Replica`].
 pub(crate) struct Inner<K, V> {
     /// `ArcSwap`, not `RwLock`: a reader `load_full`s an owned `Arc` with no lock at all,
     /// which is what makes it safe to hold across an `.await` point
@@ -259,12 +259,9 @@ pub(crate) struct Inner<K, V> {
 /// | 5 | dated | [`ConvergenceAck`](Message::ConvergenceAck) |
 /// | 6 | reserved | [`Reserved6`](Message::Reserved6) |
 /// Unknown tags beyond this enum fail deserialization and the receive loop drops the datagram.
-/// Assigning a real shape to the reserved tag, or otherwise changing the wire shape, requires the
-/// compatibility treatment documented in; `gossip::auth::WIRE_VERSION` is the
-/// strict protocol-version gate.
-/// The two channels follow the domain split in invariant 8: the dated
-/// channel operates on `Entry<Timestamp, V>`; the state-only channel operates on the timestamp-less
-/// `State<V>` projection used by read replicas.
+/// Changing variant order or wire shape requires a wire-version change.
+/// The dated channel carries `Entry<Timestamp, V>`; the state-only channel carries the
+/// timestamp-free `State<V>` projection used by read replicas.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
     /// A range and its aggregate over the dated `map` (an `Entry<Timestamp, V>` tree), for the

@@ -315,9 +315,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.tombstones.set_timeout(timeout);
     }
 
-    /// Garbage-collect tombstones, **gated on causal stability** (
-    /// invariant 6): older than the timeout *and* acknowledged by every replica this node has
-    /// communicated with, or decommissioned via [`forget_peer`](Self::forget_peer).
+    /// Garbage-collect tombstones only after their timeout and causal stability.
+    /// Every authoritative replica this node has communicated with must acknowledge the tombstone
+    /// or be decommissioned through [`forget_peer`](Self::forget_peer).
     pub(super) async fn clear_expired_tombstones(&self) {
         loop {
             for key in self.tombstones.expired(wall_clock_now()) {

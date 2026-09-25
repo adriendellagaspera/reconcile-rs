@@ -118,10 +118,7 @@ async fn set_nets_enforces_max_nets_at_runtime() {
     );
 }
 
-/// `ReplicatedSet::set_repair_interval` is a thin delegate to
-/// `ReplicatedMap::set_repair_interval` — assert the delegation actually happens, not just
-/// that calling it doesn't panic (same rationale as `set_nets_enforces_max_nets_at_runtime`
-/// above).
+/// `set_repair_interval` must retune the delegated map engine.
 #[tokio::test]
 async fn set_repair_interval_actually_retunes_the_engine() {
     let set = virtual_set(virtual_config());
@@ -131,10 +128,7 @@ async fn set_repair_interval_actually_retunes_the_engine() {
     assert_eq!(set.0.repair_interval(), Duration::from_millis(9));
 }
 
-/// `ReplicatedSet::set_coalesce_window` is a thin delegate to
-/// `ReplicatedMap::set_coalesce_window` — assert the delegation actually happens, not just
-/// that calling it doesn't panic (same rationale as `set_nets_enforces_max_nets_at_runtime`
-/// above).
+/// `set_coalesce_window` must retune the delegated map engine.
 #[tokio::test]
 async fn set_coalesce_window_actually_retunes_the_engine() {
     let set = virtual_set(virtual_config());
@@ -242,10 +236,7 @@ async fn peers_and_members_reflect_a_converged_pair() {
     tb.abort();
 }
 
-/// `ReplicatedSet::with_persistence` is a thin delegate to `ReplicatedMap::with_persistence` —
-/// assert the delegation actually happens on the success path: membership recovers across a
-/// restart against the same backend, not just that calling it doesn't panic (same rationale as
-/// `set_nets_enforces_max_nets_at_runtime` above).
+/// Persistence must recover set membership and tombstones across restart.
 #[tokio::test]
 async fn with_persistence_recovers_membership_on_restart() {
     let dir = tempfile::tempdir().unwrap();
@@ -279,10 +270,7 @@ impl<K: Send + Sync + 'static, V: Send + Sync + 'static> Persistence<K, V> for F
     }
 }
 
-/// `ReplicatedSet::with_persistence` is a thin delegate to `ReplicatedMap::with_persistence` —
-/// assert the delegation actually happens on the error path too: a backend load failure surfaces
-/// as `Err`, not swallowed or turned into a panic (same rationale as
-/// `with_persistence_recovers_membership_on_restart` above).
+/// Persistence load errors must be returned to the caller.
 #[tokio::test]
 async fn with_persistence_surfaces_load_errors() {
     let set = virtual_set(virtual_config());

@@ -205,12 +205,7 @@ mod tests {
         );
     }
 
-    /// Reads are not writes. Were the *write* counter reachable from the query path, the
-    /// write-cost figure it feeds would silently absorb the cost of `Aggregate(l, u)` — the
-    /// operation the contract buys, not the one it charges for.
-    /// Narrowed from `Counts::default` to the one field it is about when the read-side counters
-    /// landed: those are *supposed* to move here, and a whole-struct equality would have made this
-    /// test fail for the opposite of the reason it exists.
+    /// Queries must not increment aggregate-maintenance write counters.
     #[test]
     fn the_read_path_maintains_no_aggregates() {
         let mut map = FingerprintTreeMap::new();

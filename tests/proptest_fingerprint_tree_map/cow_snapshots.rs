@@ -5,14 +5,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Structural sharing: `FingerprintTreeMap::clone` is now shallow -- it bumps the root
-//! `Arc`'s refcount rather than deep-copying every node -- so a subsequent `insert`/`remove` on
-//! either the original or the clone must fork exactly the nodes it touches
-//! ([`std::sync::Arc::make_mut`]) and leave every node still reachable from the *other* copy
-//! untouched. A COW fork missed anywhere on a mutated path would silently corrupt an older
-//! retained snapshot; this is the property a plain "clone always deep-copies" implementation
-//! would also pass, so it is the property that actually exercises `Arc::make_mut` at splits,
-//! merges and steals.
+//! Copy-on-write snapshot properties for [`FingerprintTreeMap`](rsos::FingerprintTreeMap).
+//!
+//! Cloning shares the root `Arc`; subsequent inserts and removals must fork only the touched path
+//! and leave retained snapshots unchanged across splits, merges, and steals.
 
 use std::collections::BTreeMap;
 
