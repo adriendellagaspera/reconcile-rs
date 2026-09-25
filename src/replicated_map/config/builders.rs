@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -19,7 +18,7 @@ use super::{Config, ConfigError};
 impl Config {
     /// The documented default constructor: `port` is the one setting every node in a cluster
     /// must agree on (see [`port`](Self::port)'s docs for why `0` can never converge). Equivalent
-    /// to `Config::default().with_port(port)`.
+    /// to `Config::default.with_port(port)`.
     #[must_use]
     pub fn new(port: u16) -> Self {
         Config::default().with_port(port)
@@ -39,9 +38,7 @@ impl Config {
     }
     /// Declare a geographical network by its CIDR — once per network, **including this node's
     /// own** (see [`nets`](Config::nets)).
-    ///
     /// # Errors
-    ///
     /// If more than [`MAX_NETS`](super::MAX_NETS) networks are declared — the same
     /// [`MAX_NETS`](super::MAX_NETS) cap
     /// [`ReplicatedMap::set_nets`](super::super::ReplicatedMap::set_nets)/
@@ -57,9 +54,7 @@ impl Config {
     }
 
     /// Declare several networks at once (see [`with_net`](Config::with_net)).
-    ///
     /// # Errors
-    ///
     /// If the total exceeds [`MAX_NETS`](super::MAX_NETS).
     pub fn with_nets(mut self, nets: &[IpNet]) -> Result<Self, ConfigError> {
         for &net in nets {
@@ -130,7 +125,6 @@ impl Config {
     }
 
     /// Enable per-datagram MAC authentication with one shared cluster secret.
-    ///
     /// Incoming datagrams are verified before deserialization and silently dropped on failure.
     /// Every node must share the key and MAC backend (`mac-blake3` or `mac-hmac`) outside a key
     /// rotation. Calling this also closes any receive-side rotation window opened by
@@ -144,10 +138,9 @@ impl Config {
 
     /// Open a two-key rotation window: seal outgoing datagrams with `primary`, while accepting
     /// incoming datagrams authenticated by either `primary` or `also_accept`.
-    ///
     /// Rotate in three cluster-wide phases, completing each rollout before starting the next:
     /// `old + accept(new)` → `new + accept(old)` → [`with_cluster_key(new)`](Self::with_cluster_key).
-    /// This changes no wire bytes; the receiver simply tries both secrets. See README
+    /// This changes no wire bytes; the receiver simply tries both secrets. See
     /// "Cluster-key rotation" for provisioning and the temporary keyed-fingerprint cost.
     #[must_use]
     pub fn with_cluster_key_rotation(
@@ -171,7 +164,6 @@ impl Config {
     }
 
     /// Explicit, loudly-named opt-in to run with no [`cluster_key`](Self::cluster_key) at all.
-    ///
     /// Without either this or [`with_cluster_key`](Self::with_cluster_key), construction refuses
     /// to proceed: [`RandomProbe`](crate::discovery::RandomProbe) answers any host inside the
     /// configured [`nets`](Self::nets), so a stranger squatting one IP eventually receives the
@@ -280,11 +272,9 @@ impl Config {
     /// [`cluster_key`](Self::cluster_key) as the AEAD key — so
     /// [`with_cluster_key`](Self::with_cluster_key) or
     /// [`with_cluster_key_rotation`](Self::with_cluster_key_rotation) is required on every node.
-    ///
     /// Framed as `nonce || ciphertext || tag`, 40 bytes of overhead, verified before
     /// deserialization. The trust model is unchanged: one shared secret at a time for sending, so
     /// no per-peer identity and no forward secrecy.
-    ///
     /// Requires the `encryption` cargo feature.
     #[cfg(feature = "encryption")]
     #[must_use]

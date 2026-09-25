@@ -1,5 +1,4 @@
 // Copyright 2025 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,20 +6,17 @@
 // except according to those terms.
 
 //! In-order iterators over [`FingerprintTreeMap`](crate::fingerprint_tree_map::FingerprintTreeMap):
-//! `O(h)` initial descent, amortized `O(1)` per `next()`, `O(h)` stack.
-//!
+//! `O(h)` initial descent, amortized `O(1)` per `next`, `O(h)` stack.
 //! `IterMut`/`ValuesMut` are `#[cfg(test)]`-only: they hand out `&mut V` without updating the
 //! element fingerprint or the cached subtree aggregate.
 //! [`FingerprintTreeMap::with_mut`](crate::fingerprint_tree_map::FingerprintTreeMap::with_mut) is
 //! the supported mutation path.
-//!
 //! `Iter`, `IntoIter`, `Keys`, `Values`, `IntoKeys`, `IntoValues` all implement `ExactSizeIterator`
-//! (`len()`/`size_hint()` are `O(1)`, seeded once from the tree's cached subtree size) and
+//! (`len`/`size_hint` are `O(1)`, seeded once from the tree's cached subtree size) and
 //! `FusedIterator`, plus `Clone` and `Debug`.
-//!
 //! Split across siblings by iterator family: `into_iter`/`iter`/`iter_mut`/`keys`/`values` each own
 //! one traversal's `impl` blocks; this file keeps the public type definitions (their module
-//! location is their `cargo public-api`-visible path -- see AGENTS.md §11).
+//! location is their `cargo public-api`-visible path -- see ).
 
 use std::sync::Arc;
 

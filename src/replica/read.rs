@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -21,7 +20,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Fingerprint of the value-only [`projection`](Self::projection) over a range.
-    ///
     /// This is the timestamp-less counterpart of [`fingerprint`](Self::fingerprint); a dateless
     /// read replica that has converged with this store computes the same value over the same range.
     pub fn value_fingerprint<R: RangeBounds<K>>(&self, range: R) -> Fingerprint {
@@ -54,7 +52,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Mirrors [`Config::max_value_size`](crate::replicated_map::Config::max_value_size) — the
     /// ceiling `ReplicatedMap::try_insert`/`try_update` check an encoded value against before any
-    /// local state changes (#82).
+    /// local state changes.
     pub(crate) fn max_value_size(&self) -> Option<usize> {
         self.max_value_size
     }

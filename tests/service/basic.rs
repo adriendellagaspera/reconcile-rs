@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -83,7 +82,7 @@ async fn test() {
     let key = "42".to_string();
     for i in 0..20 {
         // Unique values per iteration so each `assert_until` observes *this* write, not a value
-        // left over from a previous iteration.
+        // left over from a run.
         let first = format!("first-{i}");
         let second = format!("second-{i}");
         if rng.gen() {
@@ -178,7 +177,7 @@ async fn get_mut_edit_propagates_to_peers() {
     });
     assert_eq!(store1.get(&key).as_deref(), Some(&after));
 
-    // The crux: the in-place edit must reach store2. This fails before the fix, because `get_mut`
+    // The crux: the in-place edit must reach store2. This fails when the invariant is broken, because `get_mut`
     // did not re-stamp the timestamp or broadcast the change.
     assert_until!(store2.get(&key).as_deref() == Some(&after));
 
@@ -188,7 +187,6 @@ async fn get_mut_edit_propagates_to_peers() {
 
 /// Two replicas writing different values to one key concurrently must converge on one value with
 /// matching fingerprints.
-///
 /// A non-commutative tie-break would leave each keeping its own, and since the timestamp is part
 /// of the fingerprint, re-exchanging the pair forever. The assertions below time out if so.
 #[tokio::test(flavor = "multi_thread")]

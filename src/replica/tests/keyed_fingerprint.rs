@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -60,7 +59,7 @@ fn same_cluster_key_yields_matching_fingerprints() {
     load(&a, &entries);
     load(&b, &entries);
     // Two nodes deriving the identical BLAKE3 subkey from the identical cluster key must compute
-    // the identical fingerprint for identical content -- the wiring this issue adds must not turn
+    // the identical fingerprint for identical content -- the wiring this path must must not turn
     // two honestly-configured peers into permanent strangers.
     assert_eq!(
         a.map.load_full().aggregate(..).fingerprint(),

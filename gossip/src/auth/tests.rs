@@ -1,8 +1,7 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// https:/www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https:/opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
@@ -53,7 +52,7 @@ fn debug_never_prints_key_material() {
 #[test]
 fn derive_lift_key_is_deterministic_and_key_dependent() {
     // Same cluster key -> same derived subkey every time, which is what lets every peer in the
-    // cluster derive a matching `rsos::LiftKey` independently, with no extra coordination.
+    // cluster derive a matching `rsos:LiftKey` independently, with no extra coordination.
     assert_eq!(key(1).derive_lift_key(), key(1).derive_lift_key());
     // Different cluster keys -> unrelated subkeys, so two clusters (or a peer mid-rotation) never
     // collide on a lift key by accident.
@@ -84,7 +83,7 @@ fn cluster_key_error_display_messages() {
     );
 }
 
-/// #100: `EncryptionFeatureDisabled`'s `Display` text is user-facing (it's what `with_rotation`
+/// `EncryptionFeatureDisabled`'s `Display` text is user-facing (it's what `with_rotation`
 /// panics with) — assert its actual content, not merely that formatting it doesn't panic.
 #[test]
 fn encryption_feature_disabled_display_message() {
@@ -94,7 +93,7 @@ fn encryption_feature_disabled_display_message() {
     );
 }
 
-/// The full receive-side pipeline (`ARCHITECTURE.md` §5 invariant 5, module doc): check the
+/// The full receive-side pipeline: check the
 /// wire version, then replay-check with a throwaway wide-open filter — these tests seal fixed
 /// near-epoch stamps, so the window must span the gap to real wall-clock time.
 fn verify(payload: Payload<'_, Authenticated>) -> Payload<'_, Verified> {
@@ -150,7 +149,7 @@ fn seal_open_roundtrip() {
     assert_eq!(p.stamp, Stamp::new(12345));
 }
 
-/// #285/#137's rollout: a receiver mid-rotation (`primary` = new key, `also_accept` = [old
+/// /'s rollout: a receiver mid-rotation (`primary` = new key, `also_accept` = [old
 /// key]) still verifies a sender that has not yet moved off the old key, and still seals with
 /// the new one. Once `also_accept` is empty again, the old key is rejected.
 #[test]
@@ -258,7 +257,7 @@ fn open_wrong_key() {
     );
 }
 
-/// `overhead()` for `Enabled` is a plain sum of three independent constants — assert the exact
+/// `overhead` for `Enabled` is a plain sum of three independent constants — assert the exact
 /// value (not just that it is `> 0`) so a `+`/`-` slip in any one term is caught.
 #[test]
 fn enabled_overhead_is_the_sum_of_tag_version_and_replay_header() {
@@ -266,8 +265,8 @@ fn enabled_overhead_is_the_sum_of_tag_version_and_replay_header() {
     assert_eq!(auth.overhead(), TAG_LEN + VERSION_LEN + REPLAY_HEADER_LEN);
 }
 
-/// #100: without the `encryption` feature, `new`/`with_rotation` report
-/// `EncryptionFeatureDisabled` as a `Result::Err`, never a panic.
+/// without the `encryption` feature, `new`/`with_rotation` report
+/// `EncryptionFeatureDisabled` as a `Result:Err`, never a panic.
 #[test]
 #[cfg(not(feature = "encryption"))]
 fn new_reports_encryption_feature_disabled_without_panicking() {
@@ -398,7 +397,7 @@ mod encryption {
 
     /// The flip side of `truncated_is_rejected`: a datagram of exactly `AEAD_NONCE_LEN +
     /// AEAD_TAG_LEN` bytes — an encrypted *empty* payload, nonce + tag and nothing else — must
-    /// still decrypt. The length check in `encryption::open` is a strict `<`, not `<=`.
+    /// still decrypt. The length check in `encryption:open` is a strict `<`, not `<=`.
     #[test]
     fn open_accepts_the_exact_minimum_length_datagram() {
         let k = key(0x11);
@@ -474,7 +473,7 @@ mod encryption {
     }
 
     /// As `also_accept_verifies_a_sender_still_on_the_old_key`, over the encrypted path
-    /// (#285/#137).
+    /// .
     #[test]
     fn also_accept_decrypts_a_sender_still_on_the_old_key() {
         let old_key = key(0x11);

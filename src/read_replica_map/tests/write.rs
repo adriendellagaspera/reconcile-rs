@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -54,10 +53,10 @@ async fn set_on_update_replaces_previous_hook() {
     assert_eq!(second_count.load(Ordering::SeqCst), 1);
 }
 
-/// #294: `start_reconciliation` (the public, buffer-owning wrapper) must actually send a
+/// `start_reconciliation` (the public, buffer-owning wrapper) must actually send a
 /// value-only comparison round to the seeded peer — a mutant that no-ops its body would leave
 /// the peer's socket silent forever, which this test's `recv_from` would then time out on. No
-/// `run()` loop is spawned on either side, so nothing but this call can produce the datagram.
+/// `run` loop is spawned on either side, so nothing but this call can produce the datagram.
 #[tokio::test]
 async fn start_reconciliation_wrapper_actually_transmits() {
     use crate::transport::InMemoryNetwork;

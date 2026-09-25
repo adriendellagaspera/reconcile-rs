@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,7 +6,7 @@
 // except according to those terms.
 
 //! End-to-end sessions built entirely from `rbsr`'s public API: no `reconcile_internal_testing`, no
-//! `reconcile`. #289's acceptance criteria — a stable public constructor plus accessors on
+//! `reconcile`. 's acceptance criteria — a stable public constructor plus accessors on
 //! [`RangeAggregate`], and a subspace session that could not have been written before them.
 
 #![forbid(unsafe_code)]
@@ -95,7 +94,7 @@ fn a_bounded_starting_family_reconciles_only_its_subspace() {
         a.insert(i, i);
         b.insert(i, i);
     }
-    // A difference inside [100, 200) ...
+    // A difference inside [100, 200)...
     a.insert(150, 999);
     // ... and one outside it, which the bounded session below must never see.
     a.insert(350, 999);
@@ -105,7 +104,7 @@ fn a_bounded_starting_family_reconciles_only_its_subspace() {
     let subspace_aggregate = RsosView::aggregate(&a, start..end);
     let seed = RangeAggregate::new(Some(start), Some(end), subspace_aggregate);
 
-    // The constructor round-trips through the accessors #289 asks for.
+    // The constructor round-trips through the accessors asks for.
     assert_eq!(seed.start_bound(), std::ops::Bound::Included(&start));
     assert_eq!(seed.end_bound(), std::ops::Bound::Excluded(&end));
     assert_eq!(seed.aggregate(), &subspace_aggregate);

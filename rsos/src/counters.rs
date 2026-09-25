@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -9,25 +8,19 @@
 //! Deterministic counters for the work the RSOS contract mandates, on both of its paths: the
 //! *counted* half of the write-cost question `benches/contention.rs` can only put in wall-clock
 //! terms, and the read-side descent `Aggregate(l, u)` actually performs.
-//!
 //! # Why counted
-//!
 //! Answering `Aggregate(l, u)` in `O(log n)` requires an up-to-date summary on every node from the
 //! leaf to the root, so **every insert rewrites the cached aggregate of every node on its root
 //! path**. That is the contract's own price, and a throughput benchmark can only report it as a
 //! ratio on one machine. A count is machine-independent — the same number on a laptop and on a
 //! 128-core server — so a result quoting it can be reproduced, or refuted, by someone without
 //! access to the hardware that produced it.
-//!
 //! # The seam cannot be bypassed
-//!
 //! `Node::subtree` is private to `fingerprint_tree_map::node`, and every write to it goes through
 //! one of that module's two setters — which is where `record_aggregate_update` is called. A new
 //! aggregate-maintenance path is counted because it compiles, not because someone remembered to
-//! instrument it (AGENTS.md §10).
-//!
+//! instrument it.
 //! # The read side, and why it is two counters rather than one
-//!
 //! `Aggregate(l, u)` answers a fully-contained subtree from its cached summary in **O(1)** and
 //! otherwise walks the range's two frontiers, scanning up to `2B - 1` entries per node. So its cost
 //! is not the query count but the *shape* of that descent, and the shape needs both numbers:
@@ -36,15 +29,11 @@
 //! range visits fewer nodes for a reason that has nothing to do with how well the range aligns
 //! with the tree's own boundaries. Reported per thread and per operation like the write counter,
 //! and machine-independent for the same reason.
-//!
 //! # Cost when disabled
-//!
-//! Off unless `--cfg reconcile_internal_testing` is in `RUSTFLAGS` (AGENTS.md §6). The call
+//! Off unless `--cfg reconcile_internal_testing` is in `RUSTFLAGS`. The call
 //! sites carry no `#[cfg]`: they call `record_aggregate_update`, which is this module's live one or
 //! its empty-bodied one, chosen by `cfg` here rather than at each call site.
-//!
 //! # Threading
-//!
 //! Counts are **per-thread** (`thread_local!` + [`Cell`](std::cell::Cell), never an atomic): a
 //! shared counter would itself be a contention point, perturbing the very measurement it exists to
 //! explain. Read them from a single-threaded pass — the count is deterministic, so one such pass
@@ -75,7 +64,6 @@ pub mod enabled {
     }
 
     /// A reading of this thread's counters, taken by [`snapshot`].
-    ///
     /// Differences are what carry meaning, so this is a [`Sub`] type, and the only way to read a
     /// count: bracket the operation under study with two snapshots and subtract. There is
     /// deliberately no reset — a counter another reader on the same thread has already bracketed is
@@ -83,7 +71,6 @@ pub mod enabled {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct Counts {
         /// Cached subtree [`Aggregate`](crate::Aggregate)s written.
-        ///
         /// One per node on the root path of the operation, plus one per node whose aggregate a
         /// split, merge or rotation had to recompute wholesale. This is the quantity a plain
         /// `BTreeMap` — same descent, no summary to maintain — scores zero on.
@@ -189,7 +176,7 @@ mod tests {
 
     /// The contract's price, stated exactly: overwriting an existing key changes no tree shape, so
     /// the aggregates it must refresh are precisely those on the key's root path — one per level,
-    /// no more. This is the `O(log n)`-writes-per-write claim `POSITIONING.md` §2.4 item 8 rests on.
+    /// no more. This is the `O(log n)`-writes-per-write claim item 8 rests on.
     #[test]
     fn overwriting_a_key_updates_one_aggregate_per_level_of_its_root_path() {
         let mut map = FingerprintTreeMap::new();
@@ -221,8 +208,7 @@ mod tests {
     /// Reads are not writes. Were the *write* counter reachable from the query path, the
     /// write-cost figure it feeds would silently absorb the cost of `Aggregate(l, u)` — the
     /// operation the contract buys, not the one it charges for.
-    ///
-    /// Narrowed from `Counts::default()` to the one field it is about when the read-side counters
+    /// Narrowed from `Counts::default` to the one field it is about when the read-side counters
     /// landed: those are *supposed* to move here, and a whole-struct equality would have made this
     /// test fail for the opposite of the reason it exists.
     #[test]
@@ -245,7 +231,6 @@ mod tests {
     /// The read counters' sharpest case, and the one a misplaced call site fails: a query whose
     /// bounds contain the whole tree is answered by the root's cached summary, so the descent
     /// enters exactly one node and leaves it without looking at a child.
-    ///
     /// Exact rather than a bound, because this is the O(1) the RSOS contract promises: any number
     /// above one here means the summary was recomputed instead of read.
     #[test]

@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,8 +6,7 @@
 // except according to those terms.
 
 //! [`Comparison`] construction and the read-only accessors [`RefinementPolicy`] is soundly allowed
-//! to see (`ARCHITECTURE.md` §5's no-fingerprint-derived-decisions law).
-//!
+//! to see.
 //! [`RefinementPolicy`]: super::RefinementPolicy
 
 use super::Comparison;
@@ -37,15 +35,13 @@ impl Comparison {
     }
 
     /// Whether the range is already resolved.
-    ///
-    /// Compares the **whole** aggregate, never the fingerprint alone (`ARCHITECTURE.md` §5
+    /// Compares the **whole** aggregate, never the fingerprint alone (
     /// invariant 3). Owned here so no policy can re-derive it wrongly.
     pub fn agrees(&self) -> bool {
         self.local == self.remote
     }
 
     /// Child ranges already emitted this round: the round-budget seam.
-    ///
     /// Counted in ranges, not bytes — this crate owns no encoding. No shipped policy reads it;
     /// [`RefinementPolicy`](super::RefinementPolicy) carries a worked capping example.
     pub const fn children_emitted(&self) -> usize {
@@ -54,12 +50,11 @@ impl Comparison {
 
     /// **Test-only, `cfg(reconcile_internal_testing)`-gated.** The whole **local** [`Aggregate`],
     /// fingerprint included.
-    ///
     /// This is exactly what the no-fingerprint-derived-decisions law (this type's own docs) says a
     /// [`RefinementPolicy`](super::RefinementPolicy) must never read — the cfg gate makes it
     /// reachable only from a `--cfg reconcile_internal_testing` build (never a default one, never
     /// released), it does not make reading it here sound. It exists so an oracle-*coupled* probe
-    /// policy can be written at all, as a dependent crate's own measurement harness (#529):
+    /// policy can be written at all, as a dependent crate's own measurement harness:
     /// `Comparison`'s public, non-gated surface still carries no such accessor, and every *shipped*
     /// policy in this crate still goes through [`span`](Self::span)/[`remote_size`](Self::remote_size)
     /// only.

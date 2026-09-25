@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -116,7 +115,7 @@ async fn transient_load_failure_is_retried_not_fatal() {
         .unwrap();
 }
 
-/// #99: a load failure that exhausts the retry budget reports `RetriesExhausted` — retrying is a
+/// a load failure that exhausts the retry budget reports `RetriesExhausted` — retrying is a
 /// bounded mitigation for a transient hiccup, not a way to silently start fresh forever.
 #[tokio::test]
 async fn load_failure_beyond_retry_budget_reports_retries_exhausted() {
@@ -139,7 +138,7 @@ async fn load_failure_beyond_retry_budget_reports_retries_exhausted() {
     }
 }
 
-/// #99: `InvalidData` (corrupt or incompatible format) reports `Corrupt` **immediately**, with no
+/// `InvalidData` (corrupt or incompatible format) reports `Corrupt` **immediately**, with no
 /// retry — corruption does not clear up on its own, and retrying would only delay the loud
 /// failure the doc comment promises.
 #[tokio::test]
@@ -409,7 +408,7 @@ async fn restart_insert_beats_persisted_tombstone() {
 
 /// The periodic snapshot loop actually calls into the persistence backend after
 /// `SNAPSHOT_INTERVAL` elapses — a mutant collapsing the loop body to a no-op would leave the
-/// backend untouched no matter how long `run()` keeps going.
+/// backend untouched no matter how long `run` keeps going.
 #[tokio::test]
 async fn snapshot_periodically_actually_persists() {
     let dir = tempfile::tempdir().unwrap();
@@ -448,7 +447,7 @@ impl<K: Send + Sync + 'static, V: Send + Sync + 'static> Persistence<K, V> for F
     }
 }
 
-/// #27: `on_persistence_error` fires with the failure on every failed `snapshot_now`, not just
+/// `on_persistence_error` fires with the failure on every failed `snapshot_now`, not just
 /// the first — it is an alerting hook, not a one-shot.
 #[tokio::test]
 async fn on_persistence_error_fires_on_every_failure() {
@@ -498,7 +497,7 @@ async fn on_persistence_error_does_not_fire_on_success() {
     assert_eq!(calls.load(Ordering::Relaxed), 0);
 }
 
-/// `Config::with_snapshot_interval` (#292) must actually reach
+/// `Config::with_snapshot_interval` must actually reach
 /// [`snapshot_periodically`](ReplicatedMap::snapshot_periodically), not just the hardcoded
 /// [`SNAPSHOT_INTERVAL`](super::super::persistence::SNAPSHOT_INTERVAL) default — a interval far
 /// shorter than the default must make the periodic task persist well before a full default

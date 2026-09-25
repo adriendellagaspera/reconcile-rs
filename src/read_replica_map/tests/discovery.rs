@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -54,7 +53,7 @@ impl crate::discovery::Discovery for FakeDiscovery {
     }
 
     fn kind(&self) -> crate::discovery::DiscoveryKind {
-        // Deliberately `Authoritative`: #30's point is that `ReadReplicaMap` treats every kind
+        // Deliberately `Authoritative`: 's point is that `ReadReplicaMap` treats every kind
         // identically (no decommissioning either way), unlike `ReplicatedMap`.
         crate::discovery::DiscoveryKind::Authoritative
     }
@@ -73,8 +72,8 @@ fn read_discovery_replica(config: crate::replicated_map::Config) -> ReadReplicaM
         .expect("valid discovery test config")
 }
 
-/// #30: `with_discovery`/`with_discovery_interval` are plain builders, and any [`Discovery`]
-/// implementation is accepted regardless of `kind()` — there is no
+/// `with_discovery`/`with_discovery_interval` are plain builders, and any [`Discovery`]
+/// implementation is accepted regardless of `kind` — there is no
 /// [`with_discovery`](crate::ReplicatedMap::with_discovery)-style panic guard here, because a
 /// read replica holds no membership a wrongly-decommissioned entry could corrupt.
 #[test]
@@ -90,7 +89,7 @@ fn with_discovery_and_interval_are_builders() {
     assert_eq!(read_replica.discovery_interval, Duration::from_millis(42));
 }
 
-/// #30: `with_dns_discovery` is `with_discovery` plus construction of a `DnsDiscovery` — it must
+/// `with_dns_discovery` is `with_discovery` plus construction of a `DnsDiscovery` — it must
 /// actually set the field, not silently no-op.
 #[test]
 fn with_dns_discovery_sets_a_discovery_source() {
@@ -103,8 +102,8 @@ fn with_dns_discovery_sets_a_discovery_source() {
     assert!(read_replica.discovery.is_some());
 }
 
-/// #30 (the "major gap" row): with no discovery source configured, `discover_periodically` must
-/// return promptly rather than looping forever — `run()`'s `tokio::join!` would otherwise hang
+///  (the "major gap" row): with no discovery source configured, `discover_periodically` must
+/// return promptly rather than looping forever — `run`'s `tokio::join!` would otherwise hang
 /// waiting on it for every replica that never calls `with_discovery`.
 #[tokio::test]
 async fn discover_periodically_is_a_noop_without_a_configured_source() {
@@ -120,7 +119,7 @@ async fn discover_periodically_is_a_noop_without_a_configured_source() {
     );
 }
 
-/// #30 (the "major gap" row): a resolved address is seeded into the peer set exactly like a peer
+///  (the "major gap" row): a resolved address is seeded into the peer set exactly like a peer
 /// discovered by answering a probe, closing "no discovery ⇒ not deployable on Kubernetes".
 #[tokio::test(flavor = "multi_thread")]
 async fn discover_periodically_seeds_resolved_addresses_as_peers() {
@@ -141,7 +140,7 @@ async fn discover_periodically_seeds_resolved_addresses_as_peers() {
     handle.abort();
 }
 
-/// #30: a read replica must never seed its own address as a peer, mirroring
+/// a read replica must never seed its own address as a peer, mirroring
 /// [`ReplicatedMap::discover_periodically`](crate::ReplicatedMap)'s identical self-exclusion.
 #[tokio::test(flavor = "multi_thread")]
 async fn discover_periodically_never_seeds_its_own_address() {
@@ -165,7 +164,7 @@ async fn discover_periodically_never_seeds_its_own_address() {
     handle.abort();
 }
 
-/// #30: a failing discovery round (e.g. a DNS blip) must seed nothing and must not stop the
+/// a failing discovery round (e.g. a DNS blip) must seed nothing and must not stop the
 /// loop — a later successful round still seeds normally, proving the failure is transient
 /// rather than fatal.
 #[tokio::test(flavor = "multi_thread")]

@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -57,7 +56,7 @@ fn two_trees_under_different_keys_never_falsely_converge() {
         b.insert(i, i);
     }
     // A key mismatch (e.g. a rolling upgrade mid-flight, or two clusters with different secrets)
-    // must show up as a difference, never as a spurious match -- README "Security model"'s
+    // must show up as a difference, never as a spurious match -- 's
     // "safely, but wastefully" claim depends on this failing open, not silently.
     assert_ne!(a, b);
 }

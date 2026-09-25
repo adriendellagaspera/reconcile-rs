@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -8,58 +7,45 @@
 
 //! A seeded network-emulation decorator over the [`Transport`](crate::Transport) port: injected one-way delay,
 //! jitter, loss and reordering, configurable per directed link.
-//!
 //! `netem`-feature-gated dev/bench tooling, not part of the crate's default build: this
 //! workspace's own `benches/`/`tests/netem.rs` enable it as a dev-dependency feature, and an
 //! external consumer that needs the same instrument for its own reconciliation-cost measurements
 //! depends on it the same way.
-//!
 //! Every other benchmark in this repository runs at RTT ≈ 0, which prices the axis RBSR is good at
-//! (bytes) and zeroes the axis it is worst at (`POSITIONING.md` §1.3: sequential round-trips). This module
+//! (bytes) and zeroes the axis it is worst at. This module
 //! is the missing instrument, not a fix: it makes the round-trip column cost something.
-//!
 //! Split across two files by concern: this one owns the impairment *parameters* a caller
 //! configures (`Probability`, `Rtt`, `Seed`, `Link`, `Netem`); `transport` owns the
 //! [`Transport`](crate::Transport) decorator itself and its delivery pump. Both halves re-export
 //! flat under `gossip::netem::*`.
-//!
 //! # Why not `turmoil`
-//!
 //! Whether `turmoil` fits was the natural question before building this. It is the right tool for
 //! a different job:
-//!
 //! | `turmoil` ([tokio-rs/turmoil]) | what that costs here |
 //! |---|---|
 //! | time is simulated and advanced a `Builder::tick_duration` at a time (`simulation_duration` is "in simulated time") | Criterion reports wall-clock; a benchmark run inside the simulator would report the simulator's own tick arithmetic — the injected constant, read back |
-//! | hosts are futures registered on a `Sim` and driven by `sim.run()` to a fixed simulated duration | Criterion owns the iteration loop, so `iter_custom` has no way to hand its samples to `sim.run()` |
-//! | "runs multiple concurrent hosts within a single thread" | `gossip_propagation` deliberately measures N real per-node loops contending on one runtime (`benches/README.md`) |
+//! | hosts are futures registered on a `Sim` and driven by `sim.run` to a fixed simulated duration | Criterion owns the iteration loop, so `iter_custom` has no way to hand its samples to `sim.run` |
+//! | "runs multiple concurrent hosts within a single thread" | `gossip_propagation` deliberately measures N real per-node loops contending on one runtime |
 //! | networking is `turmoil::net`, a drop-in replacement for `tokio::net` | `gossip::UdpTransport` wraps `tokio::net::UdpSocket`, so a `turmoil` lane needs its own [`Transport`](crate::Transport) impl **as well as** the simulator — this decorator plus more, not instead of it |
-//!
 //! So: bespoke, and no new dependency at all ([`rand`] is already a dependency). The knobs
 //! below deliberately mirror `turmoil`'s (`min_message_latency`/`max_message_latency`/`fail_rate`),
 //! so swapping a `turmoil` lane in later is a substitution rather than a rewrite.
-//!
 //! # Model
-//!
 //! Impairment is applied **send-side**, keyed by destination: a datagram is drawn against its
 //! link's model, then either dropped or queued for delivery at `now + delay`. A per-node pump task
 //! delivers due datagrams in due order to the wrapped transport. Consequences worth knowing:
-//!
 //! - `send_to` returns immediately, as UDP does — the delay is propagation, not back-pressure.
 //! - a drop is `Ok(n)`, not an error: a lost datagram is indistinguishable from a delivered one at
-//!   the sender, which is the property the protocol has to survive.
+//!  the sender, which is the property the protocol has to survive.
 //! - jitter reorders on its own; [`Link::with_reorder`] adds an explicit displacement on top.
 //! - delivery order is by `(due, send order)`, so a run is reproducible down to the scheduler.
-//!
 //! # Determinism
-//!
 //! Each directed link gets its own PRNG stream, seeded from [`Seed`] mixed with the two endpoint
 //! addresses, and every datagram consumes exactly three draws (loss, jitter, reorder) whatever the
 //! outcome. So the impairment sequence *per link* replays exactly, given the same datagram
 //! sequence on it. What is **not** reproducible bit-for-bit is the interleaving of concurrent tasks
 //! on a multi-threaded runtime — record the seed (the benchmarks print it) and read the results as
 //! reproducible to within the usual benchmark noise.
-//!
 //! [tokio-rs/turmoil]: https://github.com/tokio-rs/turmoil
 
 use std::collections::HashMap;
@@ -74,7 +60,6 @@ mod transport;
 pub use transport::{Impairments, NetemTransport};
 
 /// A probability in `[0, 1]`.
-///
 /// Saturating rather than fallible, as `rbsr::FanOut::new` is: an out-of-range or NaN input is
 /// clamped at construction, so an invalid instance cannot exist and no call site has to check.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -118,7 +103,6 @@ impl Probability {
 }
 
 /// A round-trip time.
-///
 /// The decorator injects **one-way** delay in each direction, and a sweep is stated in RTT because
 /// that is what an operator measures. Owning the halving on the type is the whole point of it:
 /// confusing the two is a silent factor of two in every number this instrument produces.
@@ -173,7 +157,6 @@ impl Seed {
 }
 
 /// The impairment applied to one directed link.
-///
 /// Directed: `a → b` and `b → a` are configured separately, which is what makes an asymmetric or
 /// geographic topology expressible (`Config::remote_interval`/`remote_fanout` model the same split
 /// on the protocol side).
@@ -282,10 +265,9 @@ impl Netem {
 }
 
 /// Mix a seed and both endpoints into a distinct PRNG stream per directed link.
-///
 /// Explicit SplitMix64 rather than `DefaultHasher`, whose output is documented as unstable across
 /// Rust releases — these benchmarks are supposed to be reproducible across machines and over time
-/// (`benches/README.md`), and a seed that only holds within one toolchain is not a seed.
+/// and a seed that only holds within one toolchain is not a seed.
 fn stream_seed(seed: Seed, source: SocketAddr, destination: SocketAddr) -> u64 {
     fn mix(state: &mut u64, value: u64) {
         *state = state

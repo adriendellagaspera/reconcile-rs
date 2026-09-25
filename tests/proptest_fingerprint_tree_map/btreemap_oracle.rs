@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -120,7 +119,7 @@ proptest! {
             }
             // The core safety net: structural, ordering, height, size and hash
             // caches must all hold after *every* mutation. Panics here would be
-            // the rebalancing bugs the issue is worried about.
+            // the rebalancing bugs the test targets.
             tree.check_invariants();
             prop_assert_eq!(tree.len(), oracle.len());
         }

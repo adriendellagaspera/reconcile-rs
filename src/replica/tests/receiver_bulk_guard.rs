@@ -1,15 +1,14 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #85: a peer whose paced bulk transfer to us might still legitimately be in progress must be
+//! a peer whose paced bulk transfer to us might still legitimately be in progress must be
 //! left out of `start_reconciliation`'s targets -- re-initiating a full comparison mid-transfer
 //! only re-diffs and re-sends ranges the peer is already (legitimately) sending, doubling traffic
-//! (akvize/reconcile-rs#178) instead of converging any faster.
+//!  instead of converging any faster.
 
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -78,7 +77,7 @@ fn engine_with_counter(
     (a, counter)
 }
 
-/// The core #85 regression: a peer whose dated bulk-update batch just landed within
+/// The core regression: a peer whose dated bulk-update batch just landed within
 /// `repair_interval` must not be sent a fresh full comparison.
 #[tokio::test]
 async fn a_peer_with_a_recent_bulk_update_is_excluded_from_the_round() {

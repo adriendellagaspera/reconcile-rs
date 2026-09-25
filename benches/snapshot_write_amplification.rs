@@ -1,26 +1,23 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #46 baseline: logical bytes written by the *current* full-snapshot implementation when
+//!  baseline: logical bytes written by the *current* full-snapshot implementation when
 //! only d of n keys change. This is a manual, single-process, peerless probe: no periodic
 //! task, gossip traffic or concurrent writers. Each trial uses a fresh directory and store.
-//!
 //! "Bytes" is the exact length of the encoded snapshot file, i.e. payload bytes passed to
 //! the file writer (not physical-device write amplification, filesystem metadata or RSS).
 //! Durations include ReplicatedMap's full-state collection, serialization, file sync and
 //! rename; they are not isolated disk throughput. An explicit snapshot_now() is issued
 //! even at d=0 to expose its full-rewrite semantics; the periodic idle threshold is separate.
 //! A fresh process-equivalent store loads each completed snapshot and must match its source.
-//!
 //! Run: cargo bench --bench snapshot_write_amplification
 //! Override: RECONCILE_BASELINE_SIZES=10000,100000,1000000
-//!           RECONCILE_BASELINE_DELTAS=0,1,100,1000
-//!           RECONCILE_BASELINE_TRIALS=3
+//!  RECONCILE_BASELINE_DELTAS=0,1,100,1000
+//!  RECONCILE_BASELINE_TRIALS=3
 //! This is a counted/timed report, deliberately not a Criterion statistical benchmark.
 
 use std::fs;

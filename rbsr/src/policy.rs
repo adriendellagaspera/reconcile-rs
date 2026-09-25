@@ -9,17 +9,7 @@
 //! The refinement-policy seam: [`RefinementPolicy`], the [`Comparison`] it is shown, the
 //! [`Decision`] it returns, and the three shipped instantiations.
 //!
-//! Split across siblings by concern: `params` owns [`SplitStride`]/[`FanOut`]; `cutoffs` owns the
-//! enumeration-cutoff logic [`SqrtFanOut`] and [`FixedFanOut`] share; `sqrt_fan_out`,
-//! `fixed_fan_out` and `enumerate_below_threshold` each own one shipped policy's definition and
-//! [`RefinementPolicy`] impl; `forwarding` owns the blanket `&P` impl; `constant_stride_split` and
-//! `span_hashed_stride_split` (both `cfg(reconcile_internal_testing)`) each own one test-only
-//! oracle-independent probe's definition and impl. Each is `pub use`-d back into this file, so
-//! `cargo public-api`'s reported path (AGENTS.md §11) stays `rbsr::TypeName` regardless of which
-//! sibling defines it. `comparison` owns [`Comparison`]'s construction and accessors only: the
-//! definition stays in this file so its private fields stay reachable from sibling probes, not
-//! just descendants of `comparison`. This file otherwise keeps [`Decision`] and
-//! [`RefinementPolicy`] themselves, plus the module doc every sibling shares.
+//! Public policy types are re-exported from this module.
 
 use rsos::Aggregate;
 
@@ -109,18 +99,18 @@ pub enum Decision {
     /// (`SPLITBYRANK`), each re-advertised with this peer's aggregate.
     ///
     /// The driver owns Proposition 4.1's partition invariant whatever stride is chosen
-    /// (`ARCHITECTURE.md` §5 invariant 10). A stride at or above [`Comparison::span`] emits one
+    /// . A stride at or above [`Comparison::span`] emits one
     /// child equal to the parent — legitimate, used by every shipped policy for a lone local
     /// element (`span() <= 1`), terminating only because the peer refines it. For `span() > 1`
     /// that argument is [`RefinementPolicy`]'s progress law, not the driver's to assume: a
     /// `Split` that violates it is converted to an [`Enumerate`](Decision::Enumerate) instead of
-    /// reaching the fan-out below (`ARCHITECTURE.md` §5 invariant 13).
+    /// reaching the fan-out below .
     Split(SplitStride),
 }
 
 /// The rule that turns one range comparison into one [`Decision`].
 ///
-/// A **purely local decision, never a wire contract** (`ARCHITECTURE.md` §3.1): peers running
+/// A **purely local decision, never a wire contract** : peers running
 /// different policies converge. A policy must therefore never be advertised or negotiated.
 ///
 /// # Law: eventual progress
@@ -130,11 +120,11 @@ pub enum Decision {
 /// single-child identity split [`Decision::Split`]'s docs carve out for `span() <= 1`. Every
 /// shipped policy holds this (pinned by `tests/shipped_policies_always_progress.rs`); the
 /// an oracle-coupled probe can violate it — a content-determined stride can land a range on a fixed
-/// point that never shrinks. The protocol invariant is recorded in `ARCHITECTURE.md` §5.
+/// point that never shrinks.
 ///
 /// Breaking the law no longer hangs the driver: `protocol_round_with_policy` converts a
 /// non-progressing `Split` into an `Enumerate` rather than trusting a plugged-in policy to hold
-/// this itself (`ARCHITECTURE.md` §5 invariant 13). That makes the law non-fatal to violate, not
+/// this itself . That makes the law non-fatal to violate, not
 /// free to — a policy that violates it still pays for every such range in an immediate IDLIST
 /// instead of the split it asked for.
 ///
@@ -146,7 +136,7 @@ pub enum Decision {
 /// | [`SqrtFanOut`] | the same four | `⌊√m⌋` elements per child, so `Θ(√m)` children |
 /// | [`EnumerateBelowThreshold`] | the paper's `\|X ∩ [l, u)\| ≤ t` | a constant `b` |
 ///
-/// Costs: `benches/protocol.rs`. Default and the evidence for it: `POSITIONING.md` §2.2.
+/// Protocol costs are measured by `benches/protocol.rs`.
 ///
 /// # Implementing your own
 ///

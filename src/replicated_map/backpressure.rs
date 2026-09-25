@@ -1,15 +1,14 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! `Backpressure`, `WriteRejected`, and `ReplicatedMap::try_insert` (#83) — split out of
-//! `write.rs` to keep it under the file-size budget (AGENTS.md §3); `try_update`'s counterpart
+//! `Backpressure`, `WriteRejected`, and `ReplicatedMap::try_insert` — split out of
+//! `write.rs` to keep it under the file-size budget; `try_update`'s counterpart
 //! lives in `mutate.rs` next to the `update`/`upsert` core it shares (`mutate_live_checked`).
-//! `WriteRejected` also wraps `value_size::ValueTooLarge` (#82): both `try_insert` and
+//! `WriteRejected` also wraps `value_size::ValueTooLarge`: both `try_insert` and
 //! `try_update` reject on either cause before touching the map.
 
 use std::fmt;
@@ -29,11 +28,11 @@ use super::ReplicatedMap;
 #[non_exhaustive]
 pub enum WriteRejected {
     /// The value's encoded size exceeds
-    /// [`Config::max_value_size`](super::Config::max_value_size) (#82).
+    /// [`Config::max_value_size`](super::Config::max_value_size).
     TooLarge(ValueTooLarge),
     /// The write-broadcast egress budget
     /// ([`Config::max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts)) is
-    /// exhausted (#83).
+    /// exhausted.
     Backpressure(Backpressure),
 }
 
@@ -57,15 +56,14 @@ impl std::error::Error for WriteRejected {
 
 /// Returned by [`try_insert`](ReplicatedMap::try_insert)/[`try_update`](ReplicatedMap::try_update)
 /// when the write-broadcast egress budget
-/// ([`Config::max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts), #83) is
+/// ([`Config::max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts), ) is
 /// exhausted.
-///
 /// The write is **not** applied when this is returned — map and broadcast are all-or-nothing for
 /// these two calls, unlike their infallible counterparts
 /// ([`insert`](ReplicatedMap::insert)/[`update`](ReplicatedMap::update)/
 /// [`insert_bulk`](ReplicatedMap::insert_bulk)), which always apply the write and, at the same
 /// budget, silently skip only that call's eager broadcast — recovered by the next periodic
-/// reconciliation round or repair retry (#23), the same bounded cost an already-tolerated lost
+/// reconciliation round or repair retry, the same bounded cost an already-tolerated lost
 /// datagram is. Prefer the infallible methods for ordinary writes; reach for `try_insert`/
 /// `try_update` when the caller wants to know egress is falling behind and decide for itself
 /// (retry, buffer, drop) rather than rely on that backstop.
@@ -92,42 +90,35 @@ impl fmt::Display for Backpressure {
 impl std::error::Error for Backpressure {}
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
-    /// Fallible counterpart of [`insert`](Self::insert) (#83): checks `value`'s encoded size
-    /// against [`Config::max_value_size`](super::Config::max_value_size) (#82) before touching
+    /// Fallible counterpart of [`insert`](Self::insert): checks `value`'s encoded size
+    /// against [`Config::max_value_size`](super::Config::max_value_size) before touching
     /// anything, then claims a [`max_concurrent_broadcasts`](super::Config::max_concurrent_broadcasts)
     /// egress slot **before** touching the map, so a call either fully applies — locally and
     /// broadcast — or not at all. Always sends immediately, bypassing
     /// [`coalesce_window`](super::Config::coalesce_window) batching: a caller reaching for this
     /// feedback wants to know now.
-    ///
     /// # Errors
-    ///
     /// [`WriteRejected::TooLarge`] when `value`'s encoded size exceeds `max_value_size`, or
     /// [`WriteRejected::Backpressure`] when the egress budget is already at capacity. The map is
     /// untouched either way.
-    ///
     /// # Panics
-    ///
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime, on the
     /// success path only.
-    ///
     /// ```
     /// # use std::sync::Arc;
     /// use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
-    ///
     /// # #[tokio::main]
-    /// # async fn main() {
-    /// let network = InMemoryNetwork::new();
-    /// let transport = Arc::new(network.bind("127.0.0.1:8309".parse().unwrap()));
+    /// # async fn main {
+    /// let network = InMemoryNetwork::new;
+    /// let transport = Arc::new(network.bind("127.0.0.1:8309".parse.unwrap));
     /// let store = ReplicatedMap::<String, i32>::new_with_transport(
-    ///     Config::default().with_insecure_no_key(),
-    ///     transport,
+    ///  Config::default.with_insecure_no_key,
+    ///  transport,
     /// )
     /// .expect("valid configuration");
-    ///
-    /// assert_eq!(store.try_insert("a".to_string(), 1), Ok(None));
-    /// assert_eq!(store.try_insert("a".to_string(), 2), Ok(Some(1)));
-    /// assert_eq!(store.get_cloned(&"a".to_string()), Some(2));
+    /// assert_eq!(store.try_insert("a".to_string, 1), Ok(None));
+    /// assert_eq!(store.try_insert("a".to_string, 2), Ok(Some(1)));
+    /// assert_eq!(store.get_cloned(&"a".to_string), Some(2));
     /// # }
     /// ```
     pub fn try_insert(&self, key: K, value: V) -> Result<Option<V>, WriteRejected> {

@@ -1,12 +1,11 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #292: `run`'s shutdown/final-flush contract, and the introspection accessors
+//! `run`'s shutdown/final-flush contract, and the introspection accessors
 //! (`sync_state`/`peers`/`members`/`local_addr`) that answer "is this node actually
 //! synchronizing" instead of just "is the process up".
 

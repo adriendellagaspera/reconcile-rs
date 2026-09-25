@@ -1,18 +1,15 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Range fingerprint primitive: `ARCHITECTURE.md` §5 invariant 1, §6.
-//!
+//! Range fingerprint primitive: invariant 1, §6.
 //! `[u64; 4]`, per-element BLAKE3 over the [canonical encoding](crate::encoding), combined by
 //! addition mod 2²⁵⁶ — an abelian group whose carries are not `GF(2)`-linear, unlike the XOR
 //! combiner it must never become. Hash function *and* input encoding are both pinned here; either
 //! one changing is a wire break, frozen by this module's golden vectors.
-//!
 //! Non-`GF(2)`-linearity defeats the linear-algebra collision search that sinks XOR, but it is **not**
 //! collision resistance against a *chosen-input* (writing) adversary: finding a colliding multiset is
 //! Wagner's balance problem over `ℤ/2²⁵⁶`, which a k-tree solves in subexponential time — reduction
@@ -20,7 +17,6 @@
 //! a matched window. **What this type guarantees on its own is therefore honest-model soundness, not
 //! unforgeability**: anyone who can write to a replica can grind a collision, demonstrated against
 //! the RBSR driver in `rbsr/tests/wagner_false_convergence.rs`.
-//!
 //! [`LiftKey`] closes that gap for a keyed lift: `BLAKE3_keyed(K, …)` reduces grinding to breaking
 //! the PRF instead of ~2³¹ offline evaluations, since the attacker no longer knows the hash they
 //! must invert (Clarke et al., ASIACRYPT 2003). This closes the gap only for holders of the key —
@@ -28,8 +24,7 @@
 //! unauthenticated mode) is exactly as Wagner-breakable as before; keying is
 //! `reconcile`'s responsibility, derived from the shared cluster key already required for datagram
 //! authentication (`ClusterKey::derive_lift_key` — `gossip` — is never referenced here: `rsos`
-//! stays domain-pure, AGENTS.md §9, and takes only the derived 32 bytes).
-//!
+//! stays domain-pure,, and takes only the derived 32 bytes).
 //! **The collision bound assumes a set, not a multiset**: every statement above holds only if
 //! each live element is folded in exactly once. `FingerprintTreeMap::insert` on an already-present
 //! key applies a signed `new_fp - old_fp` delta rather than a blind `combine` (the type's sole
@@ -38,7 +33,6 @@
 //! `tests/proptest_fingerprint_tree_map/btreemap_oracle.rs`'s duplicate-delivery property. Under a genuine
 //! multiplicity (an element folded `c` times without a matching retraction) the bound degrades to
 //! `2^-(w - v₂(c))`, and vanishes outright under a `GF(2)`-linear combiner.
-//!
 //! Meyer, arXiv:2212.13567; Clarke et al., *Incremental Multiset Hash Functions* (ASIACRYPT 2003).
 
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
@@ -48,19 +42,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::encoding;
 
 /// A 256-bit range fingerprint: four little-endian 64-bit limbs, limb 0 least significant.
-///
 /// An abelian group under addition mod 2²⁵⁶ — `+`/[`combine`](Fingerprint::combine) merges
 /// disjoint ranges, `-` removes, [`ZERO`](Fingerprint::ZERO) is the identity.
-///
 /// A non-empty range can fingerprint to [`ZERO`](Fingerprint::ZERO); never decide emptiness on
 /// the fingerprint, only on the element count.
-///
 /// ```
 /// use rsos::{lift, Fingerprint};
-///
 /// let a = lift(&1, &"one");
 /// let b = lift(&2, &"two");
-///
 /// // combine/remove are inverses -- this is what lets a range's fingerprint be maintained
 /// // incrementally as elements are inserted and removed, rather than rehashed from scratch.
 /// let combined = a.combine(b);
@@ -70,7 +59,7 @@ use crate::encoding;
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Fingerprint(pub [u64; 4]);
 
-// ARCHITECTURE.md §5 invariant 1: serializing through `[u8; 32]` rather than `[u64; 4]`
+//  invariant 1: serializing through `[u8; 32]` rather than `[u64; 4]`
 // avoids bincode's per-limb varint length byte, in any `serde` backend. Deliberately a wire
 // break — see `tests/wire_format.rs`'s golden vector. Does not touch `rsos::encoding` (§6),
 // which already encodes every integer at fixed width.
@@ -94,14 +83,11 @@ impl Fingerprint {
     /// [`to_le_bytes`](Fingerprint::to_le_bytes). A third party can build a `lift`-compatible
     /// fingerprint from raw bytes (e.g. a BLAKE3 digest computed with the re-exported
     /// [`blake3`]) without reimplementing this limb decode.
-    ///
     /// ```
     /// use rsos::Fingerprint;
-    ///
     /// let fp = Fingerprint([1, 2, 3, 4]);
-    /// assert_eq!(Fingerprint::from_le_bytes(&fp.to_le_bytes()), fp);
+    /// assert_eq!(Fingerprint::from_le_bytes(&fp.to_le_bytes), fp);
     /// ```
-    ///
     /// Unrolled rather than looped over the four limbs: a fixed count of four is simpler written
     /// out than indexed, and it keeps this `const fn` free of a manually incremented loop counter
     /// — the shape a single mutated `+=` could turn into an infinite loop, rather than a
@@ -232,27 +218,21 @@ impl std::fmt::Display for Fingerprint {
 }
 
 /// Key material for the keyed BLAKE3 lift: 32 bytes, opaque to `rsos`.
-///
-/// `rsos` never derives this itself — it has no notion of a cluster secret (AGENTS.md §9 domain
+/// `rsos` never derives this itself — it has no notion of a cluster secret ( domain
 /// purity forbids a dependency on `gossip`, which owns `ClusterKey`). `reconcile` derives it via
 /// `ClusterKey::derive_lift_key` (`gossip/src/auth/key.rs`) — a BLAKE3 `derive_key` subkey, not the
 /// raw cluster key, so a MAC key leak and a lift key leak stay independent — and hands the 32 bytes
 /// here through [`LiftKey::new`].
-///
 /// `Clone` but not `Copy`, matching `ClusterKey`'s own reasoning: cheap to extend with a wiping
 /// `Drop` later without an API break. `Debug` is redacting for the same reason a key's bytes are
 /// never logged.
-///
 /// ```
 /// use rsos::{lift_keyed, LiftKey};
-///
 /// let key_a = LiftKey::new([1; 32]);
 /// let key_b = LiftKey::new([2; 32]);
-///
 /// // A different key lifts the same pair to a different fingerprint -- the whole point: an
 /// // attacker who does not hold the key cannot predict, and therefore cannot grind, the output.
 /// assert_ne!(lift_keyed(&key_a, &1, &"one"), lift_keyed(&key_b, &1, &"one"));
-///
 /// // Debug never prints the key material, even by accident.
 /// assert_eq!(format!("{key_a:?}"), "LiftKey(\"<redacted>\")");
 /// ```
@@ -288,9 +268,7 @@ impl Blake3Hasher {
     }
 
     /// Absorb `value`'s canonical encoding.
-    ///
     /// # Panics
-    ///
     /// Only if a hand-written [`Serialize`] impl fails — surfaced loudly, never folded into a
     /// wrong fingerprint.
     fn absorb<T: Serialize + ?Sized>(&mut self, value: &T) {
@@ -305,7 +283,6 @@ impl Blake3Hasher {
 /// Def. 3.4's lifting function `lift: U → M`, optionally keyed: BLAKE3 (keyed when `lift_key` is
 /// `Some`, per [`Blake3Hasher::new`]) over the [canonically encoded](crate::encoding) key followed
 /// by the canonically encoded value.
-///
 /// The shared implementation behind [`lift`]/[`lift_keyed`] (`lift_key: None`/`Some` respectively)
 /// and `FingerprintTreeMap`'s internals, which reach it directly to avoid re-deriving `Option`
 /// dispatch at every one of the tree's own lift sites.
@@ -324,14 +301,11 @@ pub(crate) fn lift_with<K: Serialize + ?Sized, V: Serialize + ?Sized>(
 /// Part of the wire protocol — see this module's golden vectors. The [`Serialize`] bound admits
 /// keys and values std implements no [`Hash`](std::hash::Hash) for
 /// ([`HashMap`](std::collections::HashMap), [`HashSet`](std::collections::HashSet)).
-///
 /// ```
 /// use rsos::lift;
-///
 /// // Injective within a type: changing either half of the pair moves the fingerprint.
 /// assert_ne!(lift(&1, &"a"), lift(&2, &"a"));
 /// assert_ne!(lift(&1, &"a"), lift(&1, &"b"));
-///
 /// // Deterministic: the same pair always lifts to the same fingerprint.
 /// assert_eq!(lift(&1, &"a"), lift(&1, &"a"));
 /// ```
@@ -342,12 +316,9 @@ pub fn lift<K: Serialize + ?Sized, V: Serialize + ?Sized>(key: &K, value: &V) ->
 /// [`lift`], keyed under `lift_key`. The same `(key, value)` pair lifts to an unrelated
 /// fingerprint under every distinct key, so a chosen-input adversary without `lift_key` cannot
 /// predict, and therefore cannot grind, a collision — see this module's doc.
-///
 /// ```
 /// use rsos::{lift_keyed, LiftKey};
-///
 /// let key = LiftKey::new([7; 32]);
-///
 /// // Still injective and deterministic within one key, exactly like the unkeyed `lift`.
 /// assert_ne!(lift_keyed(&key, &1, &"a"), lift_keyed(&key, &2, &"a"));
 /// assert_eq!(lift_keyed(&key, &1, &"a"), lift_keyed(&key, &1, &"a"));
@@ -361,13 +332,10 @@ pub fn lift_keyed<K: Serialize + ?Sized, V: Serialize + ?Sized>(
 }
 
 /// The canonical 256-bit digest of a single value — [`lift`] with no key half, same encoding.
-///
 /// ```
 /// use rsos::{digest, lift};
-///
 /// // No key half: digesting a value is lift with a unit key.
-/// assert_eq!(digest(&"Hello"), lift(&(), &"Hello"));
-///
+/// assert_eq!(digest(&"Hello"), lift(&, &"Hello"));
 /// // Distinct values digest to distinct fingerprints.
 /// assert_ne!(digest(&"Hello"), digest(&"Hell"));
 /// ```
@@ -376,12 +344,10 @@ pub fn digest<T: Serialize + ?Sized>(value: &T) -> Fingerprint {
 }
 
 /// [`digest`], keyed under `lift_key` — [`lift_keyed`] with no key half, same encoding.
-///
 /// ```
 /// use rsos::{digest_keyed, lift_keyed, LiftKey};
-///
 /// let key = LiftKey::new([7; 32]);
-/// assert_eq!(digest_keyed(&key, &"Hello"), lift_keyed(&key, &(), &"Hello"));
+/// assert_eq!(digest_keyed(&key, &"Hello"), lift_keyed(&key, &, &"Hello"));
 /// ```
 pub fn digest_keyed<T: Serialize + ?Sized>(lift_key: &LiftKey, value: &T) -> Fingerprint {
     lift_with(Some(lift_key), &(), value)

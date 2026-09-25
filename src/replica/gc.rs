@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -19,8 +18,7 @@ use crate::entry::Entry;
 use super::Replica;
 
 /// A deterministic, cross-node version token for a value: the low 64 bits of `rsos::digest`
-/// (`ARCHITECTURE.md` §5 invariant 7).
-///
+/// .
 /// A peer acknowledges the exact tombstone version it holds, so a stale ack cannot authorize GC of
 /// a newer one.
 pub(crate) fn version_hash<V: Serialize>(value: &V) -> u64 {
@@ -70,7 +68,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Whether `peer` still owes an acknowledgment on some held tombstone — i.e. whether its
     /// absence would block GC.
-    ///
     /// Walks [`live_tombstones`](Self::live_tombstones), not
     /// [`tombstone_acks`](Self::tombstone_acks): a freshly deleted tombstone has no ack entry yet
     /// and must still count as pending.

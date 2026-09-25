@@ -1,8 +1,7 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// https:/www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https:/opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
@@ -122,10 +121,10 @@ fn corpora() -> Vec<(&'static str, Vec<i32>, Vec<i32>)> {
 }
 
 /// A policy that behaves like [`FixedFanOut`] except it never actually narrows a range once a
-/// real cut is possible (`span() > 1`) — it asks for a stride wider than any span instead.
-/// `ARCHITECTURE.md` §5 invariant 13 (#420): included in [`policies`] so the driver's guard,
+/// real cut is possible (`span > 1`) — it asks for a stride wider than any span instead.
+///  invariant 13: included in [`policies`] so the driver's guard,
 /// not this policy's own hygiene, is what the convergence matrix below is proving. Without
-/// that guard this would hang exactly like the oracle-coupled probe (#356).
+/// that guard this would hang exactly like the oracle-coupled probe.
 #[derive(Clone, Copy, Debug, Default)]
 struct NeverNarrows;
 
@@ -160,8 +159,8 @@ fn policies() -> Vec<(&'static str, Box<dyn RefinementPolicy>)> {
     ]
 }
 
-/// `ARCHITECTURE.md` §5 invariant 13 (#420), isolated to one round: a policy asking for a
-/// stride that would not narrow a `span() > 1` range must not reach the fan-out loop as a
+///  invariant 13, isolated to one round: a policy asking for a
+/// stride that would not narrow a `span > 1` range must not reach the fan-out loop as a
 /// `Split` at all — it is answered as an `Enumerate`, counted and bounced back exactly like a
 /// policy that had returned `Enumerate` itself.
 #[test]
@@ -189,7 +188,7 @@ fn non_progressing_split_is_converted_to_enumerate() {
     );
     assert_eq!(enumeration_ranges.len(), 1);
     // The peer's range was non-empty, so IDLIST's one-directional bounce-back applies here
-    // exactly as it would for a policy that had returned `Decision::Enumerate` directly.
+    // exactly as it would for a policy that had returned `Decision:Enumerate` directly.
     assert_eq!(child_ranges.len(), 1);
     assert_eq!(child_ranges[0].aggregate, Aggregate::ZERO);
 }

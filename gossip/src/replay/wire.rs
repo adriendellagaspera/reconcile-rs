@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,7 +6,7 @@
 // except according to those terms.
 
 //! [`Seq`]/[`Stamp`] wire encoding, ordering and freshness — the two replay-header fields'
-//! type-owned validation (AGENTS.md §4).
+//! type-owned validation.
 
 use std::fmt;
 use std::ops::Sub;

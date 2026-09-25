@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,16 +6,13 @@
 // except according to those terms.
 
 //! Durability for a replicated map: the [`Persistence`] port and its snapshot value type.
-//!
 //! A backend is mandatory; the default [`InMemoryPersistence`] is **not durable**. A node that
 //! restarts with an empty map has lost its tombstones and will re-learn deleted values from peers,
 //! so a durable backend (`reconcile::FileSnapshot`) is what keeps a restart from resurrecting
 //! deletions.
-//!
 //! Persisted: every entry, live and tombstone, plus the causal-stability membership and acks. The
 //! tombstone-expiry wheel is not — replaying entries through the pre-insert hook rebuilds it.
-//!
-//! Infrastructure-free (`ARCHITECTURE.md` §2.1); the file-backed adapter lives in `reconcile`.
+//! Infrastructure-free; the file-backed adapter lives in `reconcile`.
 
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -32,25 +28,21 @@ use crate::entry::Entry;
 pub type DatedEntries<K, V> = Vec<(K, Entry<Timestamp, V>)>;
 
 /// Everything a replicated map needs to survive a restart without behaving like a fresh replica.
-///
 /// ```
 /// use lww_register::{Entry, PersistedState};
 /// use lww_register::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
-///
 /// let stamp = Timestamp::new(Hlc::new(PhysicalTime::from_millis(0), LogicalCounter::new(0)), NodeId::new(1));
 /// let entries = vec![("a", Entry::present(stamp, 1))];
-///
 /// // `From<DatedEntries>`: the common case, when membership and tombstone acks haven't been
 /// // observed yet -- e.g. building a fresh snapshot in a test.
-/// let fresh: PersistedState<&str, i32> = entries.clone().into();
-/// assert!(fresh.members.is_empty());
-/// assert!(fresh.tombstone_acks.is_empty());
-///
+/// let fresh: PersistedState<&str, i32> = entries.clone.into;
+/// assert!(fresh.members.is_empty);
+/// assert!(fresh.tombstone_acks.is_empty);
 /// // `new`: when membership or tombstone acks carry real values -- reconstructing a snapshot
 /// // loaded from a durable backend, say.
-/// let mut members = std::collections::HashSet::new();
-/// members.insert("127.0.0.1".parse().unwrap());
-/// let full = PersistedState::new(entries, members.clone(), Default::default());
+/// let mut members = std::collections::HashSet::new;
+/// members.insert("127.0.0.1".parse.unwrap);
+/// let full = PersistedState::new(entries, members.clone, Default::default);
 /// assert_eq!(full.members, members);
 /// ```
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -111,29 +103,22 @@ impl<K, V> From<DatedEntries<K, V>> for PersistedState<K, V> {
 }
 
 /// A pluggable durable backend for a replicated map.
-///
 /// Held behind an [`Arc`](std::sync::Arc) and snapshotted from a background task, hence
 /// `Send + Sync + 'static`.
-///
 /// ```
 /// use lww_register::{Entry, InMemoryPersistence, PersistedState, Persistence};
 /// use lww_register::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
-///
 /// let stamp = Timestamp::new(Hlc::new(PhysicalTime::from_millis(0), LogicalCounter::new(0)), NodeId::new(1));
-/// let backend = InMemoryPersistence::new();
-/// assert!(backend.load().unwrap().is_none()); // nothing saved yet
-///
-/// let state: PersistedState<&str, i32> = vec![("a", Entry::present(stamp, 1))].into();
-/// backend.save(&state).unwrap();
-///
-/// let loaded = backend.load().unwrap().unwrap();
+/// let backend = InMemoryPersistence::new;
+/// assert!(backend.load.unwrap.is_none); // nothing saved yet
+/// let state: PersistedState<&str, i32> = vec![("a", Entry::present(stamp, 1))].into;
+/// backend.save(&state).unwrap;
+/// let loaded = backend.load.unwrap.unwrap;
 /// assert_eq!(loaded.entries, state.entries);
 /// ```
 pub trait Persistence<K, V>: Send + Sync + 'static {
     /// Load the previously saved state, or `Ok(None)` if nothing was ever saved.
-    ///
     /// # Call context
-    ///
     /// Called synchronously and inline, once, from `reconcile::ReplicatedMap::with_persistence` —
     /// before the node starts gossiping, typically from within an already-`async` caller (see that
     /// method's own doctest). A slow or blocking implementation stalls whichever thread runs that
@@ -141,9 +126,7 @@ pub trait Persistence<K, V>: Send + Sync + 'static {
     /// incremental load, so a large snapshot is read and deserialized in full, every time.
     fn load(&self) -> io::Result<Option<PersistedState<K, V>>>;
     /// Durably save the given state, atomically replacing any previous snapshot.
-    ///
     /// # Call context
-    ///
     /// Called synchronously and inline — never via `spawn_blocking` — both from the periodic
     /// background snapshot task and from an explicit caller-triggered flush; a slow implementation
     /// blocks whichever Tokio worker thread is running that call for as long as it takes. `O(state
@@ -181,18 +164,14 @@ where
     V: Clone + Send + Sync + 'static,
 {
     /// Returns the last saved state, or `Ok(None)`.
-    ///
     /// # Panics
-    ///
     /// If the internal mutex is poisoned.
     fn load(&self) -> io::Result<Option<PersistedState<K, V>>> {
         Ok(self.state.lock().unwrap().clone())
     }
 
     /// Replaces the in-memory snapshot with `state`.
-    ///
     /// # Panics
-    ///
     /// If the internal mutex is poisoned.
     fn save(&self, state: &PersistedState<K, V>) -> io::Result<()> {
         *self.state.lock().unwrap() = Some(state.clone());

@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,41 +6,35 @@
 // except according to those terms.
 
 //! Protocol-level cost of one full RBSR reconciliation, under the shipped default refinement
-//! policy (`rbsr::FixedFanOut` at `b = 16`): how many total wire bytes, messages, advertised
+//! policy (`rbsr:FixedFanOut` at `b = 16`): how many total wire bytes, messages, advertised
 //! ranges, datagrams and local RSOS queries two peers spend to resolve a difference of size `d` in
 //! a store of size `n`, how that changes when the differences cluster instead of scattering, and
 //! how it moves with the size of a stored value.
-//!
 //! **One unit: total wire bytes.** Refinement bytes and the values an IDLIST enumeration ships are
 //! two halves of one quantity, so both are summed here at four payload sizes `V` (`VALUE_SIZES`) —
 //! the axis `system`'s `memory_footprint` already varies. The breakdown is still printed under each
 //! total, because it says *why* the run landed where it did.
-//!
 //! One-way messages stay a separate column on purpose: no byte total prices a round trip. This
 //! target runs at RTT ≈ 0, so weigh that column by your own — at the rate `benches/system.rs`'s
 //! injected-RTT lane measures, one RTT per round trip with no hidden multiplier
-//! (`benches/README.md`).
-//!
+//! .
 //! **Why one drive prices every `V`.** Both peers assign the same value to the same key, so equal
 //! key sets have equal aggregates whatever the payload is, and every SKIP/IDLIST/SPLIT decision
 //! reads aggregates alone: the *decisions* — messages, ranges, enumerations, elements, queries —
 //! are identical at every payload size, and only the per-element wire cost moves. So the drive runs
 //! once, over a `u64`-valued store, and each enumerated element is priced by encoding the dated
 //! cell the transport really ships for it, `(K, Entry<Timestamp, Vec<u8>>)`
-//! (`src/replica.rs`'s `Message::EntryUpdate`), through the transport's own encoder. That is measured
+//! (`src/replica.rs`'s `Message:EntryUpdate`), through the transport's own encoder. That is measured
 //! rather than argued: `payload_size_does_not_move_the_trace` drives the same case over a `u64`, an
 //! 8-byte and a 4 KB payload and compares before any table is printed. It also buys the 4 KB
 //! column at `n = 10⁶`, which materializing 4 GB of payload twice could not.
-//!
 //! Both byte columns are payload before framing: neither carries the one-byte `Message` variant tag
 //! the transport prepends per item, nor the authenticator's per-datagram overhead.
-//!
 //! Unlike `bench` (structure micro-benchmarks) and `system` (end-to-end over `ReplicatedMap`), this
 //! target drives the protocol driver directly, through the same two crates a downstream consumer
 //! would use without the facade: `rsos` for the store and `rbsr` for the round. It needs no feature
 //! gate and no runtime — a reconciliation is a pure function of two stores.
-//!
-//! Reproduction and interpretation: `benches/README.md`. Not run in CI (only compile-checked); run
+//! Reproduction and interpretation: the benchmark guide. Not run in CI (only compile-checked); run
 //! locally with `cargo bench --bench protocol`.
 
 use std::hint::black_box;
@@ -76,8 +69,8 @@ const VALUE_SIZES: [usize; 4] = [8, 64, 512, 4096];
 /// clock, so the report stays reproducible.
 const WRITE_INSTANT_MS: u64 = 1_786_752_000_000;
 
-/// The identity stamping those writes, of the shape `Replica::new` mints
-/// (`NodeId::new(rand::random())`) — a full-width value, again because varints make small ones
+/// The identity stamping those writes, of the shape `Replica:new` mints
+/// (`NodeId:new(rand:random())`) — a full-width value, again because varints make small ones
 /// unrepresentative. Fixed for reproducibility.
 const NODE_ID: u64 = 0xfeed_face_dead_beef;
 
@@ -162,9 +155,8 @@ fn stamp(key: u64) -> Timestamp {
 
 /// The dated cell one key is stored and shipped as, at payload size `value_bytes`: the register
 /// cell `ReplicatedMap` stores (`src/replica.rs`'s `FingerprintTreeMap<K, Entry<Timestamp, V>>`).
-///
 /// The payload is a `Vec<u8>` rather than a `[u8; V]` because that is what a deployment can
-/// actually store: `lww_register::Value` demands `Serialize`, which `serde` implements for arrays
+/// actually store: `lww_register:Value` demands `Serialize`, which `serde` implements for arrays
 /// only up to 32 elements. It costs the wire a length varint an array would not carry — one byte up
 /// to 250, three beyond — which is part of the price, not an artifact of the harness.
 fn dated_cell(key: u64, value_bytes: usize) -> Entry<Timestamp, Vec<u8>> {
@@ -172,8 +164,7 @@ fn dated_cell(key: u64, value_bytes: usize) -> Entry<Timestamp, Vec<u8>> {
 }
 
 /// What one enumerated element costs on the wire, one entry per [`VALUE_SIZES`] payload size:
-/// `Message::EntryUpdate`'s payload (`src/replica.rs`), through the transport's own encoder.
-///
+/// `Message:EntryUpdate`'s payload (`src/replica.rs`), through the transport's own encoder.
 /// Measured per element rather than derived from a per-entry constant — bincode's varints make the
 /// key and the stamp cost what their values happen to cost — and read straight off [`VALUE_SIZES`],
 /// so the reported sizes and the priced cells cannot drift apart.
@@ -187,14 +178,13 @@ fn element_bytes(key: u64, scratch: &mut Vec<u8>) -> [usize; VALUE_SIZES.len()] 
 }
 
 // The `Queries`/`Counting`/`Cost`/`Decisions` types and the `reconcile` driver itself moved to
-// `devkit::protocol_cost` (#524): generic over any `rsos::Rsos` backend and any
-// `rbsr::RefinementPolicy`, with no dependency on this crate's own wire format. `element_bytes`
+// `devkit:protocol_cost`: generic over any `rsos:Rsos` backend and any
+// `rbsr:RefinementPolicy`, with no dependency on this crate's own wire format. `element_bytes`
 // is what wires this repository's dated-cell payload into it, via `reconcile`'s `price_element`
 // closure — see `counted_reconcile`.
 
 /// The premise of the whole value-size axis, checked instead of asserted: one drive can price every
 /// payload size because no decision reads the payload.
-///
 /// Same keys, three value types — the `u64` every table is driven over, and the dated cells at both
 /// ends of [`VALUE_SIZES`] — so the comparison covers the substitution the report actually makes.
 /// Decisions must match exactly. Refinement *bytes* are held to a tolerance instead, because a
@@ -287,10 +277,9 @@ fn breakdown(cost: &Cost) -> String {
 }
 
 /// One priced reconciliation, with both peers' local query counts folded in: the table path.
-///
 /// `rng` seeds fresh here rather than being threaded from the caller: every call in this file
 /// prices one independent drive, and a fixed seed keeps a printed/asserted report reproducible
-/// across runs (`benches/README.md`), which a shared, monotonically-advancing stream would not.
+/// across runs, which a shared, monotonically-advancing stream would not.
 fn counted_reconcile<S: Rsos<u64>>(a: &S, b: &S, policy: &dyn RefinementPolicy) -> Cost {
     let (counted_a, counted_b) = (Counting::new(a), Counting::new(b));
     let mut scratch = Vec::new();
@@ -301,13 +290,12 @@ fn counted_reconcile<S: Rsos<u64>>(a: &S, b: &S, policy: &dyn RefinementPolicy) 
     cost
 }
 
-/// The session-random cut offset (`rbsr`'s ARCHITECTURE.md §7, "Defense against a correlated false
+/// The session-random cut offset (`rbsr`'s, "Defense against a correlated false
 /// SKIP") only moves which block of a fixed-stride split is undersized — it changes no split's
 /// child *count*, so it must move the round count by no more than the constant slack alternating
 /// responders and one IDLIST bounce-back already cost the unshifted driver. Checked here rather
 /// than asserted from first principles: this is Meyer §5.1's own claim about the mechanism, priced
 /// against the real driver instead of taken on faith.
-///
 /// Generous on purpose — this exists to catch a regression that makes the descent no longer
 /// logarithmic (a stride that stops narrowing, an off-by-one that revisits a level), not to pin an
 /// exact round count the shipped policy's own tuning is free to move.

@@ -1,26 +1,20 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// https:/www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https:/opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Nonparametric summary statistics for repeated benchmark trials (#455).
-//!
+//! Nonparametric summary statistics for repeated benchmark trials.
 //! # Why bootstrap rather than a `t` interval
-//!
 //! A `t` interval assumes the sampling distribution of the mean is normal. Throughput samples are
 //! bounded below by zero and have a long left tail — one descheduled writer halves a trial, nothing
 //! symmetrically doubles it — so that assumption is the one thing the data will not supply. The
 //! [percentile bootstrap][b] assumes only that the trials are exchangeable draws from whatever
 //! distribution the machine produces, which is exactly what a repeated-trials harness guarantees by
 //! construction.
-//!
-//! [b]: https://doi.org/10.1214/aos/1176344552
-//!
+//! [b]: https:/doi.org/10.1214/aos/1176344552
 //! # Determinism
-//!
 //! Resampling is seeded from `SEED`, never from entropy: the same trial data must yield the same
 //! interval, or a published figure cannot be checked against a re-run of the analysis. The
 //! *measurement* is non-deterministic (that is what the intervals are for); the *statistics over
@@ -55,10 +49,9 @@ pub struct Summary {
 
 impl Summary {
     /// Whether this interval and `other`'s are disjoint.
-    ///
     /// Non-overlap implies a difference; overlap implies **nothing** (two 95% intervals can overlap
     /// while the difference of means is still significant). Use [`diff_ci`] to test a difference —
-    /// this is only for reporting the interval geometry #455 asks to see.
+    /// this is only for reporting the interval geometry asks to see.
     pub fn disjoint_from(&self, other: &Summary) -> bool {
         self.hi < other.lo || other.hi < self.lo
     }
@@ -90,9 +83,7 @@ fn percentile_interval(mut means: Vec<f64>) -> (f64, f64) {
 }
 
 /// Mean, percentile-bootstrap interval and coefficient of variation for one sample.
-///
 /// # Panics
-///
 /// If `sample` is empty — a summary of no trials is a caller error, not a value.
 pub fn summarize(sample: &[f64]) -> Summary {
     assert!(!sample.is_empty(), "cannot summarize an empty sample");
@@ -114,12 +105,9 @@ pub fn summarize(sample: &[f64]) -> Summary {
 
 /// Percentile-bootstrap interval on the **difference of means**, `a − b`, resampling each sample
 /// independently.
-///
 /// This is the test to quote when asking whether two points differ: unlike comparing two intervals
 /// by eye, an interval excluding zero is a difference at the stated confidence.
-///
 /// # Panics
-///
 /// If either sample is empty.
 pub fn diff_ci(a: &[f64], b: &[f64]) -> Summary {
     assert!(

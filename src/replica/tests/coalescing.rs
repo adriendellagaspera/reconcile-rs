@@ -1,12 +1,11 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Broadcast coalescing (#187). `coalesce_window == Duration::ZERO` (the default) is already
+//! Broadcast coalescing. `coalesce_window == Duration::ZERO` (the default) is already
 //! covered by every other test in this directory — `insert` still calls `queue_broadcast`, which
 //! takes the immediate-broadcast branch unconditionally at that setting — so these tests only
 //! cover the `> 0` behavior: same-key collapse, batching multiple keys into one flush, and that
@@ -26,7 +25,7 @@ use crate::transport::{InMemoryNetwork, Transport};
 
 /// Three writes to the same key, well inside the coalescing window, must collapse to exactly one
 /// pending entry carrying the last write's (greatest-stamped, under `ManualClock`'s monotonic
-/// `now()`) value — not three queued messages a flush would send separately.
+/// `now`) value — not three queued messages a flush would send separately.
 #[tokio::test]
 async fn same_key_writes_within_the_window_collapse_to_one_pending_entry() {
     let net = InMemoryNetwork::new();
@@ -186,7 +185,7 @@ async fn converge_with_coalescing(entries: &[(u32, u32)]) -> BTreeMap<u32, u32> 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(24))]
 
-    /// Under `ManualClock`'s per-node monotonic `now()`, later `insert` calls to the same key
+    /// Under `ManualClock`'s per-node monotonic `now`, later `insert` calls to the same key
     /// always carry the greater stamp, so LWW deterministically resolves to whichever call came
     /// last — a closed-form property independent of how the writes were batched. Coalescing must
     /// not change that: whatever lands inside a window collapses via the same total order

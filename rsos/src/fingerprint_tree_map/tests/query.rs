@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -29,7 +28,7 @@ fn ranges_can_be_built_from_runtime_bounds() {
 
 #[test]
 fn item_range_trait_stack_is_usable_through_the_reexport() {
-    // Nameable via `rsos::ItemRange`, not only `rsos::fingerprint_tree_map::ItemRange` (#291).
+    // Nameable via `rsos::ItemRange`, not only `rsos::fingerprint_tree_map::ItemRange`.
     use crate::ItemRange;
 
     let tree: FingerprintTreeMap<u64, u64> = (0..30).map(|k| (k, k * 3)).collect();

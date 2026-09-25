@@ -1,19 +1,17 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! [`ReplicatedSet`]: a replicated set — membership-as-keys (README "Modelling sets") wrapped in
-//! a set-shaped API instead of a raw [`ReplicatedMap<K, ()>`](crate::ReplicatedMap).
-//!
+//! [`ReplicatedSet`]: a replicated set — membership-as-keys wrapped in
+//! a set-shaped API instead of a raw [`ReplicatedMap<K, >`](crate::ReplicatedMap).
 //! A thin newtype, not a reimplementation: wire format, reconciliation protocol and persistence
-//! are exactly `ReplicatedMap<K, ()>`'s. What it changes is the surface — `insert`/`remove`
-//! return `bool` instead of a `()`-shaped `Option`, and the value-shaped half of `ReplicatedMap`
-//! (`get`, `update`, `upsert`, `get_or_insert_with`, `values`, ...) is not exposed at all: none of
-//! it has a meaningful reading when every value is `()`. Reach for `ReplicatedMap<K, ()>` directly
+//! are exactly `ReplicatedMap<K, >`'s. What it changes is the surface — `insert`/`remove`
+//! return `bool` instead of a ``-shaped `Option`, and the value-shaped half of `ReplicatedMap`
+//! (`get`, `update`, `upsert`, `get_or_insert_with`, `values`,...) is not exposed at all: none of
+//! it has a meaningful reading when every value is ``. Reach for `ReplicatedMap<K, >` directly
 //! if one of those is genuinely needed.
 
 use std::hash::Hash;
@@ -35,21 +33,18 @@ use crate::{Discovery, ReplicatedMap};
 use rsos::Fingerprint;
 
 /// A replicated set; see the [module documentation](crate::replicated_set).
-///
 /// ```
 /// use reconcile::{replicated_map::Config, ReplicatedSet};
-///
 /// # #[tokio::main]
-/// # async fn main() -> std::io::Result<()> {
-/// let set = ReplicatedSet::<String>::new(Config::new(8082).with_insecure_no_key()).await?;
-///
+/// # async fn main -> std::io::Result<> {
+/// let set = ReplicatedSet::<String>::new(Config::new(8082).with_insecure_no_key).await?;
 /// // Matches `HashSet::insert`: true means this call added a new member.
-/// assert!(set.insert("a".to_string())); // newly inserted
-/// assert!(!set.insert("a".to_string())); // already a member
-/// assert!(set.contains(&"a".to_string()));
-/// assert!(set.remove(&"a".to_string())); // true: was a member
-/// assert!(!set.contains(&"a".to_string()));
-/// # Ok(())
+/// assert!(set.insert("a".to_string)); // newly inserted
+/// assert!(!set.insert("a".to_string)); // already a member
+/// assert!(set.contains(&"a".to_string));
+/// assert!(set.remove(&"a".to_string)); // true: was a member
+/// assert!(!set.contains(&"a".to_string));
+/// # Ok()
 /// # }
 /// ```
 pub struct ReplicatedSet<K>(ReplicatedMap<K, ()>)
@@ -65,9 +60,7 @@ impl<K: Clone + Hash + Eq + Send + Sync> Clone for ReplicatedSet<K> {
 
 impl<K: Key + Hash> ReplicatedSet<K> {
     /// Create a `ReplicatedSet`, binding the gossip UDP socket. See [`ReplicatedMap::new`].
-    ///
     /// # Errors
-    ///
     /// If the socket cannot be bound to `(config.listen_addr, config.port)`.
     pub async fn new(config: Config) -> Result<Self, ConstructionError> {
         ReplicatedMap::new(config).await.map(ReplicatedSet)
@@ -80,9 +73,7 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     }
 
     /// Plug in a durable persistence backend. See [`ReplicatedMap::with_persistence`].
-    ///
     /// # Errors
-    ///
     /// If the backend fails to load — see [`ReplicatedMap::with_persistence`].
     pub fn with_persistence(
         self,
@@ -103,10 +94,8 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     }
 
     /// Attach an authoritative peer-discovery source. See [`ReplicatedMap::with_discovery`].
-    ///
     /// # Errors
-    ///
-    /// If `discovery.kind()` is not [`Authoritative`](crate::DiscoveryKind::Authoritative).
+    /// If `discovery.kind` is not [`Authoritative`](crate::DiscoveryKind::Authoritative).
     pub fn with_discovery(
         self,
         discovery: Arc<dyn Discovery>,
@@ -172,9 +161,7 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     }
 
     /// Add `key` as a member. Returns `true` if this call added a new member.
-    ///
     /// # Panics
-    ///
     /// See [`ReplicatedMap::insert`] — the broadcast requires an ambient Tokio runtime.
     #[must_use]
     pub fn insert(&self, key: K) -> bool {
@@ -196,9 +183,7 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     }
 
     /// Remove `key` from the set. Returns whether it was present.
-    ///
     /// # Panics
-    ///
     /// See [`ReplicatedMap::remove`] — the broadcast requires an ambient Tokio runtime.
     #[must_use]
     pub fn remove(&self, key: &K) -> bool {
@@ -265,18 +250,14 @@ impl<K: Key + Hash> ReplicatedSet<K> {
     }
 
     /// The transport's actual bound local address. See [`ReplicatedMap::local_addr`].
-    ///
     /// # Errors
-    ///
     /// If the underlying transport fails to report its local address.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.0.local_addr()
     }
 
     /// (runtime) Replace the declared networks. See [`ReplicatedMap::set_nets`].
-    ///
     /// # Errors
-    ///
     /// If `nets` exceeds `MAX_NETS`.
     pub fn set_nets(&self, nets: &[IpNet]) -> Result<(), ConfigError> {
         self.0.set_nets(nets)

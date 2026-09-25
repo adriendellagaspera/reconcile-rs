@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -45,7 +44,6 @@ impl fmt::Display for NotAuthoritative {
 impl std::error::Error for NotAuthoritative {}
 
 /// Per-member discovery-absence tracking for [`ReplicatedMap::discover_periodically`].
-///
 /// [`Absent`](Self::Absent) owns the miss counter and the instant the absence began as one unit,
 /// so the two cannot desync.
 #[derive(Clone, Copy, Debug, Default)]
@@ -101,35 +99,29 @@ impl MemberPresence {
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Attach an **authoritative** peer-discovery source that maintains the known-peer set, on top
     /// of the default speculative [`RandomProbe`](crate::RandomProbe).
-    ///
     /// While [`run`](Self::run)ning, a background task discovers every
     /// [`discovery_interval`](Self::with_discovery_interval), seeds each address, and
     /// decommissions a member absent for
     /// [`discovery_miss_threshold`](Self::with_discovery_miss_threshold) rounds, releasing the GC
     /// gate it held.
-    ///
     /// The source must be [`Authoritative`](crate::DiscoveryKind::Authoritative): absence here
     /// drives decommissioning.
-    ///
     /// # Errors
-    ///
-    /// If `discovery.kind()` is [`Speculative`](crate::DiscoveryKind::Speculative). A speculative
+    /// If `discovery.kind` is [`Speculative`](crate::DiscoveryKind::Speculative). A speculative
     /// source's absences must never decommission a live member: that would release the
-    /// causal-stability GC gate (`ARCHITECTURE.md` §5 invariant 6) on a member that never actually
+    /// causal-stability GC gate on a member that never actually
     /// left.
-    ///
     /// ```
     /// use std::sync::Arc;
     /// use reconcile::{replicated_map::Config, DnsDiscovery, ReplicatedMap};
-    ///
     /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn main -> Result<, Box<dyn std::error::Error>> {
     /// // Point at a Kubernetes headless Service (`clusterIP: None`): one DNS record per ready pod.
     /// let discovery = Arc::new(DnsDiscovery::new("my-service.my-namespace.svc.cluster.local", 4242));
-    /// let store = ReplicatedMap::<String, String>::new(Config::new(8084).with_insecure_no_key())
-    ///     .await?
-    ///     .with_discovery(discovery)?;
-    /// # Ok(())
+    /// let store = ReplicatedMap::<String, String>::new(Config::new(8084).with_insecure_no_key)
+    /// .await?
+    /// .with_discovery(discovery)?;
+    /// # Ok()
     /// # }
     /// ```
     pub fn with_discovery(
@@ -146,12 +138,11 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Discover peers by resolving a DNS name — [`with_discovery`](Self::with_discovery) with a
     /// [`DnsDiscovery`].
-    ///
     /// Point `name` at a **headless** `Service` (`clusterIP: None`): one address record per ready
     /// pod, no API client and no RBAC.
     #[must_use]
     pub fn with_dns_discovery(self, name: impl Into<String>, port: u16) -> Self {
-        // Infallible in practice: `DnsDiscovery::kind()` always returns `Authoritative`,
+        // Infallible in practice: `DnsDiscovery::kind` always returns `Authoritative`,
         // unconditionally, so `with_discovery` can never actually reject it here.
         self.with_discovery(Arc::new(DnsDiscovery::new(name, port)))
             .expect("DnsDiscovery::kind() is always Authoritative")
@@ -164,7 +155,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self
     }
 
-    /// Set how many consecutive successful discovery rounds a previously-seen member may be absent
+    /// Set how many consecutive successful discovery rounds a -seen member may be absent
     /// before it is decommissioned (default 3). A higher value tolerates longer DNS blips / rolling
     /// restarts at the cost of holding tombstones (and their GC gate) longer.
     pub fn with_discovery_miss_threshold(mut self, threshold: u32) -> Self {
@@ -174,7 +165,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Set the wall-time floor a member **with pending unacknowledged tombstones** must be
     /// continuously absent for before decommissioning (default 10 minutes).
-    ///
     /// The fast path — no pending acks — is unaffected. The floor is what keeps a spoofed or
     /// flaky resolver from releasing the GC gate on a tombstone a healthy member never acked, and
     /// so from letting that member resurrect the value. Raising it bounds the attacker further and
@@ -186,15 +176,13 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Drive the dynamic discovery source: inject discovered peers and decommission vanished ones.
     /// A no-op with no source configured.
-    ///
     /// - A **successful** resolution seeds every returned address as a known peer.
     /// - An absent **member** accrues a miss; at
-    ///   [`discovery_miss_threshold`](Self::with_discovery_miss_threshold) it is decommissioned per
-    ///   [`MemberPresence::eligible_for_decommission`], releasing its GC gate.
+    ///  [`discovery_miss_threshold`](Self::with_discovery_miss_threshold) it is decommissioned per
+    ///  [`MemberPresence::eligible_for_decommission`], releasing its GC gate.
     /// - A **failed** resolution is skipped entirely, never counted as a miss.
-    ///
     /// Only `members` are decommissioned: discovery never writes membership, so a spoofable
-    /// address can neither block nor release GC (`ARCHITECTURE.md` §5 invariant 6).
+    /// address can neither block nor release GC.
     pub(super) async fn discover_periodically(&self) {
         let Some(discovery) = self.discovery.clone() else {
             return; // no discovery source: leave peer-finding to the engine's per-net probing

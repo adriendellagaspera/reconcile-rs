@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -14,15 +13,13 @@ use super::cutoffs::shared_cutoffs;
 use super::{Comparison, Decision, RefinementPolicy, SplitStride};
 
 /// The width of the span-independent probes' stride range: strides land in `1..=STRIDE_SPREAD`.
-///
-/// Named once because the oracle-coupled probe (#356) and [`SpanHashedStrideSplit`] must draw
+/// Named once because the oracle-coupled probe and [`SpanHashedStrideSplit`] must draw
 /// from the *same* support for the second to be a control for the first.
 pub const STRIDE_SPREAD: u64 = 32;
 
-/// **Test-only probe (#356), `cfg(reconcile_internal_testing)`-gated.**
+/// **Test-only probe, `cfg(reconcile_internal_testing)`-gated.**
 /// The oracle-coupled probe's stride *distribution*, drawn from the span instead of the
 /// fingerprint: `1 + mix(span) mod 32`.
-///
 /// The tighter of the two oracle-independent controls.
 /// [`ConstantStrideSplit`](super::ConstantStrideSplit) differs from the coupled probe in both the
 /// source of the stride and its spread; this one differs in the source alone — it is a
@@ -33,12 +30,10 @@ pub const STRIDE_SPREAD: u64 = 32;
 pub struct SpanHashedStrideSplit;
 
 /// Fibonacci hashing: scatter a small count over the whole word, then read the **high** bits.
-///
 /// Emphatically not a range digest — the input is a count of elements, which
 /// [`Comparison::span`](super::Comparison::span) already exposes as a soundness-safe quantity.
 /// Both halves are load-bearing: multiplying by an odd constant leaves the low bits almost
 /// unmoved, so the shift is what turns the product into an avalanche.
-///
 /// Deliberately two operations rather than a full SplitMix64 finalizer. Over a span this small
 /// every `x ^= x >> k` step of that finalizer is the identity — `x >> 30` is zero for any span
 /// under a billion — so those steps would be unreachable code no test over a realistic span could

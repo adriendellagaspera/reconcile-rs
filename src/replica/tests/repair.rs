@@ -1,12 +1,11 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! #23: a comparison round dropped in flight must be repaired on `repair_interval` -- an
+//! a comparison round dropped in flight must be repaired on `repair_interval` -- an
 //! RTT-scale timer -- not left to `reconcile_interval`'s background sweep to rediscover.
 
 use std::io;
@@ -68,11 +67,10 @@ fn value_of(eng: &Replica<u32, u32>, key: u32) -> Option<u32> {
         .and_then(|e| e.value().copied())
 }
 
-/// The core #23 regression. `reconcile_interval` is starved to an hour, mirroring
-/// `pending_dump_requeue.rs`'s isolating idiom for #516: convergence within this test's real
+/// `reconcile_interval` is starved to an hour, mirroring
+/// `pending_dump_requeue.rs`'s isolating idiom for: convergence within this test's real
 /// deadline can only come from the repair timer, never from the idle-timeout fallback.
-///
-/// `a`'s only outbound datagram to `b` before this test seeds any data is `run()`'s own startup
+/// `a`'s only outbound datagram to `b` before this test seeds any data is `run`'s own startup
 /// `start_reconciliation` round -- `DropTo` drops exactly that one, regardless of whether `a`
 /// also probes some other address first (`start_reconciliation`'s `targets` is a `HashSet`, so
 /// iteration order is unspecified). `b` is never told about `a` (no seeded peer, and default-net
@@ -131,14 +129,13 @@ async fn a_lost_round_initiation_is_repaired_within_repair_interval() {
     );
 }
 
-/// The complementary #23 case: a comparison round that finds nothing to report converges via a
+/// The complementary case: a comparison round that finds nothing to report converges via a
 /// real `Message::ConvergenceAck` (`dispatch.rs`), not by riding out a bounded, unacknowledged
 /// retry. `repair_interval` is starved to an hour -- long enough that exhausting
 /// `MAX_REPAIR_ATTEMPTS` retries alone would take hours, nowhere near this test's real deadline --
 /// so `a`'s entry clearing here can only mean a real ack arrived, not a give-up. `b` is never told
 /// about `a` (mirrors the sibling test above), so `b`'s own reciprocal `start_reconciliation`
 /// traffic cannot independently clear `a`'s entry and mask whether the ack path actually fired.
-///
 /// The round is triggered by calling `start_reconciliation` directly, before either engine's
 /// receive loop is even spawned: that registers the pending repair synchronously, with no race to
 /// observe an in-between state (the full round trip is fast enough, being in-memory, that polling
@@ -182,7 +179,7 @@ async fn a_converged_round_is_acked_without_riding_out_a_retry() {
     let tb = tokio::spawn(b.clone().run());
 
     // Checked for b_ip specifically, not overall emptiness: start_reconciliation's own discovery
-    // probing (`self.probe.discover()`) also calls note_pending_repair for probe addresses that
+    // probing (`self.probe.discover`) also calls note_pending_repair for probe addresses that
     // are not b_ip and, being probes into an address nobody bound in this test's InMemoryNetwork,
     // never get a reply -- their entries would keep pending_repairs non-empty for the full
     // repair_interval regardless of whether b_ip's own entry cleared correctly.

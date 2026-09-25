@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,7 +6,7 @@
 // except according to those terms.
 
 //! `rsos::FingerprintTreeMap::range`'s return type must be nameable through the `reconcile`
-//! facade, without a direct `rsos` dependency (#291).
+//! facade, without a direct `rsos` dependency.
 
 use reconcile::{FingerprintTreeMap, ItemRange};
 

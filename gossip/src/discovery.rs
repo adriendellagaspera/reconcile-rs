@@ -1,21 +1,18 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Dynamic peer discovery behind the [`Discovery`] port (`ARCHITECTURE.md` §3.2).
-//!
+//! Dynamic peer discovery behind the [`Discovery`] port.
 //! - [`RandomProbe`] — default, **speculative**: one random address per declared network per
-//!   round, steering only that round's targets.
+//!  round, steering only that round's targets.
 //! - [`DnsDiscovery`] — **authoritative**, for a Kubernetes headless Service: one address record
-//!   per ready pod, seeded into the known-peer set, with absence decommissioning after a grace
-//!   period.
-//!
+//!  per ready pod, seeded into the known-peer set, with absence decommissioning after a grace
+//!  period.
 //! Either way discovery feeds the gossip-target set only, never causal-stability membership
-//! (`ARCHITECTURE.md` §5 invariant 6).
+//! .
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -55,14 +52,11 @@ pub enum DiscoveryKind {
 
 /// A source of candidate peer addresses, called once per discovery round and read according to
 /// [`kind`](Self::kind).
-///
 /// `Err(_)` is a **transient failure**, never "no peers": the store skips the round, so a resolver
 /// hiccup decommissions nobody.
 pub trait Discovery: Send + Sync + 'static {
     /// Resolve the current candidate peer set.
-    ///
     /// # Call context
-    ///
     /// Awaited directly by the discovery background task's loop, once per round, with **no
     /// caller-side timeout**: a hang here stalls that loop indefinitely (delaying every later
     /// round), though nothing else — reconciliation and the engine's own per-net probing are
@@ -71,7 +65,6 @@ pub trait Discovery: Send + Sync + 'static {
     fn discover(&self) -> DiscoverFuture<'_>;
 
     /// How [`discover`](Self::discover)'s result is read.
-    ///
     /// No default: an implementor who does not think about this returns the dangerous choice by
     /// accident rather than the safe one. [`Authoritative`](DiscoveryKind::Authoritative) seeds
     /// every result as a permanent known peer and decommissions members on its absences —
@@ -142,7 +135,6 @@ impl StdError for DnsDiscoveryError {
 pub const DEFAULT_DNS_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Discovers peers by resolving a DNS name to its address records, through the system resolver.
-///
 /// Point it at a Kubernetes **headless** `Service` (`clusterIP: None`): one record per ready pod.
 #[derive(Debug)]
 pub struct DnsDiscovery {
@@ -156,21 +148,18 @@ impl DnsDiscovery {
     /// the `host:port` string `lookup_host` expects and is discarded from the results. Each
     /// lookup is bounded by [`DEFAULT_DNS_DISCOVERY_TIMEOUT`]; tune it with
     /// [`with_timeout`](Self::with_timeout).
-    ///
     /// ```no_run
     /// use reconcile_gossip::discovery::{Discovery, DiscoveryKind, DnsDiscovery};
-    ///
     /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// # async fn main -> Result<, Box<dyn std::error::Error + Send + Sync>> {
     /// // Point it at a Kubernetes headless Service (`clusterIP: None`): one record per ready pod.
     /// let discovery = DnsDiscovery::new("my-app-headless.my-ns.svc.cluster.local", 7000);
-    /// assert_eq!(discovery.kind(), DiscoveryKind::Authoritative);
-    ///
+    /// assert_eq!(discovery.kind, DiscoveryKind::Authoritative);
     /// // Resolves through the system resolver on every call. Not run here (`no_run`): a doc
     /// // build shouldn't depend on network/DNS availability.
-    /// let peers = discovery.discover().await?;
+    /// let peers = discovery.discover.await?;
     /// # let _ = peers;
-    /// # Ok(())
+    /// # Ok()
     /// # }
     /// ```
     pub fn new(name: impl Into<String>, port: u16) -> Self {
@@ -255,7 +244,7 @@ mod tests {
         assert_eq!(timeout_err.to_string(), "DNS resolution timed out");
     }
 
-    /// `source()` is what lets a caller walk the underlying `io::Error`/`Elapsed` instead of only
+    /// `source` is what lets a caller walk the underlying `io::Error`/`Elapsed` instead of only
     /// seeing `DnsDiscoveryError`'s own `Display` text — mutating it to always return `None` still
     /// passed every other test here, so assert the chain directly for both variants.
     #[tokio::test]

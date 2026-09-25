@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -7,19 +6,17 @@
 // except according to those terms.
 
 //! The **canonical encoding**: the byte source for element fingerprints
-//! (`ARCHITECTURE.md` §6).
-//!
+//! .
 //! A [`serde::Serializer`] writing straight into BLAKE3, **injective within a type** — everything
 //! variable-length is length-prefixed; counts, lengths and variant indices are fixed-width
 //! little-endian. Injectivity across types is not claimed (`None::<u8>` and `0u8` both encode to
 //! one zero byte).
-//!
 //! | serde form | bytes |
 //! |---|---|
 //! | `bool` | one byte, `0` or `1` |
 //! | `i8`…`i128`, `u8`…`u128` | fixed-width little-endian, the type's own width |
 //! | `usize` / `isize` | serde forwards these to `u64` / `i64`, so 32- and 64-bit nodes agree |
-//! | `f32` / `f64` | `to_bits().to_le_bytes()` (4 / 8 bytes) |
+//! | `f32` / `f64` | `to_bits.to_le_bytes` (4 / 8 bytes) |
 //! | `char` | the scalar value as `u32` little-endian |
 //! | `str`, `bytes` | `u64` little-endian byte length, then the raw bytes |
 //! | `None` | `0` |
@@ -33,19 +30,17 @@
 //! | `newtype_variant` | variant index, then the inner value |
 //! | `tuple_variant` | variant index, then element count, then the elements |
 //! | `struct_variant` | variant index, then the fields in declaration order |
-//!
 //! Renaming an enum variant is not a wire break; reordering variants is. Maps sort on the
 //! **encoded** key, so a `HashMap` and a `BTreeMap` with the same entries encode identically and
 //! no `Ord` bound is needed. Floats encode by bit pattern, so `+0.0`/`-0.0` differ and two equal
 //! NaN patterns agree. `is_human_readable` is fixed at `false` and is part of the wire contract.
-//!
 //! Split across siblings by concern: `serializer` owns the `ser::Serializer` impl for
 //! `Serializer` — every scalar plus the entry point into each compound form; `seq`/`map` each own
 //! the buffered `ser::Serialize*` impl for `SeqSerializer`/`MapSerializer`; `streaming` owns the
 //! five straight-through impls for `Streaming` (tuples, tuple structs, tuple variants, structs,
 //! struct variants); `error` owns [`Error`]'s trait impls. This file keeps the public
 //! type definitions (their module location is their `cargo public-api`-visible path — see
-//! AGENTS.md §11) plus the shared framing helpers every sibling draws on.
+//! ) plus the shared framing helpers every sibling draws on.
 
 use serde::Serialize;
 
@@ -56,21 +51,17 @@ mod serializer;
 mod streaming;
 
 /// A byte sink the canonical encoder writes into: `blake3::Hasher`, or `Vec<u8>` for buffering.
-///
 /// ```
 /// use rsos::encoding::{encode_into, Sink};
-///
 /// // A minimal sink that only counts bytes, without storing them.
 /// struct ByteCounter(usize);
 /// impl Sink for ByteCounter {
-///     fn put(&mut self, bytes: &[u8]) {
-///         self.0 += bytes.len();
-///     }
+///  fn put(&mut self, bytes: &[u8]) {
+///  self.0 += bytes.len;
+///  }
 /// }
-///
 /// let mut counter = ByteCounter(0);
-/// encode_into(&mut counter, "hello").unwrap();
-///
+/// encode_into(&mut counter, "hello").unwrap;
 /// // An 8-byte little-endian length prefix, then the 5 payload bytes -- any `Sink` sees exactly
 /// // what the `Vec<u8>` impl would.
 /// assert_eq!(counter.0, 8 + 5);
@@ -93,7 +84,6 @@ impl Sink for blake3::Hasher {
 }
 
 /// The error type of the canonical encoder.
-///
 /// Only constructible by a hand-written [`Serialize`] impl calling [`serde::ser::Error::custom`];
 /// the encoder itself never fails, which is why [`lift`](crate::lift)/[`digest`](crate::digest)
 /// are infallible.
@@ -101,16 +91,13 @@ impl Sink for blake3::Hasher {
 pub struct Error(String);
 
 /// Write `value`'s canonical encoding into `sink`.
-///
 /// ```
 /// use rsos::encoding::encode_into;
-///
-/// let mut bytes = Vec::new();
-/// encode_into(&mut bytes, "ab").unwrap();
-///
+/// let mut bytes = Vec::new;
+/// encode_into(&mut bytes, "ab").unwrap;
 /// // `str`/`bytes` are length-prefixed -- a `u64` little-endian count, then the raw bytes -- which
 /// // is what keeps ("ab", "c") and ("a", "bc") from encoding to the same bytes downstream.
-/// let mut expected = 2u64.to_le_bytes().to_vec();
+/// let mut expected = 2u64.to_le_bytes.to_vec;
 /// expected.extend_from_slice(b"ab");
 /// assert_eq!(bytes, expected);
 /// ```
@@ -119,7 +106,6 @@ pub fn encode_into<S: Sink, T: Serialize + ?Sized>(sink: &mut S, value: &T) -> R
 }
 
 /// Encode `value` canonically into a fresh byte buffer.
-///
 /// Equivalent to [`encode_into`] against a fresh `Vec<u8>` — public because that composition is
 /// three lines any dependent can already write, so keeping this one private buys no protection,
 /// only an extra round trip for a caller that just wants the bytes.

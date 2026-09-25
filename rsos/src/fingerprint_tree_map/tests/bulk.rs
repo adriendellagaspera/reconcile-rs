@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -49,7 +48,7 @@ fn tree_height<K, V>(tree: &FingerprintTreeMap<K, V>) -> usize {
 /// 144, height 4 at 1728 -- `B = 6`, `MAX_CAPACITY = 11`): a bulk-built tree must independently
 /// pass [`FingerprintTreeMap::check_invariants`], agree, element for element and in aggregate,
 /// with a tree built by `n` individual [`insert`](FingerprintTreeMap::insert) calls -- exactly
-/// #51's acceptance criterion ("identical resulting fingerprints") -- and reach the minimum
+/// 's acceptance criterion ("identical resulting fingerprints") -- and reach the minimum
 /// possible height for `n` (dense packing is the whole point of a bottom-up build, not just a
 /// nice-to-have; without this check a fanout-arithmetic bug can produce a *valid* tree that is
 /// needlessly tall and nothing here would notice). Checked at every size rather than a handful of
@@ -80,7 +79,7 @@ fn matches_serial_insert_at_every_size_through_several_tree_heights() {
 }
 
 /// Spot-checks well past the small-size sweep above, at the bulk-build benchmark scales
-/// (`benches/README.md`'s "Re-measuring #47/#51/#52").
+/// .
 #[test]
 fn matches_serial_insert_at_benchmark_scale() {
     for &n in &[50_000u32, 200_000] {

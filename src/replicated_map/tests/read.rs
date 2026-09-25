@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -10,7 +9,7 @@ use crate::entry::{Entry, State};
 
 use super::{virtual_config, virtual_map};
 
-/// `snapshot` (#34) hands back an `Arc` over the exact same dated tree `get` reads from,
+/// `snapshot` hands back an `Arc` over the exact same dated tree `get` reads from,
 /// tombstones included (it exposes the raw `Entry` wire representation, unlike `to_vec`). A
 /// later write on the same handle must not retroactively change an already-taken snapshot --
 /// that is the whole point of it being an owned `Arc`, not a lock.

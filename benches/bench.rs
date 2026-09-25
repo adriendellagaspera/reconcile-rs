@@ -1,11 +1,11 @@
-// The benchmark drives the range-fingerprint via `FingerprintTreeMap::aggregate`, which is public
-// on the standalone `rsos` crate — so, unlike when it went through the gated `reconcile::testing`
+// The benchmark drives the range-fingerprint via `FingerprintTreeMap:aggregate`, which is public
+// on the standalone `rsos` crate — so, unlike when it went through the gated `reconcile:testing`
 // seam, the bench body needs no feature gate at all.
 use imp::main;
 
 // `service_reconcile_rtt` below composes `just_insert`/`just_remove` (`reconcile_internal_testing`
-// seams, AGENTS.md §6) with the injected-RTT decorator, so it lives here rather than in
-// `system.rs`, which is deliberately feature-gate-free (`benches/README.md` "Pricing that
+// seams, ) with the injected-RTT decorator, so it lives here rather than in
+// `system.rs`, which is deliberately feature-gate-free (the benchmark guide "Pricing that
 // end-to-end...").
 
 mod imp {
@@ -246,7 +246,6 @@ mod imp {
 
     /// In-memory cost of a dated replica (`FingerprintTreeMap<K, Entry<Timestamp, V>>`) against
     /// the value-only one (`FingerprintTreeMap<K, State<V>>`).
-    ///
     /// Criterion times the fill at growing sizes; the report below adds bytes per entry.
     fn read_replica_memory(c: &mut Criterion) {
         let dated = std::mem::size_of::<Entry<Timestamp, u32>>();
@@ -315,7 +314,7 @@ mod imp {
     /// Dataset sizes for `bulk_load_just_insert`, matching `system.rs`'s `bulk_load`/`point_read`
     /// default sweep — duplicated rather than shared for the reason `rtt_sweep` above states (each
     /// bench binary is a separate compilation unit). Extendable the same way, via
-    /// `RECONCILE_BENCH_SIZES` (`benches/README.md`).
+    /// `RECONCILE_BENCH_SIZES`.
     fn bulk_load_sizes() -> Vec<usize> {
         match std::env::var("RECONCILE_BENCH_SIZES") {
             Ok(v) => v
@@ -340,21 +339,21 @@ mod imp {
 
     /// Cycles through `20_000..60_000` rather than a raw `fetch_add` on a `u16` counter, matching
     /// `system.rs`'s `next_bench_port` (its own docs explain why: enough warm-up iterations
-    /// overflow a bare `u16` and hand `Config::port` a wrapped `0`, which it rejects).
+    /// overflow a bare `u16` and hand `Config:port` a wrapped `0`, which it rejects).
     fn next_just_insert_port() -> u16 {
         static NEXT: AtomicU32 = AtomicU32::new(0);
         let i = NEXT.fetch_add(1, Ordering::Relaxed);
         20_000 + (i % 40_000) as u16
     }
 
-    /// Per-entry `just_insert` throughput — #51's own external-prototype metric (`just_insert` of
+    /// Per-entry `just_insert` throughput — own external-prototype metric (`just_insert` of
     /// `String -> Vec<u8>`, "~190k-430k inserts/s") gets an in-repo counterpart at last. `just_insert`
     /// is local-only, no broadcast (`src/replicated_map/write.rs`'s own docs), and a
-    /// `reconcile_internal_testing` seam (AGENTS.md §6) unreachable from the feature-gate-free
+    /// `reconcile_internal_testing` seam unreachable from the feature-gate-free
     /// `system.rs` — hence living here, next to `service_reconcile_rtt`'s own `just_insert` use.
     /// Isolates the per-call cost of inserting one entry at a time, fingerprint maintenance and
     /// all, from `bulk_load`'s (`system.rs`) `insert_bulk`, which amortises setup across the whole
-    /// batch — both #51's metric and the in-repo bulk-write path, at the same sizes, side by side.
+    /// batch — both metric and the in-repo bulk-write path, at the same sizes, side by side.
     fn bulk_load_just_insert(c: &mut Criterion) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let mut group = c.benchmark_group("bulk_load_just_insert");
@@ -536,7 +535,7 @@ mod imp {
 
     /// RTT sweep for `service_reconcile_rtt`: the same grid `system.rs`'s injected-RTT lane
     /// sweeps (`rtt_sweep` there — duplicated here rather than shared: each bench binary is a
-    /// separate compilation unit, and no target here imports another's. `gossip::netem` itself is
+    /// separate compilation unit, and no target here imports another's. `gossip:netem` itself is
     /// genuinely shared, being a library module rather than a per-binary `mod`.)
     fn rtt_sweep() -> Vec<Rtt> {
         [0.0, 0.1, 1.0, 10.0, 50.0]
@@ -545,7 +544,7 @@ mod imp {
             .collect()
     }
 
-    /// Store sizes for `service_reconcile_rtt`: #461's grid, `n` = 10³…10⁶ — the same range
+    /// Store sizes for `service_reconcile_rtt`: grid, `n` = 10³…10⁶ — the same range
     /// `benches/protocol.rs`'s counted tables sweep, so the measured and counted columns line up.
     const RECONCILE_RTT_SIZES: &[usize] = &[1_000, 10_000, 100_000, 1_000_000];
 
@@ -568,8 +567,8 @@ mod imp {
         }
     }
 
-    /// `(d, clustering)` pairs #461 asks for. `d = 0` is the in-sync baseline — no layout to vary.
-    /// `d = 1` only scatters, as in `protocol.rs::DIFFERENCES` — a single key has no layout either
+    /// `(d, clustering)` pairs asks for. `d = 0` is the in-sync baseline — no layout to vary.
+    /// `d = 1` only scatters, as in `protocol.rs:DIFFERENCES` — a single key has no layout either
     /// way. 10/100/1000 sweep both, past a 256-cell sketch's capacity at the top end.
     const D_CLUSTERINGS: &[(usize, Clustering)] = &[
         (0, Clustering::Scattered),
@@ -583,7 +582,7 @@ mod imp {
     ];
 
     /// The `d` keys (out of `0..n`) one peer diverges on, laid out per `clustering` — the same
-    /// layout `benches/protocol.rs::missing_keys` uses, so a round here and a round there refine
+    /// layout `benches/protocol.rs:missing_keys` uses, so a round here and a round there refine
     /// over the same-shaped difference.
     fn diverging_keys(n: usize, d: usize, clustering: Clustering) -> Vec<u32> {
         if d == 0 {
@@ -616,7 +615,7 @@ mod imp {
     }
 
     /// Tallies datagrams a wrapped transport has *received*. The `d = 0` baseline round is
-    /// otherwise unobservable: a root-fingerprint match makes `rbsr::protocol_round` return no
+    /// otherwise unobservable: a root-fingerprint match makes `rbsr:protocol_round` return no
     /// comparison items and no differences (`src/replica/dispatch.rs`), so the responder sends
     /// nothing back and no local state changes anywhere — the only sign a round happened at all is
     /// that the initiator's message arrived at the responder's transport.
@@ -652,7 +651,6 @@ mod imp {
     /// Poll `condition` until it holds or a generous wall-clock deadline passes, returning
     /// whether it held. Does not retrigger — [`trigger_and_converge`] is the retriggering wrapper
     /// most callers below actually want; this is the single-round primitive it builds on.
-    ///
     /// Bounded by elapsed time, not a spin count: some callers' `condition` is O(d) (checking up
     /// to 1000 keys), and a fixed spin ceiling costs that much more real time per spin the more
     /// expensive `condition` is — at `d = 1000` a ceiling sized for an O(1) check turned a
@@ -698,11 +696,10 @@ mod imp {
     }
 
     /// The refinement chain, timed, over an injected-RTT link: composes
-    /// `ReplicatedMap::new_with_transport`, `gossip::netem::NetemTransport` and the existing `rtt_sweep`
+    /// `ReplicatedMap:new_with_transport`, `gossip:netem:NetemTransport` and the existing `rtt_sweep`
     /// (`system.rs`'s, duplicated above) with `service_reconcile`'s own divergence mechanism — the
     /// only one that exercises refinement rather than the outer-range mismatch `cold_sync_rtt`
-    /// builds (`benches/README.md` "Pricing that end-to-end...").
-    ///
+    /// builds.
     /// One peer loads the `n`-entry corpus and seeds the other, which starts empty and pulls the
     /// whole dataset via cold-sync (`cold_sync_rtt`'s own bootstrap, proven reliable across this
     /// same `n` × `NetemTransport` × RTT matrix) — loading both peers independently and assuming
@@ -710,31 +707,29 @@ mod imp {
     /// `NetemTransport` queue/pump artifact under high datagram volume, not a protocol issue.
     /// `reconcile_interval` is fixed far longer than any sample, so every round below is the one
     /// `start_reconciliation` explicitly triggers, never a background tick.
-    ///
     /// Per sample: `just_remove` the `d` chosen keys on the initiator (a genuine content
     /// difference, not a timestamp race), trigger one round, poll until the responder reflects the
     /// removal; then `just_insert` them back and repeat, so the pair returns to baseline for the
     /// next sample. `d = 0` has no keys to remove — its round finds nothing to refine, so it is
     /// timed via `RecvCountingTransport` instead (see that type's docs).
-    ///
     /// Two failure modes this harness works around, both reproduced outside Criterion too
-    /// (`benches/README.md`'s "past a fixed-capacity sketch"/"n = 10⁶" sections carry the measured
+    /// (the benchmark guide's "past a fixed-capacity sketch"/"n = 10⁶" sections carry the measured
     /// consequences):
     /// - A round can stall outright — not slow, permanently stuck — under the two `run()` loops'
-    ///   genuine concurrency on a multi-threaded runtime. Pinning this benchmark's own runtime to
-    ///   `current_thread` (below) cuts the rate sharply but not to zero, so settling a fresh pair
-    ///   retries wholesale ([`MAX_BUILD_ATTEMPTS`]) rather than assuming `current_thread` alone
-    ///   suffices; rebuilding happens once per `(n, rtt)`, not per sample, which keeps the retry
-    ///   cheap regardless.
+    ///  genuine concurrency on a multi-threaded runtime. Pinning this benchmark's own runtime to
+    ///  `current_thread` (below) cuts the rate sharply but not to zero, so settling a fresh pair
+    ///  retries wholesale ([`MAX_BUILD_ATTEMPTS`]) rather than assuming `current_thread` alone
+    ///  suffices; rebuilding happens once per `(n, rtt)`, not per sample, which keeps the retry
+    ///  cheap regardless.
     /// - A single `start_reconciliation` does not reliably drive a large *scattered* divergence
-    ///   (many separate leaf-level differences, e.g. `d = 1000` at `n = 10_000`) to completion: the
-    ///   round can plateau part-way and only a fresh trigger resumes it. This matches #185's "N
-    ///   round trips" model rather than contradicting it: [`trigger_and_converge`] retriggers
-    ///   (bounded, [`MAX_ROUND_RETRIGGERS`]) when a round does not converge on its own, and the
-    ///   total elapsed time across every retrigger counts toward the sample — that total *is* the
-    ///   measurement. A *clustered* divergence of the same `d` converges in one round even at
-    ///   `d = 1000`, so this is specific to how many separate ranges must resolve, not to `d`
-    ///   alone.
+    ///  (many separate leaf-level differences, e.g. `d = 1000` at `n = 10_000`) to completion: the
+    ///  round can plateau part-way and only a fresh trigger resumes it. This matches "N
+    ///  round trips" model rather than contradicting it: [`trigger_and_converge`] retriggers
+    ///  (bounded, [`MAX_ROUND_RETRIGGERS`]) when a round does not converge on its own, and the
+    ///  total elapsed time across every retrigger counts toward the sample — that total *is* the
+    ///  measurement. A *clustered* divergence of the same `d` converges in one round even at
+    ///  `d = 1000`, so this is specific to how many separate ranges must resolve, not to `d`
+    ///  alone.
     fn service_reconcile_rtt(c: &mut Criterion) {
         let net = "127.0.0.1/8".parse().unwrap();
         let port = 9_990;
@@ -757,7 +752,7 @@ mod imp {
 
             for rtt in rtt_sweep() {
                 // Fresh per `(n, rtt)`, not shared across the sweep: a background task this
-                // harness does not track — `Replica::spawn_paced_send`'s detached bulk-dump
+                // harness does not track — `Replica:spawn_paced_send`'s detached bulk-dump
                 // sends, paced by `bulk_send_rate` and outlasting the `run()` loops this function
                 // does abort/await between pairs (below) — can still be draining when the next
                 // pair starts, and on this single-threaded runtime it competes with that pair's
@@ -948,7 +943,7 @@ mod imp {
         group.finish();
     }
 
-    /// `Config::reconcile_interval` values this lane sweeps: production's own default (1 s) down
+    /// `Config:reconcile_interval` values this lane sweeps: production's own default (1 s) down
     /// to a much shorter floor. `service_reconcile_rtt` fixes this at 3600 s specifically to
     /// disable the idle timer and substitute its own manual retrigger
     /// (`trigger_and_converge`, 15 s cadence); this lane does the opposite -- the real `run()`
@@ -963,14 +958,14 @@ mod imp {
             .collect()
     }
 
-    /// `n` this lane fixes at: #516's own repro size, so a reader can cross-reference the two
+    /// `n` this lane fixes at: own repro size, so a reader can cross-reference the two
     /// directly.
     const INTERVAL_N: usize = 10_000;
 
     /// `(d, clustering)` cases this lane sweeps: `d = 10` scattered is a single-round case at
     /// this `n` (`service_reconcile_rtt`'s own "clean" cell), so its cost should track
     /// `reconcile_interval` almost exactly (one idle-timeout cycle, whatever that cycle's length
-    /// is). `d = 1000` scattered is #516's own repro -- a divergence a single round does not
+    /// is). `d = 1000` scattered is own repro -- a divergence a single round does not
     /// fully resolve, so its cost is however many *extra* `reconcile_interval` cycles the idle
     /// timer needs to notice and retry the batch the first round's dump-slot race dropped.
     const INTERVAL_D_CLUSTERINGS: &[(usize, Clustering)] =
@@ -978,17 +973,15 @@ mod imp {
 
     /// Times recovery through the real `reconcile_interval` idle-timeout path (`src/replica/
     /// run.rs`) instead of `service_reconcile_rtt`'s manual retrigger, across a
-    /// `reconcile_interval` sweep -- motivated by #516: a `differences` batch that loses the
+    /// `reconcile_interval` sweep -- motivated by: a `differences` batch that loses the
     /// per-peer dump-slot race is silently dropped, so a single round does not always resolve a
     /// large/scattered divergence, and the real repair cost in that case is however many
     /// `reconcile_interval` cycles it takes the idle timer to notice and retry, not the RTT
     /// `service_reconcile_rtt` already times.
-    ///
     /// One pair, built once: unlike `service_reconcile_rtt`, RTT is fixed (this transport injects
     /// none) and `reconcile_interval` is retunable at runtime
-    /// (`ReplicatedMap::set_reconcile_interval`, re-read every `run()` loop iteration), so
+    /// (`ReplicatedMap:set_reconcile_interval`, re-read every `run()` loop iteration), so
     /// there is no per-sweep-point transport to rebuild.
-    ///
     /// Per sample: `just_remove` the `d` chosen keys on the initiator, same as
     /// `service_reconcile_rtt`, but poll for repair with [`converge`] alone -- no
     /// `start_reconciliation` call after it, so recovery can only come from the idle timer.

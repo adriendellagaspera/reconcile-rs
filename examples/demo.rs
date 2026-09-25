@@ -39,7 +39,7 @@ async fn main() {
         .with_net(net)
         .unwrap()
         // Demo only: no cluster key flag here, so this loopback demo opts in explicitly. A real
-        // deployment must set Config::with_cluster_key instead — see README "Security model".
+        // deployment must set Config:with_cluster_key instead — see the crate documentation.
         .with_insecure_no_key();
     tracing_subscriber::fmt().with_max_level(log_level).init();
 

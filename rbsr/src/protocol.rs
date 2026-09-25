@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -8,14 +7,13 @@
 
 //! The protocol driver: [`initial_ranges`], [`protocol_round`], and the [`RangeAggregate`] wire
 //! type they exchange — generic over [`RsosView`], never over a concrete store.
-//!
 //! Split across siblings by concern: `bounds` owns `StartBound`/`EndBound`'s conversion to
 //! [`std::ops::Bound`] and `KeyRange`'s construction and `RangeBounds` implementation; `rank` owns
 //! resolving a wire range against a concrete store — admission and clamping arithmetic, and the
 //! one way it can fail on a malformed segment; `range_aggregate` owns [`RangeAggregate`]'s own
 //! construction and field readers; `outcome` owns [`RoundOutcome`]'s accessors and its
 //! [`AddAssign`](std::ops::AddAssign). This file keeps the public type definitions (their module
-//! location is their `cargo public-api`-visible path — see AGENTS.md §11) plus the round-driving
+//! location is their `cargo public-api`-visible path — see ) plus the round-driving
 //! logic itself: [`initial_ranges`], [`protocol_round`] and [`protocol_round_with_policy`].
 
 use std::ops::Bound;
@@ -38,11 +36,10 @@ mod rank;
 use rank::{BoundedRange, InvertedRange};
 
 /// The refinement policy [`protocol_round`] applies. Costs: `benches/protocol.rs`; the evidence
-/// for this default: `POSITIONING.md` §2.2.
+/// for this default:
 const DEFAULT_POLICY: FixedFanOut = FixedFanOut::new(FanOut::NEGENTROPY);
 
 /// The start bound of a [`RangeAggregate`] range: `Included` or `Unbounded`, never `Excluded`.
-///
 /// Narrower than `std::ops::Bound<K>` so a peer sending the third shape fails to deserialize
 /// rather than reaching a runtime check.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -65,19 +62,15 @@ pub(crate) enum EndBound<K> {
 pub(crate) struct KeyRange<K>(StartBound<K>, EndBound<K>);
 
 /// A `KeyRange` paired with the [`Aggregate`] over it: the unit the RBSR protocol exchanges.
-///
 /// # Wire layout
-///
 /// bincode inlines both fields positionally, in declaration order, with no length prefix or tag
 /// on the struct itself — only its two fields carry framing:
-///
 /// 1. `range.0` (the start bound): a `u32` variant tag (`0` = `Unbounded`, `1` = `Included`),
-///    followed by the key `K`'s own encoding when `Included`.
+///  followed by the key `K`'s own encoding when `Included`.
 /// 2. `range.1` (the end bound): the same shape (`0` = `Unbounded`, `1` = `Excluded`).
 /// 3. `aggregate`: [`Aggregate`]'s own fields, in *its* declaration order — currently
-///    `fingerprint` (four `u64` limbs) then `size` (a `u64`), each bincode's variable-length
-///    integer encoding.
-///
+///  `fingerprint` (four `u64` limbs) then `size` (a `u64`), each bincode's variable-length
+///  integer encoding.
 /// This layout is pinned by a golden vector in `reconcile`'s `tests/wire_format.rs`; reordering
 /// any field here or in [`Aggregate`] is a protocol break, not a refactor.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -88,12 +81,10 @@ pub struct RangeAggregate<K> {
 
 /// A range whose contents this peer must send explicitly: the **IDLIST** outcome, to be fed to
 /// [`rsos::Rsos::enumerate`] by the caller — the driver itself never enumerates.
-///
 /// A bare pair of [`Bound`]s, not the narrowed wire types: this is a local output, never sent.
 pub type EnumerationRange<K> = (Bound<K>, Bound<K>);
 
 /// The initial family of **active ranges**: one [`RangeAggregate`] `{(−∞, +∞), A(whole store)}`.
-///
 /// The outer range is fixed to the whole universe here; [`protocol_round`] never assumes it, so
 /// partial reconciliation needs only a different starting family.
 pub fn initial_ranges<K, B: RsosView<K>>(local: &B) -> Vec<RangeAggregate<K>> {
@@ -105,41 +96,35 @@ pub fn initial_ranges<K, B: RsosView<K>>(local: &B) -> Vec<RangeAggregate<K>> {
 
 /// What one [`protocol_round`] did, tallied where the decisions are taken — the output vectors
 /// cannot be diffed for it, since one range can appear in both and a dropped segment in neither.
-///
 /// [`AddAssign`](std::ops::AddAssign) accumulates a whole reconciliation.
-///
 /// ```
 /// use rand::SeedableRng;
 /// use rsos::FingerprintTreeMap;
 /// use rbsr::{initial_ranges, protocol_round};
-///
 /// // Three active ranges against the same responder `b`, chosen to hit SKIP, IDLIST and SPLIT in
 /// // one round: `b` matches itself, an empty store advertises against non-empty `b`, and a
 /// // same-sized-but-disjoint `c` mismatches `b`.
-/// let mut b = FingerprintTreeMap::new();
+/// let mut b = FingerprintTreeMap::new;
 /// for i in 0..40 {
-///     b.insert(i, i);
+///  b.insert(i, i);
 /// }
-/// let empty: FingerprintTreeMap<i32, i32> = FingerprintTreeMap::new();
-/// let mut c = FingerprintTreeMap::new();
+/// let empty: FingerprintTreeMap<i32, i32> = FingerprintTreeMap::new;
+/// let mut c = FingerprintTreeMap::new;
 /// for i in 0..40 {
-///     c.insert(i + 1000, i); // same count as `b`, disjoint keys -> different fingerprint
+///  c.insert(i + 1000, i); // same count as `b`, disjoint keys -> different fingerprint
 /// }
-///
 /// let mut active = initial_ranges(&b);
 /// active.extend(initial_ranges(&empty));
 /// active.extend(initial_ranges(&c));
-///
-/// let mut children = Vec::new();
-/// let mut enumerations = Vec::new();
+/// let mut children = Vec::new;
+/// let mut enumerations = Vec::new;
 /// let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 /// let outcome = protocol_round(&b, active, &mut children, &mut enumerations, &mut rng);
-///
-/// assert_eq!(outcome.skipped(), 1); // `b` vs `b`
-/// assert_eq!(outcome.enumerated(), 1); // `b` vs `empty`
-/// assert_eq!(outcome.split(), 1); // `b` vs `c`
-/// assert_eq!(outcome.children(), children.len()); // every SPLIT/bounced child, tallied
-/// assert_eq!(outcome.dropped_malformed(), 0); // no inverted range in this round
+/// assert_eq!(outcome.skipped, 1); // `b` vs `b`
+/// assert_eq!(outcome.enumerated, 1); // `b` vs `empty`
+/// assert_eq!(outcome.split, 1); // `b` vs `c`
+/// assert_eq!(outcome.children, children.len); // every SPLIT/bounced child, tallied
+/// assert_eq!(outcome.dropped_malformed, 0); // no inverted range in this round
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RoundOutcome {
@@ -152,14 +137,12 @@ pub struct RoundOutcome {
 
 /// One **protocol round** under this crate's default refinement policy: classify every active range this peer was
 /// asked to answer as SKIP, IDLIST or SPLIT.
-///
 /// A range's fate is read exhaustively off the outputs: `child_ranges` (SPLIT),
 /// `enumeration_ranges` (IDLIST), **both** (an IDLIST against a non-empty peer range, which also
 /// bounces the parent back), or neither (SKIP, or dropped as malformed and counted in
 /// [`RoundOutcome::dropped_malformed`]).
-///
 /// The rule is a [`RefinementPolicy`], swappable through [`protocol_round_with_policy`] without a
-/// protocol break. Whatever the policy, the driver keeps `ARCHITECTURE.md` §5 invariant 10: a
+/// protocol break. Whatever the policy, the driver keeps invariant 10: a
 /// SPLIT's children are pairwise disjoint with union the parent.
 pub fn protocol_round<K, B: RsosView<K>>(
     local: &B,
@@ -182,44 +165,36 @@ where
 }
 
 /// [`protocol_round`] with its default rule replaced.
-///
 /// The policy chooses the outcome and the split width, nothing else: bounds validation, rank
 /// arithmetic, `select` cuts and the partition invariant stay here. `?Sized`, so
 /// `&dyn RefinementPolicy` works.
-///
 /// A `Split` this policy returns for a range of more than one local element is trusted to narrow
 /// it ([`RefinementPolicy`]'s progress law); one that would not is converted to an `Enumerate`
-/// instead of reaching the fan-out below, whatever policy produced it (`ARCHITECTURE.md` §5,
+/// instead of reaching the fan-out below, whatever policy produced it (,
 /// invariant 13) — the driver stays liveness-safe even against a policy that breaks the
 /// law, at the cost of an immediate IDLIST for the ranges where it does.
-///
 /// ```
 /// use rand::SeedableRng;
 /// use rsos::FingerprintTreeMap;
 /// use rbsr::{initial_ranges, protocol_round_with_policy, SqrtFanOut};
-///
-/// let mut a = FingerprintTreeMap::new();
-/// let mut b = FingerprintTreeMap::new();
+/// let mut a = FingerprintTreeMap::new;
+/// let mut b = FingerprintTreeMap::new;
 /// for i in 0..400 {
-///     a.insert(i, i);
-///     b.insert(i, i);
+///  a.insert(i, i);
+///  b.insert(i, i);
 /// }
 /// b.insert(999, 999); // only `b` has this key, so the outer range mismatches and must split
-///
 /// let active = initial_ranges(&b);
-/// let mut children = Vec::new();
-/// let mut enumerations = Vec::new();
+/// let mut children = Vec::new;
+/// let mut enumerations = Vec::new;
 /// let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 /// protocol_round_with_policy(&a, &SqrtFanOut, active, &mut children, &mut enumerations, &mut rng);
-///
 /// // `SqrtFanOut` cuts `a`'s 400-element span into exactly ⌊√400⌋ = 20 children, unlike the
 /// // default `FixedFanOut`, which would cap it at 16 regardless of the span.
-/// assert_eq!(children.len(), 20);
-/// assert!(enumerations.is_empty());
+/// assert_eq!(children.len, 20);
+/// assert!(enumerations.is_empty);
 /// ```
-///
 /// # RNG seam
-///
 /// `rng` is injected, never drawn from ambient/thread-local entropy: the driver's own tests stay
 /// deterministic under a seeded `StdRng`, and a caller with no session-scoped RNG to reuse
 /// (`Replica`/`ReadReplicaMap` share one across rounds and peers, `src/replica/dispatch.rs`) can
@@ -305,10 +280,10 @@ where
                 // A fixed stride leaves one undersized block over `actual_span` (none when it
                 // divides evenly); placing that block at a session-random position among the
                 // `ceil(actual_span / stride)` blocks, instead of always last, moves every
-                // interior cut after it with the draw — ARCHITECTURE.md §7, "Defense against a
+                // interior cut after it with the draw —, "Defense against a
                 // correlated false SKIP", option A. Block *count* is `ceil(actual_span / stride)`
                 // for any draw, so this touches no bound invariant 10 or the fan-out width already
-                // relied on. `end_index.get() - start_index.get()`, not the policy-visible `span`
+                // relied on. `end_index.get - start_index.get`, not the policy-visible `span`
                 // a hostile backend could disagree with — see `RsosView`'s count-agreement law.
                 let actual_span = end_index.get() - start_index.get();
                 let remainder = actual_span % stride;

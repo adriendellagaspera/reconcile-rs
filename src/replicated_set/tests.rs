@@ -1,5 +1,4 @@
 // Copyright 2023 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -155,8 +154,8 @@ async fn wait_until<F: FnMut() -> bool>(mut f: F) -> bool {
     false
 }
 
-/// #481: `local_addr` forwards to the wrapped map and reports the transport's real bound
-/// address, matching what was configured — mirrors #292's own `ReplicatedMap` test.
+/// `local_addr` forwards to the wrapped map and reports the transport's real bound
+/// address, matching what was configured — mirrors 's own `ReplicatedMap` test.
 #[tokio::test]
 async fn local_addr_matches_the_configured_bind_address() {
     let socket = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
@@ -172,7 +171,7 @@ async fn local_addr_matches_the_configured_bind_address() {
     );
 }
 
-/// #481: `sync_state` forwards to the wrapped map — it starts with no rounds completed and
+/// `sync_state` forwards to the wrapped map — it starts with no rounds completed and
 /// advances as the engine actually runs, rather than returning a default.
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_state_advances_as_the_engine_runs() {
@@ -190,7 +189,7 @@ async fn sync_state_advances_as_the_engine_runs() {
     task.abort();
 }
 
-/// #481: `peers`/`members` forward to the wrapped map and reflect a real converged pair of
+/// `peers`/`members` forward to the wrapped map and reflect a real converged pair of
 /// sets — each only contains the other node's address once a genuine datagram has been
 /// exchanged, so neither is a fixed literal nor an empty default.
 #[tokio::test(flavor = "multi_thread")]

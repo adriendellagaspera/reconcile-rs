@@ -1,5 +1,4 @@
 // Copyright 2026 Developers of the reconcile-rs project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
@@ -10,20 +9,17 @@
 //! does — checked against a comparison map that Wagner's k-tree was used to make genuinely collide
 //! on the fingerprint half, so the guarantee is exercised at its hardest case rather than an easy
 //! one.
-//!
 //! The plant here is a *solved* k-sum instance (the additive combiner is a k-sum instance, and the
 //! k-tree applies to `ℤ/2^w` *with no error term*, because reduction mod `2^j` is a group
 //! homomorphism and merging on low-order bits is therefore exact) with a single key then removed
 //! from one peer, so the fingerprints no longer agree and neither do the counts. Pinned because the
-//! guarantee is claimed with probability 1 and with no hypothesis on the lift — `POSITIONING.md` §2.1
+//! guarantee is claimed with probability 1 and with no hypothesis on the lift —
 //! records what it covers and what it does not — so it must hold at every width, not merely be
 //! probable at the shipped one.
-//!
 //! Only the **width** is scaled down. The lift is the shipped [`rsos::digest`]/[`rsos::digest_keyed`]
 //! (BLAKE3 over the canonical encoding, unkeyed or keyed) reduced mod `2^w`, the algebra is addition
 //! mod `2^w`, and the driver is `rbsr`'s own, unmodified — [`NarrowStore`] enters through
 //! [`RsosView`], the third-party-backend seam the trait documents.
-//!
 //! Two further tests below drive the *balanced* plant `KTree::solve` finds (rather than the
 //! deliberately-broken one above) through the unmodified driver twice: once with both peers
 //! unkeyed, demonstrating the false SKIP this module's doc describes in prose; once with both
@@ -55,7 +51,6 @@ fn mask(width: u32) -> u64 {
 
 /// The shipped lift, reduced mod `2^width` — unkeyed when `lift_key` is `None` (what an attacker
 /// grinding offline, with no cluster key, computes), keyed otherwise.
-///
 /// Reduction is the homomorphism `ℤ/2^256 → ℤ/2^width`, so this is the *same* algebra at a width
 /// where the attack is reproducible in a test — not a different construction.
 fn lift(key: u64, width: u32, lift_key: Option<&LiftKey>) -> u64 {
@@ -67,7 +62,6 @@ fn lift(key: u64, width: u32, lift_key: Option<&LiftKey>) -> u64 {
 }
 
 /// A store summarizing with `Σ mod 2^width` instead of `Σ mod 2^256`.
-///
 /// Carried in limb 0 of a [`Fingerprint`] so the driver compares the real wire type. Keys are kept
 /// sorted and unique, which is all `rank`/`select` need.
 struct NarrowStore {
@@ -133,7 +127,6 @@ impl RsosView<u64> for NarrowStore {
 // ---------------------------------------------------------------------------------------------
 
 /// A partial sum and the signed keys that produced it.
-///
 /// `true` in the key list means the key is destined for peer A, `false` for peer B — the sign
 /// folded into `value` at level 0.
 #[derive(Clone)]
@@ -166,7 +159,6 @@ impl KTree {
     }
 
     /// Level-0 keys, namespaced so lists are disjoint from each other and from honest data.
-    ///
     /// Bit 63 marks a planted key; `attempt` reseeds the whole search without touching the lift.
     fn key_of(&self, attempt: u64, list: usize, index: usize) -> u64 {
         (1u64 << 63) | (attempt << 52) | ((list as u64) << 40) | (index as u64)
@@ -174,7 +166,6 @@ impl KTree {
 
     /// Find `k` distinct keys whose signed lifts sum to zero mod `2^width`, split evenly between
     /// the two peers. `None` if every attempt came up empty.
-    ///
     /// Positive lists feed peer A, negative lists peer B, so `|P_A| = |P_B| = k/2` by construction
     /// and the count component of the aggregate matches — Theorem 2 does not stand in the way.
     fn solve(&self, attempts: u64) -> Option<(Vec<u64>, Vec<u64>)> {
@@ -232,7 +223,6 @@ impl KTree {
     }
 
     /// Keep the sums that cancel on `window`, capped so list sizes stay stable across levels.
-    ///
     /// The lookup is exact: `(a + b) mod 2^w ≡ 0 (mod 2^j)` iff `a ≡ −b (mod 2^j)`, because
     /// reduction mod `2^j` is a homomorphism — carries leave the window upward and never re-enter
     /// it. This is the step that must carry no error term for [`KTree::solve`] to actually find a
@@ -279,11 +269,9 @@ fn honest() -> Vec<u64> {
 }
 
 /// One round of the real driver: peer A advertises its whole store, peer B answers.
-///
 /// Returns `true` when B SKIPped the outer range — the protocol declaring convergence.
-///
 /// This drives only the **outer** range, which the session-random cut offset does not touch by
-/// construction (`ARCHITECTURE.md` §7, "Defense against a correlated false SKIP" — option A covers
+/// construction (, "Defense against a correlated false SKIP" — option A covers
 /// every range below it, never the first comparison), so a fixed seed here is representative, not
 /// a simplification.
 fn declares_convergence(a: &NarrowStore, b: &NarrowStore) -> bool {
@@ -295,7 +283,7 @@ fn declares_convergence(a: &NarrowStore, b: &NarrowStore) -> bool {
     children.is_empty() && enumerations.is_empty() && outcome.skipped() == 1
 }
 
-/// Two stores sharing `honest()`, differing only in what was planted on each side, both keyed
+/// Two stores sharing `honest`, differing only in what was planted on each side, both keyed
 /// under `lift_key` (or both unkeyed, if `None`) — never one of each, which would only be
 /// re-testing the "different keys never falsely converge" property `rsos`'s own tests already
 /// cover, not this module's Wagner-specific claim.
@@ -334,7 +322,7 @@ fn an_unbalanced_difference_is_never_skipped() {
     }
 }
 
-/// The balanced plant `KTree::solve` finds — no `.pop()` this time, so both count *and*
+/// The balanced plant `KTree::solve` finds — no `.pop` this time, so both count *and*
 /// fingerprint agree — fools the unmodified driver into declaring convergence between two
 /// genuinely different, unkeyed stores. This is the vulnerability this module's doc describes in
 /// prose, exercised directly rather than only through the unbalanced safety net above.

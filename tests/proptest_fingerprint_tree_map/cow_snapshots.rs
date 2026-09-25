@@ -1,12 +1,11 @@
 // Copyright 2026 Developers of the reconcile project.
-//
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Structural sharing (#41): `FingerprintTreeMap::clone` is now shallow -- it bumps the root
+//! Structural sharing: `FingerprintTreeMap::clone` is now shallow -- it bumps the root
 //! `Arc`'s refcount rather than deep-copying every node -- so a subsequent `insert`/`remove` on
 //! either the original or the clone must fork exactly the nodes it touches
 //! ([`std::sync::Arc::make_mut`]) and leave every node still reachable from the *other* copy
