@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-25
+
 ### Changed
 
 - **BREAKING**: store constructors now return `replicated_map::ConstructionError`
@@ -134,6 +136,7 @@ All notable changes to this project are documented here. Format follows
 
 ### Fixed
 
+- `rbsr` moves to `0.2.1` to depend on `rsos 0.5.0` in the published dependency graph.
 - A receiver-side guard now suppresses re-initiating a full comparison round with a peer whose
   paced bulk transfer might still legitimately be in progress (#85, `akvize/reconcile-rs#178`):
   `start_reconciliation` leaves that peer out of a round's targets while its most recently received
@@ -196,7 +199,8 @@ additive-only-until-this-point, so this is the last release either could land in
 Last release before the workspace split. See the
 [GitHub release notes](https://github.com/Akvize/reconcile-rs/releases/tag/v0.2.1).
 
-[Unreleased]: https://github.com/Akvize/reconcile-rs/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/adriendellagaspera/reconcile-rs/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/adriendellagaspera/reconcile-rs/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Akvize/reconcile-rs/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Akvize/reconcile-rs/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Akvize/reconcile-rs/releases/tag/v0.2.1

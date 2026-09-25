@@ -120,18 +120,18 @@ chrono = { version = "0.4.31", features = ["serde"] }
 # `Authenticator`, replay protection, `Discovery`) — see `gossip/src/lib.rs`.
 # `default-features = false` so this crate's own `mac-blake3` default is the single place the MAC
 # backend gets chosen; the unification entries above forward it.
-gossip = { package = "reconcile-gossip", version = "0.4.0", path = "gossip", default-features = false }
+gossip = { package = "reconcile-gossip", version = "0.5.0", path = "gossip", default-features = false }
 ipnet = "2.9.0"
 # The LWW-Register CRDT domain (`Entry`/`State`, `Timestamp`/`Clock`, `Persistence`, `Key`/`Value`)
 # — see `lww-register/src/lib.rs`. Infrastructure-free by construction.
-lww-register = { version = "0.4.0", path = "lww-register" }
+lww-register = { version = "0.5.0", path = "lww-register" }
 metrics = { version = "0.24", optional = true }
 metrics-exporter-prometheus = { version = "0.16", optional = true, default-features = false, features = ["http-listener"] }
 parking_lot = "0.12.1"
 rand = "0.8.5"
 # The anti-entropy algorithm (`initial_ranges`/`protocol_round`/`RangeAggregate`), generic over any RSOS
 # backend — see `rbsr/src/lib.rs`.
-rbsr = { version = "0.2.0", path = "rbsr" }
+rbsr = { version = "0.2.1", path = "rbsr" }
 # The data-structure/fingerprint mechanism (`FingerprintTreeMap`, `Rsos<K>`, `Fingerprint`,
 # `Aggregate`) — see `rsos/src/lib.rs` for what it is.
 #
@@ -139,7 +139,7 @@ rbsr = { version = "0.2.0", path = "rbsr" }
 # publish time and resolves the requirement from crates.io, so without it `cargo package`/`publish`
 # refuses the crate outright. That is what unblocks publishing the facade at all (#204, AGENTS.md
 # §11).
-rsos = { version = "0.4.0", path = "rsos" }
+rsos = { version = "0.5.0", path = "rsos" }
 serde = { version = "1.0.192", features = ["derive"] }
 tokio = { version = "1.33.0", features = ["net", "time", "rt", "macros", "sync"] }
 # `CancellationToken`, `ReplicatedMap::run`'s shutdown signal (#292). Re-exported (`src/lib.rs`)
@@ -166,7 +166,7 @@ devkit = { path = "devkit" }
 # `benches/`/`tests/` only, without adding it to the default build any dependent gets.
 # `default-features = false` mirrors the `[dependencies]` entry above so `netem` is the only net
 # new thing this adds.
-gossip = { package = "reconcile-gossip", version = "0.4.0", path = "gossip", default-features = false, features = ["netem"] }
+gossip = { package = "reconcile-gossip", version = "0.5.0", path = "gossip", default-features = false, features = ["netem"] }
 metrics-util = { version = "0.19", default-features = false, features = ["debugging"] }
 proptest = "1.11.0"
 rand = "0.8.5"

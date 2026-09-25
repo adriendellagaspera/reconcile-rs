@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 to 0.5.0
+
 ### Store constructors now return typed security errors
 
 Omitting both `Config::with_cluster_key` and `Config::with_insecure_no_key` now returns
