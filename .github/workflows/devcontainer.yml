@@ -83,6 +83,7 @@ jobs:
         run: |
           devcontainer exec --workspace-folder . -- bash -lc "\
             export CARGO_HOME=\$HOME/.cargo && \
+            export RUSTFLAGS='--cfg reconcile_internal_testing' && \
             mkdir -p \$CARGO_HOME && \
             cargo build --all-targets --all-features && \
             cargo test --lib --all-features \

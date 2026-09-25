@@ -5,18 +5,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//!  reserved wire tags 5 and 6 as skippable slots; has since consumed tag 5 for a real
-//! [`Message::ConvergenceAck`](super::super::Message::ConvergenceAck) (own tests:
-//! [`convergence_ack`](super::convergence_ack)), leaving tag 6 as the one still reserved. What this file
-//! pins for that remaining tag:
-//! 1. Its own encoding (golden vector) — a reordering of `Message`'s variants would move it (and
-//!  every tag past it) silently, breaking the reservation.
-//! 2. That a `Reserved6` message packed *alongside* a real message in one datagram does not stop
-//!  the real message from being processed — the whole point of reserving a tag rather than
-//!  leaving an unknown one to drop the datagram wholesale.
-//! 3. That the opaque `Vec<u8>` payload's decode is bounded by the actual bytes available, not by
-//!  whatever length it claims — a lying length prefix must fail cleanly, not allocate on the
-//!  strength of an attacker's say-so.
+//! Wire-compatibility tests for reserved message tag 6.
+//!
+//! They pin its encoding, verify that a reserved message does not block sibling messages in the
+//! same datagram, and reject payload lengths larger than the bytes available.
 
 use bincode::{DefaultOptions, Deserializer, Serializer};
 use gossip::auth;

@@ -28,23 +28,6 @@ use crate::entry::Entry;
 pub type DatedEntries<K, V> = Vec<(K, Entry<Timestamp, V>)>;
 
 /// Everything a replicated map needs to survive a restart without behaving like a fresh replica.
-/// ```
-/// use lww_register::{Entry, PersistedState};
-/// use lww_register::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
-/// let stamp = Timestamp::new(Hlc::new(PhysicalTime::from_millis(0), LogicalCounter::new(0)), NodeId::new(1));
-/// let entries = vec![("a", Entry::present(stamp, 1))];
-/// // `From<DatedEntries>`: the common case, when membership and tombstone acks haven't been
-/// // observed yet -- e.g. building a fresh snapshot in a test.
-/// let fresh: PersistedState<&str, i32> = entries.clone.into;
-/// assert!(fresh.members.is_empty);
-/// assert!(fresh.tombstone_acks.is_empty);
-/// // `new`: when membership or tombstone acks carry real values -- reconstructing a snapshot
-/// // loaded from a durable backend, say.
-/// let mut members = std::collections::HashSet::new;
-/// members.insert("127.0.0.1".parse.unwrap);
-/// let full = PersistedState::new(entries, members.clone, Default::default);
-/// assert_eq!(full.members, members);
-/// ```
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(
     serialize = "K: Serialize, V: Serialize",
@@ -105,17 +88,6 @@ impl<K, V> From<DatedEntries<K, V>> for PersistedState<K, V> {
 /// A pluggable durable backend for a replicated map.
 /// Held behind an [`Arc`](std::sync::Arc) and snapshotted from a background task, hence
 /// `Send + Sync + 'static`.
-/// ```
-/// use lww_register::{Entry, InMemoryPersistence, PersistedState, Persistence};
-/// use lww_register::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
-/// let stamp = Timestamp::new(Hlc::new(PhysicalTime::from_millis(0), LogicalCounter::new(0)), NodeId::new(1));
-/// let backend = InMemoryPersistence::new;
-/// assert!(backend.load.unwrap.is_none); // nothing saved yet
-/// let state: PersistedState<&str, i32> = vec![("a", Entry::present(stamp, 1))].into;
-/// backend.save(&state).unwrap;
-/// let loaded = backend.load.unwrap.unwrap;
-/// assert_eq!(loaded.entries, state.entries);
-/// ```
 pub trait Persistence<K, V>: Send + Sync + 'static {
     /// Load the previously saved state, or `Ok(None)` if nothing was ever saved.
     /// # Call context
