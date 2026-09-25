@@ -18,16 +18,13 @@ use crate::{
     ReplicatedMap,
 };
 
-use super::ephemeral_config;
+use super::{virtual_config, virtual_map};
 
 /// D4: the node id is settable through `Config` and readable back off the store, and the
 /// value reported is the one the clock actually stamps onto minted timestamps.
 #[tokio::test]
 async fn node_id_is_readable_and_matches_the_minted_stamp() {
-    let store =
-        ReplicatedMap::<i32, i32>::new(ephemeral_config().with_node_id(NodeId::new(0xABCD)))
-            .await
-            .unwrap();
+    let store = virtual_map::<i32, i32>(virtual_config().with_node_id(NodeId::new(0xABCD)));
     assert_eq!(store.node_id(), NodeId::new(0xABCD));
     store.insert(1, 1);
     let stamp = store.engine.map.load_full().get(&1).unwrap().stamp;
@@ -48,7 +45,7 @@ async fn stores_converge_over_an_injected_transport() {
     let a_ip: IpAddr = "127.0.0.4".parse().unwrap();
     let b_ip: IpAddr = "127.0.0.5".parse().unwrap();
     let cfg = |ip: IpAddr, id: u64| {
-        ephemeral_config()
+        virtual_config()
             .with_listen_addr(ip)
             .with_port(port)
             .with_node_id(NodeId::new(id))

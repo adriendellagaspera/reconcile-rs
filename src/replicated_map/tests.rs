@@ -28,9 +28,7 @@ mod value_ref;
 mod value_size;
 mod write;
 
-/// A config bound to a fresh port on loopback — port `0` is refused, so
-/// [`next_ephemeral_test_port`](crate::replica::tests::next_ephemeral_test_port) stands in for it
-/// — so persistence tests can construct stores without colliding on a fixed port.
+/// Complete loopback test config on a caller-selected nonzero protocol port.
 fn config_on_port(port: u16) -> Config {
     Config {
         port,
@@ -60,10 +58,6 @@ fn config_on_port(port: u16) -> Config {
     }
 }
 
-fn ephemeral_config() -> Config {
-    config_on_port(crate::replica::tests::next_ephemeral_test_port())
-}
-
 fn virtual_config() -> Config {
     config_on_port(5000)
 }
@@ -75,4 +69,22 @@ fn virtual_map<K: crate::bounds::Key + Hash, V: crate::bounds::Value>(
     let addr = SocketAddr::new(config.listen_addr, config.port);
     super::ReplicatedMap::new_with_transport(config, Arc::new(network.bind(addr)))
         .expect("valid test configuration")
+}
+
+fn virtual_map_with_clock<K: crate::bounds::Key + Hash, V: crate::bounds::Value>(
+    config: Config,
+    clock: Arc<dyn crate::clock::Clock>,
+) -> super::ReplicatedMap<K, V> {
+    let network = crate::transport::InMemoryNetwork::new();
+    let endpoint = SocketAddr::new(config.listen_addr, config.port);
+    let engine = crate::replica::Replica::<K, V>::new_with_transport(
+        config.clone(),
+        Arc::new(network.bind(endpoint)),
+        clock,
+    );
+    super::ReplicatedMap::from_engine(
+        engine,
+        config.snapshot_interval,
+        config.snapshot_change_threshold,
+    )
 }

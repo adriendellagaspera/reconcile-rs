@@ -13,9 +13,9 @@ use std::time::Duration;
 use crate::persistence::{PersistedState, Persistence};
 use crate::replica::version_hash;
 use crate::replicated_map::PersistenceLoadError;
-use crate::{FileSnapshot, ReplicatedMap};
+use crate::FileSnapshot;
 
-use super::{ephemeral_config, virtual_config, virtual_map};
+use super::{virtual_config, virtual_map, virtual_map_with_clock};
 
 /// A durable backend must let a restarted store recover both live values and tombstones, with
 /// identical timestamps (hence an identical fingerprint).
@@ -328,14 +328,10 @@ async fn restart_clock_advanced_past_persisted_max_stamp() {
         .unwrap();
 
     // Create a store with the ManualClock and load the persisted state.
-    let store = ReplicatedMap::<i32, i32>::new_with_clock(
-        ephemeral_config().with_node_id(NodeId::new(1)),
-        clock,
-    )
-    .await
-    .expect("bind failed")
-    .with_persistence(backend)
-    .unwrap();
+    let store =
+        virtual_map_with_clock::<i32, i32>(virtual_config().with_node_id(NodeId::new(1)), clock)
+            .with_persistence(backend)
+            .unwrap();
 
     // Insert a new value; the minted timestamp must be strictly greater than persisted_stamp.
     store.insert(99, 1);
@@ -379,14 +375,10 @@ async fn restart_insert_beats_persisted_tombstone() {
         )]))
         .unwrap();
 
-    let store = ReplicatedMap::<i32, i32>::new_with_clock(
-        ephemeral_config().with_node_id(NodeId::new(2)),
-        clock,
-    )
-    .await
-    .expect("bind failed")
-    .with_persistence(backend)
-    .unwrap();
+    let store =
+        virtual_map_with_clock::<i32, i32>(virtual_config().with_node_id(NodeId::new(2)), clock)
+            .with_persistence(backend)
+            .unwrap();
 
     // The tombstone was recovered (key 7 is absent from the live view).
     assert!(
