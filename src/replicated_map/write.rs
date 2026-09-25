@@ -99,9 +99,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// seeding, [`insert`](Self::insert) for a propagating write.
     #[cfg(any(test, reconcile_internal_testing))]
     pub fn just_insert(&self, key: K, value: V) -> Option<V> {
-        let ret = self
-            .engine
-            .just_insert(key, Entry::present(self.engine.clock_now(), value));
+        let ret = self.engine.just_insert(key, Entry::present(self.engine.clock_now(), value));
         ret.and_then(|t| t.state.into())
     }
 
@@ -133,7 +131,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
     /// )
-    /// .expect("valid configuration");
+    ///.expect("valid configuration");
     ///
     /// assert_eq!(store.insert("a".to_string(), 1), None); // nothing there before
     /// assert_eq!(store.insert("a".to_string(), 2), Some(1)); // returns the value it replaced
@@ -141,9 +139,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// # }
     /// ```
     pub fn insert(&self, key: K, value: V) -> Option<V> {
-        let ret = self
-            .engine
-            .insert(key, Entry::present(self.engine.clock_now(), value));
+        let ret = self.engine.insert(key, Entry::present(self.engine.clock_now(), value));
         ret.and_then(|t| t.state.into())
     }
 
@@ -163,15 +159,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime.
     pub fn insert_bulk(&self, key_values: &[(K, V)]) {
         self.engine.insert_bulk(
-            &key_values
-                .iter()
-                .map(|(k, v)| {
+            &key_values.iter().map(|(k, v)| {
                     (
                         k.clone(),
                         Entry::present(self.engine.clock_now(), v.clone()),
                     )
-                })
-                .collect::<Vec<_>>(),
+                }).collect::<Vec<_>>(),
         );
     }
 
@@ -184,15 +177,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// one write path that never broadcasts.
     pub fn load_bulk(&self, key_values: &[(K, V)]) {
         self.engine.just_insert_bulk(
-            &key_values
-                .iter()
-                .map(|(k, v)| {
+            &key_values.iter().map(|(k, v)| {
                     (
                         k.clone(),
                         Entry::present(self.engine.clock_now(), v.clone()),
                     )
-                })
-                .collect::<Vec<_>>(),
+                }).collect::<Vec<_>>(),
         );
     }
 
@@ -200,9 +190,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// [`remove`](Self::remove) for a propagating deletion.
     #[cfg(any(test, reconcile_internal_testing))]
     pub fn just_remove(&self, key: &K) -> Option<V> {
-        let ret = self
-            .engine
-            .just_insert(key.clone(), Entry::tombstone(self.engine.clock_now()));
+        let ret = self.engine.just_insert(key.clone(), Entry::tombstone(self.engine.clock_now()));
         ret.and_then(|t| t.state.into())
     }
 
@@ -222,7 +210,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     ///     Config::default().with_insecure_no_key(),
     ///     transport,
     /// )
-    /// .expect("valid configuration");
+    ///.expect("valid configuration");
     ///
     /// store.insert("a".to_string(), 1);
     /// assert_eq!(store.remove(&"a".to_string()), Some(1)); // returns the removed value
@@ -231,9 +219,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// # }
     /// ```
     pub fn remove(&self, key: &K) -> Option<V> {
-        let ret = self
-            .engine
-            .insert(key.clone(), Entry::tombstone(self.engine.clock_now()));
+        let ret = self.engine.insert(key.clone(), Entry::tombstone(self.engine.clock_now()));
         ret.and_then(|t| t.state.into())
     }
 
@@ -242,10 +228,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     #[cfg(any(test, reconcile_internal_testing))]
     pub fn just_remove_bulk(&self, keys: &[K]) {
         self.engine.just_insert_bulk(
-            &keys
-                .iter()
-                .map(|k| (k.clone(), Entry::tombstone(self.engine.clock_now())))
-                .collect::<Vec<_>>(),
+            &keys.iter().map(|k| (k.clone(), Entry::tombstone(self.engine.clock_now()))).collect::<Vec<_>>(),
         );
     }
 
@@ -258,10 +241,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime.
     pub fn remove_bulk(&self, keys: &[K]) {
         self.engine.insert_bulk(
-            &keys
-                .iter()
-                .map(|k| (k.clone(), Entry::tombstone(self.engine.clock_now())))
-                .collect::<Vec<_>>(),
+            &keys.iter().map(|k| (k.clone(), Entry::tombstone(self.engine.clock_now()))).collect::<Vec<_>>(),
         );
     }
 
@@ -270,14 +250,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// [`delete_range`](Self::delete_range).
     fn live_keys_where<P: FnMut(&K, &V) -> bool>(&self, mut select: P) -> Vec<K> {
         let guard = self.engine.map.load_full();
-        guard
-            .range(..)
-            .filter_map(|(k, entry)| {
-                entry
-                    .value()
-                    .and_then(|value| select(k, value).then(|| k.clone()))
-            })
-            .collect()
+        guard.range(..).filter_map(|(k, entry)| {
+                entry.value().and_then(|value| select(k, value).then(|| k.clone()))
+            }).collect()
     }
 
     /// Delete every live entry, as broadcast tombstones (so the deletion reconciles to peers
@@ -319,10 +294,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     pub fn delete_range<R: RangeBounds<K>>(&self, range: R) {
         let keys: Vec<K> = {
             let guard = self.engine.map.load_full();
-            guard
-                .range(range)
-                .filter_map(|(k, entry)| entry.value().map(|_| k.clone()))
-                .collect()
+            guard.range(range).filter_map(|(k, entry)| entry.value().map(|_| k.clone())).collect()
         };
         if !keys.is_empty() {
             self.remove_bulk(&keys);
@@ -342,8 +314,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.tombstones.set_timeout(timeout);
     }
 
-    /// Garbage-collect tombstones, **gated on causal stability** (`ARCHITECTURE.md` §5
-    /// invariant 6): older than the timeout *and* acknowledged by every replica this node has
+    /// Garbage-collect tombstones, **gated on causal stability**: older than the timeout *and* acknowledged by every replica this node has
     /// communicated with, or decommissioned via [`forget_peer`](Self::forget_peer).
     pub(super) async fn clear_expired_tombstones(&self) {
         loop {
