@@ -332,8 +332,8 @@ async fn run_pair(
 
 async fn stop_pair(
     shutdown: CancellationToken,
-    left: tokio::task::JoinHandle<reconcile::RunOutcome>,
-    right: tokio::task::JoinHandle<reconcile::RunOutcome>,
+    left: tokio::task::JoinHandle<()>,
+    right: tokio::task::JoinHandle<()>,
 ) {
     shutdown.cancel();
     left.await.expect("left run task");
