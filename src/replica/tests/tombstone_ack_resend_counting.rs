@@ -6,6 +6,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::collections::BTreeSet;
+
 use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
 use crate::entry::{Entry, State};
 use crate::replica::Replica;
@@ -43,7 +45,7 @@ async fn returned_count_matches_acks_actually_appended() {
     }
 
     let mut send_buf = Vec::new();
-    let appended = eng.resend_held_tombstone_acks(&mut send_buf, 0);
+    let appended = eng.resend_held_tombstone_acks(&mut send_buf);
 
     assert_eq!(
         appended, n as usize,
@@ -63,20 +65,21 @@ async fn returned_count_matches_acks_actually_appended() {
     );
 }
 
-/// The resend window starts at `round % n` across the *sorted* tombstone keys, not some other
-/// index arithmetic that happens to coincide with it when the whole window fits in one round
-/// (`returned_count_matches_acks_actually_appended` above never truncates, so it can't tell
-/// `round % n` apart from e.g. `round / n` or `round + n` -- both reduce to the same visited
-/// key set when nothing is dropped). Forcing a real byte-budget truncation here, with `n` large
-/// enough that only a slice of the window fits, makes the *first* key actually resent depend on
-/// which arithmetic computed the start.
-#[tokio::test]
-async fn resend_window_starts_at_round_modulo_tombstone_count() {
-    let eng = engine("127.0.0.161").await;
-    // Comfortably more than TOMBSTONE_ACK_RESEND_BYTE_BUDGET (8 KiB) worth of Ack messages, so
-    // the byte budget truncates the window well before it wraps back around.
-    let n: i32 = 2000;
-    for key in 0..n {
+fn decoded_ack_keys(send_buf: &[u8]) -> Vec<i32> {
+    let decoded: Vec<Message<i32, Entry<Timestamp, i32>, State<i32>>> =
+        gossip::bincode::decode_stream(send_buf, MAX_MESSAGES_PER_DATAGRAM)
+            .expect("resend_held_tombstone_acks writes valid Message encodings");
+    decoded
+        .into_iter()
+        .filter_map(|message| match message {
+            Message::TombstoneAck((key, _)) => Some(key),
+            _ => None,
+        })
+        .collect()
+}
+
+fn insert_tombstones(eng: &Replica<i32, i32>, keys: impl IntoIterator<Item = i32>) {
+    for key in keys {
         eng.just_insert(
             key,
             Entry::tombstone(Timestamp::new(
@@ -88,28 +91,101 @@ async fn resend_window_starts_at_round_modulo_tombstone_count() {
             )),
         );
     }
+}
 
-    let round: u32 = 733; // 733 % 2000 == 733; neither 733 / 2000 (== 0) nor 733 + 2000 matches it.
+/// A truncated resend must resume at the first key that did not fit, rather than shifting by one
+/// key per reconciliation round. With fixed-size integer keys, a stable set is therefore covered
+/// in roughly `ceil(n / window_capacity)` rounds.
+#[tokio::test]
+async fn resend_window_resumes_at_first_uncovered_key() {
+    let eng = engine("127.0.0.161").await;
+    let n: i32 = 2000;
+    insert_tombstones(&eng, 0..n);
+
     let mut send_buf = Vec::new();
-    let appended = eng.resend_held_tombstone_acks(&mut send_buf, round);
+    let first_count = eng.resend_held_tombstone_acks(&mut send_buf);
+    let first_keys = decoded_ack_keys(&send_buf);
+    assert_eq!(first_keys.len(), first_count);
     assert!(
-        appended < n as usize,
-        "test setup: expected the byte budget to truncate the window well before {n} keys"
+        first_count < n as usize,
+        "test setup: the 8 KiB resend budget must truncate the first window"
+    );
+    let expected_second_start = *first_keys.last().expect("first window must contain acks") + 1;
+
+    send_buf.clear();
+    eng.resend_held_tombstone_acks(&mut send_buf);
+    let second_keys = decoded_ack_keys(&send_buf);
+    assert_eq!(
+        second_keys.first().copied(),
+        Some(expected_second_start),
+        "the next window must start at the first key not covered by the previous one"
     );
 
-    let decoded: Vec<Message<i32, Entry<Timestamp, i32>, State<i32>>> =
-        gossip::bincode::decode_stream(&send_buf, MAX_MESSAGES_PER_DATAGRAM)
-            .expect("resend_held_tombstone_acks writes valid Message encodings");
-    let first_key = decoded
-        .iter()
-        .find_map(|m| match m {
-            Message::TombstoneAck((k, _)) => Some(*k),
-            _ => None,
-        })
-        .expect("at least one Ack must have been written");
-    assert_eq!(
-        first_key,
-        round as i32 % n,
-        "the resend window must start at round % n across the sorted tombstone keys"
+    let mut seen: BTreeSet<_> = first_keys.into_iter().chain(second_keys).collect();
+    let max_rounds = (n as usize).div_ceil(first_count) + 1;
+    let mut rounds = 2;
+    while seen.len() < n as usize && rounds < max_rounds {
+        send_buf.clear();
+        eng.resend_held_tombstone_acks(&mut send_buf);
+        seen.extend(decoded_ack_keys(&send_buf));
+        rounds += 1;
+    }
+
+    assert_eq!(seen.len(), n as usize, "every stable tombstone must be covered");
+    assert!(
+        rounds <= max_rounds,
+        "coverage must scale with the number of byte-bounded windows, not with n"
+    );
+}
+
+/// The cursor is a key rather than an index: if its target is resurrected before the next round,
+/// ordered lookup resumes at the target's successor, while a tombstone inserted behind the cursor
+/// is still covered after the window wraps.
+#[tokio::test]
+async fn resend_cursor_survives_live_set_changes_without_skipping_keys() {
+    let eng = engine("127.0.0.162").await;
+    let n: i32 = 2000;
+    insert_tombstones(&eng, 0..n);
+
+    let mut send_buf = Vec::new();
+    eng.resend_held_tombstone_acks(&mut send_buf);
+    let first_keys = decoded_ack_keys(&send_buf);
+    let resurrected = *first_keys.last().expect("first window must contain acks") + 1;
+
+    eng.just_insert(
+        resurrected,
+        Entry::present(
+            Timestamp::new(
+                Hlc::new(PhysicalTime::from_millis(10_000), LogicalCounter::new(0)),
+                NodeId::new(0),
+            ),
+            7,
+        ),
+    );
+    let inserted = n;
+    insert_tombstones(&eng, [inserted]);
+
+    let expected: BTreeSet<_> = (0..n)
+        .filter(|key| *key != resurrected)
+        .chain(std::iter::once(inserted))
+        .collect();
+    let mut seen: BTreeSet<_> = first_keys.into_iter().collect();
+
+    for _ in 0..16 {
+        if expected.is_subset(&seen) {
+            break;
+        }
+        send_buf.clear();
+        eng.resend_held_tombstone_acks(&mut send_buf);
+        seen.extend(decoded_ack_keys(&send_buf));
+    }
+
+    assert!(
+        expected.is_subset(&seen),
+        "resurrection at the cursor and insertion behind it must not permanently skip a tombstone"
+    );
+    assert!(
+        !seen.contains(&resurrected),
+        "a resurrected key must no longer be resent as a tombstone"
     );
 }
