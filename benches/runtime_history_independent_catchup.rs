@@ -317,12 +317,20 @@ async fn run_pair(
     pair: &Pair,
 ) -> (
     CancellationToken,
-    tokio::task::JoinHandle<reconcile::RunOutcome>,
-    tokio::task::JoinHandle<reconcile::RunOutcome>,
+    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<()>,
 ) {
     let shutdown = CancellationToken::new();
-    let left = tokio::spawn(pair.left.store.clone().run(shutdown.clone()));
-    let right = tokio::spawn(pair.right.store.clone().run(shutdown.clone()));
+    let left_store = pair.left.store.clone();
+    let left_shutdown = shutdown.clone();
+    let left = tokio::spawn(async move {
+        let _ = left_store.run(left_shutdown).await;
+    });
+    let right_store = pair.right.store.clone();
+    let right_shutdown = shutdown.clone();
+    let right = tokio::spawn(async move {
+        let _ = right_store.run(right_shutdown).await;
+    });
     (shutdown, left, right)
 }
 
