@@ -38,8 +38,8 @@ pub(crate) const MAX_MESSAGES_PER_DATAGRAM: usize = BUFFER_SIZE;
 const PEER_EXPIRATION: Duration = Duration::from_secs(60);
 /// Byte budget for the tombstone ack resends piggybacked onto each reconciliation datagram. Kept
 /// well under [`BUFFER_SIZE`] so the datagram still fits after authentication framing; when more
-/// tombstones are held than fit in one round, a round-advancing window covers the remainder on
-/// subsequent rounds.
+/// tombstones are held than fit in one round, a cursor resumes at the first uncovered key on the
+/// next round.
 const TOMBSTONE_ACK_RESEND_BYTE_BUDGET: usize = 8 * 1024;
 
 const MAX_SENDTO_RETRIES: u32 = 4;
