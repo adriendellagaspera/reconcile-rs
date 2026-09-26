@@ -178,7 +178,7 @@ jobs:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
         RECONCILE_RUNTIME_HISTORY_N: "10000"
         RECONCILE_RUNTIME_HISTORY_D: "100"
-        RECONCILE_RUNTIME_HISTORY_OPS: "0,1000,100000,1000000"
+        RECONCILE_RUNTIME_TOMBSTONES: "0,100,1000,10000"
 
   package:
     needs: changes
