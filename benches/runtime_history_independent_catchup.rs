@@ -123,6 +123,9 @@ struct Pair {
     right: Peer,
 }
 
+type LiveState = Vec<(u64, u64)>;
+type LiveStatePair = (LiveState, LiveState);
+
 #[derive(Debug, Eq, PartialEq)]
 struct CostSignature {
     decisions: Decisions,
@@ -226,11 +229,7 @@ fn transient_keys(start: u64, count: usize) -> Vec<u64> {
     (start..start + count as u64).collect()
 }
 
-fn leave_transient_tombstones(
-    store: &ReplicatedMap<u64, u64>,
-    keys: &[u64],
-    salt: u64,
-) {
+fn leave_transient_tombstones(store: &ReplicatedMap<u64, u64>, keys: &[u64], salt: u64) {
     if keys.is_empty() {
         return;
     }
@@ -333,7 +332,7 @@ async fn scenario(
     fixed_keys: &[u64],
     transient_tombstones: usize,
     policy: &dyn RefinementPolicy,
-    reference_live_states: &mut Option<(Vec<(u64, u64)>, Vec<(u64, u64)>)>,
+    reference_live_states: &mut Option<LiveStatePair>,
     reference_post_gc: &mut Option<CostSignature>,
 ) {
     let pair = pair();
@@ -375,10 +374,7 @@ async fn scenario(
     let expected_right_tombstones = right_fixed.len() + right_transient.len();
     assert_eq!(pair.left.store.len(), n - left_fixed.len());
     assert_eq!(pair.right.store.len(), n - right_fixed.len());
-    assert_eq!(
-        tombstone_count(&pair.left.store),
-        expected_left_tombstones
-    );
+    assert_eq!(tombstone_count(&pair.left.store), expected_left_tombstones);
     assert_eq!(
         tombstone_count(&pair.right.store),
         expected_right_tombstones
