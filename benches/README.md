@@ -32,6 +32,7 @@ through a blocked in-memory transport. It holds their live states and fixed fina
 while varying transient keys that are inserted and deleted during the partition, so only the raw
 tombstone footprint grows. It counts the raw dated RBSR trace before healing, reports actual
 catch-up traffic/time, and verifies causal-stability GC removes that historical footprint. Defaults
-are `n=10000`, `d=100`, and `t={0,100,1000,10000}`; override them with
+are `n=10000`, `d=100`, and `t={0,100,1000}`; override them with
 `RECONCILE_RUNTIME_HISTORY_N`, `RECONCILE_RUNTIME_HISTORY_D`, and
-`RECONCILE_RUNTIME_TOMBSTONES`.
+`RECONCILE_RUNTIME_TOMBSTONES`. Larger tombstone sweeps are opt-in because causal-stability
+acknowledgment drainage can dominate wall time.
