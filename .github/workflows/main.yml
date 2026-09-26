@@ -172,6 +172,13 @@ jobs:
     - run: cargo bench --no-run
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+    - name: Measure history-independent catch-up
+      run: cargo bench --bench history_independent_catchup -- --noplot
+      env:
+        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+        RECONCILE_HISTORY_N: "100000"
+        RECONCILE_HISTORY_D: "100"
+        RECONCILE_HISTORY_OPS: "0,1000,100000,1000000,10000000"
 
   package:
     needs: changes
