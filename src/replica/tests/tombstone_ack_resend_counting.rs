@@ -142,6 +142,45 @@ async fn resend_window_resumes_at_first_uncovered_key() {
     );
 }
 
+/// If every tombstone at or after the cursor disappears, the insertion point is one past the
+/// shortened live set and the resend cycle must wrap to its first key.
+#[tokio::test]
+async fn resend_cursor_wraps_when_successor_range_disappears() {
+    let eng = engine("127.0.0.162").await;
+    let n: i32 = 2000;
+    insert_tombstones(&eng, 0..n);
+
+    let mut send_buf = Vec::new();
+    eng.resend_held_tombstone_acks(&mut send_buf);
+    let first_keys = decoded_ack_keys(&send_buf);
+    let cursor_key = *first_keys.last().expect("first window must contain acks") + 1;
+
+    for key in cursor_key..n {
+        eng.just_insert(
+            key,
+            Entry::present(
+                Timestamp::new(
+                    Hlc::new(
+                        PhysicalTime::from_millis(10_000 + key as u64),
+                        LogicalCounter::new(0),
+                    ),
+                    NodeId::new(0),
+                ),
+                7,
+            ),
+        );
+    }
+
+    send_buf.clear();
+    eng.resend_held_tombstone_acks(&mut send_buf);
+    let wrapped_keys = decoded_ack_keys(&send_buf);
+    assert_eq!(
+        wrapped_keys.first().copied(),
+        Some(0),
+        "a cursor beyond the shortened live set must wrap to the first tombstone"
+    );
+}
+
 /// The cursor is a key rather than an index: if its target is resurrected before the next round,
 /// ordered lookup resumes at the target's successor, while a tombstone inserted behind the cursor
 /// is still covered after the window wraps.
