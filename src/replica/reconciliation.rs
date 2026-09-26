@@ -160,11 +160,13 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let n = keys.len();
         let budget = send_buf.len() + TOMBSTONE_ACK_RESEND_BYTE_BUDGET;
         let mut cursor = self.tombstone_ack_resend_cursor.lock();
-        let start = cursor.as_ref().map_or(0, |next| match keys.binary_search(next) {
-            Ok(index) => index,
-            Err(index) if index < n => index,
-            Err(_) => 0,
-        });
+        let start = cursor
+            .as_ref()
+            .map_or(0, |next| match keys.binary_search(next) {
+                Ok(index) => index,
+                Err(index) if index < n => index,
+                Err(_) => 0,
+            });
         let map_guard = self.map.load_full();
         let mut appended = 0;
         let mut next_cursor = None;
