@@ -169,11 +169,20 @@ async fn resend_cursor_survives_live_set_changes_without_skipping_keys() {
     let inserted = n;
     insert_tombstones(&eng, [inserted]);
 
+    send_buf.clear();
+    eng.resend_held_tombstone_acks(&mut send_buf);
+    let resumed_keys = decoded_ack_keys(&send_buf);
+    assert_eq!(
+        resumed_keys.first().copied(),
+        Some(resurrected + 1),
+        "a disappeared cursor key must resume at its ordered successor, not restart the cycle"
+    );
+
     let expected: BTreeSet<_> = (0..n)
         .filter(|key| *key != resurrected)
         .chain(std::iter::once(inserted))
         .collect();
-    let mut seen: BTreeSet<_> = first_keys.into_iter().collect();
+    let mut seen: BTreeSet<_> = first_keys.into_iter().chain(resumed_keys).collect();
 
     for _ in 0..16 {
         if expected.is_subset(&seen) {
