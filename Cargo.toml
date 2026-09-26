@@ -41,6 +41,10 @@ name = "protocol"
 harness = false
 
 [[bench]]
+name = "history_independent_catchup"
+harness = false
+
+[[bench]]
 name = "contention"
 harness = false
 
