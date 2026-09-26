@@ -28,7 +28,6 @@ exclude_re = [
     "protocol/rank\\.rs:111:62: replace != with ==",
     "protocol/rank\\.rs:112:49: replace != with ==",
     "replica/construct\\.rs:212:33: replace < with <=",
-    "replica/reconciliation\\.rs:167:37: replace < with <=",
     "replica/repair\\.rs:116:36: replace > with >=",
 ]
 
