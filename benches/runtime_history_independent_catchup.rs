@@ -33,7 +33,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use devkit::protocol_cost::{reconcile, Cost, Decisions, Counting};
+use devkit::protocol_cost::{reconcile, Cost, Counting, Decisions};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut, RefinementPolicy};
@@ -92,12 +92,8 @@ impl Transport for GateTransport {
             return Ok(buf.len());
         }
         let sent = self.inner.send_to(buf, dst).await?;
-        self.traffic
-            .datagrams
-            .fetch_add(1, Ordering::Relaxed);
-        self.traffic
-            .bytes
-            .fetch_add(sent as u64, Ordering::Relaxed);
+        self.traffic.datagrams.fetch_add(1, Ordering::Relaxed);
+        self.traffic.bytes.fetch_add(sent as u64, Ordering::Relaxed);
         Ok(sent)
     }
 
@@ -202,7 +198,11 @@ fn raw_diff_keys(
     left: &FingerprintTreeMap<u64, Entry<Timestamp, u64>>,
     right: &FingerprintTreeMap<u64, Entry<Timestamp, u64>>,
 ) -> Vec<u64> {
-    assert_eq!(left.len(), right.len(), "pre-heal raw key sets differ in size");
+    assert_eq!(
+        left.len(),
+        right.len(),
+        "pre-heal raw key sets differ in size"
+    );
     left.iter()
         .zip(right.iter())
         .filter_map(|((left_key, left_value), (right_key, right_value))| {
@@ -261,11 +261,7 @@ fn apply_superseded_history(
     store.remove_bulk(keys);
 }
 
-fn peer(
-    network: &InMemoryNetwork,
-    addr: IpAddr,
-    node_id: u64,
-) -> Peer {
+fn peer(network: &InMemoryNetwork, addr: IpAddr, node_id: u64) -> Peer {
     let blocked = Arc::new(AtomicBool::new(false));
     let traffic = Traffic::default();
     let transport = GateTransport {
@@ -504,7 +500,10 @@ async fn report() {
     let n = env_usize("RECONCILE_RUNTIME_HISTORY_N", DEFAULT_N);
     let d = env_usize("RECONCILE_RUNTIME_HISTORY_D", DEFAULT_D);
     let histories = history_sizes();
-    assert!(!histories.is_empty(), "at least one history size is required");
+    assert!(
+        !histories.is_empty(),
+        "at least one history size is required"
+    );
 
     let keys = divergent_keys(n, d);
     let policy = FixedFanOut::new(FanOut::NEGENTROPY);
