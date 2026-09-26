@@ -283,6 +283,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 members: Arc::new(RwLock::new(HashSet::new())),
                 tombstone_acks: Arc::new(RwLock::new(HashMap::new())),
                 live_tombstones: Arc::new(RwLock::new(HashSet::new())),
+                tombstone_ack_resend_cursor: Arc::new(Mutex::new(None)),
                 clock,
                 node_id_is_random,
                 collision_reporter: super::collision::CollisionReporter::new(),
