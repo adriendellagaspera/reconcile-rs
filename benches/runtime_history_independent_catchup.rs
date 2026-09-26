@@ -114,6 +114,9 @@ struct Pair {
     right: Peer,
 }
 
+type ValueState = Vec<(u64, State<u64>)>;
+type ValueStatePair = (ValueState, ValueState);
+
 #[derive(Debug, Eq, PartialEq)]
 struct CostSignature {
     decisions: Decisions,
@@ -178,7 +181,7 @@ fn divergent_keys(n: usize, d: usize) -> Vec<u64> {
     (1..=d).map(|i| (stride * i) as u64).collect()
 }
 
-fn value_state(store: &ReplicatedMap<u64, u64>) -> Vec<(u64, State<u64>)> {
+fn value_state(store: &ReplicatedMap<u64, u64>) -> ValueState {
     store
         .value_snapshot()
         .iter()
@@ -345,7 +348,7 @@ async fn scenario(
     keys: &[u64],
     history_ops: usize,
     policy: &dyn RefinementPolicy,
-    reference_value_states: &mut Option<(Vec<(u64, State<u64>)>, Vec<(u64, State<u64>)>)>,
+    reference_value_states: &mut Option<ValueStatePair>,
     reference_pre_heal: &mut Option<CostSignature>,
     reference_post_gc: &mut Option<CostSignature>,
 ) {
