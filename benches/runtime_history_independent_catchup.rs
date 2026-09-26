@@ -284,11 +284,7 @@ fn pair() -> Pair {
     Pair { left, right }
 }
 
-async fn wait_until_for(
-    timeout: Duration,
-    mut predicate: impl FnMut() -> bool,
-    what: &str,
-) {
+async fn wait_until_for(timeout: Duration, mut predicate: impl FnMut() -> bool, what: &str) {
     tokio::time::timeout(timeout, async {
         while !predicate() {
             tokio::time::sleep(Duration::from_millis(1)).await;
