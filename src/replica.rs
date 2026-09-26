@@ -213,6 +213,10 @@ pub(crate) struct Inner<K, V> {
     /// enumerate them without scanning the map and resend an ack for each — without which the ack
     /// matrix never completes past two nodes, acks being pairwise.
     pub(crate) live_tombstones: Arc<RwLock<HashSet<K>>>,
+    /// Next tombstone key whose causal-stability ack resend has not yet been covered by the
+    /// byte-bounded resend window. Runtime-only: if that key disappears before the next round,
+    /// ordered lookup resumes at its successor; wrapping eventually covers insertions behind it.
+    tombstone_ack_resend_cursor: Arc<Mutex<Option<K>>>,
     /// This node's clock, reached only through the [`Clock`] port so the engine never reads
     /// physical time itself ([`HlcClock`] is the default adapter; a test injects a deterministic
     /// stub via [`new_with_clock`](Replica::new_with_clock)). Shared across all clones so
