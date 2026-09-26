@@ -2,7 +2,7 @@ name: main
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "bench/runtime-history-catchup" ]
   pull_request:
   merge_group:
 
