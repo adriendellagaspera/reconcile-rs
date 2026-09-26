@@ -129,9 +129,7 @@ fn divergence_keys(n: usize, d: usize) -> Vec<u64> {
     let stride = available / (d + 1);
     assert!(stride > 0, "divergence-key stride must make progress");
 
-    (1..=d)
-        .map(|i| (CHURN_KEYS + stride * i) as u64)
-        .collect()
+    (1..=d).map(|i| (CHURN_KEYS + stride * i) as u64).collect()
 }
 
 fn build_corpus(n: usize, d: usize, history_ops: usize) -> Corpus {
@@ -151,10 +149,7 @@ fn build_corpus(n: usize, d: usize, history_ops: usize) -> Corpus {
     }
 }
 
-fn exact_state_eq(
-    a: &FingerprintTreeMap<u64, u64>,
-    b: &FingerprintTreeMap<u64, u64>,
-) -> bool {
+fn exact_state_eq(a: &FingerprintTreeMap<u64, u64>, b: &FingerprintTreeMap<u64, u64>) -> bool {
     a.iter().eq(b.iter())
 }
 
@@ -196,7 +191,10 @@ fn history_independent_catchup(c: &mut Criterion) {
     let n = env_usize("RECONCILE_HISTORY_N", DEFAULT_N);
     let d = env_usize("RECONCILE_HISTORY_D", DEFAULT_D);
     let histories = history_sizes();
-    assert!(!histories.is_empty(), "at least one history size is required");
+    assert!(
+        !histories.is_empty(),
+        "at least one history size is required"
+    );
 
     let policy = FixedFanOut::new(FanOut::NEGENTROPY);
     let reference = build_corpus(n, d, 0);
