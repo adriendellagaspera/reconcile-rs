@@ -21,7 +21,7 @@
 // Defaults:
 //   n = 10_000 baseline live keys
 //   d = 100 fixed final deletions
-//   t = 0, 100, 1_000, 10_000 transient tombstones
+//   t = 0, 100, 1_000 transient tombstones
 //
 // Overrides:
 //   RECONCILE_RUNTIME_HISTORY_N=100000
@@ -52,7 +52,7 @@ use tokio_util::sync::CancellationToken;
 
 const DEFAULT_N: usize = 10_000;
 const DEFAULT_D: usize = 100;
-const DEFAULT_TRANSIENT_TOMBSTONES: &[usize] = &[0, 100, 1_000, 10_000];
+const DEFAULT_TRANSIENT_TOMBSTONES: &[usize] = &[0, 100, 1_000];
 const PORT: u16 = 9_870;
 const SESSION_SEED: u64 = 42;
 const RECONCILE_INTERVAL: Duration = Duration::from_millis(20);
@@ -60,7 +60,7 @@ const REPAIR_INTERVAL: Duration = Duration::from_millis(5);
 const PARTITION_WRITE_SETTLE: Duration = Duration::from_millis(100);
 const BLOCKED_GC_WINDOW: Duration = Duration::from_millis(1_100);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(15);
-const GC_WAIT_TIMEOUT: Duration = Duration::from_secs(180);
+const GC_WAIT_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Default)]
 struct Traffic {
