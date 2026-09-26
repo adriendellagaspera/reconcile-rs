@@ -32,7 +32,7 @@ use devkit::protocol_cost::{reconcile, Cost, Counting, Queries};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut, RefinementPolicy};
-use rsos::{FingerprintTreeMap, Rsos};
+use rsos::FingerprintTreeMap;
 
 const DEFAULT_N: usize = 100_000;
 const DEFAULT_D: usize = 100;
@@ -53,8 +53,11 @@ struct CostSignature {
     refinement_bytes: usize,
     datagrams: usize,
     fragments: usize,
+    largest_message: usize,
+    largest_message_bytes: usize,
     enumerations: usize,
     enumerated_elements: usize,
+    enumerated_bytes: Vec<usize>,
     queries: Queries,
 }
 
@@ -66,8 +69,11 @@ impl From<&Cost> for CostSignature {
             refinement_bytes: cost.refinement_bytes,
             datagrams: cost.datagrams,
             fragments: cost.fragments,
+            largest_message: cost.largest_message,
+            largest_message_bytes: cost.largest_message_bytes,
             enumerations: cost.enumerations,
             enumerated_elements: cost.enumerated_elements,
+            enumerated_bytes: cost.enumerated_bytes.clone(),
             queries: cost.queries,
         }
     }
@@ -167,7 +173,7 @@ fn counted_reconcile(
 fn env_usize(name: &str, default: usize) -> usize {
     env::var(name).map_or(default, |raw| {
         raw.parse::<usize>()
-            .unwrap_or_else(|_| panic!("{name} must be a positive integer"))
+            .unwrap_or_else(|_| panic!("{name} must be a non-negative integer"))
     })
 }
 
