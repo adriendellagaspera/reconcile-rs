@@ -5,27 +5,32 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// ReplicatedMap catch-up after a partition with superseded update/delete/recreate history.
+// ReplicatedMap catch-up when partition history leaves tombstones.
 //
 // Two authoritative peers first converge to one dated baseline and establish causal membership.
-// Their transport is then blocked while both keep writing disjoint key sets. The number of
-// superseded writes varies, but every corpus ends with the same value-only states and the same
-// final divergent keys as tombstones. The report checks the deterministic RBSR trace over the raw
-// dated snapshots, then heals the in-memory transport and observes real catch-up plus
-// causal-stability GC.
+// Their transport is then blocked while each peer deletes a fixed set of baseline keys and creates
+// a disjoint set of transient keys that it immediately deletes. Those transient keys are absent
+// both before and after the partition from the application's point of view, but remain in the raw
+// dated store as tombstones until causal-stability GC.
+//
+// The report varies the number of transient tombstones while holding the live states and fixed
+// final deletions constant. It counts the resulting RBSR trace before healing, observes real
+// in-memory catch-up traffic, proves expired tombstones survive while the causal peer is
+// unreachable, then verifies GC removes the historical footprint after convergence.
 //
 // Defaults:
-//   n = 10_000 keys
-//   d = 100 final divergent keys
-//   h = 0, 1_000, 100_000 superseded writes across both peers
+//   n = 10_000 baseline live keys
+//   d = 100 fixed final deletions
+//   t = 0, 100, 1_000, 10_000 transient tombstones
 //
 // Overrides:
 //   RECONCILE_RUNTIME_HISTORY_N=100000
 //   RECONCILE_RUNTIME_HISTORY_D=1000
-//   RECONCILE_RUNTIME_HISTORY_OPS=0,1000,100000,1000000
+//   RECONCILE_RUNTIME_TOMBSTONES=0,100,1000,10000
 //
 // Run with `cargo bench --bench runtime_history_independent_catchup`.
 
+use std::collections::BTreeSet;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -39,7 +44,7 @@ use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut, RefinementPolicy};
 use reconcile::{
     replicated_map::Config, Entry, InMemoryNetwork, InMemoryTransport, NodeId, ReplicatedMap,
-    State, Timestamp, Transport,
+    Timestamp, Transport,
 };
 use rsos::FingerprintTreeMap;
 use tokio::runtime::Runtime;
@@ -47,13 +52,14 @@ use tokio_util::sync::CancellationToken;
 
 const DEFAULT_N: usize = 10_000;
 const DEFAULT_D: usize = 100;
-const DEFAULT_HISTORY_OPS: &[usize] = &[0, 1_000, 100_000];
+const DEFAULT_TRANSIENT_TOMBSTONES: &[usize] = &[0, 100, 1_000, 10_000];
 const PORT: u16 = 9_870;
 const SESSION_SEED: u64 = 42;
 const RECONCILE_INTERVAL: Duration = Duration::from_millis(20);
 const REPAIR_INTERVAL: Duration = Duration::from_millis(5);
+const PARTITION_WRITE_SETTLE: Duration = Duration::from_millis(100);
 const BLOCKED_GC_WINDOW: Duration = Duration::from_millis(1_100);
-const WAIT_TIMEOUT: Duration = Duration::from_secs(10);
+const WAIT_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Default)]
 struct Traffic {
@@ -89,8 +95,11 @@ impl Transport for GateTransport {
 
     async fn send_to(&self, buf: &[u8], dst: &SocketAddr) -> io::Result<usize> {
         if self.blocked.load(Ordering::Relaxed) {
+            // Model a partition as silent packet loss: writers believe the datagram left, while
+            // anti-entropy must recover from the current states once the link heals.
             return Ok(buf.len());
         }
+
         let sent = self.inner.send_to(buf, dst).await?;
         self.traffic.datagrams.fetch_add(1, Ordering::Relaxed);
         self.traffic.bytes.fetch_add(sent as u64, Ordering::Relaxed);
@@ -113,9 +122,6 @@ struct Pair {
     left: Peer,
     right: Peer,
 }
-
-type ValueState = Vec<(u64, State<u64>)>;
-type ValueStatePair = (ValueState, ValueState);
 
 #[derive(Debug, Eq, PartialEq)]
 struct CostSignature {
@@ -147,15 +153,15 @@ fn env_usize(name: &str, default: usize) -> usize {
     })
 }
 
-fn history_sizes() -> Vec<usize> {
-    std::env::var("RECONCILE_RUNTIME_HISTORY_OPS").map_or_else(
-        |_| DEFAULT_HISTORY_OPS.to_vec(),
+fn transient_tombstone_sweep() -> Vec<usize> {
+    std::env::var("RECONCILE_RUNTIME_TOMBSTONES").map_or_else(
+        |_| DEFAULT_TRANSIENT_TOMBSTONES.to_vec(),
         |raw| {
             raw.split(',')
                 .map(|part| {
                     part.trim().parse::<usize>().unwrap_or_else(|_| {
                         panic!(
-                            "RECONCILE_RUNTIME_HISTORY_OPS must be a comma-separated list of integers"
+                            "RECONCILE_RUNTIME_TOMBSTONES must be a comma-separated list of integers"
                         )
                     })
                 })
@@ -170,23 +176,15 @@ fn corpus(n: usize) -> Vec<(u64, u64)> {
         .collect()
 }
 
-fn divergent_keys(n: usize, d: usize) -> Vec<u64> {
+fn fixed_deletion_keys(n: usize, d: usize) -> Vec<u64> {
     assert!(d >= 2, "RECONCILE_RUNTIME_HISTORY_D must be at least 2");
     assert!(
         d < n,
-        "RECONCILE_RUNTIME_HISTORY_D must be smaller than the store"
+        "RECONCILE_RUNTIME_HISTORY_D must be smaller than the baseline"
     );
     let stride = n / (d + 1);
-    assert!(stride > 0, "divergent-key stride must make progress");
+    assert!(stride > 0, "fixed-deletion key stride must make progress");
     (1..=d).map(|i| (stride * i) as u64).collect()
-}
-
-fn value_state(store: &ReplicatedMap<u64, u64>) -> ValueState {
-    store
-        .value_snapshot()
-        .iter()
-        .map(|(&key, state)| (key, state.clone()))
-        .collect()
 }
 
 fn tombstone_count(store: &ReplicatedMap<u64, u64>) -> usize {
@@ -201,17 +199,14 @@ fn raw_diff_keys(
     left: &FingerprintTreeMap<u64, Entry<Timestamp, u64>>,
     right: &FingerprintTreeMap<u64, Entry<Timestamp, u64>>,
 ) -> Vec<u64> {
-    assert_eq!(
-        left.len(),
-        right.len(),
-        "pre-heal raw key sets differ in size"
-    );
-    left.iter()
-        .zip(right.iter())
-        .filter_map(|((left_key, left_value), (right_key, right_value))| {
-            assert_eq!(left_key, right_key, "pre-heal raw key sets differ");
-            (left_value != right_value).then_some(*left_key)
-        })
+    let keys: BTreeSet<_> = left
+        .iter()
+        .map(|(key, _)| *key)
+        .chain(right.iter().map(|(key, _)| *key))
+        .collect();
+
+    keys.into_iter()
+        .filter(|key| left.get(key) != right.get(key))
         .collect()
 }
 
@@ -227,40 +222,27 @@ fn counted_reconcile(
     cost
 }
 
-fn apply_superseded_history(
+fn transient_keys(start: u64, count: usize) -> Vec<u64> {
+    (start..start + count as u64).collect()
+}
+
+fn leave_transient_tombstones(
     store: &ReplicatedMap<u64, u64>,
     keys: &[u64],
-    history_ops: usize,
     salt: u64,
 ) {
-    assert!(!keys.is_empty());
-    let mut remaining = history_ops;
-    let mut generation = 0u64;
-
-    while remaining > 0 {
-        let take = remaining.min(keys.len());
-        let active = &keys[..take];
-        if generation % 2 == 0 {
-            let updates: Vec<_> = active
-                .iter()
-                .map(|&key| {
-                    (
-                        key,
-                        key.wrapping_mul(2_654_435_761)
-                            ^ salt
-                            ^ generation.wrapping_mul(0x9e37_79b9),
-                    )
-                })
-                .collect();
-            store.insert_bulk(&updates);
-        } else {
-            store.remove_bulk(active);
-        }
-        remaining -= take;
-        generation = generation.wrapping_add(1);
+    if keys.is_empty() {
+        return;
     }
 
-    // The fixed normalization makes the current value-only state independent of history length.
+    // load_bulk avoids pricing an eager insert broadcast that would be lost by construction during
+    // the partition. remove_bulk still exercises the ordinary public delete path and leaves the
+    // same dated tombstone that a disconnected propagating insert/delete sequence would leave.
+    let values: Vec<_> = keys
+        .iter()
+        .map(|&key| (key, key.wrapping_mul(2_654_435_761) ^ salt))
+        .collect();
+    store.load_bulk(&values);
     store.remove_bulk(keys);
 }
 
@@ -320,16 +302,19 @@ async fn run_pair(
     tokio::task::JoinHandle<()>,
 ) {
     let shutdown = CancellationToken::new();
+
     let left_store = pair.left.store.clone();
     let left_shutdown = shutdown.clone();
     let left = tokio::spawn(async move {
         let _ = left_store.run(left_shutdown).await;
     });
+
     let right_store = pair.right.store.clone();
     let right_shutdown = shutdown.clone();
     let right = tokio::spawn(async move {
         let _ = right_store.run(right_shutdown).await;
     });
+
     (shutdown, left, right)
 }
 
@@ -345,11 +330,10 @@ async fn stop_pair(
 
 async fn scenario(
     n: usize,
-    keys: &[u64],
-    history_ops: usize,
+    fixed_keys: &[u64],
+    transient_tombstones: usize,
     policy: &dyn RefinementPolicy,
-    reference_value_states: &mut Option<ValueStatePair>,
-    reference_pre_heal: &mut Option<CostSignature>,
+    reference_live_states: &mut Option<(Vec<(u64, u64)>, Vec<(u64, u64)>)>,
     reference_post_gc: &mut Option<CostSignature>,
 ) {
     let pair = pair();
@@ -370,59 +354,70 @@ async fn scenario(
     pair.left.blocked.store(true, Ordering::Relaxed);
     pair.right.blocked.store(true, Ordering::Relaxed);
 
-    let split = keys.len() / 2;
-    let (left_keys, right_keys) = keys.split_at(split);
-    let left_history = history_ops / 2 + history_ops % 2;
-    let right_history = history_ops / 2;
-    apply_superseded_history(&pair.left.store, left_keys, left_history, 0xa11c_e001);
-    apply_superseded_history(&pair.right.store, right_keys, right_history, 0xb22d_e002);
+    let fixed_split = fixed_keys.len() / 2;
+    let (left_fixed, right_fixed) = fixed_keys.split_at(fixed_split);
+    pair.left.store.remove_bulk(left_fixed);
+    pair.right.store.remove_bulk(right_fixed);
 
-    // Let detached eager-broadcast tasks observe the blocked transport before it is healed.
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    let transient_left_count = transient_tombstones / 2 + transient_tombstones % 2;
+    let transient_right_count = transient_tombstones / 2;
+    let left_transient = transient_keys(n as u64, transient_left_count);
+    let right_transient = transient_keys(
+        n as u64 + transient_left_count as u64,
+        transient_right_count,
+    );
+    leave_transient_tombstones(&pair.left.store, &left_transient, 0xa11c_e001);
+    leave_transient_tombstones(&pair.right.store, &right_transient, 0xb22d_e002);
 
-    assert_eq!(pair.left.store.len(), n - left_keys.len());
-    assert_eq!(pair.right.store.len(), n - right_keys.len());
-    assert_eq!(tombstone_count(&pair.left.store), left_keys.len());
-    assert_eq!(tombstone_count(&pair.right.store), right_keys.len());
+    tokio::time::sleep(PARTITION_WRITE_SETTLE).await;
 
-    let left_values = value_state(&pair.left.store);
-    let right_values = value_state(&pair.right.store);
-    if let Some((reference_left, reference_right)) = reference_value_states {
-        assert_eq!(&left_values, reference_left);
-        assert_eq!(&right_values, reference_right);
+    let expected_left_tombstones = left_fixed.len() + left_transient.len();
+    let expected_right_tombstones = right_fixed.len() + right_transient.len();
+    assert_eq!(pair.left.store.len(), n - left_fixed.len());
+    assert_eq!(pair.right.store.len(), n - right_fixed.len());
+    assert_eq!(
+        tombstone_count(&pair.left.store),
+        expected_left_tombstones
+    );
+    assert_eq!(
+        tombstone_count(&pair.right.store),
+        expected_right_tombstones
+    );
+
+    let left_live = pair.left.store.to_vec();
+    let right_live = pair.right.store.to_vec();
+    if let Some((reference_left, reference_right)) = reference_live_states {
+        assert_eq!(&left_live, reference_left);
+        assert_eq!(&right_live, reference_right);
     } else {
-        *reference_value_states = Some((left_values, right_values));
+        *reference_live_states = Some((left_live, right_live));
     }
+
+    let mut expected_diff_keys = fixed_keys.to_vec();
+    expected_diff_keys.extend(left_transient.iter().copied());
+    expected_diff_keys.extend(right_transient.iter().copied());
+    expected_diff_keys.sort_unstable();
 
     let left_raw = pair.left.store.snapshot();
     let right_raw = pair.right.store.snapshot();
     assert_eq!(
         raw_diff_keys(&left_raw, &right_raw),
-        keys,
-        "history changed the current divergent-key set"
+        expected_diff_keys,
+        "raw divergence does not match fixed deletions plus historical tombstones"
     );
     let pre_heal_cost = counted_reconcile(&left_raw, &right_raw, policy);
-    let pre_heal_signature = CostSignature::from(&pre_heal_cost);
-    if let Some(reference) = reference_pre_heal {
-        assert_eq!(
-            &pre_heal_signature, reference,
-            "history changed the deterministic RBSR trace"
-        );
-    } else {
-        *reference_pre_heal = Some(pre_heal_signature);
-    }
 
     let (shutdown, left_task, right_task) = run_pair(&pair).await;
     tokio::time::sleep(BLOCKED_GC_WINDOW).await;
     assert_eq!(
         tombstone_count(&pair.left.store),
-        left_keys.len(),
-        "left GC collected tombstones without the causal peer's ack"
+        expected_left_tombstones,
+        "left GC collected expired tombstones without its causal peer's ack"
     );
     assert_eq!(
         tombstone_count(&pair.right.store),
-        right_keys.len(),
-        "right GC collected tombstones without the causal peer's ack"
+        expected_right_tombstones,
+        "right GC collected expired tombstones without its causal peer's ack"
     );
 
     pair.left.traffic.reset();
@@ -431,11 +426,12 @@ async fn scenario(
     pair.left.blocked.store(false, Ordering::Relaxed);
     pair.right.blocked.store(false, Ordering::Relaxed);
 
+    let converged_tombstones = fixed_keys.len() + transient_tombstones;
     wait_until(
         || {
             pair.left.store.fingerprint(..) == pair.right.store.fingerprint(..)
-                && tombstone_count(&pair.left.store) == keys.len()
-                && tombstone_count(&pair.right.store) == keys.len()
+                && tombstone_count(&pair.left.store) == converged_tombstones
+                && tombstone_count(&pair.right.store) == converged_tombstones
         },
         "dated catch-up before tombstone GC",
     )
@@ -446,15 +442,15 @@ async fn scenario(
         let (right_bytes, right_datagrams) = pair.right.traffic.snapshot();
         (left_bytes + right_bytes, left_datagrams + right_datagrams)
     };
-    assert_eq!(pair.left.store.len(), n - keys.len());
-    assert_eq!(pair.right.store.len(), n - keys.len());
+    assert_eq!(pair.left.store.len(), n - fixed_keys.len());
+    assert_eq!(pair.right.store.len(), n - fixed_keys.len());
 
     wait_until(
         || {
             tombstone_count(&pair.left.store) == 0
                 && tombstone_count(&pair.right.store) == 0
-                && pair.left.store.snapshot().len() == n - keys.len()
-                && pair.right.store.snapshot().len() == n - keys.len()
+                && pair.left.store.snapshot().len() == n - fixed_keys.len()
+                && pair.right.store.snapshot().len() == n - fixed_keys.len()
                 && pair.left.store.fingerprint(..) == pair.right.store.fingerprint(..)
         },
         "causal-stability tombstone GC",
@@ -474,14 +470,19 @@ async fn scenario(
     if let Some(reference) = reference_post_gc {
         assert_eq!(
             &post_gc_signature, reference,
-            "history changed the post-GC steady-state RBSR trace"
+            "transient tombstone history changed the post-GC steady-state RBSR trace"
         );
     } else {
         *reference_post_gc = Some(post_gc_signature);
     }
 
     println!(
-        "[runtime-history-catchup] h={history_ops:>10} | pre-heal refine={:>7} B, messages={:>3}, ranges={:>5}, idlist={:>4} elem | catch-up={:>8.3} ms, wire={:>8} B/{:>4} dg | GC complete={:>8.3} ms, wire+acks={:>8} B/{:>4} dg | raw {} -> {}",
+        "[runtime-tombstone-catchup] t={transient_tombstones:>8} | raw={:>6}/{:>6}, tomb={:>5}/{:>5}, diff={:>6} | pre-heal refine={:>8} B, messages={:>3}, ranges={:>6}, idlist={:>6} elem | catch-up={:>8.3} ms, wire={:>9} B/{:>5} dg | GC={:>8.3} ms, wire+acks={:>9} B/{:>5} dg | post-GC raw={}",
+        left_raw.len(),
+        right_raw.len(),
+        expected_left_tombstones,
+        expected_right_tombstones,
+        expected_diff_keys.len(),
         pre_heal_cost.refinement_bytes,
         pre_heal_cost.messages,
         pre_heal_cost.ranges,
@@ -492,8 +493,7 @@ async fn scenario(
         gc_complete.as_secs_f64() * 1_000.0,
         full_traffic.0,
         full_traffic.1,
-        n,
-        n - keys.len(),
+        n - fixed_keys.len(),
     );
 
     stop_pair(shutdown, left_task, right_task).await;
@@ -502,29 +502,27 @@ async fn scenario(
 async fn report() {
     let n = env_usize("RECONCILE_RUNTIME_HISTORY_N", DEFAULT_N);
     let d = env_usize("RECONCILE_RUNTIME_HISTORY_D", DEFAULT_D);
-    let histories = history_sizes();
+    let tombstone_sweep = transient_tombstone_sweep();
     assert!(
-        !histories.is_empty(),
-        "at least one history size is required"
+        !tombstone_sweep.is_empty(),
+        "at least one transient tombstone count is required"
     );
 
-    let keys = divergent_keys(n, d);
+    let fixed_keys = fixed_deletion_keys(n, d);
     let policy = FixedFanOut::new(FanOut::NEGENTROPY);
-    let mut reference_value_states = None;
-    let mut reference_pre_heal = None;
+    let mut reference_live_states = None;
     let mut reference_post_gc = None;
 
     println!(
-        "[runtime-history-catchup] n={n} d={d}; h counts superseded writes across both authoritative peers"
+        "[runtime-tombstone-catchup] n={n} d={d}; t is the number of logically absent transient keys retained as tombstones"
     );
-    for history_ops in histories {
+    for transient_tombstones in tombstone_sweep {
         scenario(
             n,
-            &keys,
-            history_ops,
+            &fixed_keys,
+            transient_tombstones,
             &policy,
-            &mut reference_value_states,
-            &mut reference_pre_heal,
+            &mut reference_live_states,
             &mut reference_post_gc,
         )
         .await;
