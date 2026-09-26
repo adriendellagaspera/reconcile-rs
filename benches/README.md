@@ -28,9 +28,10 @@ same two current states and the same exact protocol-cost trace as `h=0`; Criteri
 the subsequent reconciliation.
 
 The `runtime_history_independent_catchup` report drives two authoritative `ReplicatedMap` peers
-through a blocked in-memory transport. It holds the final value-state divergence fixed while varying
-superseded update/delete/recreate history on both peers, checks the raw dated RBSR trace before
-healing, then reports actual catch-up traffic/time and verifies causal-stability tombstone GC.
-Defaults are `n=10000`, `d=100`, and `h={0,1000,100000}`; override them with
+through a blocked in-memory transport. It holds their live states and fixed final deletions constant
+while varying transient keys that are inserted and deleted during the partition, so only the raw
+tombstone footprint grows. It counts the raw dated RBSR trace before healing, reports actual
+catch-up traffic/time, and verifies causal-stability GC removes that historical footprint. Defaults
+are `n=10000`, `d=100`, and `t={0,100,1000,10000}`; override them with
 `RECONCILE_RUNTIME_HISTORY_N`, `RECONCILE_RUNTIME_HISTORY_D`, and
-`RECONCILE_RUNTIME_HISTORY_OPS`.
+`RECONCILE_RUNTIME_TOMBSTONES`.
