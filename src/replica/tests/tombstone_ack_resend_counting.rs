@@ -131,7 +131,11 @@ async fn resend_window_resumes_at_first_uncovered_key() {
         rounds += 1;
     }
 
-    assert_eq!(seen.len(), n as usize, "every stable tombstone must be covered");
+    assert_eq!(
+        seen.len(),
+        n as usize,
+        "every stable tombstone must be covered"
+    );
     assert!(
         rounds <= max_rounds,
         "coverage must scale with the number of byte-bounded windows, not with n"
