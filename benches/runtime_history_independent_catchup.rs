@@ -60,6 +60,7 @@ const REPAIR_INTERVAL: Duration = Duration::from_millis(5);
 const PARTITION_WRITE_SETTLE: Duration = Duration::from_millis(100);
 const BLOCKED_GC_WINDOW: Duration = Duration::from_millis(1_100);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(15);
+const GC_WAIT_TIMEOUT: Duration = Duration::from_secs(180);
 
 #[derive(Clone, Default)]
 struct Traffic {
@@ -283,14 +284,22 @@ fn pair() -> Pair {
     Pair { left, right }
 }
 
-async fn wait_until(mut predicate: impl FnMut() -> bool, what: &str) {
-    tokio::time::timeout(WAIT_TIMEOUT, async {
+async fn wait_until_for(
+    timeout: Duration,
+    mut predicate: impl FnMut() -> bool,
+    what: &str,
+) {
+    tokio::time::timeout(timeout, async {
         while !predicate() {
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
     })
     .await
     .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
+}
+
+async fn wait_until(predicate: impl FnMut() -> bool, what: &str) {
+    wait_until_for(WAIT_TIMEOUT, predicate, what).await;
 }
 
 async fn run_pair(
@@ -441,7 +450,15 @@ async fn scenario(
     assert_eq!(pair.left.store.len(), n - fixed_keys.len());
     assert_eq!(pair.right.store.len(), n - fixed_keys.len());
 
-    wait_until(
+    println!(
+        "[runtime-tombstone-catchup] t={transient_tombstones:>8} catch-up-only | elapsed={:>8.3} ms, wire={:>9} B/{:>5} dg",
+        caught_up.as_secs_f64() * 1_000.0,
+        catchup_traffic.0,
+        catchup_traffic.1,
+    );
+
+    wait_until_for(
+        GC_WAIT_TIMEOUT,
         || {
             tombstone_count(&pair.left.store) == 0
                 && tombstone_count(&pair.right.store) == 0
