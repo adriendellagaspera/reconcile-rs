@@ -329,7 +329,7 @@ pub fn estimate(exchange: Exchange, link: LinkProfile, transport: TransportProfi
             let average_packets = packets.div_ceil(messages).max(1);
             let success = (1.0 - link.packet_loss).powi(average_packets as i32);
             let attempts = 1.0 / success;
-            let propagation = base_propagation * attempts;
+            let loss_recovery = base_propagation * (attempts - 1.0);
             let any_reordered =
                 1.0 - (1.0 - link.packet_reorder).powi(average_packets as i32);
             // A reordered datagram is displaced by one additional one-way link delay in netem.
@@ -338,8 +338,8 @@ pub fn estimate(exchange: Exchange, link: LinkProfile, transport: TransportProfi
             let reorder_wait = base_propagation * any_reordered;
             let expected = framed as f64 * attempts;
             (
-                propagation,
-                propagation - base_propagation,
+                base_propagation,
+                loss_recovery,
                 reorder_wait,
                 expected,
                 expected - framed as f64,
