@@ -7,7 +7,7 @@
 
 // State-repair sensitivity benchmark.
 //
-// This target maps the two Pareto boundaries exposed by #195 without running a full Cartesian
+// This target maps the two measured Pareto boundaries without running a full Cartesian
 // product:
 //
 // 1. scale: vary n and d/n at fanout 16 with 16-byte symbols;
