@@ -349,7 +349,8 @@ fn traced_reconciliation_preserves_aggregate_byte_variants() {
         .iter()
         .map(|stage| match stage {
             RepairStage::RbsrRound {
-                enumerated_elements, ..
+                enumerated_elements,
+                ..
             } => *enumerated_elements,
             other => panic!("unexpected RBSR trace stage: {other:?}"),
         })
