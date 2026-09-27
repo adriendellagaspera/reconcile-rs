@@ -289,10 +289,7 @@ fn state_digest(rows: &[(u64, u64)]) -> [u8; STATE_DIGEST_BYTES] {
     *hasher.finalize().as_bytes()
 }
 
-fn riblt_generic<const N: usize>(
-    left: &[(u64, u64)],
-    right: &[(u64, u64)],
-) -> (Report, Vec<u64>) {
+fn riblt_generic<const N: usize>(left: &[(u64, u64)], right: &[(u64, u64)]) -> (Report, Vec<u64>) {
     let setup_started = Instant::now();
     if state_digest(left) == state_digest(right) {
         return (
@@ -312,10 +309,11 @@ fn riblt_generic<const N: usize>(
             .iter()
             .map(|&(key, digest)| KvSymbol::<N> { key, digest }),
     );
-    let mut decoder = Decoder::<N, KvSymbol<N>>::new(
-        left.iter()
-            .map(|&(key, digest)| KvSymbol::<N> { key, digest }),
-    );
+    let mut decoder =
+        Decoder::<N, KvSymbol<N>>::new(
+            left.iter()
+                .map(|&(key, digest)| KvSymbol::<N> { key, digest }),
+        );
     let setup = setup_started.elapsed();
     let max_symbols = 1_024 + 2 * left.len().max(right.len());
 
@@ -527,15 +525,13 @@ fn run_case(
 
     let (left_ftm, left_ftm_setup) = build_ftm(&corpus.left);
     let (right_ftm, right_ftm_setup) = build_ftm(&corpus.right);
-    let (mut rbsr, rbsr_diff) =
-        rbsr_report(&left_ftm, &right_ftm, fanout, symbol_bytes);
+    let (mut rbsr, rbsr_diff) = rbsr_report(&left_ftm, &right_ftm, fanout, symbol_bytes);
     rbsr.setup = left_ftm_setup + right_ftm_setup;
     assert_eq!(rbsr_diff, corpus.expected);
 
     let (left_merkle, left_merkle_setup) = RadixMerkle::build(&corpus.left, fanout);
     let (right_merkle, right_merkle_setup) = RadixMerkle::build(&corpus.right, fanout);
-    let (mut merkle, merkle_diff) =
-        merkle_report(&left_merkle, &right_merkle, symbol_bytes);
+    let (mut merkle, merkle_diff) = merkle_report(&left_merkle, &right_merkle, symbol_bytes);
     merkle.setup = left_merkle_setup + right_merkle_setup;
     assert_eq!(merkle_diff, corpus.expected);
 
@@ -622,15 +618,7 @@ fn main() {
             for d in d_values {
                 for scenario in Scenario::ALL {
                     for &symbol_bytes in &symbols {
-                        run_case(
-                            n,
-                            d,
-                            scenario,
-                            DEFAULT_FANOUT,
-                            symbol_bytes,
-                            true,
-                            seed,
-                        );
+                        run_case(n, d, scenario, DEFAULT_FANOUT, symbol_bytes, true, seed);
                     }
                 }
             }
