@@ -13,6 +13,7 @@ Benchmarks measure the code that ships in this repository. Results are not versi
 | riblt_preparation | RIBLT on-demand vs cached multi-peer preparation and rebuild cost |
 | state_repair_mutations | RBSR vs RIBLT vs key-stable Merkle under arbitrary insert/delete/mixed divergence |
 | cold_start_repair | Rebuild-from-current-state cost after reboot before repair |
+| durable_cold_start | FileSnapshot load/decode plus rebuild and repair after reboot |
 | state_repair_sensitivity | Scale, fanout and symbol-size crossover mapping |
 | contention | concurrent write cost |
 | snapshot_write_amplification | snapshot write/restart cost |
@@ -98,3 +99,14 @@ implemented as a key-stable base-`fanout` hierarchy, so insertions do not shift 
 Configure with `RECONCILE_SENSITIVITY_MODE`, `RECONCILE_SENSITIVITY_N`,
 `RECONCILE_SENSITIVITY_D`, `RECONCILE_SENSITIVITY_FANOUTS`,
 `RECONCILE_SENSITIVITY_SYMBOLS`, and `RECONCILE_SENSITIVITY_SEED`.
+
+
+The `durable_cold_start` target extends the reboot study through the real `FileSnapshot`
+adapter. Each current state is saved once through the versioned snapshot format; the timed restart
+path is then `FileSnapshot::load` (filesystem read + header validation + bincode decode), row
+materialization, reconciliation-structure rebuild, and repair. The same loaded rows feed RBSR,
+key-stable radix Merkle, and RIBLT so storage/decode cost is common. Snapshot file bytes and each
+timing component are reported separately. GitHub-hosted runners do not provide controlled OS
+page-cache eviction, so this benchmark is filesystem-backed but not a physical cold-disk latency
+measurement. Defaults are `n=100000` and `d={1000,10000}`; override them with
+`RECONCILE_DURABLE_N`, `RECONCILE_DURABLE_D`, and `RECONCILE_DURABLE_SEED`.
