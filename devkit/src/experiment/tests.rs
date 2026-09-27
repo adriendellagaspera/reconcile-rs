@@ -159,7 +159,6 @@ fn metric_units_and_provenance_are_validated() {
     assert_invalid_metric(&observation);
 }
 
-
 #[test]
 fn invalid_uncertainty_bounds_are_rejected() {
     for uncertainty in [
