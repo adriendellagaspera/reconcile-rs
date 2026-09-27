@@ -5,82 +5,47 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Project fixed arbitrary-key repair traces onto explicit generic network/transport assumptions.
+// Project structured repair traces onto explicit generic network/transport assumptions.
 //
-// This benchmark does not rerun RBSR/RIBLT/Merkle. It freezes representative measured traces so
-// RTT/MTU/loss/handshake sensitivity can be changed without changing the algorithmic workload.
+// Input is produced by the comparison benchmarks through RECONCILE_BENCH_OUTPUT. This target reads
+// both the ExperimentReport (for measured local SessionWork elapsed time) and its per-arm
+// RepairTrace sidecar (for causal direction/stage structure). It does not parse benchmark stdout.
 //
-// Interactive-protocol bytes are split 50/50 by direction because the source trace records total wire bytes,
-// not per-direction round payloads. That approximation only affects directional serialization on
-// asymmetric links; total bytes, interaction depth and packetization remain explicit.
+// Run:
+//   RECONCILE_TRANSPORT_TRACE_DIR=/path/to/results cargo bench --bench transport_sensitivity
 //
-// RIBLT reports receiver discovery and sender quiescence separately. Quiescence uses the full-rate
-// steady-state stop-ACK envelope from devkit::transport_model: one forward bandwidth-delay product
-// of coded-symbol overshoot. It is not a congestion-control simulation.
+// The transport constants below are explicit analytical assumptions, not wire-accurate TCP/QUIC
+// claims. RIBLT reports receiver discovery separately from sender quiescence and models a
+// full-rate one-BDP stop-ACK overshoot envelope.
 
+use std::env;
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
+
+use devkit::experiment::{
+    read_experiment_report, read_repair_trace, CostOwner, ExperimentReport, LifecyclePhase,
+    Measurement, MetricKind, MetricValue, PeerSide, RepairStage, RepairStrategy, RepairTrace,
+    RunObservation,
+};
 use devkit::transport_model::{
-    estimate, estimate_rateless_stop, Exchange, LinkProfile, Reliability, TransportProfile,
+    estimate, estimate_rateless_stop, Estimate, Exchange, LinkProfile, Reliability, TransportProfile,
 };
 
-#[derive(Clone, Copy)]
-struct Trace {
-    name: &'static str,
-    rbsr_bytes: usize,
-    rbsr_messages: usize,
-    rbsr_cpu_ms: f64,
-    riblt_bytes: usize,
-    riblt_cpu_ms: f64,
-    merkle_bytes: usize,
-    merkle_rounds: usize,
-    merkle_cpu_ms: f64,
+#[derive(Clone)]
+struct TraceInput {
+    workload: String,
+    arm: String,
+    cpu_ms: f64,
+    trace: RepairTrace,
 }
 
-const TRACES: &[Trace] = &[
-    Trace {
-        name: "outside-d1k",
-        rbsr_bytes: 19_928,
-        rbsr_messages: 7,
-        rbsr_cpu_ms: 0.190,
-        riblt_bytes: 33_848,
-        riblt_cpu_ms: 554.787,
-        merkle_bytes: 101_661,
-        merkle_rounds: 18,
-        merkle_cpu_ms: 0.224,
-    },
-    Trace {
-        name: "outside-d10k",
-        rbsr_bytes: 165_890,
-        rbsr_messages: 9,
-        rbsr_cpu_ms: 0.951,
-        riblt_bytes: 325_400,
-        riblt_cpu_ms: 4_779.677,
-        merkle_bytes: 942_340,
-        merkle_rounds: 18,
-        merkle_cpu_ms: 2.100,
-    },
-    Trace {
-        name: "mixed-d1k",
-        rbsr_bytes: 848_985,
-        rbsr_messages: 7,
-        rbsr_cpu_ms: 10.520,
-        riblt_bytes: 44_816,
-        riblt_cpu_ms: 711.363,
-        merkle_bytes: 860_758,
-        merkle_rounds: 18,
-        merkle_cpu_ms: 2.895,
-    },
-    Trace {
-        name: "mixed-d10k",
-        rbsr_bytes: 3_957_013,
-        rbsr_messages: 7,
-        rbsr_cpu_ms: 37.470,
-        riblt_bytes: 436_760,
-        riblt_cpu_ms: 6_226.091,
-        merkle_bytes: 4_421_578,
-        merkle_rounds: 18,
-        merkle_cpu_ms: 13.739,
-    },
-];
+#[derive(Clone, Copy)]
+struct FiniteShape {
+    forward_app_bytes: usize,
+    reverse_app_bytes: usize,
+    interaction_rtts: f64,
+    logical_messages: usize,
+}
 
 const LINKS: &[LinkProfile] = &[
     LinkProfile {
@@ -172,30 +137,197 @@ const TRANSPORTS: &[TransportProfile] = &[
     },
 ];
 
-fn split_interactive(bytes: usize) -> (usize, usize) {
-    (bytes.div_ceil(2), bytes / 2)
+fn observed_seconds(measurement: &Measurement) -> Option<f64> {
+    match measurement {
+        Measurement::Observed {
+            value: MetricValue::Seconds(value),
+            ..
+        } => Some(*value),
+        _ => None,
+    }
 }
 
-#[derive(Clone, Copy)]
-struct InteractiveShape {
-    algorithm: &'static str,
-    bytes: usize,
-    interaction_rtts: f64,
-    logical_messages: usize,
-    cpu_ms: f64,
+fn session_cpu_ms(observation: &RunObservation) -> f64 {
+    observation
+        .costs
+        .iter()
+        .filter(|cost| {
+            cost.phase == LifecyclePhase::SessionWork && cost.owner == CostOwner::Protocol
+        })
+        .flat_map(|cost| &cost.metrics)
+        .find_map(|metric| {
+            (metric.kind == MetricKind::LocalElapsedSeconds)
+                .then(|| observed_seconds(&metric.measurement))
+                .flatten()
+        })
+        .expect("benchmark report must contain measured protocol SessionWork elapsed time")
+        * 1_000.0
 }
 
-fn print_interactive(
-    trace: Trace,
-    shape: InteractiveShape,
-    link: LinkProfile,
-    transport: TransportProfile,
-) {
-    let (forward, reverse) = split_interactive(shape.bytes);
+fn trace_path(directory: &Path, report: &ExperimentReport, observation: &RunObservation) -> PathBuf {
+    directory.join(format!(
+        "{}-{}-{}-{}.trace.json",
+        report.experiment.logical_task_id,
+        report.experiment.workload_id,
+        observation.seed,
+        observation.architecture_id
+    ))
+}
+
+fn load_inputs(directory: &Path) -> Vec<TraceInput> {
+    let mut report_paths: Vec<_> = fs::read_dir(directory)
+        .expect("read transport trace directory")
+        .map(|entry| entry.expect("read trace-directory entry").path())
+        .filter(|path| {
+            path.extension().is_some_and(|extension| extension == "json")
+                && !path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .ends_with(".trace.json")
+        })
+        .collect();
+    report_paths.sort();
+
+    let mut inputs = Vec::new();
+    for report_path in report_paths {
+        let report = read_experiment_report(File::open(&report_path).expect("open experiment report"))
+            .expect("read experiment report");
+        for observation in &report.observations {
+            let path = trace_path(directory, &report, observation);
+            if !path.exists() {
+                continue;
+            }
+            let trace = read_repair_trace(File::open(&path).expect("open repair trace"))
+                .expect("read repair trace");
+            inputs.push(TraceInput {
+                workload: report.experiment.workload_id.clone(),
+                arm: observation.architecture_id.clone(),
+                cpu_ms: session_cpu_ms(observation),
+                trace,
+            });
+        }
+    }
+    inputs.sort_by(|left, right| {
+        (&left.workload, &left.arm).cmp(&(&right.workload, &right.arm))
+    });
+    assert!(!inputs.is_empty(), "transport input directory contained no joined report/trace pairs");
+    inputs
+}
+
+fn one_payload_variant(bytes: &[u64]) -> usize {
+    match bytes {
+        [] => 0,
+        [bytes] => *bytes as usize,
+        _ => panic!("transport projection requires one concrete payload-size variant"),
+    }
+}
+
+fn finite_shape(trace: &RepairTrace) -> FiniteShape {
+    let mut forward = 0usize;
+    let mut reverse = 0usize;
+    let mut rtts = 0.0;
+    let mut messages = 0usize;
+
+    match trace.strategy {
+        RepairStrategy::Rbsr => {
+            for (index, stage) in trace.stages.iter().enumerate() {
+                let RepairStage::RbsrRound {
+                    responder,
+                    refinement_bytes,
+                    enumerated_bytes,
+                    frameable_outputs,
+                    ..
+                } = stage
+                else {
+                    panic!("RBSR trace contains a non-RBSR stage");
+                };
+                let enumeration = one_payload_variant(enumerated_bytes);
+                match responder {
+                    PeerSide::Right => {
+                        forward += *refinement_bytes as usize;
+                        reverse += enumeration;
+                    }
+                    PeerSide::Left => {
+                        reverse += *refinement_bytes as usize;
+                        forward += enumeration;
+                    }
+                }
+                rtts += 0.5;
+                messages += (*frameable_outputs as usize).max(1);
+
+                // An enumeration in the final round still has to travel back to the requester.
+                // Earlier enumeration payload can travel alongside the next round's refined
+                // child ranges, which already account for that return half-RTT.
+                if index + 1 == trace.stages.len() && enumeration > 0 {
+                    rtts += 0.5;
+                }
+            }
+        }
+        RepairStrategy::Merkle => {
+            for stage in &trace.stages {
+                match stage {
+                    RepairStage::MerkleExchange {
+                        request_bytes,
+                        response_bytes,
+                        ..
+                    }
+                    | RepairStage::MerkleFetch {
+                        request_bytes,
+                        response_bytes,
+                        ..
+                    } => {
+                        let request = *request_bytes as usize;
+                        let response = *response_bytes as usize;
+                        forward += request;
+                        reverse += response;
+                        messages += usize::from(request > 0) + usize::from(response > 0);
+                        rtts += match (request > 0, response > 0) {
+                            (true, true) => 1.0,
+                            (true, false) | (false, true) => 0.5,
+                            (false, false) => 0.0,
+                        };
+                    }
+                    _ => panic!("Merkle trace contains a non-Merkle stage"),
+                }
+            }
+        }
+        RepairStrategy::Riblt => panic!("RIBLT uses stream-specific projection"),
+    }
+
+    FiniteShape {
+        forward_app_bytes: forward,
+        reverse_app_bytes: reverse,
+        interaction_rtts: rtts,
+        logical_messages: messages.max(1),
+    }
+}
+
+fn no_handshake(transport: TransportProfile) -> TransportProfile {
+    TransportProfile {
+        handshake_rtts: 0.0,
+        ..transport
+    }
+}
+
+fn swap_link(link: LinkProfile) -> LinkProfile {
+    LinkProfile {
+        forward_mbps: link.reverse_mbps,
+        reverse_mbps: link.forward_mbps,
+        ..link
+    }
+}
+
+fn handshake_ms(link: LinkProfile, transport: TransportProfile) -> f64 {
+    transport.handshake_rtts * link.rtt_ms
+}
+
+fn print_finite(input: &TraceInput, link: LinkProfile, transport: TransportProfile) {
+    let shape = finite_shape(&input.trace);
     let network = estimate(
         Exchange {
-            forward_app_bytes: forward,
-            reverse_app_bytes: reverse,
+            forward_app_bytes: shape.forward_app_bytes,
+            reverse_app_bytes: shape.reverse_app_bytes,
             interaction_rtts: shape.interaction_rtts,
             logical_messages: shape.logical_messages,
         },
@@ -203,80 +335,156 @@ fn print_interactive(
         transport,
     );
     println!(
-        "[transport] trace={} algorithm={} link={} transport={} app_bytes={} framed_bytes={} expected_wire={:.0} packets={} handshake={:.2}ms propagation={:.2}ms serialization={:.2}ms loss={:.2}ms reorder={:.2}ms network={:.2}ms cpu={:.3}ms additive_total={:.2}ms",
-        trace.name,
-        shape.algorithm,
+        "[transport] workload={} arm={} strategy={:?} link={} transport={} forward_app={} reverse_app={} app_bytes={} framed_bytes={} expected_wire={:.0} packets={} interaction_rtts={:.1} logical_messages={} handshake={:.2}ms propagation={:.2}ms serialization={:.2}ms loss={:.2}ms reorder={:.2}ms network={:.2}ms cpu={:.3}ms additive_total={:.2}ms",
+        input.workload,
+        input.arm,
+        input.trace.strategy,
         link.name,
         transport.name,
+        shape.forward_app_bytes,
+        shape.reverse_app_bytes,
         network.app_bytes,
         network.framed_bytes,
         network.expected_wire_bytes,
         network.packets,
+        shape.interaction_rtts,
+        shape.logical_messages,
         network.handshake_ms,
         network.propagation_ms,
         network.serialization_ms,
         network.loss_recovery_ms,
         network.reorder_wait_ms,
         network.total_ms,
-        shape.cpu_ms,
-        network.total_ms + shape.cpu_ms,
+        input.cpu_ms,
+        network.total_ms + input.cpu_ms,
     );
 }
 
-fn print_riblt(trace: Trace, link: LinkProfile, transport: TransportProfile) {
-    let network = estimate_rateless_stop(trace.riblt_bytes, 32, link, transport);
+fn riblt_parts(trace: &RepairTrace) -> (usize, usize, usize) {
+    let mut equality = 0usize;
+    let mut stream = 0usize;
+    let mut stop = 0usize;
+    for stage in &trace.stages {
+        match stage {
+            RepairStage::RibltEquality { bytes } => equality += *bytes as usize,
+            RepairStage::RibltStream {
+                coded_symbols,
+                coded_symbol_bytes,
+            } => stream += (*coded_symbols * *coded_symbol_bytes) as usize,
+            RepairStage::RibltStopAck { bytes } => stop += *bytes as usize,
+            _ => panic!("RIBLT trace contains a non-RIBLT stage"),
+        }
+    }
+    (equality, stream, stop)
+}
+
+fn add_estimates(mut left: Estimate, right: Estimate) -> Estimate {
+    left.app_bytes += right.app_bytes;
+    left.framed_bytes += right.framed_bytes;
+    left.expected_wire_bytes += right.expected_wire_bytes;
+    left.packets += right.packets;
+    left.retransmitted_bytes += right.retransmitted_bytes;
+    left.propagation_ms += right.propagation_ms;
+    left.serialization_ms += right.serialization_ms;
+    left.loss_recovery_ms += right.loss_recovery_ms;
+    left.reorder_wait_ms += right.reorder_wait_ms;
+    left.total_ms += right.total_ms;
+    left
+}
+
+fn print_riblt(input: &TraceInput, link: LinkProfile, transport: TransportProfile) {
+    let (equality_bytes, stream_bytes, stop_bytes) = riblt_parts(&input.trace);
+    let bare_transport = no_handshake(transport);
+    let preflight = estimate(
+        Exchange {
+            forward_app_bytes: equality_bytes,
+            reverse_app_bytes: 0,
+            interaction_rtts: 0.5,
+            logical_messages: 1,
+        },
+        link,
+        bare_transport,
+    );
+    let handshake = handshake_ms(link, transport);
+
+    if stream_bytes == 0 {
+        println!(
+            "[transport-riblt] workload={} arm={} link={} transport={} equality_bytes={} decoded_bytes=0 discovery_wire={:.0} discovery_network={:.2}ms cpu={:.3}ms additive_discovery={:.2}ms stop_overshoot=0 quiescence_wire={:.0} quiescence_network={:.2}ms",
+            input.workload,
+            input.arm,
+            link.name,
+            transport.name,
+            equality_bytes,
+            preflight.expected_wire_bytes,
+            handshake + preflight.total_ms,
+            input.cpu_ms,
+            handshake + preflight.total_ms + input.cpu_ms,
+            preflight.expected_wire_bytes,
+            handshake + preflight.total_ms,
+        );
+        return;
+    }
+
+    // RIBLT convention from RepairTrace: Left sends equality to Right, Right streams coded symbols
+    // to Left, then Left sends the stop signal to Right. Swap directional bandwidth so the generic
+    // rateless helper's "forward" direction is the actual Right -> Left stream.
+    let stream = estimate_rateless_stop(
+        stream_bytes,
+        stop_bytes,
+        swap_link(link),
+        bare_transport,
+    );
+    let discovery = add_estimates(preflight, stream.discovery);
+    let quiescence = add_estimates(preflight, stream.quiescence);
+
     println!(
-        "[transport-riblt] trace={} link={} transport={} decoded_bytes={} discovery_wire={:.0} discovery_network={:.2}ms cpu={:.3}ms additive_discovery={:.2}ms stop_overshoot={} quiescence_wire={:.0} quiescence_network={:.2}ms",
-        trace.name,
+        "[transport-riblt] workload={} arm={} link={} transport={} equality_bytes={} decoded_bytes={} discovery_wire={:.0} discovery_network={:.2}ms cpu={:.3}ms additive_discovery={:.2}ms stop_overshoot={} quiescence_wire={:.0} quiescence_network={:.2}ms",
+        input.workload,
+        input.arm,
         link.name,
         transport.name,
-        trace.riblt_bytes,
-        network.discovery.expected_wire_bytes,
-        network.discovery.total_ms,
-        trace.riblt_cpu_ms,
-        network.discovery.total_ms + trace.riblt_cpu_ms,
-        network.stop_overshoot_app_bytes,
-        network.quiescence.expected_wire_bytes,
-        network.quiescence.total_ms,
+        equality_bytes,
+        stream_bytes,
+        discovery.expected_wire_bytes,
+        handshake + discovery.total_ms,
+        input.cpu_ms,
+        handshake + discovery.total_ms + input.cpu_ms,
+        stream.stop_overshoot_app_bytes,
+        quiescence.expected_wire_bytes,
+        handshake + quiescence.total_ms,
     );
 }
 
 fn main() {
+    let directory = PathBuf::from(
+        env::var_os("RECONCILE_TRANSPORT_TRACE_DIR")
+            .expect("set RECONCILE_TRANSPORT_TRACE_DIR to structured benchmark output"),
+    );
+    let inputs = load_inputs(&directory);
+
+    println!(
+        "[transport-model] inputs={} structured repair traces; no hardcoded algorithm byte/message totals",
+        inputs.len()
+    );
     println!(
         "[transport-model] generic projection only; frame overheads/handshake RTTs are model constants, not wire-accurate TCP/QUIC claims"
     );
     println!(
-        "[transport-model] RIBLT stop overshoot is one full-rate forward BDP; CPU+network additive totals ignore overlap"
+        "[transport-model] RIBLT equality Left->Right, stream Right->Left, stop Left->Right; stop overshoot is one full-rate stream-direction BDP"
+    );
+    println!(
+        "[transport-model] measured local SessionWork CPU is reported separately; additive totals assume no CPU/network overlap"
     );
 
-    for &trace in TRACES {
+    for input in &inputs {
         for &link in LINKS {
             for &transport in TRANSPORTS {
-                print_interactive(
-                    trace,
-                    InteractiveShape {
-                        algorithm: "rbsr",
-                        bytes: trace.rbsr_bytes,
-                        interaction_rtts: trace.rbsr_messages as f64 / 2.0,
-                        logical_messages: trace.rbsr_messages,
-                        cpu_ms: trace.rbsr_cpu_ms,
-                    },
-                    link,
-                    transport,
-                );
-                print_interactive(
-                    trace,
-                    InteractiveShape {
-                        algorithm: "merkle",
-                        bytes: trace.merkle_bytes,
-                        interaction_rtts: trace.merkle_rounds as f64,
-                        logical_messages: trace.merkle_rounds * 2,
-                        cpu_ms: trace.merkle_cpu_ms,
-                    },
-                    link,
-                    transport,
-                );
-                print_riblt(trace, link, transport);
+                match input.trace.strategy {
+                    RepairStrategy::Riblt => print_riblt(input, link, transport),
+                    RepairStrategy::Rbsr | RepairStrategy::Merkle => {
+                        print_finite(input, link, transport)
+                    }
+                }
             }
         }
     }
