@@ -13,7 +13,8 @@ Benchmarks measure the code that ships in this repository. Results are not versi
 | riblt_preparation | RIBLT on-demand vs cached multi-peer preparation and rebuild cost |
 | state_repair_mutations | RBSR vs RIBLT vs key-stable Merkle under arbitrary insert/delete/mixed divergence |
 | cold_start_repair | Rebuild-from-current-state cost after reboot before repair |
-| transport_sensitivity | Project fixed repair traces across generic RTT/MTU/loss/handshake profiles |
+| transport_sensitivity | Project structured repair traces across generic RTT/MTU/loss/handshake profiles |
+| netem_trace_validation | Replay RBSR causal flights through NetemTransport to validate the analytical model |
 | state_repair_sensitivity | Scale, fanout and symbol-size crossover mapping |
 | contention | concurrent write cost |
 | snapshot_write_amplification | snapshot write/restart cost |
@@ -37,3 +38,12 @@ The `cold_start_repair` target prices reboot with reconciliation acceleration di
 The `state_repair_sensitivity` target maps selected crossovers rather than a full Cartesian product. `scale` varies `n` and `d/n`; `fanout` sweeps RBSR and key-stable radix Merkle fanout; `symbol` repeats representative cases with 16/32/64-byte wire symbols. Workloads are random updates and outside-range inserts. Configure with `RECONCILE_SENSITIVITY_*`.
 
 The `transport_sensitivity` target freezes representative arbitrary-key repair traces and projects them through an explicit analytical network model. Links cover same-host, LAN, regional WAN, intercontinental, high-latency, and constrained asymmetric profiles. Transports model UDP-like application retry, cold/warm TCP-like streams, and cold/resumed QUIC-like streams. Frame overhead and handshake RTTs are model inputs, not wire-accurate claims. It reports MTU packetization, expected retransmission under loss, ordered-stream reordering wait, handshake/propagation/serialization, and CPU separately. RIBLT also reports receiver discovery and sender quiescence using a full-rate one-BDP stop-ACK overshoot envelope. RBSR-native protocol co-design is measured separately; this target keeps transport generic.
+
+
+The `netem_trace_validation` target validates the finite-flight analytical transport model against
+the repository's deterministic `gossip::NetemTransport`. It replays the same RBSR causal flights
+used by `transport_sensitivity` with a 16-byte validation header declared as model frame overhead,
+so clean-link frame and byte counts must match exactly. Timing is compared at low/high RTT, then
+averaged across seeded loss-only and reorder-only lanes; Tokio scheduling and a small loss-detection
+margin are reported as residual rather than hidden in the model. This validates the transport
+projection layer, not the full `ReplicatedMap` runtime cadence/membership behavior.
