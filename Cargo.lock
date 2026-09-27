@@ -495,7 +495,6 @@ version = "0.0.0"
 dependencies = [
  "bincode",
  "rand 0.8.7",
- "do-riblt",
  "rbsr",
  "rsos",
 ]
@@ -1348,6 +1347,7 @@ dependencies = [
  "parking_lot",
  "proptest",
  "rand 0.8.7",
+ "do-riblt",
  "rbsr",
  "reconcile-gossip",
  "rsos",
