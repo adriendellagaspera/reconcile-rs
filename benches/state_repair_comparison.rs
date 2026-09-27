@@ -248,7 +248,10 @@ fn clustered_keys(n: usize, d: usize, clusters: usize) -> Vec<u64> {
         let partition_start = cluster * n / active_clusters;
         let partition_end = (cluster + 1) * n / active_clusters;
         let partition_len = partition_end - partition_start;
-        assert!(count <= partition_len, "cluster does not fit its key partition");
+        assert!(
+            count <= partition_len,
+            "cluster does not fit its key partition"
+        );
         let start = partition_start + (partition_len - count) / 2;
         keys.extend((start..start + count).map(|key| key as u64));
         remaining -= count;
@@ -631,7 +634,12 @@ fn print_case(n: usize, d: usize, profile: Profile, seed: u64, case: &CaseResult
 }
 
 fn print_random_summary(n: usize, d: usize, seeds: &[u64], cases: &[CaseResult]) {
-    let rbsr = summarize(&cases.iter().map(|case| rbsr_bytes(&case.rbsr)).collect::<Vec<_>>());
+    let rbsr = summarize(
+        &cases
+            .iter()
+            .map(|case| rbsr_bytes(&case.rbsr))
+            .collect::<Vec<_>>(),
+    );
     let riblt = summarize(
         &cases
             .iter()
@@ -671,10 +679,7 @@ fn main() {
     let n = env_usize("RECONCILE_STATE_REPAIR_N", DEFAULT_N);
     let sweep = divergence_sweep();
     let profiles = profiles();
-    let random_seeds = env_usize(
-        "RECONCILE_STATE_REPAIR_RANDOM_SEEDS",
-        DEFAULT_RANDOM_SEEDS,
-    );
+    let random_seeds = env_usize("RECONCILE_STATE_REPAIR_RANDOM_SEEDS", DEFAULT_RANDOM_SEEDS);
     let seed_base = env_u64("RECONCILE_STATE_REPAIR_SEED_BASE", DEFAULT_SEED_BASE);
     assert!(!sweep.is_empty(), "at least one d is required");
     assert!(!profiles.is_empty(), "at least one profile is required");
