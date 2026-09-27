@@ -293,7 +293,6 @@ fn needs_enumerated_bytes_init_false_for_an_empty_payload() {
     assert!(!needs_enumerated_bytes_init(&[], &[]));
 }
 
-
 #[test]
 fn traced_reconciliation_preserves_aggregate_byte_variants() {
     let mut a = FingerprintTreeMap::<u64, u64>::new();
@@ -343,7 +342,6 @@ fn traced_reconciliation_records_alternating_responders() {
         .collect();
     assert_eq!(responders, vec![PeerSide::Right, PeerSide::Left]);
 }
-
 
 fn map_rows(rows: &[(u64, u64)]) -> FingerprintTreeMap<u64, u64> {
     let mut map = FingerprintTreeMap::new();
