@@ -169,8 +169,8 @@ fn base_digest(key: u64) -> u64 {
     key.wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(17) ^ 0xd6e8_feb8_6659_fd93
 }
 
-fn changed_digest(key: u64, salt: u64) -> u64 {
-    base_digest(key) ^ 0xa5a5_5a5a_d3c3_b4b4 ^ salt.wrapping_mul(0x517c_c1b7_2722_0a95)
+fn changed_digest(key: u64, variant: u64) -> u64 {
+    base_digest(key) ^ 0xa5a5_5a5a_d3c3_b4b4 ^ variant.wrapping_mul(0x517c_c1b7_2722_0a95)
 }
 
 fn baseline(n: usize) -> Vec<(u64, u64)> {
