@@ -159,6 +159,40 @@ fn metric_units_and_provenance_are_validated() {
     assert_invalid_metric(&observation);
 }
 
+
+#[test]
+fn invalid_uncertainty_bounds_are_rejected() {
+    for uncertainty in [
+        Uncertainty {
+            lower: 0.0,
+            upper: 1.0,
+            confidence: 1.1,
+        },
+        Uncertainty {
+            lower: 2.0,
+            upper: 1.0,
+            confidence: 0.95,
+        },
+        Uncertainty {
+            lower: 0.0,
+            upper: f64::NAN,
+            confidence: 0.95,
+        },
+    ] {
+        let mut observation = run(RunStatus::Completed);
+        observation.costs[0].metrics = vec![CostMetric {
+            kind: MetricKind::CpuSeconds,
+            peer: None,
+            measurement: Measurement::Observed {
+                value: MetricValue::Seconds(1.0),
+                samples: 1,
+                uncertainty: Some(uncertainty),
+            },
+        }];
+        assert_invalid_metric(&observation);
+    }
+}
+
 #[test]
 fn failure_probability_is_a_probability_not_an_arbitrary_ratio() {
     let mut observation = run(RunStatus::Completed);
