@@ -292,3 +292,54 @@ fn needs_enumerated_bytes_init_false_once_already_sized() {
 fn needs_enumerated_bytes_init_false_for_an_empty_payload() {
     assert!(!needs_enumerated_bytes_init(&[], &[]));
 }
+
+
+#[test]
+fn traced_reconciliation_preserves_aggregate_byte_variants() {
+    let mut a = FingerprintTreeMap::<u64, u64>::new();
+    a.insert(1, 1);
+    let b = FingerprintTreeMap::<u64, u64>::new();
+
+    let mut price = |_key: u64| vec![10, 20];
+    let (cost, trace) = reconcile_traced(
+        &a,
+        &b,
+        &AlwaysEnumerate,
+        Some(&mut price),
+        &mut StdRng::seed_from_u64(0),
+    );
+
+    assert_eq!(
+        trace.total_byte_variants(),
+        cost.total_bytes()
+            .into_iter()
+            .map(|bytes| bytes as u64)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(trace.dependency_stages(), cost.messages);
+}
+
+#[test]
+fn traced_reconciliation_records_alternating_responders() {
+    let mut a = FingerprintTreeMap::<u64, u64>::new();
+    a.insert(1, 1);
+    let b = FingerprintTreeMap::<u64, u64>::new();
+
+    let (_cost, trace) = reconcile_traced(
+        &a,
+        &b,
+        &AlwaysEnumerate,
+        None,
+        &mut StdRng::seed_from_u64(0),
+    );
+
+    let responders: Vec<_> = trace
+        .stages
+        .iter()
+        .map(|stage| match stage {
+            RepairStage::RbsrRound { responder, .. } => *responder,
+            other => panic!("unexpected RBSR trace stage: {other:?}"),
+        })
+        .collect();
+    assert_eq!(responders, vec![PeerSide::Right, PeerSide::Left]);
+}
