@@ -53,6 +53,10 @@ name = "state_repair_comparison"
 harness = false
 
 [[bench]]
+name = "riblt_preparation"
+harness = false
+
+[[bench]]
 name = "contention"
 harness = false
 
