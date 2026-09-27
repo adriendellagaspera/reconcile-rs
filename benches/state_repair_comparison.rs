@@ -8,47 +8,103 @@
 // Prepared-state repair comparison: RBSR vs Rateless IBLT vs Merkle.
 //
 // Every strategy sees the same sorted key-value manifest. Both replicas contain the same n keys;
-// exactly d values have a different 64-bit digest. The business-level answer is therefore the
-// same d divergent keys for every strategy. A changed row is two set symbols for RIBLT:
+// exactly d values have a different 64-bit digest. A changed row is two set symbols for RIBLT:
 // (key, old_digest) exists only on the left and (key, new_digest) only on the right.
 //
-// The benchmark measures divergence discovery metadata only. The application payload fetched after
-// discovery is intentionally excluded and would be identical regardless of the discovery method.
-// Index/sketch preparation is excluded from the timed repair section and reported separately.
-// This keeps the prepared-state session comparison distinct from bootstrap cost: FingerprintTreeMap
-// and Merkle structures can be maintained incrementally, while the RIBLT implementation used here
-// constructs its encoder/decoder state from the current rows before producing coded symbols.
+// The benchmark measures divergence discovery metadata only. Application payload transfer is
+// excluded. Index/sketch preparation is excluded from the repair timer and reported separately.
+// Divergence placement is varied independently from d so ordered locality can be measured.
 //
 // Defaults:
 //   n = 100_000 rows
-//   d = 1, 10, 100, 1_000, 10_000 divergent keys
+//   d = 0, 1, 10, 100, 1_000, 10_000 divergent keys
+//   profiles = contiguous, clustered-4, clustered-16, uniform-random, evenly-spaced, max-spread
+//   random seeds = 3
 //   Merkle fanout = 16
 //
 // Overrides:
 //   RECONCILE_STATE_REPAIR_N=1000000
-//   RECONCILE_STATE_REPAIR_D=1,10,100,1000
+//   RECONCILE_STATE_REPAIR_D=0,10,1000
+//   RECONCILE_STATE_REPAIR_PROFILES=contiguous,uniform-random,max-spread
+//   RECONCILE_STATE_REPAIR_RANDOM_SEEDS=20
+//   RECONCILE_STATE_REPAIR_SEED_BASE=42
 //
 // Run with `cargo bench --bench state_repair_comparison`.
 
 use std::collections::BTreeSet;
 use std::env;
+use std::fmt;
 use std::time::{Duration, Instant};
 
 use devkit::protocol_cost::{reconcile, Cost};
 use do_riblt::{Decoder, Encoder, Peeled, Symbol};
 use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut};
 use rsos::FingerprintTreeMap;
 
 const DEFAULT_N: usize = 100_000;
-const DEFAULT_D: &[usize] = &[1, 10, 100, 1_000, 10_000];
+const DEFAULT_D: &[usize] = &[0, 1, 10, 100, 1_000, 10_000];
+const DEFAULT_RANDOM_SEEDS: usize = 3;
+const DEFAULT_SEED_BASE: u64 = 42;
 const MERKLE_FANOUT: usize = 16;
 const SESSION_SEED: u64 = 42;
 const SYMBOL_BYTES: usize = 16;
+const STATE_DIGEST_BYTES: usize = 32;
 const RIBLT_CODED_SYMBOL_BYTES: usize = SYMBOL_BYTES + 8;
 const MERKLE_HASH_BYTES: usize = 32;
 const MERKLE_INDEX_BYTES: usize = 8;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Profile {
+    Contiguous,
+    Clustered4,
+    Clustered16,
+    UniformRandom,
+    EvenlySpaced,
+    MaxSpread,
+}
+
+impl Profile {
+    const ALL: [Self; 6] = [
+        Self::Contiguous,
+        Self::Clustered4,
+        Self::Clustered16,
+        Self::UniformRandom,
+        Self::EvenlySpaced,
+        Self::MaxSpread,
+    ];
+
+    fn parse(raw: &str) -> Self {
+        match raw.trim() {
+            "contiguous" => Self::Contiguous,
+            "clustered-4" => Self::Clustered4,
+            "clustered-16" => Self::Clustered16,
+            "uniform-random" => Self::UniformRandom,
+            "evenly-spaced" => Self::EvenlySpaced,
+            "max-spread" => Self::MaxSpread,
+            other => panic!("unknown state-repair profile: {other}"),
+        }
+    }
+
+    fn is_random(self) -> bool {
+        self == Self::UniformRandom
+    }
+}
+
+impl fmt::Display for Profile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Contiguous => "contiguous",
+            Self::Clustered4 => "clustered-4",
+            Self::Clustered16 => "clustered-16",
+            Self::UniformRandom => "uniform-random",
+            Self::EvenlySpaced => "evenly-spaced",
+            Self::MaxSpread => "max-spread",
+        })
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct KvSymbol {
@@ -104,10 +160,35 @@ struct MerkleReport {
     recovered_keys: Vec<u64>,
 }
 
+struct CaseResult {
+    rbsr_setup: Duration,
+    rbsr: Cost,
+    rbsr_elapsed: Duration,
+    riblt: RibltReport,
+    merkle_setup: Duration,
+    merkle: MerkleReport,
+}
+
+#[derive(Debug)]
+struct Summary {
+    min: usize,
+    p50: usize,
+    mean: f64,
+    p90: usize,
+    max: usize,
+}
+
 fn env_usize(name: &str, default: usize) -> usize {
     env::var(name).map_or(default, |raw| {
         raw.parse()
-            .unwrap_or_else(|_| panic!("{name} must be a positive integer"))
+            .unwrap_or_else(|_| panic!("{name} must be a non-negative integer"))
+    })
+}
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    env::var(name).map_or(default, |raw| {
+        raw.parse()
+            .unwrap_or_else(|_| panic!("{name} must be a non-negative integer"))
     })
 }
 
@@ -128,6 +209,13 @@ fn divergence_sweep() -> Vec<usize> {
     )
 }
 
+fn profiles() -> Vec<Profile> {
+    env::var("RECONCILE_STATE_REPAIR_PROFILES").map_or_else(
+        |_| Profile::ALL.to_vec(),
+        |raw| raw.split(',').map(Profile::parse).collect(),
+    )
+}
+
 fn base_digest(key: u64) -> u64 {
     key.wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(17) ^ 0xd6e8_feb8_6659_fd93
 }
@@ -136,19 +224,106 @@ fn changed_digest(key: u64) -> u64 {
     base_digest(key) ^ 0xa5a5_5a5a_d3c3_b4b4
 }
 
-fn divergent_keys(n: usize, d: usize) -> Vec<u64> {
-    assert!(d > 0, "d must be non-zero");
-    assert!(d <= n, "d must not exceed n");
-    let mut keys = Vec::with_capacity(d);
-    for i in 0..d {
-        // Midpoint sampling gives d unique, evenly distributed keys for every d <= n.
-        keys.push((((2 * i + 1) * n) / (2 * d)) as u64);
+fn evenly_spaced_keys(n: usize, d: usize) -> Vec<u64> {
+    (0..d)
+        .map(|i| (((2 * i + 1) * n) / (2 * d)) as u64)
+        .collect()
+}
+
+fn contiguous_keys(n: usize, d: usize) -> Vec<u64> {
+    let start = (n - d) / 2;
+    (start..start + d).map(|key| key as u64).collect()
+}
+
+fn clustered_keys(n: usize, d: usize, clusters: usize) -> Vec<u64> {
+    let active_clusters = clusters.min(d).min(n);
+    if active_clusters == 0 {
+        return Vec::new();
     }
+
+    let mut keys = Vec::with_capacity(d);
+    let mut remaining = d;
+    for cluster in 0..active_clusters {
+        let slots_left = active_clusters - cluster;
+        let count = remaining.div_ceil(slots_left);
+        let partition_start = cluster * n / active_clusters;
+        let partition_end = (cluster + 1) * n / active_clusters;
+        let partition_len = partition_end - partition_start;
+        assert!(count <= partition_len, "cluster does not fit its key partition");
+        let start = partition_start + (partition_len - count) / 2;
+        keys.extend((start..start + count).map(|key| key as u64));
+        remaining -= count;
+    }
+    keys.sort_unstable();
     keys
 }
 
-fn corpus(n: usize, d: usize) -> Corpus {
-    let expected_diff = divergent_keys(n, d);
+fn random_keys(n: usize, d: usize, seed: u64) -> Vec<u64> {
+    let mut ranks: Vec<_> = (0..n).collect();
+    let mut rng = StdRng::seed_from_u64(seed);
+    ranks.shuffle(&mut rng);
+    ranks.truncate(d);
+    ranks.sort_unstable();
+    ranks.into_iter().map(|rank| rank as u64).collect()
+}
+
+fn reversed_base16(mut value: usize, digits: usize) -> usize {
+    let mut reversed = 0usize;
+    for _ in 0..digits {
+        reversed = reversed * MERKLE_FANOUT + value % MERKLE_FANOUT;
+        value /= MERKLE_FANOUT;
+    }
+    reversed
+}
+
+fn max_spread_keys(n: usize, d: usize) -> Vec<u64> {
+    if d == 0 {
+        return Vec::new();
+    }
+
+    let mut digits = 1;
+    let mut space = MERKLE_FANOUT;
+    while space < n {
+        space *= MERKLE_FANOUT;
+        digits += 1;
+    }
+
+    let mut keys = Vec::with_capacity(d);
+    for ordinal in 0..space {
+        let rank = reversed_base16(ordinal, digits);
+        if rank < n {
+            keys.push(rank as u64);
+            if keys.len() == d {
+                break;
+            }
+        }
+    }
+    assert_eq!(keys.len(), d, "max-spread permutation did not cover d keys");
+    keys.sort_unstable();
+    keys
+}
+
+fn divergent_keys(n: usize, d: usize, profile: Profile, seed: u64) -> Vec<u64> {
+    assert!(d <= n, "d must not exceed n");
+    if d == 0 {
+        return Vec::new();
+    }
+
+    let keys = match profile {
+        Profile::Contiguous => contiguous_keys(n, d),
+        Profile::Clustered4 => clustered_keys(n, d, 4),
+        Profile::Clustered16 => clustered_keys(n, d, 16),
+        Profile::UniformRandom => random_keys(n, d, seed),
+        Profile::EvenlySpaced => evenly_spaced_keys(n, d),
+        Profile::MaxSpread => max_spread_keys(n, d),
+    };
+    assert_eq!(keys.len(), d);
+    assert!(keys.windows(2).all(|window| window[0] < window[1]));
+    keys
+}
+
+fn corpus(n: usize, d: usize, profile: Profile, seed: u64) -> Corpus {
+    let expected_diff = divergent_keys(n, d, profile, seed);
     let changed: BTreeSet<_> = expected_diff.iter().copied().collect();
     let left_rows: Vec<_> = (0..n as u64).map(|key| (key, base_digest(key))).collect();
     let right_rows = left_rows
@@ -182,6 +357,15 @@ fn symbols(rows: &[(u64, u64)]) -> Vec<KvSymbol> {
         .collect()
 }
 
+fn state_digest(rows: &[(u64, u64)]) -> [u8; STATE_DIGEST_BYTES] {
+    let mut hasher = blake3::Hasher::new();
+    for &(key, digest) in rows {
+        hasher.update(&key.to_le_bytes());
+        hasher.update(&digest.to_le_bytes());
+    }
+    *hasher.finalize().as_bytes()
+}
+
 fn rbsr_report(
     left: &FingerprintTreeMap<u64, u64>,
     right: &FingerprintTreeMap<u64, u64>,
@@ -205,6 +389,22 @@ fn rbsr_report(
 
 fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> RibltReport {
     let setup_started = Instant::now();
+    let left_digest = state_digest(left);
+    let right_digest = state_digest(right);
+    if left_digest == right_digest {
+        return RibltReport {
+            setup: setup_started.elapsed(),
+            report: Report {
+                bytes: STATE_DIGEST_BYTES,
+                units: 0,
+                messages: 1,
+                rounds: 1,
+                elapsed: Duration::ZERO,
+            },
+            recovered_keys: Vec::new(),
+        };
+    }
+
     let left = symbols(left);
     let right = symbols(right);
     let symbol_count = left.len().max(right.len());
@@ -231,10 +431,10 @@ fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> RibltReport {
             return RibltReport {
                 setup,
                 report: Report {
-                    bytes: (index + 1) * RIBLT_CODED_SYMBOL_BYTES,
+                    bytes: STATE_DIGEST_BYTES + (index + 1) * RIBLT_CODED_SYMBOL_BYTES,
                     units: index + 1,
-                    messages: 1,
-                    rounds: 1,
+                    messages: 2,
+                    rounds: 2,
                     elapsed: started.elapsed(),
                 },
                 recovered_keys,
@@ -291,8 +491,6 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
     assert_eq!(left.levels.len(), right.levels.len());
 
     let started = Instant::now();
-    // The responder first sends its root. If it differs, each following round requests all children
-    // of the mismatching nodes at the next level. Requests carry one u64 node index each.
     let mut bytes = MERKLE_HASH_BYTES;
     let mut hashes_sent = 1;
     let mut messages = 1;
@@ -310,8 +508,7 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
         }
 
         bytes += mismatching.len() * MERKLE_INDEX_BYTES;
-        messages += 1; // batched request for child hashes
-
+        messages += 1;
         let child_level = level - 1;
         let mut next = Vec::new();
         for parent in &mismatching {
@@ -325,13 +522,11 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
                 }
             }
         }
-        messages += 1; // batched child-hash response
+        messages += 1;
         rounds += 1;
         mismatching = next;
     }
 
-    // Leaf hashes identify the positions, but not the remote row digest itself. Fetch one fixed
-    // (key,digest) symbol per mismatching leaf so this has the same discovery output as RBSR/RIBLT.
     let mut recovered_keys = Vec::with_capacity(mismatching.len());
     if !mismatching.is_empty() {
         bytes += mismatching.len() * MERKLE_INDEX_BYTES;
@@ -358,72 +553,167 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
     }
 }
 
+fn run_case(n: usize, d: usize, profile: Profile, seed: u64) -> CaseResult {
+    let corpus = corpus(n, d, profile, seed);
+
+    let rbsr_setup_started = Instant::now();
+    let left_map = fingerprint_map(&corpus.left_rows);
+    let right_map = fingerprint_map(&corpus.right_rows);
+    let rbsr_setup = rbsr_setup_started.elapsed();
+    let (rbsr, rbsr_elapsed, rbsr_recovered) = rbsr_report(&left_map, &right_map);
+    assert_eq!(
+        rbsr_recovered, corpus.expected_diff,
+        "RBSR recovered a different business-key set"
+    );
+
+    let riblt = riblt_report(&corpus.left_rows, &corpus.right_rows);
+    assert_eq!(
+        riblt.recovered_keys, corpus.expected_diff,
+        "RIBLT recovered a different business-key set"
+    );
+
+    let merkle_setup_started = Instant::now();
+    let left_merkle = MerkleTree::new(&corpus.left_rows);
+    let right_merkle = MerkleTree::new(&corpus.right_rows);
+    let merkle_setup = merkle_setup_started.elapsed();
+    let merkle = merkle_report(&left_merkle, &right_merkle);
+    assert_eq!(
+        merkle.recovered_keys, corpus.expected_diff,
+        "Merkle recovered a different business-key set"
+    );
+
+    CaseResult {
+        rbsr_setup,
+        rbsr,
+        rbsr_elapsed,
+        riblt,
+        merkle_setup,
+        merkle,
+    }
+}
+
+fn rbsr_bytes(cost: &Cost) -> usize {
+    cost.total_bytes()
+        .first()
+        .copied()
+        .unwrap_or(cost.refinement_bytes)
+}
+
+fn summarize(values: &[usize]) -> Summary {
+    assert!(!values.is_empty());
+    let mut sorted = values.to_vec();
+    sorted.sort_unstable();
+    let percentile = |p: usize| sorted[(sorted.len() - 1) * p / 100];
+    Summary {
+        min: sorted[0],
+        p50: percentile(50),
+        mean: sorted.iter().sum::<usize>() as f64 / sorted.len() as f64,
+        p90: percentile(90),
+        max: *sorted.last().unwrap(),
+    }
+}
+
+fn print_case(n: usize, d: usize, profile: Profile, seed: u64, case: &CaseResult) {
+    println!(
+        "[state-repair-case] n={n} d={d} profile={profile} seed={seed} symbol={SYMBOL_BYTES}B fanout={MERKLE_FANOUT} | RBSR bytes={} ranges={} idlist={} time={:.3}ms | RIBLT bytes={} coded={} time={:.3}ms | Merkle bytes={} hashes={} rounds={} time={:.3}ms",
+        rbsr_bytes(&case.rbsr),
+        case.rbsr.ranges,
+        case.rbsr.enumerated_elements,
+        case.rbsr_elapsed.as_secs_f64() * 1_000.0,
+        case.riblt.report.bytes,
+        case.riblt.report.units,
+        case.riblt.report.elapsed.as_secs_f64() * 1_000.0,
+        case.merkle.report.bytes,
+        case.merkle.hashes_sent,
+        case.merkle.report.rounds,
+        case.merkle.report.elapsed.as_secs_f64() * 1_000.0,
+    );
+    println!(
+        "[state-repair-setup] n={n} d={d} profile={profile} seed={seed} | RBSR={:.3}ms RIBLT={:.3}ms Merkle={:.3}ms",
+        case.rbsr_setup.as_secs_f64() * 1_000.0,
+        case.riblt.setup.as_secs_f64() * 1_000.0,
+        case.merkle_setup.as_secs_f64() * 1_000.0,
+    );
+}
+
+fn print_random_summary(n: usize, d: usize, seeds: &[u64], cases: &[CaseResult]) {
+    let rbsr = summarize(&cases.iter().map(|case| rbsr_bytes(&case.rbsr)).collect::<Vec<_>>());
+    let riblt = summarize(
+        &cases
+            .iter()
+            .map(|case| case.riblt.report.bytes)
+            .collect::<Vec<_>>(),
+    );
+    let merkle = summarize(
+        &cases
+            .iter()
+            .map(|case| case.merkle.report.bytes)
+            .collect::<Vec<_>>(),
+    );
+    println!(
+        "[state-repair-summary] n={n} d={d} profile=uniform-random samples={} seed={}..{} | RBSR bytes min={} p50={} mean={:.1} p90={} max={} | RIBLT bytes min={} p50={} mean={:.1} p90={} max={} | Merkle bytes min={} p50={} mean={:.1} p90={} max={}",
+        cases.len(),
+        seeds.first().unwrap(),
+        seeds.last().unwrap(),
+        rbsr.min,
+        rbsr.p50,
+        rbsr.mean,
+        rbsr.p90,
+        rbsr.max,
+        riblt.min,
+        riblt.p50,
+        riblt.mean,
+        riblt.p90,
+        riblt.max,
+        merkle.min,
+        merkle.p50,
+        merkle.mean,
+        merkle.p90,
+        merkle.max,
+    );
+}
+
 fn main() {
     let n = env_usize("RECONCILE_STATE_REPAIR_N", DEFAULT_N);
     let sweep = divergence_sweep();
+    let profiles = profiles();
+    let random_seeds = env_usize(
+        "RECONCILE_STATE_REPAIR_RANDOM_SEEDS",
+        DEFAULT_RANDOM_SEEDS,
+    );
+    let seed_base = env_u64("RECONCILE_STATE_REPAIR_SEED_BASE", DEFAULT_SEED_BASE);
     assert!(!sweep.is_empty(), "at least one d is required");
+    assert!(!profiles.is_empty(), "at least one profile is required");
+    assert!(
+        !profiles.iter().any(|profile| profile.is_random()) || random_seeds > 0,
+        "uniform-random requires at least one seed"
+    );
 
     println!(
-        "[state-repair] n={n}; same aligned key universe; value digest differs on d keys; payload transfer excluded"
+        "[state-repair] n={n}; update-only aligned key universe; payload transfer excluded; RIBLT includes a {STATE_DIGEST_BYTES} B equality preflight"
     );
     println!(
-        "[state-repair] RIBLT uses fixed {RIBLT_CODED_SYMBOL_BYTES} B coded-symbol payloads; RBSR prices each enumerated row symbol at {SYMBOL_BYTES} B; Merkle uses {MERKLE_HASH_BYTES} B BLAKE3 hashes and fanout {MERKLE_FANOUT}"
+        "[state-repair] RIBLT coded symbol={RIBLT_CODED_SYMBOL_BYTES} B; RBSR enumerated row={SYMBOL_BYTES} B; Merkle hash={MERKLE_HASH_BYTES} B; fanout={MERKLE_FANOUT}"
     );
 
     for d in sweep {
-        let corpus = corpus(n, d);
-
-        let rbsr_setup_started = Instant::now();
-        let left_map = fingerprint_map(&corpus.left_rows);
-        let right_map = fingerprint_map(&corpus.right_rows);
-        let rbsr_setup = rbsr_setup_started.elapsed();
-        let (rbsr, rbsr_elapsed, rbsr_recovered) = rbsr_report(&left_map, &right_map);
-        assert_eq!(
-            rbsr_recovered, corpus.expected_diff,
-            "RBSR recovered a different business-key set"
-        );
-        let rbsr_bytes = rbsr
-            .total_bytes()
-            .first()
-            .copied()
-            .unwrap_or(rbsr.refinement_bytes);
-
-        let riblt = riblt_report(&corpus.left_rows, &corpus.right_rows);
-        assert_eq!(
-            riblt.recovered_keys, corpus.expected_diff,
-            "RIBLT recovered a different business-key set"
-        );
-
-        let merkle_setup_started = Instant::now();
-        let left_merkle = MerkleTree::new(&corpus.left_rows);
-        let right_merkle = MerkleTree::new(&corpus.right_rows);
-        let merkle_setup = merkle_setup_started.elapsed();
-        let merkle = merkle_report(&left_merkle, &right_merkle);
-        assert_eq!(
-            merkle.recovered_keys, corpus.expected_diff,
-            "Merkle recovered a different business-key set"
-        );
-
-        println!(
-            "[state-repair-setup] d={d:>6} | RBSR build={:>9.3} ms | RIBLT build={:>9.3} ms | Merkle build={:>9.3} ms",
-            rbsr_setup.as_secs_f64() * 1_000.0,
-            riblt.setup.as_secs_f64() * 1_000.0,
-            merkle_setup.as_secs_f64() * 1_000.0,
-        );
-        println!(
-            "[state-repair] d={d:>6} | RBSR bytes={rbsr_bytes:>9}, msg={:>3}, ranges={:>7}, idlist={:>7}, time={:>9.3} ms | RIBLT bytes={:>9}, coded={:>7}, time={:>9.3} ms | Merkle bytes={:>9}, hashes={:>7}, msg={:>3}, rounds={:>2}, time={:>9.3} ms",
-            rbsr.messages,
-            rbsr.ranges,
-            rbsr.enumerated_elements,
-            rbsr_elapsed.as_secs_f64() * 1_000.0,
-            riblt.report.bytes,
-            riblt.report.units,
-            riblt.report.elapsed.as_secs_f64() * 1_000.0,
-            merkle.report.bytes,
-            merkle.hashes_sent,
-            merkle.report.messages,
-            merkle.report.rounds,
-            merkle.report.elapsed.as_secs_f64() * 1_000.0,
-        );
+        assert!(d <= n, "d must not exceed n");
+        for profile in &profiles {
+            if profile.is_random() {
+                let seeds: Vec<_> = (0..random_seeds)
+                    .map(|offset| seed_base.wrapping_add(offset as u64))
+                    .collect();
+                let mut cases = Vec::with_capacity(seeds.len());
+                for &seed in &seeds {
+                    let case = run_case(n, d, *profile, seed);
+                    print_case(n, d, *profile, seed, &case);
+                    cases.push(case);
+                }
+                print_random_summary(n, d, &seeds, &cases);
+            } else {
+                let case = run_case(n, d, *profile, seed_base);
+                print_case(n, d, *profile, seed_base, &case);
+            }
+        }
     }
 }
