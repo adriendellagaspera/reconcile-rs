@@ -425,7 +425,6 @@ fn assert_invalid_metric(observation: &RunObservation) {
     ));
 }
 
-
 #[test]
 fn valid_probability_and_uncertainty_are_accepted() {
     let mut probability = run(RunStatus::Completed);
