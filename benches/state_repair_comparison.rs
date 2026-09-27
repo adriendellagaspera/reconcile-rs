@@ -34,9 +34,7 @@
 use devkit::experiment::producer::{
     elapsed, protocol_bytes, write_case_from_env, write_repair_trace_from_env, Arm, Case,
 };
-use devkit::experiment::{
-    CostOwner, LifecyclePhase, RepairStage, RepairStrategy, RepairTrace,
-};
+use devkit::experiment::{CostOwner, LifecyclePhase, RepairStage, RepairStrategy, RepairTrace};
 use std::collections::BTreeSet;
 use std::env;
 use std::time::{Duration, Instant};
@@ -429,8 +427,7 @@ fn run_case(n: usize, d: usize, profile: Profile, seed: u64) -> CaseResult {
     let left_map = fingerprint_map(&corpus.left_rows);
     let right_map = fingerprint_map(&corpus.right_rows);
     let rbsr_setup = rbsr_setup_started.elapsed();
-    let (rbsr, rbsr_elapsed, rbsr_recovered, rbsr_trace) =
-        rbsr_report(&left_map, &right_map);
+    let (rbsr, rbsr_elapsed, rbsr_recovered, rbsr_trace) = rbsr_report(&left_map, &right_map);
     assert_eq!(
         rbsr_recovered, corpus.expected_diff,
         "RBSR recovered a different business-key set"
