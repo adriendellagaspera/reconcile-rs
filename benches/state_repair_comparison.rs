@@ -603,7 +603,10 @@ fn summarize(values: &[usize]) -> Summary {
     assert!(!values.is_empty());
     let mut sorted = values.to_vec();
     sorted.sort_unstable();
-    let percentile = |p: usize| sorted[(sorted.len() - 1) * p / 100];
+    let percentile = |p: usize| {
+        let rank = (p * sorted.len()).div_ceil(100).max(1);
+        sorted[rank - 1]
+    };
     Summary {
         min: sorted[0],
         p50: percentile(50),
