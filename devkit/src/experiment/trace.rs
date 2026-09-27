@@ -230,6 +230,26 @@ mod tests {
     }
 
     #[test]
+    fn merkle_frameability_counts_request_and_response_outputs() {
+        let exchange = RepairStage::MerkleExchange {
+            depth: 3,
+            request_prefixes: 2,
+            request_bytes: 18,
+            response_hashes: 5,
+            response_bytes: 160,
+        };
+        assert_eq!(exchange.independently_frameable_outputs(), 7);
+
+        let fetch = RepairStage::MerkleFetch {
+            request_keys: 3,
+            request_bytes: 24,
+            returned_rows: 4,
+            response_bytes: 64,
+        };
+        assert_eq!(fetch.independently_frameable_outputs(), 7);
+    }
+
+    #[test]
     fn json_round_trip_is_lossless() {
         let trace = RepairTrace::new(
             RepairStrategy::Merkle,
