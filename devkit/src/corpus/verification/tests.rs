@@ -17,3 +17,13 @@ fn verification_rejects_missing_duplicate_wrong_and_reversed_records() {
         assert!(!expected.matches(&plus, &minus));
     }
 }
+
+
+#[test]
+fn verification_helper_accepts_exact_difference_and_panics_on_mismatch() {
+    let expected = ExactDifference::new(&[(1, 11), (3, 33)], &[(2, 22), (3, 33)]);
+    expected.verify(&[(1, 11)], &[(2, 22)]);
+
+    let mismatch = std::panic::catch_unwind(|| expected.verify(&[], &[(2, 22)]));
+    assert!(mismatch.is_err());
+}
