@@ -18,7 +18,6 @@ fn verification_rejects_missing_duplicate_wrong_and_reversed_records() {
     }
 }
 
-
 #[test]
 fn verification_helper_accepts_exact_difference_and_panics_on_mismatch() {
     let expected = ExactDifference::new(&[(1, 11), (3, 33)], &[(2, 22), (3, 33)]);
