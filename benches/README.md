@@ -12,6 +12,7 @@ Benchmarks measure the code that ships in this repository. Results are not versi
 | state_repair_comparison | Prepared-state RBSR vs Rateless IBLT vs Merkle divergence discovery |
 | riblt_preparation | RIBLT on-demand vs cached multi-peer preparation and rebuild cost |
 | state_repair_mutations | RBSR vs RIBLT vs key-stable Merkle under arbitrary insert/delete/mixed divergence |
+| cold_start_repair | Rebuild-from-current-state cost after reboot before repair |
 | contention | concurrent write cost |
 | snapshot_write_amplification | snapshot write/restart cost |
 
@@ -74,3 +75,13 @@ baseline is a fixed 16-way sparse radix tree over the `u64` key bits, so inserti
 only the key's root-to-leaf path instead of shifting positional leaves. Payload transfer remains
 excluded. Defaults are `n=100000` and `d={100,1000,10000}`; override them with
 `RECONCILE_MUTATION_N`, `RECONCILE_MUTATION_D`, and `RECONCILE_MUTATION_SEED`.
+
+
+The `cold_start_repair` target prices a reboot where canonical rows are already loaded in memory
+but all reconciliation acceleration state has been discarded. It reports warm repair, one-side-cold
+and both-side-cold totals for RBSR and key-stable radix Merkle; for RIBLT it reports the normal
+on-demand session plus rebuilding and precomputing a `CachedEncoder` from scratch. The initial
+slice covers `d=0`, outside-range inserts, and mixed autonomous divergence. Durable-storage I/O is
+intentionally excluded so index/sketch reconstruction remains separable from storage-engine effects.
+Defaults are `n=100000` and `d={1000,10000}`; override them with `RECONCILE_COLD_N`,
+`RECONCILE_COLD_D`, and `RECONCILE_COLD_SEED`.
