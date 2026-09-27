@@ -69,6 +69,10 @@ name = "transport_sensitivity"
 harness = false
 
 [[bench]]
+name = "netem_trace_validation"
+harness = false
+
+[[bench]]
 name = "state_repair_sensitivity"
 harness = false
 
