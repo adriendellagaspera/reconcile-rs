@@ -8,8 +8,8 @@
 // Validate the finite-flight analytical transport model against gossip::NetemTransport.
 //
 // This is deliberately a causal-trace replay, not the full ReplicatedMap runtime: the latter adds
-// reconcile cadence, membership/discovery and runtime scheduling that are outside #212's transport
-// projection. The replay uses exactly the CausalFlight decomposition consumed by the model.
+// reconcile cadence, membership/discovery and runtime scheduling that are outside the transport
+// projection validated here. The replay uses exactly the CausalFlight decomposition consumed by the model.
 //
 // A 16-byte validation header identifies flight/attempt/chunk. The same 16 bytes are declared as
 // frame overhead in the analytical model, so no-loss frame and wire-byte counts must match exactly.
@@ -190,11 +190,13 @@ async fn receive_attempt(
     let mut buf = vec![0u8; MTU];
 
     while received < chunks {
-        let Ok(result) = tokio::time::timeout_at(deadline, receiver.recv_from(&mut buf)).await else {
+        let Ok(result) = tokio::time::timeout_at(deadline, receiver.recv_from(&mut buf)).await
+        else {
             return false;
         };
         let (n, _) = result.expect("in-memory netem receive");
-        let Some((got_flight, got_attempt, chunk, declared_chunks)) = parse_header(&buf[..n]) else {
+        let Some((got_flight, got_attempt, chunk, declared_chunks)) = parse_header(&buf[..n])
+        else {
             continue;
         };
         if got_flight != flight
@@ -228,12 +230,7 @@ async fn send_attempt(
         let payload = remaining.min(PAYLOAD_CAPACITY);
         remaining -= payload;
         let mut bytes = Vec::with_capacity(HEADER_BYTES + payload);
-        bytes.extend_from_slice(&header(
-            flight,
-            attempt,
-            chunk as u32,
-            chunks as u32,
-        ));
+        bytes.extend_from_slice(&header(flight, attempt, chunk as u32, chunks as u32));
         bytes.resize(HEADER_BYTES + payload, 0);
         sender
             .send_to(&bytes, &destination)
@@ -296,15 +293,7 @@ async fn replay_once(
             sent_frames += frames;
             sent_wire_bytes += wire;
 
-            if receive_attempt(
-                receiver,
-                flight_index as u32,
-                attempt,
-                chunks,
-                patience,
-            )
-            .await
-            {
+            if receive_attempt(receiver, flight_index as u32, attempt, chunks, patience).await {
                 break;
             }
             attempt += 1;
@@ -343,12 +332,8 @@ async fn main() {
         let mut dropped = 0.0;
 
         for trial in 0..case.trials {
-            let replay = replay_once(
-                &trace,
-                case,
-                0x5eed_0280_u64.wrapping_add(trial as u64),
-            )
-            .await;
+            let replay =
+                replay_once(&trace, case, 0x5eed_0280_u64.wrapping_add(trial as u64)).await;
             elapsed += replay.elapsed_ms;
             wire += replay.sent_wire_bytes as f64;
             frames += replay.sent_frames as f64;
@@ -397,7 +382,8 @@ async fn main() {
         // Keep the assertion deliberately broader than the result we report; it should catch a
         // factor-of-two/causal-depth error, not police runner jitter.
         assert!(
-            timing_error <= case.tolerance || (observed_ms - projected.network.total_ms).abs() <= 5.0,
+            timing_error <= case.tolerance
+                || (observed_ms - projected.network.total_ms).abs() <= 5.0,
             "{} timing residual {:.1}% exceeds tolerance {:.1}%",
             case.name,
             timing_error * 100.0,
