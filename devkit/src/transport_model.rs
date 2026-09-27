@@ -311,14 +311,19 @@ pub fn estimate(exchange: Exchange, link: LinkProfile, transport: TransportProfi
     let (reverse_packets, reverse_framed) = packetize(exchange.reverse_app_bytes, link, transport);
     let packets = forward_packets + reverse_packets;
     let framed = forward_framed + reverse_framed;
-    let (expected, retransmitted) = expected_wire(framed, link.packet_loss);
 
     let handshake_ms = transport.handshake_rtts * link.rtt_ms;
     let base_propagation = exchange.interaction_rtts * link.rtt_ms;
     let serialization = serialization_ms(forward_framed, link.forward_mbps)
         + serialization_ms(reverse_framed, link.reverse_mbps);
 
-    let (propagation_ms, loss_recovery_ms, reorder_wait_ms) = match transport.reliability {
+    let (
+        propagation_ms,
+        loss_recovery_ms,
+        reorder_wait_ms,
+        expected_wire_bytes,
+        retransmitted_bytes,
+    ) = match transport.reliability {
         Reliability::DatagramRetry => {
             let messages = exchange.logical_messages.max(1);
             let average_packets = packets.div_ceil(messages).max(1);
@@ -331,26 +336,36 @@ pub fn estimate(exchange: Exchange, link: LinkProfile, transport: TransportProfi
             // Only the successful attempt determines completion, so this term is not multiplied by
             // the number of loss retries.
             let reorder_wait = base_propagation * any_reordered;
+            let expected = framed as f64 * attempts;
             (
                 propagation,
                 propagation - base_propagation,
                 reorder_wait,
+                expected,
+                expected - framed as f64,
             )
         }
         Reliability::ReliableOrdered => {
             let loss_recovery = exchange.interaction_rtts * link.rtt_ms * link.packet_loss
                 / (1.0 - link.packet_loss);
             let reorder_wait = exchange.interaction_rtts * link.rtt_ms * link.packet_reorder;
-            (base_propagation, loss_recovery, reorder_wait)
+            let (expected, retransmitted) = expected_wire(framed, link.packet_loss);
+            (
+                base_propagation,
+                loss_recovery,
+                reorder_wait,
+                expected,
+                retransmitted,
+            )
         }
     };
 
     Estimate {
         app_bytes: exchange.forward_app_bytes + exchange.reverse_app_bytes,
         framed_bytes: framed,
-        expected_wire_bytes: expected,
+        expected_wire_bytes,
         packets,
-        retransmitted_bytes: retransmitted,
+        retransmitted_bytes,
         handshake_ms,
         propagation_ms,
         serialization_ms: serialization,
