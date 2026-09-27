@@ -311,3 +311,11 @@ fn max_spread_reference_shape_crosses_radix_boundaries() {
         vec![0, 16, 32, 48, 64, 80, 96, 256]
     );
 }
+
+#[test]
+fn update_random_uses_a_nonzero_variant_at_rank_zero() {
+    let pair = mutation::corpus(1, 1, mutation::Scenario::UpdateRandom, 42);
+    assert_eq!(pair.left, vec![(0, base_digest(0))]);
+    assert_eq!(pair.right, vec![(0, changed_digest(0, 1))]);
+    assert_eq!(pair.expected_diff, vec![0]);
+}
