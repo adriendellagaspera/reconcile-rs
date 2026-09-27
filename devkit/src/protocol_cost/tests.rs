@@ -316,6 +316,27 @@ fn traced_reconciliation_preserves_aggregate_byte_variants() {
             .collect::<Vec<_>>()
     );
     assert_eq!(trace.dependency_stages(), cost.messages);
+    let frameable: Vec<_> = trace
+        .stages
+        .iter()
+        .map(|stage| match stage {
+            RepairStage::RbsrRound {
+                refinement_ranges,
+                enumeration_ranges,
+                frameable_outputs,
+                ..
+            } => {
+                assert_eq!(
+                    *frameable_outputs,
+                    refinement_ranges + enumeration_ranges,
+                    "each active range and enumeration range is independently frameable"
+                );
+                *frameable_outputs
+            }
+            other => panic!("unexpected RBSR trace stage: {other:?}"),
+        })
+        .collect();
+    assert_eq!(frameable, vec![2, 2]);
 }
 
 #[test]
