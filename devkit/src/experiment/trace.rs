@@ -52,18 +52,14 @@ pub enum RepairStage {
     },
     /// Left sends its equality digest to Right. If it differs, Right can immediately begin the
     /// coded-symbol stream after receiving this stage.
-    RibltEquality {
-        bytes: u64,
-    },
+    RibltEquality { bytes: u64 },
     /// Right continuously sends coded symbols to Left until Left can decode.
     RibltStream {
         coded_symbols: u64,
         coded_symbol_bytes: u64,
     },
     /// After decoding, Left signals Right to stop the rateless stream.
-    RibltStopAck {
-        bytes: u64,
-    },
+    RibltStopAck { bytes: u64 },
 }
 
 impl RepairStage {
