@@ -57,7 +57,6 @@ uniform-random seeds. Override them with `RECONCILE_STATE_REPAIR_N`,
 `RECONCILE_STATE_REPAIR_D`, `RECONCILE_STATE_REPAIR_PROFILES`,
 `RECONCILE_STATE_REPAIR_RANDOM_SEEDS`, and `RECONCILE_STATE_REPAIR_SEED_BASE`.
 
-
 The `riblt_preparation` target isolates the product-cost tradeoff behind the external
 `do-riblt 1.0.2` encoder. It compares a fresh on-demand encoder per peer with one
 `CachedEncoder` precomputed once and reused across several peers. It also reports full cache
@@ -67,7 +66,6 @@ public coded-symbol and cache-slot types; total encoder HashMap heap usage is in
 as opaque rather than guessed. Defaults are `n=100000`, `d=1000`, and
 `peers={1,2,4,8}`; override them with `RECONCILE_RIBLT_N`, `RECONCILE_RIBLT_D`,
 `RECONCILE_RIBLT_PEERS`, and `RECONCILE_RIBLT_SEED`.
-
 
 The `state_repair_mutations` target removes the aligned-key assumption from the first state-repair
 comparison. Baseline keys are even `u64` values, leaving odd keys for true insertions between
@@ -83,11 +81,9 @@ reconstruction from canonical rows already in memory. It covers `d=0`, outside-r
 mixed divergence; configure it with `RECONCILE_COLD_N`, `RECONCILE_COLD_D` and
 `RECONCILE_COLD_SEED`.
 
-
 The `state_repair_sensitivity` target maps scale, `d/n`, fanout and 16/32/64-byte
 symbol-size crossovers for random updates and outside-range inserts. Configure it with the
 `RECONCILE_SENSITIVITY_*` variables documented in the benchmark source.
-
 
 The `durable_cold_start` target extends the reboot study through the real `FileSnapshot`
 adapter. Each current state is saved once through the versioned snapshot format; the timed restart
