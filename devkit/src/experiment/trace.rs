@@ -22,6 +22,9 @@ pub enum RepairStrategy {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum RepairStage {
+    /// The refinement payload travels from the opposite side to `responder`; any enumerated
+    /// payload travels back from `responder` to the opposite side. The following RBSR round,
+    /// when present, carries the responder's refined child ranges in that same return direction.
     RbsrRound {
         responder: PeerSide,
         refinement_ranges: u64,
@@ -31,6 +34,8 @@ pub enum RepairStage {
         enumerated_bytes: Vec<u64>,
         frameable_outputs: u64,
     },
+    /// Left is the requester and Right the responder: request bytes travel Left -> Right and
+    /// response hashes travel Right -> Left.
     MerkleExchange {
         depth: u32,
         request_prefixes: u64,
@@ -38,19 +43,24 @@ pub enum RepairStage {
         response_hashes: u64,
         response_bytes: u64,
     },
+    /// Left requests final keys from Right; returned rows travel Right -> Left.
     MerkleFetch {
         request_keys: u64,
         request_bytes: u64,
         returned_rows: u64,
         response_bytes: u64,
     },
+    /// Left sends its equality digest to Right. If it differs, Right can immediately begin the
+    /// coded-symbol stream after receiving this stage.
     RibltEquality {
         bytes: u64,
     },
+    /// Right continuously sends coded symbols to Left until Left can decode.
     RibltStream {
         coded_symbols: u64,
         coded_symbol_bytes: u64,
     },
+    /// After decoding, Left signals Right to stop the rateless stream.
     RibltStopAck {
         bytes: u64,
     },
