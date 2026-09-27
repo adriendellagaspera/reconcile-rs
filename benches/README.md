@@ -77,11 +77,13 @@ excluded. Defaults are `n=100000` and `d={100,1000,10000}`; override them with
 `RECONCILE_MUTATION_N`, `RECONCILE_MUTATION_D`, and `RECONCILE_MUTATION_SEED`.
 
 
-The `cold_start_repair` target prices a reboot where canonical rows are already loaded in memory
-but all reconciliation acceleration state has been discarded. It reports warm repair, one-side-cold
-and both-side-cold totals for RBSR and key-stable radix Merkle; for RIBLT it reports the normal
-on-demand session plus rebuilding and precomputing a `CachedEncoder` from scratch. The initial
-slice covers `d=0`, outside-range inserts, and mixed autonomous divergence. Durable-storage I/O is
-intentionally excluded so index/sketch reconstruction remains separable from storage-engine effects.
-Defaults are `n=100000` and `d={1000,10000}`; override them with `RECONCILE_COLD_N`,
+The `cold_start_repair` target prices a reboot with all reconciliation acceleration state
+discarded. Phase A starts from canonical rows already resident in memory and reports warm,
+one-side-cold and both-side-cold reconstruction. Phase B persists the same current state through
+the repository's `FileSnapshot` format, then reports snapshot bytes, load/deserialization,
+live-row projection, time-to-ready after rebuilding RBSR/Merkle state, and total repair time.
+RIBLT reports both on-demand reconstruction and rebuilding/precomputing a `CachedEncoder`.
+Snapshot creation is outside the restart window and filesystem page-cache state is uncontrolled.
+The benchmark covers `d=0`, outside-range inserts, and mixed autonomous divergence. Defaults are
+`n=100000` and `d={1000,10000}`; override them with `RECONCILE_COLD_N`,
 `RECONCILE_COLD_D`, and `RECONCILE_COLD_SEED`.
