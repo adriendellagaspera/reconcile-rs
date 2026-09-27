@@ -57,6 +57,10 @@ name = "riblt_preparation"
 harness = false
 
 [[bench]]
+name = "state_repair_mutations"
+harness = false
+
+[[bench]]
 name = "contention"
 harness = false
 
