@@ -21,6 +21,8 @@ use rbsr::{
 };
 use rsos::{Aggregate, Rsos};
 
+use crate::experiment::{PeerSide, RepairStage, RepairStrategy, RepairTrace};
+
 /// The payload one datagram can carry: the IPv4 ceiling, the most optimistic split point — a
 /// keyed deployment subtracts the authenticator's overhead.
 pub const MAX_DATAGRAM_PAYLOAD: usize = 65_507;
@@ -202,17 +204,41 @@ pub fn reconcile<S: Rsos<u64>>(
     a: &S,
     b: &S,
     policy: &dyn RefinementPolicy,
+    price_element: Option<&mut dyn FnMut(u64) -> Vec<usize>>,
+    rng: &mut StdRng,
+) -> Cost {
+    reconcile_impl(a, b, policy, price_element, rng, None)
+}
+
+/// Drive the same counted reconciliation as reconcile, while also recording the causal round
+/// structure needed by transport models. The trace adds no RTT, MTU, loss or framing assumptions
+/// beyond the existing encoded refinement/payload byte accounting.
+pub fn reconcile_traced<S: Rsos<u64>>(
+    a: &S,
+    b: &S,
+    policy: &dyn RefinementPolicy,
+    price_element: Option<&mut dyn FnMut(u64) -> Vec<usize>>,
+    rng: &mut StdRng,
+) -> (Cost, RepairTrace) {
+    let mut stages = Vec::new();
+    let cost = reconcile_impl(a, b, policy, price_element, rng, Some(&mut stages));
+    (cost, RepairTrace::new(RepairStrategy::Rbsr, stages))
+}
+
+fn reconcile_impl<S: Rsos<u64>>(
+    a: &S,
+    b: &S,
+    policy: &dyn RefinementPolicy,
     mut price_element: Option<&mut dyn FnMut(u64) -> Vec<usize>>,
     rng: &mut StdRng,
+    mut trace: Option<&mut Vec<RepairStage>>,
 ) -> Cost {
     let mut cost = Cost::default();
     let mut active: Vec<RangeAggregate<u64>> = initial_ranges(a);
-    // `initial_ranges` came from `a`, so `b` answers first, and the responder alternates from there.
+    // initial_ranges came from a, so b answers first, and the responder alternates.
     let mut responder_is_b = true;
 
     while !active.is_empty() {
-        // `DefaultOptions` matches `gossip:bincode:encode`'s own encoder config (little-endian,
-        // varint integers) — only the length is needed here, never the bytes themselves.
         let round_bytes: usize = active
             .iter()
             .map(|segment| {
@@ -222,15 +248,16 @@ pub fn reconcile<S: Rsos<u64>>(
                     as usize
             })
             .sum();
+        let active_len = active.len();
         cost.messages += 1;
-        cost.ranges += active.len();
+        cost.ranges += active_len;
         cost.refinement_bytes += round_bytes;
         cost.datagrams += round_bytes.div_ceil(MAX_DATAGRAM_PAYLOAD).max(1);
         cost.fragments += round_bytes.div_ceil(MTU_FRAGMENT_PAYLOAD).max(1);
         update_largest_message(
             &mut cost.largest_message,
             &mut cost.largest_message_bytes,
-            active.len(),
+            active_len,
             round_bytes,
         );
 
@@ -245,22 +272,50 @@ pub fn reconcile<S: Rsos<u64>>(
             &mut enumerations,
             rng,
         );
-        cost.enumerations += enumerations.len();
-        // What an IDLIST actually ships. `Enumerate(l, u)` is the paper's own operation, so this is
-        // a real cost of the policy, not an artifact of how the caller drives it.
+        let enumeration_ranges = enumerations.len();
+        cost.enumerations += enumeration_ranges;
+
+        let mut round_enumerated_elements = 0usize;
+        let mut round_enumerated_bytes = Vec::new();
         for range in enumerations {
             for (&key, _) in responder.enumerate(range) {
                 cost.enumerated_elements += 1;
+                round_enumerated_elements += 1;
                 if let Some(price) = price_element.as_deref_mut() {
                     let bytes = price(key);
                     if needs_enumerated_bytes_init(&cost.enumerated_bytes, &bytes) {
                         cost.enumerated_bytes = vec![0; bytes.len()];
                     }
-                    for (total, element) in cost.enumerated_bytes.iter_mut().zip(bytes) {
+                    if needs_enumerated_bytes_init(&round_enumerated_bytes, &bytes) {
+                        round_enumerated_bytes = vec![0; bytes.len()];
+                    }
+                    for (total, element) in cost.enumerated_bytes.iter_mut().zip(&bytes) {
+                        *total += *element;
+                    }
+                    for (total, element) in round_enumerated_bytes.iter_mut().zip(bytes) {
                         *total += element;
                     }
                 }
             }
+        }
+
+        if let Some(stages) = trace.as_deref_mut() {
+            stages.push(RepairStage::RbsrRound {
+                responder: if responder_is_b {
+                    PeerSide::Right
+                } else {
+                    PeerSide::Left
+                },
+                refinement_ranges: active_len as u64,
+                refinement_bytes: round_bytes as u64,
+                enumeration_ranges: enumeration_ranges as u64,
+                enumerated_elements: round_enumerated_elements as u64,
+                enumerated_bytes: round_enumerated_bytes
+                    .into_iter()
+                    .map(|bytes| bytes as u64)
+                    .collect(),
+                frameable_outputs: (active_len + enumeration_ranges) as u64,
+            });
         }
 
         active = children;
