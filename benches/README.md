@@ -44,6 +44,6 @@ differ, which deliberately gives the Merkle baseline an aligned-key workload. It
 metadata only; application payload transfer is excluded. RBSR uses the repository's counted
 protocol driver and prices each enumerated `(key,digest)` symbol at 16 bytes. Rateless IBLT uses
 the external `do-riblt` crate and reports its fixed 24-byte coded-symbol payload plus coded-symbol count. The Merkle
-baseline uses BLAKE3, fanout 16, and reports hash/request/symbol bytes. Defaults are `n=100000` and
+baseline uses BLAKE3, fanout 16, and reports hash/request/symbol bytes. Each strategy also reports bootstrap/preparation time separately from prepared-state repair time. Defaults are `n=100000` and
 `d={1,10,100,1000,10000}`; override them with `RECONCILE_STATE_REPAIR_N` and
 `RECONCILE_STATE_REPAIR_D`.
