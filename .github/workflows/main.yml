@@ -2,7 +2,7 @@ name: main
 
 on:
   push:
-    branches: [ "main", "bench/transport-sensitivity" ]
+    branches: [ "main" ]
   pull_request:
   merge_group:
 
@@ -201,6 +201,10 @@ jobs:
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
         RECONCILE_TRANSPORT_TRACE_DIR: /tmp/reconcile-transport-traces
+    - name: Validate RBSR transport model against netem
+      run: cargo bench --bench netem_trace_validation
+      env:
+        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
 
   package:
     needs: changes
