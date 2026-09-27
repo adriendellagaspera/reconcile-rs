@@ -13,6 +13,7 @@ Benchmarks measure the code that ships in this repository. Results are not versi
 | riblt_preparation | RIBLT on-demand vs cached multi-peer preparation and rebuild cost |
 | state_repair_mutations | RBSR vs RIBLT vs key-stable Merkle under arbitrary insert/delete/mixed divergence |
 | cold_start_repair | Rebuild-from-current-state cost after reboot before repair |
+| transport_sensitivity | Project fixed repair traces across generic RTT/MTU/loss/handshake profiles |
 | state_repair_sensitivity | Scale, fanout and symbol-size crossover mapping |
 | contention | concurrent write cost |
 | snapshot_write_amplification | snapshot write/restart cost |
@@ -98,3 +99,15 @@ implemented as a key-stable base-`fanout` hierarchy, so insertions do not shift 
 Configure with `RECONCILE_SENSITIVITY_MODE`, `RECONCILE_SENSITIVITY_N`,
 `RECONCILE_SENSITIVITY_D`, `RECONCILE_SENSITIVITY_FANOUTS`,
 `RECONCILE_SENSITIVITY_SYMBOLS`, and `RECONCILE_SENSITIVITY_SEED`.
+
+
+The `transport_sensitivity` target freezes representative protocol traces from the arbitrary-key
+repair benchmark and projects them through an explicit analytical network model. Link profiles cover
+same-host, LAN, regional WAN, intercontinental, high-latency, and constrained asymmetric links.
+Transport profiles model UDP-like application retry, cold/warm TCP-like streams, and cold/resumed
+QUIC-like streams. Frame overhead and handshake RTT constants are model inputs rather than claims
+about one concrete wire implementation. The model reports MTU packetization, expected retransmitted
+bytes under packet loss, ordered-stream reordering wait, handshake/propagation/serialization terms,
+and CPU separately. RIBLT additionally reports receiver discovery and sender quiescence with a
+full-rate one-bandwidth-delay-product stop-ACK overshoot envelope. #205 owns RBSR-native protocol
+co-design; this target intentionally keeps the transport generic.
