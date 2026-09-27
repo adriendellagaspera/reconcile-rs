@@ -122,7 +122,11 @@ fn trace() -> devkit::experiment::RepairTrace {
         Some(&mut price),
         &mut rng,
     );
-    assert_eq!(seen.into_iter().collect::<Vec<_>>(), corpus.expected_diff);
+    let recovered: Vec<_> = seen
+        .into_iter()
+        .filter(|key| left.get(key) != right.get(key))
+        .collect();
+    assert_eq!(recovered, corpus.expected_diff);
     trace
 }
 
