@@ -309,18 +309,14 @@ fn compatible_prepared_states_deduplicate_and_conflicts_are_rejected() {
 
 #[test]
 fn artifact_error_display_preserves_context() {
-    let invalid = ExperimentArtifactError::Invalid(
-        InvalidExperimentReport::UnsupportedSchemaVersion(99),
-    );
+    let invalid =
+        ExperimentArtifactError::Invalid(InvalidExperimentReport::UnsupportedSchemaVersion(99));
     assert_eq!(
         invalid.to_string(),
         "invalid experiment report: UnsupportedSchemaVersion(99)"
     );
 
-    let io = ExperimentArtifactError::Io(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "fixture I/O failure",
-    ));
+    let io = ExperimentArtifactError::Io(std::io::Error::other("fixture I/O failure"));
     assert_eq!(
         io.to_string(),
         "experiment artifact I/O failed: fixture I/O failure"
