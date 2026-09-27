@@ -7,7 +7,8 @@
 
 //! Shared benchmark utilities.
 //!
-//! [`stats`] summarizes repeated trials, [`protocol_cost`] measures reconciliation cost, and
+//! [`stats`] summarizes repeated trials, [`protocol_cost`] measures reconciliation cost,
+//! [`transport_model`] projects protocol traces onto explicit network assumptions, and
 //! [`contention`] provides the concurrent-writer harness. This crate is repository-only and is not
 //! published.
 #![forbid(unsafe_code)]
@@ -15,3 +16,4 @@
 pub mod contention;
 pub mod protocol_cost;
 pub mod stats;
+pub mod transport_model;
