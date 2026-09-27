@@ -344,6 +344,17 @@ fn traced_reconciliation_preserves_aggregate_byte_variants() {
         })
         .collect();
     assert_eq!(frameable, vec![2, 2]);
+    let traced_elements: u64 = trace
+        .stages
+        .iter()
+        .map(|stage| match stage {
+            RepairStage::RbsrRound {
+                enumerated_elements, ..
+            } => *enumerated_elements,
+            other => panic!("unexpected RBSR trace stage: {other:?}"),
+        })
+        .sum();
+    assert_eq!(traced_elements, cost.enumerated_elements as u64);
 }
 
 #[test]
