@@ -323,6 +323,7 @@ fn traced_reconciliation_preserves_aggregate_byte_variants() {
             RepairStage::RbsrRound {
                 refinement_ranges,
                 enumeration_ranges,
+                enumerated_elements,
                 frameable_outputs,
                 ..
             } => {
@@ -331,6 +332,12 @@ fn traced_reconciliation_preserves_aggregate_byte_variants() {
                     refinement_ranges + enumeration_ranges,
                     "each active range and enumeration range is independently frameable"
                 );
+                if *enumerated_elements > 0 {
+                    assert_eq!(
+                        *enumerated_elements, 1,
+                        "the fixture's non-empty enumeration round must expose its one element"
+                    );
+                }
                 *frameable_outputs
             }
             other => panic!("unexpected RBSR trace stage: {other:?}"),
