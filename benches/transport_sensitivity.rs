@@ -28,7 +28,8 @@ use devkit::experiment::{
     RunObservation,
 };
 use devkit::transport_model::{
-    estimate, estimate_rateless_stop, Estimate, Exchange, LinkProfile, Reliability, TransportProfile,
+    estimate, estimate_rateless_stop, Estimate, Exchange, LinkProfile, Reliability,
+    TransportProfile,
 };
 
 #[derive(Clone)]
@@ -164,7 +165,11 @@ fn session_cpu_ms(observation: &RunObservation) -> f64 {
         * 1_000.0
 }
 
-fn trace_path(directory: &Path, report: &ExperimentReport, observation: &RunObservation) -> PathBuf {
+fn trace_path(
+    directory: &Path,
+    report: &ExperimentReport,
+    observation: &RunObservation,
+) -> PathBuf {
     directory.join(format!(
         "{}-{}-{}-{}.trace.json",
         report.experiment.logical_task_id,
@@ -179,7 +184,8 @@ fn load_inputs(directory: &Path) -> Vec<TraceInput> {
         .expect("read transport trace directory")
         .map(|entry| entry.expect("read trace-directory entry").path())
         .filter(|path| {
-            path.extension().is_some_and(|extension| extension == "json")
+            path.extension()
+                .is_some_and(|extension| extension == "json")
                 && !path
                     .file_name()
                     .unwrap()
@@ -191,8 +197,9 @@ fn load_inputs(directory: &Path) -> Vec<TraceInput> {
 
     let mut inputs = Vec::new();
     for report_path in report_paths {
-        let report = read_experiment_report(File::open(&report_path).expect("open experiment report"))
-            .expect("read experiment report");
+        let report =
+            read_experiment_report(File::open(&report_path).expect("open experiment report"))
+                .expect("read experiment report");
         for observation in &report.observations {
             let path = trace_path(directory, &report, observation);
             if !path.exists() {
@@ -208,10 +215,11 @@ fn load_inputs(directory: &Path) -> Vec<TraceInput> {
             });
         }
     }
-    inputs.sort_by(|left, right| {
-        (&left.workload, &left.arm).cmp(&(&right.workload, &right.arm))
-    });
-    assert!(!inputs.is_empty(), "transport input directory contained no joined report/trace pairs");
+    inputs.sort_by(|left, right| (&left.workload, &left.arm).cmp(&(&right.workload, &right.arm)));
+    assert!(
+        !inputs.is_empty(),
+        "transport input directory contained no joined report/trace pairs"
+    );
     inputs
 }
 
@@ -428,12 +436,7 @@ fn print_riblt(input: &TraceInput, link: LinkProfile, transport: TransportProfil
     // RIBLT convention from RepairTrace: Left sends equality to Right, Right streams coded symbols
     // to Left, then Left sends the stop signal to Right. Swap directional bandwidth so the generic
     // rateless helper's "forward" direction is the actual Right -> Left stream.
-    let stream = estimate_rateless_stop(
-        stream_bytes,
-        stop_bytes,
-        swap_link(link),
-        bare_transport,
-    );
+    let stream = estimate_rateless_stop(stream_bytes, stop_bytes, swap_link(link), bare_transport);
     let discovery = add_estimates(preflight, stream.discovery);
     let quiescence = add_estimates(preflight, stream.quiescence);
 
