@@ -64,8 +64,7 @@ impl RepairStage {
     pub fn independently_frameable_outputs(&self) -> u64 {
         match self {
             Self::RbsrRound {
-                frameable_outputs,
-                ..
+                frameable_outputs, ..
             } => *frameable_outputs,
             Self::MerkleExchange {
                 request_prefixes,
