@@ -424,3 +424,53 @@ fn assert_invalid_metric(observation: &RunObservation) {
         Err(ContractError::InvalidMetric(_))
     ));
 }
+
+
+#[test]
+fn valid_probability_and_uncertainty_are_accepted() {
+    let mut probability = run(RunStatus::Completed);
+    probability.costs[0].metrics = vec![CostMetric {
+        kind: MetricKind::FailureProbability,
+        peer: None,
+        measurement: Measurement::Observed {
+            value: MetricValue::Ratio(0.5),
+            samples: 2,
+            uncertainty: Some(Uncertainty {
+                lower: 0.4,
+                upper: 0.6,
+                confidence: 0.95,
+            }),
+        },
+    }];
+    assert!(validate_observation(&experiment(), &architecture(), &probability, &[]).is_ok());
+}
+
+#[test]
+fn nonfinite_metric_values_are_rejected() {
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut observation = run(RunStatus::Completed);
+        observation.costs[0].metrics = vec![CostMetric {
+            kind: MetricKind::CpuSeconds,
+            peer: None,
+            measurement: Measurement::Observed {
+                value: MetricValue::Seconds(value),
+                samples: 1,
+                uncertainty: None,
+            },
+        }];
+        assert_invalid_metric(&observation);
+    }
+}
+
+#[test]
+fn identical_comparison_tasks_are_rankable() {
+    let experiment = experiment();
+    let architecture = architecture();
+    let left = run(RunStatus::Completed);
+    let right = run(RunStatus::Completed);
+    assert!(validate_pair_for_ranking(
+        (&experiment, &architecture, &left, &[]),
+        (&experiment, &architecture, &right, &[])
+    )
+    .is_ok());
+}
