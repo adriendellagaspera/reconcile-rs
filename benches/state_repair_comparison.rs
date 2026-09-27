@@ -143,7 +143,6 @@ struct MerkleTree {
 struct Report {
     bytes: usize,
     units: usize,
-    messages: usize,
     rounds: usize,
     elapsed: Duration,
 }
@@ -397,7 +396,6 @@ fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> RibltReport {
             report: Report {
                 bytes: STATE_DIGEST_BYTES,
                 units: 0,
-                messages: 1,
                 rounds: 1,
                 elapsed: Duration::ZERO,
             },
@@ -433,7 +431,6 @@ fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> RibltReport {
                 report: Report {
                     bytes: STATE_DIGEST_BYTES + (index + 1) * RIBLT_CODED_SYMBOL_BYTES,
                     units: index + 1,
-                    messages: 2,
                     rounds: 2,
                     elapsed: started.elapsed(),
                 },
@@ -493,7 +490,6 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
     let started = Instant::now();
     let mut bytes = MERKLE_HASH_BYTES;
     let mut hashes_sent = 1;
-    let mut messages = 1;
     let mut rounds = 1;
     let top = left.levels.len() - 1;
     let mut mismatching = if left.root() == right.root() {
@@ -508,7 +504,6 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
         }
 
         bytes += mismatching.len() * MERKLE_INDEX_BYTES;
-        messages += 1;
         let child_level = level - 1;
         let mut next = Vec::new();
         for parent in &mismatching {
@@ -522,7 +517,6 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
                 }
             }
         }
-        messages += 1;
         rounds += 1;
         mismatching = next;
     }
@@ -530,9 +524,7 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
     let mut recovered_keys = Vec::with_capacity(mismatching.len());
     if !mismatching.is_empty() {
         bytes += mismatching.len() * MERKLE_INDEX_BYTES;
-        messages += 1;
         bytes += mismatching.len() * SYMBOL_BYTES;
-        messages += 1;
         rounds += 1;
         for &index in &mismatching {
             assert_eq!(left.rows[index].0, right.rows[index].0);
@@ -544,7 +536,6 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
         report: Report {
             bytes,
             units: hashes_sent,
-            messages,
             rounds,
             elapsed: started.elapsed(),
         },
