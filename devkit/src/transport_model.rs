@@ -559,6 +559,101 @@ mod tests {
     }
 
     #[test]
+    fn rbsr_causal_flights_piggyback_prior_enumeration() {
+        let trace = RepairTrace::new(
+            RepairStrategy::Rbsr,
+            vec![
+                RepairStage::RbsrRound {
+                    responder: PeerSide::Right,
+                    refinement_ranges: 1,
+                    refinement_bytes: 10,
+                    enumeration_ranges: 1,
+                    enumerated_elements: 1,
+                    enumerated_bytes: vec![20],
+                    frameable_outputs: 2,
+                },
+                RepairStage::RbsrRound {
+                    responder: PeerSide::Left,
+                    refinement_ranges: 1,
+                    refinement_bytes: 30,
+                    enumeration_ranges: 0,
+                    enumerated_elements: 0,
+                    enumerated_bytes: vec![],
+                    frameable_outputs: 1,
+                },
+            ],
+        );
+        assert_eq!(
+            causal_flights(&trace),
+            vec![
+                CausalFlight {
+                    direction: FlightDirection::Forward,
+                    app_bytes: 10,
+                },
+                CausalFlight {
+                    direction: FlightDirection::Reverse,
+                    app_bytes: 50,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn finite_trace_packetizes_each_causal_flight() {
+        let trace = RepairTrace::new(
+            RepairStrategy::Merkle,
+            vec![RepairStage::MerkleExchange {
+                depth: 1,
+                request_prefixes: 1,
+                request_bytes: 500,
+                response_hashes: 1,
+                response_bytes: 500,
+            }],
+        );
+        let estimate = estimate_finite_trace(
+            &trace,
+            LINK,
+            TransportProfile {
+                handshake_rtts: 0.0,
+                ..STREAM
+            },
+        );
+        assert_eq!(estimate.network.app_bytes, 1_000);
+        // Aggregate packetization would fit 1,000 B in one 1,460 B payload; causal packetization
+        // correctly keeps request and response in separate one-way frames.
+        assert_eq!(estimate.network.packets, 2);
+        assert_eq!(estimate.interaction_rtts, 1.0);
+    }
+
+    #[test]
+    fn datagram_reordering_prices_completion_of_the_slowest_frame() {
+        let link = LinkProfile {
+            rtt_ms: 10.0,
+            packet_loss: 0.0,
+            packet_reorder: 0.2,
+            ..LINK
+        };
+        let datagram = TransportProfile {
+            name: "datagram",
+            frame_overhead_bytes: 28,
+            handshake_rtts: 0.0,
+            reliability: Reliability::DatagramRetry,
+        };
+        let estimate = estimate(
+            Exchange {
+                forward_app_bytes: 2_000,
+                reverse_app_bytes: 0,
+                interaction_rtts: 0.5,
+                logical_messages: 1,
+            },
+            link,
+            datagram,
+        );
+        let any_reordered = 1.0 - 0.8_f64.powi(2);
+        assert_close(estimate.reorder_wait_ms, 5.0 * any_reordered);
+    }
+
+    #[test]
     fn datagram_loss_increases_expected_latency() {
         let lossy = LinkProfile {
             packet_loss: 0.1,
