@@ -2,7 +2,7 @@ name: main
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "bench/cold-start-persistence" ]
   pull_request:
   merge_group:
 
@@ -172,6 +172,13 @@ jobs:
     - run: cargo bench --no-run
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+    - name: Measure durable cold-start repair
+      run: cargo bench --bench cold_start_repair
+      env:
+        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+        RECONCILE_COLD_N: "100000"
+        RECONCILE_COLD_D: "1000,10000"
+        RECONCILE_COLD_SEED: "42"
 
   package:
     needs: changes
