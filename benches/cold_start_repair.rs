@@ -223,7 +223,7 @@ fn corpus_mixed(n: usize, d: usize, seed: u64) -> Corpus {
 }
 
 fn save_snapshot(path: &Path, rows: &[(u64, u64)]) {
-    let entries = rows
+    let entries: Vec<_> = rows
         .iter()
         .map(|&(key, value)| (key, Entry::present(Timestamp::default(), value)))
         .collect();
