@@ -151,7 +151,7 @@ impl RepairTrace {
 
         for stage in &self.stages {
             let bytes = stage.byte_variants();
-            if bytes.len() == 1 && variants > 1 {
+            if bytes.len() == 1 {
                 for total in &mut totals {
                     *total += bytes[0];
                 }
@@ -227,6 +227,25 @@ mod tests {
         assert!(stream.is_streamable());
         assert_eq!(stream.independently_frameable_outputs(), 7);
         assert_eq!(stream.byte_variants(), vec![168]);
+
+        let round = RepairStage::RbsrRound {
+            responder: PeerSide::Right,
+            refinement_ranges: 2,
+            refinement_bytes: 18,
+            enumeration_ranges: 3,
+            enumerated_elements: 4,
+            enumerated_bytes: vec![64],
+            frameable_outputs: 5,
+        };
+        assert!(!round.is_streamable());
+        assert_eq!(round.independently_frameable_outputs(), 5);
+
+        let equality = RepairStage::RibltEquality { bytes: 32 };
+        let stop = RepairStage::RibltStopAck { bytes: 8 };
+        assert!(!equality.is_streamable());
+        assert!(!stop.is_streamable());
+        assert_eq!(equality.independently_frameable_outputs(), 1);
+        assert_eq!(stop.independently_frameable_outputs(), 1);
     }
 
     #[test]
@@ -247,6 +266,29 @@ mod tests {
             response_bytes: 64,
         };
         assert_eq!(fetch.independently_frameable_outputs(), 7);
+    }
+
+    #[test]
+    fn single_variant_totals_sum_every_stage_once() {
+        let trace = RepairTrace::new(
+            RepairStrategy::Merkle,
+            vec![
+                RepairStage::MerkleExchange {
+                    depth: 1,
+                    request_prefixes: 2,
+                    request_bytes: 18,
+                    response_hashes: 5,
+                    response_bytes: 160,
+                },
+                RepairStage::MerkleFetch {
+                    request_keys: 3,
+                    request_bytes: 24,
+                    returned_rows: 4,
+                    response_bytes: 64,
+                },
+            ],
+        );
+        assert_eq!(trace.total_byte_variants(), vec![266]);
     }
 
     #[test]
