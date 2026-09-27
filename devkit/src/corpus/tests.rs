@@ -258,3 +258,45 @@ fn cold_corpora_have_exact_restart_shapes() {
         assert_eq!(right[&key], changed_digest(key, rank as u64 + 1));
     }
 }
+
+
+#[test]
+fn profile_and_scenario_names_are_stable_machine_labels() {
+    assert_eq!(placement::Profile::Contiguous.to_string(), "contiguous");
+    assert_eq!(placement::Profile::Clustered4.to_string(), "clustered-4");
+    assert_eq!(placement::Profile::Clustered16.to_string(), "clustered-16");
+    assert_eq!(placement::Profile::UniformRandom.to_string(), "uniform-random");
+    assert_eq!(placement::Profile::EvenlySpaced.to_string(), "evenly-spaced");
+    assert_eq!(placement::Profile::MaxSpread.to_string(), "max-spread");
+
+    assert_eq!(mutation::Scenario::UpdateRandom.to_string(), "update-random");
+    assert_eq!(mutation::Scenario::DeleteRandom.to_string(), "delete-random");
+    assert_eq!(
+        mutation::Scenario::InsertInterleaved.to_string(),
+        "insert-interleaved"
+    );
+    assert_eq!(
+        mutation::Scenario::InsertOutsideRange.to_string(),
+        "insert-outside-range"
+    );
+    assert_eq!(
+        mutation::Scenario::BalancedInsertDelete.to_string(),
+        "balanced-insert-delete"
+    );
+    assert_eq!(
+        mutation::Scenario::MixedAutonomous.to_string(),
+        "mixed-autonomous"
+    );
+}
+
+#[test]
+fn max_spread_reference_shape_crosses_radix_boundaries() {
+    assert_eq!(
+        placement::corpus(17, 8, placement::Profile::MaxSpread, 42).expected_diff,
+        vec![0, 1, 2, 3, 4, 5, 6, 16]
+    );
+    assert_eq!(
+        placement::corpus(257, 8, placement::Profile::MaxSpread, 42).expected_diff,
+        vec![0, 16, 32, 48, 64, 80, 96, 256]
+    );
+}
