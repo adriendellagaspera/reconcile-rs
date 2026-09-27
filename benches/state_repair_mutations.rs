@@ -338,14 +338,10 @@ fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> (Duration, Report,
         );
     }
 
-    let mut encoder = Encoder::<SYMBOL_BYTES>::new(
-        right
-            .iter()
-            .map(|&(key, digest)| KvSymbol { key, digest }),
-    );
+    let mut encoder =
+        Encoder::<SYMBOL_BYTES>::new(right.iter().map(|&(key, digest)| KvSymbol { key, digest }));
     let mut decoder = Decoder::<SYMBOL_BYTES, KvSymbol>::new(
-        left.iter()
-            .map(|&(key, digest)| KvSymbol { key, digest }),
+        left.iter().map(|&(key, digest)| KvSymbol { key, digest }),
     );
     let setup = setup_started.elapsed();
     let max_symbols = 1_024 + 2 * left.len().max(right.len());
@@ -412,8 +408,9 @@ impl RadixMerkle {
             for (&child_prefix, &hash) in &levels[depth + 1] {
                 let parent = child_prefix >> 4;
                 let slot = (child_prefix & 0xf) as usize;
-                grouped.entry(parent).or_insert([[0; MERKLE_HASH_BYTES]; MERKLE_FANOUT])[slot] =
-                    hash;
+                grouped
+                    .entry(parent)
+                    .or_insert([[0; MERKLE_HASH_BYTES]; MERKLE_FANOUT])[slot] = hash;
             }
             for (parent, children) in grouped {
                 levels[depth].insert(parent, parent_hash(depth, &children));
