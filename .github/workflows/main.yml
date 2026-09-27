@@ -2,7 +2,7 @@ name: main
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "bench/state-repair-comparison" ]
   pull_request:
   merge_group:
 
@@ -172,6 +172,12 @@ jobs:
     - run: cargo bench --no-run
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+    - name: Measure state repair comparison
+      run: cargo bench --bench state_repair_comparison
+      env:
+        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+        RECONCILE_STATE_REPAIR_N: "10000"
+        RECONCILE_STATE_REPAIR_D: "1,10,100,1000"
 
   package:
     needs: changes
