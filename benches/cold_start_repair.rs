@@ -7,9 +7,10 @@
 
 // Cold-start state-repair benchmark.
 //
-// Canonical rows are already available in memory, but all reconciliation acceleration state is
-// discarded as if after a reboot. This isolates index/sketch reconstruction from durable-storage
-// I/O. A later persistence slice can add file/database load time without changing these numbers.
+// Phase A discards reconciliation acceleration state while canonical rows are already in memory.
+// Phase B persists the same current state through FileSnapshot, then measures load/deserialization,
+// live-row projection, index/sketch reconstruction and the same repair cost. Snapshot creation is
+// outside the timed restart path. Filesystem page-cache state is not controlled.
 //
 // Scenarios:
 //   equal: d=0 healthy reboot
@@ -31,6 +32,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
+use std::fs;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use devkit::protocol_cost::{reconcile, Cost};
@@ -39,6 +42,7 @@ use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut};
+use reconcile::{Entry, FileSnapshot, PersistedState, Persistence, Timestamp};
 use rsos::FingerprintTreeMap;
 
 const DEFAULT_N: usize = 100_000;
@@ -85,6 +89,13 @@ struct Corpus {
 struct RadixMerkle {
     rows: BTreeMap<u64, u64>,
     levels: Vec<BTreeMap<u64, [u8; MERKLE_HASH_BYTES]>>,
+}
+
+struct LoadedRows {
+    rows: Vec<(u64, u64)>,
+    file_bytes: u64,
+    load: Duration,
+    project: Duration,
 }
 
 fn env_usize(name: &str, default: usize) -> usize {
@@ -208,6 +219,43 @@ fn corpus_mixed(n: usize, d: usize, seed: u64) -> Corpus {
         left,
         right,
         expected,
+    }
+}
+
+fn save_snapshot(path: &Path, rows: &[(u64, u64)]) {
+    let entries = rows
+        .iter()
+        .map(|&(key, value)| (key, Entry::present(Timestamp::default(), value)))
+        .collect();
+    let state = PersistedState::from(entries);
+    let backend = FileSnapshot::new(path);
+    Persistence::<u64, u64>::save(&backend, &state).expect("save benchmark snapshot");
+}
+
+fn load_snapshot_rows(path: &Path) -> LoadedRows {
+    let file_bytes = fs::metadata(path).expect("stat benchmark snapshot").len();
+    let backend = FileSnapshot::new(path);
+
+    let load_started = Instant::now();
+    let state = Persistence::<u64, u64>::load(&backend)
+        .expect("load benchmark snapshot")
+        .expect("snapshot exists");
+    let load = load_started.elapsed();
+
+    let project_started = Instant::now();
+    let mut rows: Vec<_> = state
+        .entries
+        .into_iter()
+        .filter_map(|(key, entry)| entry.value().copied().map(|value| (key, value)))
+        .collect();
+    rows.sort_unstable_by_key(|&(key, _)| key);
+    let project = project_started.elapsed();
+
+    LoadedRows {
+        rows,
+        file_bytes,
+        load,
+        project,
     }
 }
 
@@ -499,6 +547,73 @@ fn run(corpus: Corpus) {
         ms(cache_precompute),
         ms(cache_warm),
         ms(cache_build + cache_precompute + cache_warm),
+    );
+
+    let dir = tempfile::tempdir().expect("create cold-start benchmark directory");
+    let left_path = dir.path().join("left.snapshot");
+    let right_path = dir.path().join("right.snapshot");
+    save_snapshot(&left_path, &corpus.left);
+    save_snapshot(&right_path, &corpus.right);
+
+    let left_loaded = load_snapshot_rows(&left_path);
+    let right_loaded = load_snapshot_rows(&right_path);
+    assert_eq!(left_loaded.rows, corpus.left);
+    assert_eq!(right_loaded.rows, corpus.right);
+
+    let (left_loaded_ftm, left_loaded_ftm_build) = build_ftm(&left_loaded.rows);
+    let (right_loaded_ftm, right_loaded_ftm_build) = build_ftm(&right_loaded.rows);
+    assert!(left_loaded_ftm.iter().eq(left_ftm.iter()));
+    assert!(right_loaded_ftm.iter().eq(right_ftm.iter()));
+
+    let (left_loaded_merkle, left_loaded_merkle_build) = RadixMerkle::build(&left_loaded.rows);
+    let (right_loaded_merkle, right_loaded_merkle_build) = RadixMerkle::build(&right_loaded.rows);
+    assert_eq!(left_loaded_merkle.hash(0, 0), left_merkle.hash(0, 0));
+    assert_eq!(right_loaded_merkle.hash(0, 0), right_merkle.hash(0, 0));
+
+    let left_io = left_loaded.load + left_loaded.project;
+    let right_io = right_loaded.load + right_loaded.project;
+    let both_io = left_io + right_io;
+
+    println!(
+        "[durable-load] scenario={} d={} left_bytes={} right_bytes={} left_load={:.3}ms left_project={:.3}ms right_load={:.3}ms right_project={:.3}ms",
+        corpus.name,
+        corpus.expected.len(),
+        left_loaded.file_bytes,
+        right_loaded.file_bytes,
+        ms(left_loaded.load),
+        ms(left_loaded.project),
+        ms(right_loaded.load),
+        ms(right_loaded.project),
+    );
+
+    println!(
+        "[durable-rbsr] scenario={} d={} one_side_ready={:.3}ms both_ready={:.3}ms one_side_total={:.3}ms both_total={:.3}ms",
+        corpus.name,
+        corpus.expected.len(),
+        ms(right_io + right_loaded_ftm_build),
+        ms(both_io + left_loaded_ftm_build + right_loaded_ftm_build),
+        ms(right_io + right_loaded_ftm_build + rbsr_warm),
+        ms(both_io + left_loaded_ftm_build + right_loaded_ftm_build + rbsr_warm),
+    );
+    println!(
+        "[durable-merkle] scenario={} d={} one_side_ready={:.3}ms both_ready={:.3}ms one_side_total={:.3}ms both_total={:.3}ms",
+        corpus.name,
+        corpus.expected.len(),
+        ms(right_io + right_loaded_merkle_build),
+        ms(both_io + left_loaded_merkle_build + right_loaded_merkle_build),
+        ms(right_io + right_loaded_merkle_build + merkle_warm),
+        ms(both_io + left_loaded_merkle_build + right_loaded_merkle_build + merkle_warm),
+    );
+    println!(
+        "[durable-riblt] scenario={} d={} one_side_ready={:.3}ms both_ready={:.3}ms one_side_ondemand_total={:.3}ms both_ondemand_total={:.3}ms one_side_cached_total={:.3}ms both_cached_total={:.3}ms",
+        corpus.name,
+        corpus.expected.len(),
+        ms(right_io),
+        ms(both_io),
+        ms(right_io + riblt_setup + riblt_repair),
+        ms(both_io + riblt_setup + riblt_repair),
+        ms(right_io + cache_build + cache_precompute + cache_warm),
+        ms(both_io + cache_build + cache_precompute + cache_warm),
     );
 }
 
