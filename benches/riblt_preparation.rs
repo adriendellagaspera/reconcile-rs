@@ -123,9 +123,7 @@ fn base_digest(key: u64) -> u64 {
 }
 
 fn changed_digest(key: u64, peer: usize) -> u64 {
-    base_digest(key)
-        ^ 0xa5a5_5a5a_d3c3_b4b4
-        ^ (peer as u64).wrapping_mul(0x517c_c1b7_2722_0a95)
+    base_digest(key) ^ 0xa5a5_5a5a_d3c3_b4b4 ^ (peer as u64).wrapping_mul(0x517c_c1b7_2722_0a95)
 }
 
 fn base_rows(n: usize) -> Vec<(u64, u64)> {
@@ -161,8 +159,7 @@ fn make_peer(base: &[(u64, u64)], d: usize, seed: u64, peer: usize) -> Peer {
 }
 
 fn symbols(rows: &[(u64, u64)]) -> impl Iterator<Item = KvSymbol> + '_ {
-    rows.iter()
-        .map(|&(key, digest)| KvSymbol { key, digest })
+    rows.iter().map(|&(key, digest)| KvSymbol { key, digest })
 }
 
 fn recovered_keys(peeled: Vec<Peeled<KvSymbol>>) -> Vec<u64> {
