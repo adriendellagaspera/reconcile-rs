@@ -126,12 +126,11 @@ fn max_spread_keys(n: usize, d: usize) -> Vec<u64> {
         return Vec::new();
     }
 
-    let mut digits = 1;
-    let mut space = MERKLE_FANOUT;
-    while space < n {
-        space *= MERKLE_FANOUT;
-        digits += 1;
-    }
+    // Minimum hexadecimal width able to represent every rank in 0..n. Computing it directly
+    // avoids an equivalent boundary form at exact powers of the fanout.
+    let bits = (usize::BITS - (n - 1).leading_zeros()) as usize;
+    let digits = bits.div_ceil(4).max(1);
+    let space = MERKLE_FANOUT.pow(digits as u32);
 
     let mut keys = Vec::with_capacity(d);
     for ordinal in 0..space {
