@@ -49,6 +49,10 @@ name = "runtime_history_independent_catchup"
 harness = false
 
 [[bench]]
+name = "state_repair_comparison"
+harness = false
+
+[[bench]]
 name = "contention"
 harness = false
 
@@ -86,6 +90,7 @@ metrics = { version = "0.24", optional = true }
 metrics-exporter-prometheus = { version = "0.16", optional = true, default-features = false, features = ["http-listener"] }
 parking_lot = "0.12.1"
 rand = "0.8.5"
+riblt = "0.1.1"
 rbsr = { version = "0.2.1", path = "rbsr" }
 rsos = { version = "0.5.0", path = "rsos" }
 serde = { version = "1.0.192", features = ["derive"] }
@@ -97,6 +102,7 @@ tracing = "0.1.40"
 async-trait = "0.1"
 clap = { version = "4.4.6", features = ["derive"] }
 criterion = "0.5.1"
+blake3 = "1.8.5"
 devkit = { path = "devkit" }
 gossip = { package = "reconcile-gossip", version = "0.5.0", path = "gossip", default-features = false, features = ["netem"] }
 metrics-util = { version = "0.19", default-features = false, features = ["debugging"] }
