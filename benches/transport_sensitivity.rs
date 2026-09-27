@@ -5,12 +5,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Project fixed #195 protocol traces onto explicit generic network/transport assumptions.
+// Project fixed arbitrary-key repair traces onto explicit generic network/transport assumptions.
 //
 // This benchmark does not rerun RBSR/RIBLT/Merkle. It freezes representative measured traces so
 // RTT/MTU/loss/handshake sensitivity can be changed without changing the algorithmic workload.
 //
-// Interactive-protocol bytes are split 50/50 by direction because #195 records total wire bytes,
+// Interactive-protocol bytes are split 50/50 by direction because the source trace records total wire bytes,
 // not per-direction round payloads. That approximation only affects directional serialization on
 // asymmetric links; total bytes, interaction depth and packetization remain explicit.
 //
@@ -176,23 +176,28 @@ fn split_interactive(bytes: usize) -> (usize, usize) {
     (bytes.div_ceil(2), bytes / 2)
 }
 
-fn print_interactive(
-    algorithm: &str,
-    trace: Trace,
+#[derive(Clone, Copy)]
+struct InteractiveShape {
+    algorithm: &'static str,
     bytes: usize,
     interaction_rtts: f64,
     logical_messages: usize,
     cpu_ms: f64,
+}
+
+fn print_interactive(
+    trace: Trace,
+    shape: InteractiveShape,
     link: LinkProfile,
     transport: TransportProfile,
 ) {
-    let (forward, reverse) = split_interactive(bytes);
+    let (forward, reverse) = split_interactive(shape.bytes);
     let network = estimate(
         Exchange {
             forward_app_bytes: forward,
             reverse_app_bytes: reverse,
-            interaction_rtts,
-            logical_messages,
+            interaction_rtts: shape.interaction_rtts,
+            logical_messages: shape.logical_messages,
         },
         link,
         transport,
@@ -200,7 +205,7 @@ fn print_interactive(
     println!(
         "[transport] trace={} algorithm={} link={} transport={} app_bytes={} framed_bytes={} expected_wire={:.0} packets={} handshake={:.2}ms propagation={:.2}ms serialization={:.2}ms loss={:.2}ms reorder={:.2}ms network={:.2}ms cpu={:.3}ms additive_total={:.2}ms",
         trace.name,
-        algorithm,
+        shape.algorithm,
         link.name,
         transport.name,
         network.app_bytes,
@@ -213,16 +218,12 @@ fn print_interactive(
         network.loss_recovery_ms,
         network.reorder_wait_ms,
         network.total_ms,
-        cpu_ms,
-        network.total_ms + cpu_ms,
+        shape.cpu_ms,
+        network.total_ms + shape.cpu_ms,
     );
 }
 
-fn print_riblt(
-    trace: Trace,
-    link: LinkProfile,
-    transport: TransportProfile,
-) {
+fn print_riblt(trace: Trace, link: LinkProfile, transport: TransportProfile) {
     let network = estimate_rateless_stop(trace.riblt_bytes, 32, link, transport);
     println!(
         "[transport-riblt] trace={} link={} transport={} decoded_bytes={} discovery_wire={:.0} discovery_network={:.2}ms cpu={:.3}ms additive_discovery={:.2}ms stop_overshoot={} quiescence_wire={:.0} quiescence_network={:.2}ms",
@@ -252,22 +253,26 @@ fn main() {
         for &link in LINKS {
             for &transport in TRANSPORTS {
                 print_interactive(
-                    "rbsr",
                     trace,
-                    trace.rbsr_bytes,
-                    trace.rbsr_messages as f64 / 2.0,
-                    trace.rbsr_messages,
-                    trace.rbsr_cpu_ms,
+                    InteractiveShape {
+                        algorithm: "rbsr",
+                        bytes: trace.rbsr_bytes,
+                        interaction_rtts: trace.rbsr_messages as f64 / 2.0,
+                        logical_messages: trace.rbsr_messages,
+                        cpu_ms: trace.rbsr_cpu_ms,
+                    },
                     link,
                     transport,
                 );
                 print_interactive(
-                    "merkle",
                     trace,
-                    trace.merkle_bytes,
-                    trace.merkle_rounds as f64,
-                    trace.merkle_rounds * 2,
-                    trace.merkle_cpu_ms,
+                    InteractiveShape {
+                        algorithm: "merkle",
+                        bytes: trace.merkle_bytes,
+                        interaction_rtts: trace.merkle_rounds as f64,
+                        logical_messages: trace.merkle_rounds * 2,
+                        cpu_ms: trace.merkle_cpu_ms,
+                    },
                     link,
                     transport,
                 );
