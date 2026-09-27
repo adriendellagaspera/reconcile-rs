@@ -497,6 +497,8 @@ dependencies = [
  "rand 0.8.7",
  "rbsr",
  "rsos",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -508,6 +510,15 @@ dependencies = [
  "block-buffer",
  "crypto-common",
  "subtle",
+]
+
+[[package]]
+name = "do-riblt"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27586ed7c90452857c1378f349d0cea1b3d7c9e65176c1b8d2af35a9e87bf7da"
+dependencies = [
+ "rapidhash",
 ]
 
 [[package]]
@@ -1308,15 +1319,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "do-riblt"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27586ed7c90452857c1378f349d0cea1b3d7c9e65176c1b8d2af35a9e87bf7da"
-dependencies = [
- "rapidhash",
-]
-
-[[package]]
 name = "rbsr"
 version = "0.2.1"
 dependencies = [
@@ -1339,6 +1341,7 @@ dependencies = [
  "clap",
  "criterion",
  "devkit",
+ "do-riblt",
  "ipnet",
  "lww-register",
  "metrics",
@@ -1347,7 +1350,6 @@ dependencies = [
  "parking_lot",
  "proptest",
  "rand 0.8.7",
- "do-riblt",
  "rbsr",
  "reconcile-gossip",
  "rsos",
