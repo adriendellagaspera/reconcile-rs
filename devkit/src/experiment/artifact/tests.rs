@@ -306,7 +306,6 @@ fn compatible_prepared_states_deduplicate_and_conflicts_are_rejected() {
     );
 }
 
-
 #[test]
 fn artifact_error_display_preserves_context() {
     let invalid =
