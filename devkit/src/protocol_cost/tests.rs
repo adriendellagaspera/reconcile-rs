@@ -343,3 +343,46 @@ fn traced_reconciliation_records_alternating_responders() {
         .collect();
     assert_eq!(responders, vec![PeerSide::Right, PeerSide::Left]);
 }
+
+
+fn map_rows(rows: &[(u64, u64)]) -> FingerprintTreeMap<u64, u64> {
+    let mut map = FingerprintTreeMap::new();
+    for &(key, value) in rows {
+        map.insert(key, value);
+    }
+    map
+}
+
+#[test]
+fn trace_matches_cost_for_equality_scattered_and_outside_range_corpora() {
+    use crate::corpus::mutation::{corpus as mutation_corpus, Scenario};
+    use crate::corpus::placement::{corpus as placement_corpus, Profile};
+
+    let equality = placement_corpus(256, 0, Profile::UniformRandom, 42);
+    let scattered = placement_corpus(256, 17, Profile::UniformRandom, 42);
+    let outside = mutation_corpus(256, 17, Scenario::InsertOutsideRange, 42);
+
+    for (left_rows, right_rows) in [
+        (equality.left_rows, equality.right_rows),
+        (scattered.left_rows, scattered.right_rows),
+        (outside.left, outside.right),
+    ] {
+        let left = map_rows(&left_rows);
+        let right = map_rows(&right_rows);
+        let mut price = |_key: u64| vec![16];
+        let (cost, trace) = reconcile_traced(
+            &left,
+            &right,
+            &FixedFanOut::default(),
+            Some(&mut price),
+            &mut StdRng::seed_from_u64(42),
+        );
+        let expected = cost
+            .total_bytes()
+            .first()
+            .copied()
+            .unwrap_or(cost.refinement_bytes) as u64;
+        assert_eq!(trace.total_byte_variants(), vec![expected]);
+        assert_eq!(trace.dependency_stages(), cost.messages);
+    }
+}
