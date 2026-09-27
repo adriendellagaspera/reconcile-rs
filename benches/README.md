@@ -13,6 +13,7 @@ Benchmarks measure the code that ships in this repository. Results are not versi
 | riblt_preparation | RIBLT on-demand vs cached multi-peer preparation and rebuild cost |
 | state_repair_mutations | RBSR vs RIBLT vs key-stable Merkle under arbitrary insert/delete/mixed divergence |
 | cold_start_repair | Rebuild-from-current-state cost after reboot before repair |
+| state_repair_sensitivity | Scale, fanout and symbol-size crossover mapping |
 | contention | concurrent write cost |
 | snapshot_write_amplification | snapshot write/restart cost |
 
@@ -76,7 +77,6 @@ only the key's root-to-leaf path instead of shifting positional leaves. Payload 
 excluded. Defaults are `n=100000` and `d={100,1000,10000}`; override them with
 `RECONCILE_MUTATION_N`, `RECONCILE_MUTATION_D`, and `RECONCILE_MUTATION_SEED`.
 
-
 The `cold_start_repair` target prices a reboot with all reconciliation acceleration state
 discarded. Phase A starts from canonical rows already resident in memory and reports warm,
 one-side-cold and both-side-cold reconstruction. Phase B persists the same current state through
@@ -87,3 +87,14 @@ Snapshot creation is outside the restart window and filesystem page-cache state 
 The benchmark covers `d=0`, outside-range inserts, and mixed autonomous divergence. Defaults are
 `n=100000` and `d={1000,10000}`; override them with `RECONCILE_COLD_N`,
 `RECONCILE_COLD_D`, and `RECONCILE_COLD_SEED`.
+
+
+The `state_repair_sensitivity` target maps the two boundaries exposed by the arbitrary-mutation
+benchmark without running a full Cartesian product. `scale` mode varies `n` and `d/n` at
+fanout 16 with 16-byte symbols; `fanout` mode sweeps RBSR and key-stable radix Merkle fanout while
+measuring RIBLT once per corpus; `symbol` mode repeats representative cases with 16/32/64-byte
+wire symbols. Workloads are random updates and outside-range inserts. The radix Merkle fanout is
+implemented as a key-stable base-`fanout` hierarchy, so insertions do not shift positional leaves.
+Configure with `RECONCILE_SENSITIVITY_MODE`, `RECONCILE_SENSITIVITY_N`,
+`RECONCILE_SENSITIVITY_D`, `RECONCILE_SENSITIVITY_FANOUTS`,
+`RECONCILE_SENSITIVITY_SYMBOLS`, and `RECONCILE_SENSITIVITY_SEED`.

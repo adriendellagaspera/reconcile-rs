@@ -65,6 +65,10 @@ name = "cold_start_repair"
 harness = false
 
 [[bench]]
+name = "state_repair_sensitivity"
+harness = false
+
+[[bench]]
 name = "contention"
 harness = false
 
