@@ -34,10 +34,10 @@ use std::env;
 use std::time::{Duration, Instant};
 
 use devkit::protocol_cost::{reconcile, Cost};
+use do_riblt::{Decoder, Encoder, Peeled, Symbol};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut};
-use do_riblt::{Decoder, Encoder, Peeled, Symbol};
 use rsos::FingerprintTreeMap;
 
 const DEFAULT_N: usize = 100_000;
