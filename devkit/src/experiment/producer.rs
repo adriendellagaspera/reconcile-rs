@@ -7,6 +7,8 @@ use std::time::Duration;
 
 use super::*;
 
+use super::write_repair_trace;
+
 pub fn observed(value: MetricValue) -> Measurement {
     Measurement::Observed {
         value,
@@ -169,6 +171,32 @@ impl Case<'_> {
 
 /// Optional output requires caller-declared revision and host/build profile identifiers.
 /// Each file is created once; reusing an output directory never overwrites an observation.
+pub fn write_repair_trace_from_env(
+    target: &str,
+    workload: &str,
+    seed: u64,
+    arm: &str,
+    trace: &RepairTrace,
+) {
+    let Some(directory) = env::var_os("RECONCILE_BENCH_OUTPUT") else {
+        return;
+    };
+    for value in [target, workload, arm] {
+        assert!(value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_.=".contains(&b)));
+    }
+    let filename = format!("{target}-{workload}-{seed}-{arm}.trace.json");
+    let directory = PathBuf::from(directory);
+    fs::create_dir_all(&directory).expect("create result directory");
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(directory.join(filename))
+        .expect("create new repair trace file");
+    write_repair_trace(file, trace).expect("write repair trace");
+}
+
 pub fn write_case_from_env(case: Case<'_>, arms: Vec<Arm>) {
     let Some(directory) = env::var_os("RECONCILE_BENCH_OUTPUT") else {
         return;
