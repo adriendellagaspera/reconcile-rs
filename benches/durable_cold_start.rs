@@ -235,7 +235,7 @@ fn mixed_corpus(n: usize, d: usize, seed: u64) -> Corpus {
 
 fn persisted_state(rows: &[(u64, u64)], node_id: u64) -> PersistedState<u64, u64> {
     let node = NodeId::new(node_id);
-    let entries = rows
+    let entries: Vec<_> = rows
         .iter()
         .map(|&(key, digest)| {
             let stamp = Timestamp::new(
