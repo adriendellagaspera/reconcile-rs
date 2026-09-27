@@ -43,7 +43,7 @@ sorted `u64 -> u64 digest` manifest. Both replicas contain the same keys and exa
 differ, which deliberately gives the Merkle baseline an aligned-key workload. It reports discovery
 metadata only; application payload transfer is excluded. RBSR uses the repository's counted
 protocol driver and prices each enumerated `(key,digest)` symbol at 16 bytes. Rateless IBLT uses
-the external `riblt` crate and reports exact bincode bytes plus coded-symbol count. The Merkle
+the external `do-riblt` crate and reports its fixed 24-byte coded-symbol payload plus coded-symbol count. The Merkle
 baseline uses BLAKE3, fanout 16, and reports hash/request/symbol bytes. Defaults are `n=100000` and
 `d={1,10,100,1000,10000}`; override them with `RECONCILE_STATE_REPAIR_N` and
 `RECONCILE_STATE_REPAIR_D`.
