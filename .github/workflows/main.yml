@@ -2,7 +2,7 @@ name: main
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "bench/state-repair-sensitivity" ]
   pull_request:
   merge_group:
 
@@ -172,6 +172,16 @@ jobs:
     - run: cargo bench --no-run
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+    - name: Measure state repair sensitivity
+      run: |
+        RECONCILE_SENSITIVITY_MODE=scale RECONCILE_SENSITIVITY_N=10000 RECONCILE_SENSITIVITY_D=0,10,100,1000 cargo bench --bench state_repair_sensitivity
+        RECONCILE_SENSITIVITY_MODE=scale RECONCILE_SENSITIVITY_N=100000 RECONCILE_SENSITIVITY_D=0,100,1000,10000 cargo bench --bench state_repair_sensitivity
+        RECONCILE_SENSITIVITY_MODE=scale RECONCILE_SENSITIVITY_N=1000000 RECONCILE_SENSITIVITY_D=0,1000,10000 cargo bench --bench state_repair_sensitivity
+        RECONCILE_SENSITIVITY_MODE=fanout RECONCILE_SENSITIVITY_N=100000 RECONCILE_SENSITIVITY_D=0,100,1000,10000 RECONCILE_SENSITIVITY_FANOUTS=4,8,16,32 cargo bench --bench state_repair_sensitivity
+        RECONCILE_SENSITIVITY_MODE=symbol RECONCILE_SENSITIVITY_N=100000 RECONCILE_SENSITIVITY_D=0,100,1000,10000 RECONCILE_SENSITIVITY_SYMBOLS=16,32,64 cargo bench --bench state_repair_sensitivity
+      env:
+        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+        RECONCILE_SENSITIVITY_SEED: "42"
 
   package:
     needs: changes
