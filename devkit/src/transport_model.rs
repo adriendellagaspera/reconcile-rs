@@ -556,13 +556,13 @@ mod tests {
             link,
             datagram,
         );
-        let propagation = 10.0 / 0.9;
-        assert_close(estimate.propagation_ms, propagation);
-        assert_close(estimate.loss_recovery_ms, propagation - 10.0);
+        let completion = 10.0 / 0.9;
+        assert_close(estimate.propagation_ms, 10.0);
+        assert_close(estimate.loss_recovery_ms, completion - 10.0);
         assert_close(estimate.reorder_wait_ms, 0.0);
         assert_close(
             estimate.total_ms,
-            propagation + estimate.serialization_ms + estimate.loss_recovery_ms,
+            completion + estimate.serialization_ms,
         );
     }
 
