@@ -172,13 +172,10 @@ jobs:
     - run: cargo bench --no-run
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-    - name: Capture mutation interaction traces
-      run: cargo bench --bench state_repair_mutations
+    - name: Measure generic transport sensitivity
+      run: cargo bench --bench transport_sensitivity
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-        RECONCILE_MUTATION_N: "100000"
-        RECONCILE_MUTATION_D: "1000,10000"
-        RECONCILE_MUTATION_SEED: "42"
 
   package:
     needs: changes
