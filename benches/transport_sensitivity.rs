@@ -214,14 +214,6 @@ fn load_inputs(directory: &Path) -> Vec<TraceInput> {
     inputs
 }
 
-fn one_payload_variant(bytes: &[u64]) -> usize {
-    match bytes {
-        [] => 0,
-        [bytes] => *bytes as usize,
-        _ => panic!("transport projection requires one concrete payload-size variant"),
-    }
-}
-
 fn no_handshake(transport: TransportProfile) -> TransportProfile {
     TransportProfile {
         handshake_rtts: 0.0,
