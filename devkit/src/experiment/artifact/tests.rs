@@ -232,3 +232,74 @@ fn observed_seconds(value: f64) -> Measurement {
         uncertainty: None,
     }
 }
+
+
+#[test]
+fn prepared_catalog_rejects_unknown_architecture_and_wrong_view() {
+    let mut unknown = report(0, 7);
+    unknown.prepared_states.push(PreparedState {
+        id: "prepared".to_owned(),
+        architecture_id: "missing".to_owned(),
+        logical_view_id: unknown.experiment.logical_view.id.clone(),
+        build_costs: vec![],
+    });
+    assert_eq!(
+        validate_experiment_report(&unknown),
+        Err(InvalidExperimentReport::UnknownPreparedStateArchitecture(
+            "prepared".to_owned()
+        ))
+    );
+
+    let mut wrong_view = report(0, 7);
+    wrong_view.prepared_states.push(PreparedState {
+        id: "prepared".to_owned(),
+        architecture_id: wrong_view.architectures[0].id.clone(),
+        logical_view_id: "other-view".to_owned(),
+        build_costs: vec![],
+    });
+    assert_eq!(
+        validate_experiment_report(&wrong_view),
+        Err(InvalidExperimentReport::PreparedStateViewMismatch(
+            "prepared".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn compatible_prepared_states_deduplicate_and_conflicts_are_rejected() {
+    let mut left = report(0, 7);
+    let state = PreparedState {
+        id: "prepared".to_owned(),
+        architecture_id: left.architectures[0].id.clone(),
+        logical_view_id: left.experiment.logical_view.id.clone(),
+        build_costs: vec![],
+    };
+    left.prepared_states.push(state.clone());
+
+    let mut right = report(1, 8);
+    right.prepared_states.push(state.clone());
+    let joined = join_experiment_reports(&[left.clone(), right]).unwrap();
+    assert_eq!(joined.prepared_states, vec![state.clone()]);
+
+    let mut conflicting = report(1, 8);
+    let mut conflict = state;
+    conflict.build_costs.push(CostRecord {
+        phase: LifecyclePhase::InitialArchitectureBuild,
+        owner: CostOwner::Addon,
+        metrics: vec![CostMetric {
+            kind: MetricKind::IoReadBytes,
+            peer: None,
+            measurement: Measurement::Missing {
+                unit: Unit::Bytes,
+                reason: MissingReason::NotMeasured,
+            },
+        }],
+    });
+    conflicting.prepared_states.push(conflict);
+    assert_eq!(
+        join_experiment_reports(&[left, conflicting]),
+        Err(InvalidExperimentReport::ConflictingPreparedState(
+            "prepared".to_owned()
+        ))
+    );
+}
