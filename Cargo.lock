@@ -495,8 +495,8 @@ version = "0.0.0"
 dependencies = [
  "bincode",
  "rand 0.8.7",
+ "do-riblt",
  "rbsr",
- "riblt",
  "rsos",
 ]
 
@@ -1309,12 +1309,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "riblt"
-version = "0.1.1"
+name = "do-riblt"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "347358da6253049fb278b140d8ced7223bb4a191b572326727ee9b2b2bbce2db"
+checksum = "27586ed7c90452857c1378f349d0cea1b3d7c9e65176c1b8d2af35a9e87bf7da"
 dependencies = [
- "serde",
+ "rapidhash",
 ]
 
 [[package]]
