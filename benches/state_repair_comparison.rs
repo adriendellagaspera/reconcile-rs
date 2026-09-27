@@ -185,20 +185,33 @@ fn symbols(rows: &[(u64, u64)]) -> Vec<KvSymbol> {
         .collect()
 }
 
-fn rbsr_report(left: &FingerprintTreeMap<u64, u64>, right: &FingerprintTreeMap<u64, u64>) -> (Cost, Duration) {
+fn rbsr_report(
+    left: &FingerprintTreeMap<u64, u64>,
+    right: &FingerprintTreeMap<u64, u64>,
+) -> (Cost, Duration, Vec<u64>) {
     let policy = FixedFanOut::new(FanOut::NEGENTROPY);
-    let mut price = |_key| vec![SYMBOL_BYTES];
+    let mut candidates = BTreeSet::new();
+    let mut price = |key| {
+        candidates.insert(key);
+        vec![SYMBOL_BYTES]
+    };
     let mut rng = StdRng::seed_from_u64(SESSION_SEED);
     let started = Instant::now();
     let cost = reconcile(left, right, &policy, Some(&mut price), &mut rng);
-    (cost, started.elapsed())
+    let elapsed = started.elapsed();
+    let recovered = candidates
+        .into_iter()
+        .filter(|key| left.get(key) != right.get(key))
+        .collect();
+    (cost, elapsed, recovered)
 }
 
 fn riblt_report(left: Vec<KvSymbol>, right: Vec<KvSymbol>) -> RibltReport {
+    let symbol_count = left.len().max(right.len());
     let mut local = RatelessIBLT::new(left);
     let mut remote = RatelessIBLT::new(right);
     let mut received: UnmanagedRatelessIBLT<KvSymbol> = UnmanagedRatelessIBLT::new();
-    let max_symbols = 1_024 + 20 * local.coded_symbols.len().max(remote.coded_symbols.len()).max(1);
+    let max_symbols = 1_024 + 2 * symbol_count;
 
     let started = Instant::now();
     let mut serialized_bytes = 0;
@@ -371,7 +384,11 @@ fn main() {
 
         let left_map = fingerprint_map(&corpus.left_rows);
         let right_map = fingerprint_map(&corpus.right_rows);
-        let (rbsr, rbsr_elapsed) = rbsr_report(&left_map, &right_map);
+        let (rbsr, rbsr_elapsed, rbsr_recovered) = rbsr_report(&left_map, &right_map);
+        assert_eq!(
+            rbsr_recovered, corpus.expected_diff,
+            "RBSR recovered a different business-key set"
+        );
         let rbsr_bytes = rbsr
             .total_bytes()
             .first()
