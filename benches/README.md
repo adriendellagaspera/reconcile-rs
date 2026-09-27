@@ -9,6 +9,7 @@ Benchmarks measure the code that ships in this repository. Results are not versi
 | protocol | RBSR reconciliation cost |
 | history_independent_catchup | RBSR catch-up cost vs superseded mutation history at fixed current state |
 | runtime_history_independent_catchup | ReplicatedMap partition catch-up and causal-stability GC |
+| state_repair_comparison | Prepared-state RBSR vs Rateless IBLT vs Merkle divergence discovery |
 | contention | concurrent write cost |
 | snapshot_write_amplification | snapshot write/restart cost |
 
@@ -36,3 +37,17 @@ are `n=10000`, `d=100`, and `t={0,100,1000}`; override them with
 `RECONCILE_RUNTIME_HISTORY_N`, `RECONCILE_RUNTIME_HISTORY_D`, and
 `RECONCILE_RUNTIME_TOMBSTONES`. Larger tombstone sweeps are opt-in because causal-stability
 acknowledgment drainage can dominate wall time.
+
+The `state_repair_comparison` target compares three prepared-state repair strategies over the same
+sorted `u64 -> u64 digest` manifest. It varies both divergence cardinality and placement while
+keeping the key universe aligned: contiguous, 4/16 compact clusters, uniform random, evenly spaced,
+and a deterministic `max-spread` stress profile. `max-spread` is not a claimed formal worst case.
+Uniform-random runs use configurable deterministic seeds and report min/p50/mean/p90/max bytes.
+The synchronized `d=0` control is included; RIBLT uses a 32-byte state-digest equality preflight
+before its rateless stream. RBSR prices each enumerated `(key,digest)` symbol at 16 bytes, RIBLT
+uses the external `do-riblt` crate with 24-byte coded symbols, and the Merkle baseline uses BLAKE3
+with fanout 16. Application payload transfer is excluded, and setup time remains separate from
+prepared-state repair time. Defaults are `n=100000`, `d={0,1,10,100,1000,10000}`, and three
+uniform-random seeds. Override them with `RECONCILE_STATE_REPAIR_N`,
+`RECONCILE_STATE_REPAIR_D`, `RECONCILE_STATE_REPAIR_PROFILES`,
+`RECONCILE_STATE_REPAIR_RANDOM_SEEDS`, and `RECONCILE_STATE_REPAIR_SEED_BASE`.
