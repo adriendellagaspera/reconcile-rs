@@ -322,7 +322,6 @@ fn artifact_error_display_preserves_context() {
     );
 }
 
-
 #[test]
 fn artifact_error_exposes_underlying_source() {
     use std::error::Error as _;
