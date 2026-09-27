@@ -321,3 +321,16 @@ fn artifact_error_display_preserves_context() {
         "experiment artifact I/O failed: fixture I/O failure"
     );
 }
+
+#[test]
+fn artifact_error_exposes_underlying_source() {
+    use std::error::Error as _;
+
+    let io = ExperimentArtifactError::Io(std::io::Error::other("fixture source"));
+    let source = io.source().expect("I/O wrapper must expose its source");
+    assert_eq!(source.to_string(), "fixture source");
+
+    let invalid =
+        ExperimentArtifactError::Invalid(InvalidExperimentReport::UnsupportedSchemaVersion(99));
+    assert!(invalid.source().is_some());
+}
