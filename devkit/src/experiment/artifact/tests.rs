@@ -233,7 +233,6 @@ fn observed_seconds(value: f64) -> Measurement {
     }
 }
 
-
 #[test]
 fn prepared_catalog_rejects_unknown_architecture_and_wrong_view() {
     let mut unknown = report(0, 7);
@@ -294,18 +293,10 @@ fn compatible_prepared_states_deduplicate_and_conflicts_are_rejected() {
 
     let mut conflicting = report(1, 8);
     let mut conflict = state;
-    conflict.build_costs.push(CostRecord {
-        phase: LifecyclePhase::InitialArchitectureBuild,
-        owner: CostOwner::Addon,
-        metrics: vec![CostMetric {
-            kind: MetricKind::IoReadBytes,
-            peer: None,
-            measurement: Measurement::Missing {
-                unit: Unit::Bytes,
-                reason: MissingReason::NotMeasured,
-            },
-        }],
-    });
+    conflict.build_costs[0].metrics[0].measurement = Measurement::Missing {
+        unit: Unit::Bytes,
+        reason: MissingReason::Unknown,
+    };
     conflicting.prepared_states.push(conflict);
     assert_eq!(
         join_experiment_reports(&[left, conflicting]),
