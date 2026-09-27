@@ -246,6 +246,107 @@ mod tests {
         assert_eq!(estimate.propagation_ms, 10.0);
     }
 
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1e-9,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn serialization_formula_and_bidirectional_sum_are_exact() {
+        assert_close(serialization_ms(125_000, 1.0), 1_000.0);
+
+        let estimate = estimate(
+            Exchange {
+                forward_app_bytes: 1_460,
+                reverse_app_bytes: 2_920,
+                interaction_rtts: 0.0,
+                logical_messages: 2,
+            },
+            LinkProfile {
+                rtt_ms: 10.0,
+                forward_mbps: 10.0,
+                reverse_mbps: 10.0,
+                ..LINK
+            },
+            TransportProfile {
+                handshake_rtts: 0.0,
+                ..STREAM
+            },
+        );
+        assert_eq!(estimate.packets, 3);
+        assert_eq!(estimate.framed_bytes, 4_500);
+        assert_close(estimate.serialization_ms, 3.6);
+        assert_close(estimate.total_ms, 3.6);
+    }
+
+    #[test]
+    fn reliable_loss_reorder_and_total_terms_are_exact() {
+        let link = LinkProfile {
+            rtt_ms: 10.0,
+            packet_loss: 0.1,
+            packet_reorder: 0.2,
+            forward_mbps: 10.0,
+            reverse_mbps: 10.0,
+            ..LINK
+        };
+        let estimate = estimate(
+            Exchange {
+                forward_app_bytes: 1_460,
+                reverse_app_bytes: 1_460,
+                interaction_rtts: 2.0,
+                logical_messages: 2,
+            },
+            link,
+            STREAM,
+        );
+
+        assert_eq!(estimate.packets, 2);
+        assert_eq!(estimate.framed_bytes, 3_000);
+        assert_close(estimate.propagation_ms, 20.0);
+        assert_close(estimate.loss_recovery_ms, 20.0 * 0.1 / 0.9);
+        assert_close(estimate.reorder_wait_ms, 4.0);
+        assert_close(estimate.serialization_ms, 2.4);
+        assert_close(
+            estimate.total_ms,
+            10.0 + 20.0 + 2.4 + 20.0 * 0.1 / 0.9 + 4.0,
+        );
+    }
+
+    #[test]
+    fn datagram_retry_exposes_exact_retry_penalty() {
+        let link = LinkProfile {
+            rtt_ms: 10.0,
+            packet_loss: 0.1,
+            ..LINK
+        };
+        let datagram = TransportProfile {
+            name: "datagram",
+            frame_overhead_bytes: 28,
+            handshake_rtts: 0.0,
+            reliability: Reliability::DatagramRetry,
+        };
+        let estimate = estimate(
+            Exchange {
+                forward_app_bytes: 1_000,
+                reverse_app_bytes: 0,
+                interaction_rtts: 1.0,
+                logical_messages: 1,
+            },
+            link,
+            datagram,
+        );
+        let propagation = 10.0 / 0.9;
+        assert_close(estimate.propagation_ms, propagation);
+        assert_close(estimate.loss_recovery_ms, propagation - 10.0);
+        assert_close(estimate.reorder_wait_ms, 0.0);
+        assert_close(
+            estimate.total_ms,
+            propagation + estimate.serialization_ms + estimate.loss_recovery_ms,
+        );
+    }
+
     #[test]
     fn rateless_stop_exposes_one_bdp_overshoot() {
         let estimate = estimate_rateless_stop(1_000, 32, LINK, STREAM);
