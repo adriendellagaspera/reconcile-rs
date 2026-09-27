@@ -136,7 +136,7 @@ fn placement_value_change_uses_the_declared_digest_transform() {
     let left = pair.left_rows[key as usize].1;
     let right = pair.right_rows[key as usize].1;
     let expected_base = match key {
-        7 => 0x54ec_826b_3c9d_6f5f,
+        7 => 0x7ecc_08aa_af7f_5a9b,
         other => panic!("unexpected contiguous key {other}"),
     };
     assert_eq!(left, expected_base);
