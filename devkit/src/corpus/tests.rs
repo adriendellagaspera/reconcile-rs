@@ -135,7 +135,99 @@ fn placement_value_change_uses_the_declared_digest_transform() {
     let key = pair.expected_diff[0];
     let left = pair.left_rows[key as usize].1;
     let right = pair.right_rows[key as usize].1;
-    assert_eq!(left, base_digest(key));
-    assert_eq!(right, base_digest(key) ^ 0xa5a5_5a5a_d3c3_b4b4);
+    let expected_base = match key {
+        7 => 0x7ecc_08aa_af7f_5a9b,
+        other => panic!("unexpected contiguous key {other}"),
+    };
+    assert_eq!(left, expected_base);
+    assert_eq!(right, expected_base ^ 0xa5a5_5a5a_d3c3_b4b4);
     assert_ne!(right, 1);
+}
+
+
+#[test]
+fn digest_primitives_have_external_reference_values() {
+    assert_eq!(base_digest(0), 0xd6e8_feb8_6659_fd93);
+    assert_eq!(changed_digest(0, 1), 0xd6e8_feb8_6659_fd96);
+}
+
+#[test]
+fn mutation_seed_combination_is_xor_and_shapes_are_exact() {
+    let n = 16;
+    let d = 4;
+    // DeleteRandom has discriminant 1: seed 1 distinguishes XOR (0) from OR (1).
+    let ranks = sampled_ranks(n, d, 0);
+    let expected_deleted: Vec<_> = ranks.iter().map(|rank| 2 * *rank as u64).collect();
+    let delete = mutation::corpus(n, d, mutation::Scenario::DeleteRandom, 1);
+    assert_eq!(delete.expected_diff, expected_deleted);
+
+    let ranks = sampled_ranks(n, d, 42 ^ mutation::Scenario::BalancedInsertDelete as u64);
+    let split = d / 2;
+    let mut expected: Vec<_> = ranks[..split]
+        .iter()
+        .map(|rank| 2 * *rank as u64)
+        .chain(ranks[split..].iter().map(|rank| 2 * *rank as u64 + 1))
+        .collect();
+    expected.sort_unstable();
+    let balanced = mutation::corpus(n, d, mutation::Scenario::BalancedInsertDelete, 42);
+    assert_eq!(balanced.expected_diff, expected);
+}
+
+#[test]
+fn mixed_mutation_values_follow_rank_derived_variants() {
+    let n = 18;
+    let d = 6;
+    let seed = 42;
+    let scenario = mutation::Scenario::MixedAutonomous;
+    let ranks = sampled_ranks(n, d, seed ^ scenario as u64);
+    let a = d / 3;
+    let b = 2 * d / 3;
+    let pair = mutation::corpus(n, d, scenario, seed);
+    let left: std::collections::BTreeMap<_, _> = pair.left.iter().copied().collect();
+    let right: std::collections::BTreeMap<_, _> = pair.right.iter().copied().collect();
+
+    for &rank in &ranks[..a] {
+        let key = 2 * rank as u64;
+        assert_eq!(left[&key], changed_digest(key, rank as u64 + 1));
+    }
+    for &rank in &ranks[a..b] {
+        let key = 2 * rank as u64;
+        assert!(!left.contains_key(&key));
+        assert!(right.contains_key(&key));
+    }
+    for &rank in &ranks[b..] {
+        let key = 2 * rank as u64 + 1;
+        assert_eq!(right[&key], changed_digest(key, rank as u64 + 1));
+        assert!(!left.contains_key(&key));
+    }
+}
+
+#[test]
+fn cold_corpora_have_exact_restart_shapes() {
+    let outside = cold::corpus_outside_insert(8, 3);
+    assert_eq!(outside.expected, vec![17, 19, 21]);
+    assert_eq!((outside.left.len(), outside.right.len()), (8, 11));
+
+    let n = 18;
+    let d = 6;
+    let seed = 42;
+    let ranks = sampled_ranks(n, d, seed);
+    let a = d / 3;
+    let b = 2 * d / 3;
+    let mixed = cold::corpus_mixed(n, d, seed);
+    assert_eq!((mixed.left.len(), mixed.right.len()), (n - (b - a), n + (d - b)));
+    let left: std::collections::BTreeMap<_, _> = mixed.left.iter().copied().collect();
+    let right: std::collections::BTreeMap<_, _> = mixed.right.iter().copied().collect();
+
+    for &rank in &ranks[..a] {
+        let key = 2 * rank as u64;
+        assert_eq!(left[&key], changed_digest(key, rank as u64 + 1));
+    }
+    for &rank in &ranks[a..b] {
+        assert!(!left.contains_key(&(2 * rank as u64)));
+    }
+    for &rank in &ranks[b..] {
+        let key = 2 * rank as u64 + 1;
+        assert_eq!(right[&key], changed_digest(key, rank as u64 + 1));
+    }
 }
