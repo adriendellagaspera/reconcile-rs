@@ -9,7 +9,7 @@ use super::*;
 ///
 /// This intentionally does not model congestion-window startup. It is the reusable/full-rate case;
 /// cold-start transport handshakes are still priced by transport.handshake_rtts.
-pub(super) fn estimate_rateless_stop(
+pub fn estimate_rateless_stop(
     decoded_app_bytes: usize,
     stop_app_bytes: usize,
     link: LinkProfile,
