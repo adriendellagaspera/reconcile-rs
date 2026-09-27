@@ -101,7 +101,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         }
 
         // Piggyback causal-stability ack resends for the tombstones we hold.
-        self.resend_held_tombstone_acks(send_buf, round);
+        self.resend_held_tombstone_acks(send_buf);
 
         // Drop any target whose paced bulk transfer to us might still legitimately be in
         // progress -- re-initiating a full comparison mid-transfer only re-diffs and re-sends
@@ -146,27 +146,35 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// makes the matrix converge transitively, and makes an ack that arrived before its tombstone
     /// (dropped by the admission gate) recoverable on a later round.
     ///
-    /// Bounded to [`TOMBSTONE_ACK_RESEND_BYTE_BUDGET`] bytes per datagram, over a window whose
-    /// start advances with `round` across sorted keys, so every tombstone is covered within a
-    /// bounded number of rounds.
-    pub(super) fn resend_held_tombstone_acks(&self, send_buf: &mut Vec<u8>, round: u32) -> usize {
+    /// Bounded to [`TOMBSTONE_ACK_RESEND_BYTE_BUDGET`] bytes per datagram. When one datagram
+    /// cannot cover every held tombstone, a key cursor resumes at the first unvisited key on the
+    /// next round. If that key disappears meanwhile, ordered lookup resumes at its successor;
+    /// wrapping eventually covers keys inserted behind the cursor.
+    pub(super) fn resend_held_tombstone_acks(&self, send_buf: &mut Vec<u8>) -> usize {
         let mut keys: Vec<K> = self.live_tombstones.read().iter().cloned().collect();
         if keys.is_empty() {
+            *self.tombstone_ack_resend_cursor.lock() = None;
             return 0;
         }
         keys.sort_unstable();
         let n = keys.len();
         let budget = send_buf.len() + TOMBSTONE_ACK_RESEND_BYTE_BUDGET;
-        let start = (round as usize) % n;
+        let mut cursor = self.tombstone_ack_resend_cursor.lock();
+        let start = cursor
+            .as_ref()
+            .map_or(0, |next| match keys.binary_search(next) {
+                Ok(index) => index,
+                Err(index) => index % n,
+            });
         let map_guard = self.map.load_full();
         let mut appended = 0;
-        let mut budget_truncated = false;
-        // Rotated, not `(start + offset) % n`-indexed: a slice out of bounds panics instead of
-        // silently wrapping, so a corrupted `start` (e.g. overflowing past `n`) fails loudly
-        // rather than composing with the modulo below into an unobservable no-op.
+        let mut next_cursor = None;
+        // Rotated, not `(start + offset) % n`-indexed: the cursor is a key, so a live-set change
+        // can only move the next start to that key's ordered successor, never to an unrelated
+        // numeric index in the resized set.
         for key in keys[start..].iter().chain(keys[..start].iter()) {
             if send_buf.len() >= budget {
-                budget_truncated = true;
+                next_cursor = Some(key.clone());
                 break;
             }
             // Re-confirm against the map: the tombstone may have been resurrected or GC'd since
@@ -183,10 +191,11 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 appended += 1;
             }
         }
-        if budget_truncated {
+        *cursor = next_cursor;
+        if cursor.is_some() {
             trace!(
                 "resent {appended}/{n} held-tombstone acks this round (datagram byte budget \
-                 reached); the remainder rotates in on subsequent rounds"
+                 reached); the next round resumes at the first uncovered key"
             );
         }
         observability::record_tombstone_acks_resent(appended);
