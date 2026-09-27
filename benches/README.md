@@ -77,7 +77,6 @@ only the key's root-to-leaf path instead of shifting positional leaves. Payload 
 excluded. Defaults are `n=100000` and `d={100,1000,10000}`; override them with
 `RECONCILE_MUTATION_N`, `RECONCILE_MUTATION_D`, and `RECONCILE_MUTATION_SEED`.
 
-
 The `cold_start_repair` target prices a reboot with all reconciliation acceleration state
 discarded. Phase A starts from canonical rows already resident in memory and reports warm,
 one-side-cold and both-side-cold reconstruction. Phase B persists the same current state through
