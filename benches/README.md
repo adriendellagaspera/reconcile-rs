@@ -98,12 +98,3 @@ implemented as a key-stable base-`fanout` hierarchy, so insertions do not shift 
 Configure with `RECONCILE_SENSITIVITY_MODE`, `RECONCILE_SENSITIVITY_N`,
 `RECONCILE_SENSITIVITY_D`, `RECONCILE_SENSITIVITY_FANOUTS`,
 `RECONCILE_SENSITIVITY_SYMBOLS`, and `RECONCILE_SENSITIVITY_SEED`.
-
-## Shared experiment artifacts
-
-`devkit::corpus` owns deterministic benchmark inputs; `devkit::experiment` owns schema-v2 JSON
-artifacts and rendering. Set `RECONCILE_BENCH_OUTPUT`, `RECONCILE_BENCH_REVISION`, and
-`RECONCILE_BENCH_RESOURCE_PROFILE` to retain reproducible run artifacts; existing files are never
-overwritten. Artifacts keep observed timings distinct from projected byte/cold-total models, and
-leave CPU, peak temporary memory, and transport end-to-end time explicitly unmeasured. Preparation
-charges cache build once per multi-peer experiment; cache-memory diagnostics remain human-only.
