@@ -17,3 +17,4 @@ pub mod corpus;
 pub mod experiment;
 pub mod protocol_cost;
 pub mod stats;
+pub mod transport_trace;
