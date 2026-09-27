@@ -113,10 +113,8 @@ fn expected_wire(framed: usize, loss: f64) -> (f64, f64) {
 /// Reordering adds waiting only for ordered streams. Self-framed datagrams are assumed sequenceable
 /// and idempotent at the application layer, so arrival order itself does not change bytes/correctness.
 pub fn estimate(exchange: Exchange, link: LinkProfile, transport: TransportProfile) -> Estimate {
-    let (forward_packets, forward_framed) =
-        packetize(exchange.forward_app_bytes, link, transport);
-    let (reverse_packets, reverse_framed) =
-        packetize(exchange.reverse_app_bytes, link, transport);
+    let (forward_packets, forward_framed) = packetize(exchange.forward_app_bytes, link, transport);
+    let (reverse_packets, reverse_framed) = packetize(exchange.reverse_app_bytes, link, transport);
     let packets = forward_packets + reverse_packets;
     let framed = forward_framed + reverse_framed;
     let (expected, retransmitted) = expected_wire(framed, link.packet_loss);
@@ -136,8 +134,8 @@ pub fn estimate(exchange: Exchange, link: LinkProfile, transport: TransportProfi
             (propagation, propagation - base_propagation, 0.0)
         }
         Reliability::ReliableOrdered => {
-            let loss_recovery =
-                exchange.interaction_rtts * link.rtt_ms * link.packet_loss / (1.0 - link.packet_loss);
+            let loss_recovery = exchange.interaction_rtts * link.rtt_ms * link.packet_loss
+                / (1.0 - link.packet_loss);
             let reorder_wait = exchange.interaction_rtts * link.rtt_ms * link.packet_reorder;
             (base_propagation, loss_recovery, reorder_wait)
         }
@@ -154,7 +152,11 @@ pub fn estimate(exchange: Exchange, link: LinkProfile, transport: TransportProfi
         serialization_ms: serialization,
         loss_recovery_ms,
         reorder_wait_ms,
-        total_ms: handshake_ms + propagation_ms + serialization + loss_recovery_ms + reorder_wait_ms,
+        total_ms: handshake_ms
+            + propagation_ms
+            + serialization
+            + loss_recovery_ms
+            + reorder_wait_ms,
     }
 }
 
