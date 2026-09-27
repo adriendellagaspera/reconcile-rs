@@ -56,16 +56,13 @@ fn local_measurements_preserve_boundaries_and_round_trip() {
     );
 }
 
-
 #[test]
 fn repair_trace_env_output_writes_a_readable_sidecar() {
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = ENV_LOCK.lock().unwrap();
 
-    let directory = std::env::temp_dir().join(format!(
-        "reconcile-devkit-trace-{}",
-        std::process::id()
-    ));
+    let directory =
+        std::env::temp_dir().join(format!("reconcile-devkit-trace-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&directory);
     std::fs::create_dir_all(&directory).unwrap();
 
