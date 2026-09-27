@@ -173,11 +173,13 @@ jobs:
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
     - name: Measure RIBLT preparation tradeoffs
-      run: cargo bench --bench riblt_preparation
+      run: |
+        for d in 100 10000; do
+          RECONCILE_RIBLT_D="$d" cargo bench --bench riblt_preparation
+        done
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
         RECONCILE_RIBLT_N: "100000"
-        RECONCILE_RIBLT_D: "1000"
         RECONCILE_RIBLT_PEERS: "1,2,4,8"
         RECONCILE_RIBLT_SEED: "42"
 
