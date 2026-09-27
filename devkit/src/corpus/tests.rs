@@ -50,7 +50,6 @@ fn reference_distinguishes_value_changes_from_business_keys() {
     assert!(!exact.matches(&right, &left));
 }
 
-
 #[test]
 fn mutation_scenarios_preserve_exact_shape_not_only_diff_count() {
     let n = 32;
@@ -68,10 +67,16 @@ fn mutation_scenarios_preserve_exact_shape_not_only_diff_count() {
     assert!(delete.expected_diff.iter().all(|key| key % 2 == 0));
 
     let interleaved = mutation::corpus(n, d, mutation::Scenario::InsertInterleaved, seed);
-    assert_eq!((interleaved.left.len(), interleaved.right.len()), (n, n + d));
+    assert_eq!(
+        (interleaved.left.len(), interleaved.right.len()),
+        (n, n + d)
+    );
     assert_eq!(interleaved.set_difference_symbols, d);
     assert!(interleaved.expected_diff.iter().all(|key| key % 2 == 1));
-    assert!(interleaved.expected_diff.iter().all(|key| *key < 2 * n as u64));
+    assert!(interleaved
+        .expected_diff
+        .iter()
+        .all(|key| *key < 2 * n as u64));
 
     let outside = mutation::corpus(n, d, mutation::Scenario::InsertOutsideRange, seed);
     assert_eq!((outside.left.len(), outside.right.len()), (n, n + d));
@@ -84,14 +89,25 @@ fn mutation_scenarios_preserve_exact_shape_not_only_diff_count() {
     );
 
     let balanced = mutation::corpus(n, d, mutation::Scenario::BalancedInsertDelete, seed);
-    assert_eq!((balanced.left.len(), balanced.right.len()), (n - d / 2, n + d / 2));
+    assert_eq!(
+        (balanced.left.len(), balanced.right.len()),
+        (n - d / 2, n + d / 2)
+    );
     assert_eq!(balanced.set_difference_symbols, d);
     assert_eq!(
-        balanced.expected_diff.iter().filter(|key| **key % 2 == 0).count(),
+        balanced
+            .expected_diff
+            .iter()
+            .filter(|key| **key % 2 == 0)
+            .count(),
         d / 2
     );
     assert_eq!(
-        balanced.expected_diff.iter().filter(|key| **key % 2 == 1).count(),
+        balanced
+            .expected_diff
+            .iter()
+            .filter(|key| **key % 2 == 1)
+            .count(),
         d - d / 2
     );
 
@@ -99,8 +115,14 @@ fn mutation_scenarios_preserve_exact_shape_not_only_diff_count() {
     let updates = d / 3;
     let deletes = 2 * d / 3 - updates;
     let inserts = d - 2 * d / 3;
-    assert_eq!((mixed.left.len(), mixed.right.len()), (n - deletes, n + inserts));
-    assert_eq!(mixed.set_difference_symbols, 2 * updates + deletes + inserts);
+    assert_eq!(
+        (mixed.left.len(), mixed.right.len()),
+        (n - deletes, n + inserts)
+    );
+    assert_eq!(
+        mixed.set_difference_symbols,
+        2 * updates + deletes + inserts
+    );
 }
 
 #[test]
@@ -120,7 +142,10 @@ fn placement_profiles_have_exact_small_reference_shapes() {
     assert_eq!(clustered4.expected_diff, vec![7, 8, 23, 24, 39, 40, 55, 56]);
 
     let clustered16 = placement::corpus(64, 8, placement::Profile::Clustered16, 42);
-    assert_eq!(clustered16.expected_diff, vec![3, 11, 19, 27, 35, 43, 51, 59]);
+    assert_eq!(
+        clustered16.expected_diff,
+        vec![3, 11, 19, 27, 35, 43, 51, 59]
+    );
 
     let contiguous = placement::corpus(16, 4, placement::Profile::Contiguous, 42);
     assert_eq!(contiguous.expected_diff, vec![6, 7, 8, 9]);
@@ -143,7 +168,6 @@ fn placement_value_change_uses_the_declared_digest_transform() {
     assert_eq!(right, expected_base ^ 0xa5a5_5a5a_d3c3_b4b4);
     assert_ne!(right, 1);
 }
-
 
 #[test]
 fn digest_primitives_have_external_reference_values() {
@@ -215,7 +239,10 @@ fn cold_corpora_have_exact_restart_shapes() {
     let a = d / 3;
     let b = 2 * d / 3;
     let mixed = cold::corpus_mixed(n, d, seed);
-    assert_eq!((mixed.left.len(), mixed.right.len()), (n - (b - a), n + (d - b)));
+    assert_eq!(
+        (mixed.left.len(), mixed.right.len()),
+        (n - (b - a), n + (d - b))
+    );
     let left: std::collections::BTreeMap<_, _> = mixed.left.iter().copied().collect();
     let right: std::collections::BTreeMap<_, _> = mixed.right.iter().copied().collect();
 
