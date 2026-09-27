@@ -259,18 +259,29 @@ fn cold_corpora_have_exact_restart_shapes() {
     }
 }
 
-
 #[test]
 fn profile_and_scenario_names_are_stable_machine_labels() {
     assert_eq!(placement::Profile::Contiguous.to_string(), "contiguous");
     assert_eq!(placement::Profile::Clustered4.to_string(), "clustered-4");
     assert_eq!(placement::Profile::Clustered16.to_string(), "clustered-16");
-    assert_eq!(placement::Profile::UniformRandom.to_string(), "uniform-random");
-    assert_eq!(placement::Profile::EvenlySpaced.to_string(), "evenly-spaced");
+    assert_eq!(
+        placement::Profile::UniformRandom.to_string(),
+        "uniform-random"
+    );
+    assert_eq!(
+        placement::Profile::EvenlySpaced.to_string(),
+        "evenly-spaced"
+    );
     assert_eq!(placement::Profile::MaxSpread.to_string(), "max-spread");
 
-    assert_eq!(mutation::Scenario::UpdateRandom.to_string(), "update-random");
-    assert_eq!(mutation::Scenario::DeleteRandom.to_string(), "delete-random");
+    assert_eq!(
+        mutation::Scenario::UpdateRandom.to_string(),
+        "update-random"
+    );
+    assert_eq!(
+        mutation::Scenario::DeleteRandom.to_string(),
+        "delete-random"
+    );
     assert_eq!(
         mutation::Scenario::InsertInterleaved.to_string(),
         "insert-interleaved"
