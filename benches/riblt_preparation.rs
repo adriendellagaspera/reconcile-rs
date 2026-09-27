@@ -246,10 +246,11 @@ fn run_cached(encoder: &mut CachedEncoder<SYMBOL_BYTES>, peer: &Peer) -> Session
 
 fn mutation_rows(base: &[(u64, u64)], kind: &str) -> Vec<(u64, u64)> {
     let mut rows = base.to_vec();
+    let middle = rows.len() / 2;
     match kind {
-        "update" => rows[rows.len() / 2].1 ^= 0x55aa_aa55_1234_5678,
+        "update" => rows[middle].1 ^= 0x55aa_aa55_1234_5678,
         "delete" => {
-            rows.remove(rows.len() / 2);
+            rows.remove(middle);
         }
         "insert" => rows.push((base.len() as u64, base_digest(base.len() as u64))),
         other => panic!("unknown mutation kind {other}"),
