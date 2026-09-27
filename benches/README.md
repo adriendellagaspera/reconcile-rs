@@ -10,6 +10,7 @@ Benchmarks measure the code that ships in this repository. Results are not versi
 | history_independent_catchup | RBSR catch-up cost vs superseded mutation history at fixed current state |
 | runtime_history_independent_catchup | ReplicatedMap partition catch-up and causal-stability GC |
 | state_repair_comparison | Prepared-state RBSR vs Rateless IBLT vs Merkle divergence discovery |
+| riblt_preparation | RIBLT on-demand vs cached multi-peer preparation and rebuild cost |
 | contention | concurrent write cost |
 | snapshot_write_amplification | snapshot write/restart cost |
 
@@ -51,3 +52,14 @@ prepared-state repair time. Defaults are `n=100000`, `d={0,1,10,100,1000,10000}`
 uniform-random seeds. Override them with `RECONCILE_STATE_REPAIR_N`,
 `RECONCILE_STATE_REPAIR_D`, `RECONCILE_STATE_REPAIR_PROFILES`,
 `RECONCILE_STATE_REPAIR_RANDOM_SEEDS`, and `RECONCILE_STATE_REPAIR_SEED_BASE`.
+
+
+The `riblt_preparation` target isolates the product-cost tradeoff behind the external
+`do-riblt 1.0.2` encoder. It compares a fresh on-demand encoder per peer with one
+`CachedEncoder` precomputed once and reused across several peers. It also reports full cache
+rebuild cost after one update, delete, or insert because the published crate does not expose public
+incremental add/remove operations. Cache memory is a structural upper-bound model based on the
+public coded-symbol and cache-slot types; total encoder HashMap heap usage is intentionally reported
+as opaque rather than guessed. Defaults are `n=100000`, `d=1000`, and
+`peers={1,2,4,8}`; override them with `RECONCILE_RIBLT_N`, `RECONCILE_RIBLT_D`,
+`RECONCILE_RIBLT_PEERS`, and `RECONCILE_RIBLT_SEED`.
