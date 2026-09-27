@@ -30,16 +30,18 @@
 //   RECONCILE_COLD_D=1000,10000
 //   RECONCILE_COLD_SEED=42
 
+use devkit::experiment::producer::{elapsed, protocol_bytes, write_case_from_env, Arm, Case};
+use devkit::experiment::{CostOwner, LifecyclePhase};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use devkit::corpus::cold::{corpus_equal, corpus_mixed, corpus_outside_insert, Corpus};
 use devkit::protocol_cost::{reconcile, Cost};
 use do_riblt::{CachedEncoder, Decoder, Encoder, Peeled, Symbol};
 use rand::rngs::StdRng;
-use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut};
 use reconcile::{Entry, FileSnapshot, PersistedState, Persistence, Timestamp};
@@ -77,13 +79,6 @@ impl Symbol<SYMBOL_BYTES> for KvSymbol {
             digest: u64::from_le_bytes(bytes[8..].try_into().unwrap()),
         }
     }
-}
-
-struct Corpus {
-    name: &'static str,
-    left: Vec<(u64, u64)>,
-    right: Vec<(u64, u64)>,
-    expected: Vec<u64>,
 }
 
 struct RadixMerkle {
@@ -125,101 +120,6 @@ fn divergence_sweep() -> Vec<usize> {
                 .collect()
         },
     )
-}
-
-fn base_digest(key: u64) -> u64 {
-    key.wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(17) ^ 0xd6e8_feb8_6659_fd93
-}
-
-fn changed_digest(key: u64, variant: u64) -> u64 {
-    base_digest(key).wrapping_add(variant.wrapping_mul(2).wrapping_add(1))
-}
-
-fn baseline(n: usize) -> Vec<(u64, u64)> {
-    (0..n)
-        .map(|rank| {
-            let key = 2 * rank as u64;
-            (key, base_digest(key))
-        })
-        .collect()
-}
-
-fn sampled_ranks(n: usize, d: usize, seed: u64) -> Vec<usize> {
-    let mut ranks: Vec<_> = (0..n).collect();
-    let mut rng = StdRng::seed_from_u64(seed);
-    ranks.shuffle(&mut rng);
-    ranks.truncate(d);
-    ranks.sort_unstable();
-    ranks
-}
-
-fn diff_keys(left: &[(u64, u64)], right: &[(u64, u64)]) -> Vec<u64> {
-    let left: BTreeMap<_, _> = left.iter().copied().collect();
-    let right: BTreeMap<_, _> = right.iter().copied().collect();
-    left.keys()
-        .chain(right.keys())
-        .copied()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .filter(|key| left.get(key) != right.get(key))
-        .collect()
-}
-
-fn corpus_equal(n: usize) -> Corpus {
-    let rows = baseline(n);
-    Corpus {
-        name: "equal",
-        left: rows.clone(),
-        right: rows,
-        expected: Vec::new(),
-    }
-}
-
-fn corpus_outside_insert(n: usize, d: usize) -> Corpus {
-    let left = baseline(n);
-    let mut right = left.clone();
-    right.extend((0..d).map(|ordinal| {
-        let key = 2 * n as u64 + 1 + 2 * ordinal as u64;
-        (key, base_digest(key))
-    }));
-    let expected = diff_keys(&left, &right);
-    Corpus {
-        name: "outside-insert",
-        left,
-        right,
-        expected,
-    }
-}
-
-fn corpus_mixed(n: usize, d: usize, seed: u64) -> Corpus {
-    let base = baseline(n);
-    let mut left: BTreeMap<_, _> = base.iter().copied().collect();
-    let mut right = left.clone();
-    let ranks = sampled_ranks(n, d, seed);
-    let a = d / 3;
-    let b = 2 * d / 3;
-
-    for &rank in &ranks[..a] {
-        let key = 2 * rank as u64;
-        left.insert(key, changed_digest(key, rank as u64 + 1));
-    }
-    for &rank in &ranks[a..b] {
-        left.remove(&(2 * rank as u64));
-    }
-    for &rank in &ranks[b..] {
-        let key = 2 * rank as u64 + 1;
-        right.insert(key, changed_digest(key, rank as u64 + 1));
-    }
-
-    let left: Vec<_> = left.into_iter().collect();
-    let right: Vec<_> = right.into_iter().collect();
-    let expected = diff_keys(&left, &right);
-    Corpus {
-        name: "mixed-random",
-        left,
-        right,
-        expected,
-    }
 }
 
 fn save_snapshot(path: &Path, rows: &[(u64, u64)]) {
@@ -494,7 +394,7 @@ fn ms(value: Duration) -> f64 {
     value.as_secs_f64() * 1_000.0
 }
 
-fn run(corpus: Corpus) {
+fn run(corpus: Corpus, seed: u64) {
     let (left_ftm, left_ftm_build) = build_ftm(&corpus.left);
     let (right_ftm, right_ftm_build) = build_ftm(&corpus.right);
     let (rbsr, rbsr_warm, rbsr_diff) = rbsr_repair(&left_ftm, &right_ftm);
@@ -574,6 +474,91 @@ fn run(corpus: Corpus) {
     let right_io = right_loaded.load + right_loaded.project;
     let both_io = left_io + right_io;
 
+    let workload = format!(
+        "left={}-right={}-d={}-{}-symbol=16-radix=16",
+        corpus.left.len(),
+        corpus.right.len(),
+        corpus.expected.len(),
+        corpus.name
+    );
+    let revision = env::var("RECONCILE_BENCH_REVISION").unwrap_or_default();
+    let arms = [
+        (
+            "rbsr-ftm",
+            "rbsr",
+            revision.as_str(),
+            left_loaded_ftm_build + right_loaded_ftm_build,
+            rbsr_warm,
+            total_bytes(&rbsr),
+        ),
+        (
+            "merkle",
+            "radix-merkle",
+            revision.as_str(),
+            left_loaded_merkle_build + right_loaded_merkle_build,
+            merkle_warm,
+            merkle_bytes,
+        ),
+        (
+            "riblt",
+            "do-riblt",
+            "1.0.2",
+            riblt_setup,
+            riblt_repair,
+            STATE_DIGEST_BYTES + coded * CODED_SYMBOL_BYTES,
+        ),
+        (
+            "riblt-cached",
+            "do-riblt",
+            "1.0.2",
+            cache_build + cache_precompute,
+            cache_warm,
+            STATE_DIGEST_BYTES + coded * CODED_SYMBOL_BYTES,
+        ),
+    ]
+    .into_iter()
+    .map(|(id, implementation, version, rebuild, warm, bytes)| {
+        let mut costs = vec![
+            elapsed(
+                LifecyclePhase::RecoveryOrRebuild,
+                CostOwner::BaseStore,
+                both_io,
+            ),
+            elapsed(LifecyclePhase::RecoveryOrRebuild, CostOwner::Addon, rebuild),
+            elapsed(LifecyclePhase::SessionWork, CostOwner::Protocol, warm),
+            protocol_bytes(bytes, &format!("{id}-source-byte-model"), &workload),
+        ];
+        costs[0].metrics[0].measurement = devkit::experiment::Measurement::Projected {
+            value: devkit::experiment::MetricValue::Seconds(both_io.as_secs_f64()),
+            model_id: "sum-peer-load-and-project-phases".to_owned(),
+            inputs_id: workload.clone(),
+        };
+        costs[1].metrics[0].measurement = devkit::experiment::Measurement::Projected {
+            value: devkit::experiment::MetricValue::Seconds(rebuild.as_secs_f64()),
+            model_id: "sum-rebuild-phases".to_owned(),
+            inputs_id: workload.clone(),
+        };
+        Arm::new(id, implementation, version, costs)
+    })
+    .collect();
+    write_case_from_env(
+        Case {
+            target: "cold-start-components",
+            workload: &workload,
+            seed,
+            records: [
+                ("left".to_owned(), corpus.left.len()),
+                ("right".to_owned(), corpus.right.len()),
+            ]
+            .into(),
+            symmetric_difference: Some(devkit::corpus::set_difference_symbols(
+                &corpus.left,
+                &corpus.right,
+            )),
+        },
+        arms,
+    );
+
     println!(
         "[durable-load] scenario={} d={} left_bytes={} right_bytes={} left_load={:.3}ms left_project={:.3}ms right_load={:.3}ms right_project={:.3}ms",
         corpus.name,
@@ -622,10 +607,10 @@ fn main() {
     let seed = env_u64("RECONCILE_COLD_SEED", DEFAULT_SEED);
     assert!(n > 0);
 
-    run(corpus_equal(n));
+    run(corpus_equal(n), seed);
     for d in divergence_sweep() {
         assert!(d > 0 && d <= n);
-        run(corpus_outside_insert(n, d));
-        run(corpus_mixed(n, d, seed));
+        run(corpus_outside_insert(n, d), seed);
+        run(corpus_mixed(n, d, seed), seed);
     }
 }

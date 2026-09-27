@@ -13,5 +13,7 @@
 #![forbid(unsafe_code)]
 
 pub mod contention;
+pub mod corpus;
+pub mod experiment;
 pub mod protocol_cost;
 pub mod stats;

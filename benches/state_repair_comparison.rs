@@ -31,15 +31,16 @@
 //
 // Run with `cargo bench --bench state_repair_comparison`.
 
+use devkit::experiment::producer::{elapsed, protocol_bytes, write_case_from_env, Arm, Case};
+use devkit::experiment::{CostOwner, LifecyclePhase};
 use std::collections::BTreeSet;
 use std::env;
-use std::fmt;
 use std::time::{Duration, Instant};
 
+use devkit::corpus::placement::{corpus, Profile};
 use devkit::protocol_cost::{reconcile, Cost};
 use do_riblt::{Decoder, Encoder, Peeled, Symbol};
 use rand::rngs::StdRng;
-use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut};
 use rsos::FingerprintTreeMap;
@@ -55,56 +56,6 @@ const STATE_DIGEST_BYTES: usize = 32;
 const RIBLT_CODED_SYMBOL_BYTES: usize = SYMBOL_BYTES + 8;
 const MERKLE_HASH_BYTES: usize = 32;
 const MERKLE_INDEX_BYTES: usize = 8;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Profile {
-    Contiguous,
-    Clustered4,
-    Clustered16,
-    UniformRandom,
-    EvenlySpaced,
-    MaxSpread,
-}
-
-impl Profile {
-    const ALL: [Self; 6] = [
-        Self::Contiguous,
-        Self::Clustered4,
-        Self::Clustered16,
-        Self::UniformRandom,
-        Self::EvenlySpaced,
-        Self::MaxSpread,
-    ];
-
-    fn parse(raw: &str) -> Self {
-        match raw.trim() {
-            "contiguous" => Self::Contiguous,
-            "clustered-4" => Self::Clustered4,
-            "clustered-16" => Self::Clustered16,
-            "uniform-random" => Self::UniformRandom,
-            "evenly-spaced" => Self::EvenlySpaced,
-            "max-spread" => Self::MaxSpread,
-            other => panic!("unknown state-repair profile: {other}"),
-        }
-    }
-
-    fn is_random(self) -> bool {
-        self == Self::UniformRandom
-    }
-}
-
-impl fmt::Display for Profile {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Contiguous => "contiguous",
-            Self::Clustered4 => "clustered-4",
-            Self::Clustered16 => "clustered-16",
-            Self::UniformRandom => "uniform-random",
-            Self::EvenlySpaced => "evenly-spaced",
-            Self::MaxSpread => "max-spread",
-        })
-    }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct KvSymbol {
@@ -126,12 +77,6 @@ impl Symbol<SYMBOL_BYTES> for KvSymbol {
             digest: u64::from_le_bytes(bytes[8..].try_into().unwrap()),
         }
     }
-}
-
-struct Corpus {
-    expected_diff: Vec<u64>,
-    left_rows: Vec<(u64, u64)>,
-    right_rows: Vec<(u64, u64)>,
 }
 
 struct MerkleTree {
@@ -213,136 +158,6 @@ fn profiles() -> Vec<Profile> {
         |_| Profile::ALL.to_vec(),
         |raw| raw.split(',').map(Profile::parse).collect(),
     )
-}
-
-fn base_digest(key: u64) -> u64 {
-    key.wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(17) ^ 0xd6e8_feb8_6659_fd93
-}
-
-fn changed_digest(key: u64) -> u64 {
-    base_digest(key) ^ 0xa5a5_5a5a_d3c3_b4b4
-}
-
-fn evenly_spaced_keys(n: usize, d: usize) -> Vec<u64> {
-    (0..d)
-        .map(|i| (((2 * i + 1) * n) / (2 * d)) as u64)
-        .collect()
-}
-
-fn contiguous_keys(n: usize, d: usize) -> Vec<u64> {
-    let start = (n - d) / 2;
-    (start..start + d).map(|key| key as u64).collect()
-}
-
-fn clustered_keys(n: usize, d: usize, clusters: usize) -> Vec<u64> {
-    let active_clusters = clusters.min(d).min(n);
-    if active_clusters == 0 {
-        return Vec::new();
-    }
-
-    let mut keys = Vec::with_capacity(d);
-    let mut remaining = d;
-    for cluster in 0..active_clusters {
-        let slots_left = active_clusters - cluster;
-        let count = remaining.div_ceil(slots_left);
-        let partition_start = cluster * n / active_clusters;
-        let partition_end = (cluster + 1) * n / active_clusters;
-        let partition_len = partition_end - partition_start;
-        assert!(
-            count <= partition_len,
-            "cluster does not fit its key partition"
-        );
-        let start = partition_start + (partition_len - count) / 2;
-        keys.extend((start..start + count).map(|key| key as u64));
-        remaining -= count;
-    }
-    keys.sort_unstable();
-    keys
-}
-
-fn random_keys(n: usize, d: usize, seed: u64) -> Vec<u64> {
-    let mut ranks: Vec<_> = (0..n).collect();
-    let mut rng = StdRng::seed_from_u64(seed);
-    ranks.shuffle(&mut rng);
-    ranks.truncate(d);
-    ranks.sort_unstable();
-    ranks.into_iter().map(|rank| rank as u64).collect()
-}
-
-fn reversed_base16(mut value: usize, digits: usize) -> usize {
-    let mut reversed = 0usize;
-    for _ in 0..digits {
-        reversed = reversed * MERKLE_FANOUT + value % MERKLE_FANOUT;
-        value /= MERKLE_FANOUT;
-    }
-    reversed
-}
-
-fn max_spread_keys(n: usize, d: usize) -> Vec<u64> {
-    if d == 0 {
-        return Vec::new();
-    }
-
-    let mut digits = 1;
-    let mut space = MERKLE_FANOUT;
-    while space < n {
-        space *= MERKLE_FANOUT;
-        digits += 1;
-    }
-
-    let mut keys = Vec::with_capacity(d);
-    for ordinal in 0..space {
-        let rank = reversed_base16(ordinal, digits);
-        if rank < n {
-            keys.push(rank as u64);
-            if keys.len() == d {
-                break;
-            }
-        }
-    }
-    assert_eq!(keys.len(), d, "max-spread permutation did not cover d keys");
-    keys.sort_unstable();
-    keys
-}
-
-fn divergent_keys(n: usize, d: usize, profile: Profile, seed: u64) -> Vec<u64> {
-    assert!(d <= n, "d must not exceed n");
-    if d == 0 {
-        return Vec::new();
-    }
-
-    let keys = match profile {
-        Profile::Contiguous => contiguous_keys(n, d),
-        Profile::Clustered4 => clustered_keys(n, d, 4),
-        Profile::Clustered16 => clustered_keys(n, d, 16),
-        Profile::UniformRandom => random_keys(n, d, seed),
-        Profile::EvenlySpaced => evenly_spaced_keys(n, d),
-        Profile::MaxSpread => max_spread_keys(n, d),
-    };
-    assert_eq!(keys.len(), d);
-    assert!(keys.windows(2).all(|window| window[0] < window[1]));
-    keys
-}
-
-fn corpus(n: usize, d: usize, profile: Profile, seed: u64) -> Corpus {
-    let expected_diff = divergent_keys(n, d, profile, seed);
-    let changed: BTreeSet<_> = expected_diff.iter().copied().collect();
-    let left_rows: Vec<_> = (0..n as u64).map(|key| (key, base_digest(key))).collect();
-    let right_rows = left_rows
-        .iter()
-        .map(|&(key, digest)| {
-            if changed.contains(&key) {
-                (key, changed_digest(key))
-            } else {
-                (key, digest)
-            }
-        })
-        .collect();
-    Corpus {
-        expected_diff,
-        left_rows,
-        right_rows,
-    }
 }
 
 fn fingerprint_map(rows: &[(u64, u64)]) -> FingerprintTreeMap<u64, u64> {
@@ -611,6 +426,63 @@ fn summarize(values: &[usize]) -> Summary {
 }
 
 fn print_case(n: usize, d: usize, profile: Profile, seed: u64, case: &CaseResult) {
+    let workload = format!("n={n}-d={d}-{profile}-symbol=16-fanout=16");
+    let revision = env::var("RECONCILE_BENCH_REVISION").unwrap_or_default();
+    let arms = [
+        (
+            "rbsr-ftm",
+            "rbsr",
+            revision.as_str(),
+            case.rbsr_setup,
+            case.rbsr_elapsed,
+            rbsr_bytes(&case.rbsr),
+        ),
+        (
+            "riblt",
+            "do-riblt",
+            "1.0.2",
+            case.riblt.setup,
+            case.riblt.report.elapsed,
+            case.riblt.report.bytes,
+        ),
+        (
+            "merkle",
+            "positional-merkle",
+            revision.as_str(),
+            case.merkle_setup,
+            case.merkle.report.elapsed,
+            case.merkle.report.bytes,
+        ),
+    ]
+    .into_iter()
+    .map(|(id, implementation, version, setup, session, bytes)| {
+        Arm::new(
+            id,
+            implementation,
+            version,
+            vec![
+                elapsed(
+                    LifecyclePhase::InitialArchitectureBuild,
+                    CostOwner::Addon,
+                    setup,
+                ),
+                elapsed(LifecyclePhase::SessionWork, CostOwner::Protocol, session),
+                protocol_bytes(bytes, &format!("{id}-source-byte-model"), &workload),
+            ],
+        )
+    })
+    .collect();
+    write_case_from_env(
+        Case {
+            target: "state-repair-comparison",
+            workload: &workload,
+            seed,
+            records: [("left".to_owned(), n), ("right".to_owned(), n)].into(),
+            symmetric_difference: Some(2 * d),
+        },
+        arms,
+    );
+
     println!(
         "[state-repair-case] n={n} d={d} profile={profile} seed={seed} symbol={SYMBOL_BYTES}B fanout={MERKLE_FANOUT} | RBSR bytes={} ranges={} idlist={} time={:.3}ms | RIBLT bytes={} coded={} time={:.3}ms | Merkle bytes={} hashes={} rounds={} time={:.3}ms",
         rbsr_bytes(&case.rbsr),

@@ -25,15 +25,16 @@
 //
 // Run with `cargo bench --bench state_repair_mutations`.
 
+use devkit::experiment::producer::{elapsed, protocol_bytes, write_case_from_env, Arm, Case};
+use devkit::experiment::{CostOwner, LifecyclePhase};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
-use std::fmt;
 use std::time::{Duration, Instant};
 
+use devkit::corpus::mutation::{corpus, Corpus, Scenario};
 use devkit::protocol_cost::{reconcile, Cost};
 use do_riblt::{Decoder, Encoder, Peeled, Symbol};
 use rand::rngs::StdRng;
-use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut};
 use rsos::FingerprintTreeMap;
@@ -49,40 +50,6 @@ const MERKLE_HASH_BYTES: usize = 32;
 const MERKLE_PREFIX_BYTES: usize = 9; // depth + u64 prefix
 const RADIX_DEPTH: usize = 16;
 const SESSION_SEED: u64 = 42;
-
-#[derive(Clone, Copy, Debug)]
-enum Scenario {
-    UpdateRandom,
-    DeleteRandom,
-    InsertInterleaved,
-    InsertOutsideRange,
-    BalancedInsertDelete,
-    MixedAutonomous,
-}
-
-impl Scenario {
-    const ALL: [Self; 6] = [
-        Self::UpdateRandom,
-        Self::DeleteRandom,
-        Self::InsertInterleaved,
-        Self::InsertOutsideRange,
-        Self::BalancedInsertDelete,
-        Self::MixedAutonomous,
-    ];
-}
-
-impl fmt::Display for Scenario {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::UpdateRandom => "update-random",
-            Self::DeleteRandom => "delete-random",
-            Self::InsertInterleaved => "insert-interleaved",
-            Self::InsertOutsideRange => "insert-outside-range",
-            Self::BalancedInsertDelete => "balanced-insert-delete",
-            Self::MixedAutonomous => "mixed-autonomous",
-        })
-    }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 struct KvSymbol {
@@ -104,13 +71,6 @@ impl Symbol<SYMBOL_BYTES> for KvSymbol {
             digest: u64::from_le_bytes(bytes[8..].try_into().unwrap()),
         }
     }
-}
-
-struct Corpus {
-    left: Vec<(u64, u64)>,
-    right: Vec<(u64, u64)>,
-    expected_diff: Vec<u64>,
-    set_difference_symbols: usize,
 }
 
 struct RadixMerkle {
@@ -163,126 +123,6 @@ fn divergence_sweep() -> Vec<usize> {
                 .collect()
         },
     )
-}
-
-fn base_digest(key: u64) -> u64 {
-    key.wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(17) ^ 0xd6e8_feb8_6659_fd93
-}
-
-fn changed_digest(key: u64, variant: u64) -> u64 {
-    base_digest(key).wrapping_add(variant.wrapping_mul(2).wrapping_add(1))
-}
-
-fn baseline(n: usize) -> Vec<(u64, u64)> {
-    (0..n)
-        .map(|rank| {
-            let key = 2 * rank as u64;
-            (key, base_digest(key))
-        })
-        .collect()
-}
-
-fn sampled_ranks(n: usize, count: usize, seed: u64) -> Vec<usize> {
-    assert!(count <= n);
-    let mut ranks: Vec<_> = (0..n).collect();
-    let mut rng = StdRng::seed_from_u64(seed);
-    ranks.shuffle(&mut rng);
-    ranks.truncate(count);
-    ranks.sort_unstable();
-    ranks
-}
-
-fn diff_keys(left: &[(u64, u64)], right: &[(u64, u64)]) -> Vec<u64> {
-    let left: BTreeMap<_, _> = left.iter().copied().collect();
-    let right: BTreeMap<_, _> = right.iter().copied().collect();
-    left.keys()
-        .chain(right.keys())
-        .copied()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .filter(|key| left.get(key) != right.get(key))
-        .collect()
-}
-
-fn set_difference_symbols(left: &[(u64, u64)], right: &[(u64, u64)]) -> usize {
-    let left: BTreeSet<_> = left.iter().copied().collect();
-    let right: BTreeSet<_> = right.iter().copied().collect();
-    left.symmetric_difference(&right).count()
-}
-
-fn corpus(n: usize, d: usize, scenario: Scenario, seed: u64) -> Corpus {
-    assert!(d <= n, "d must not exceed baseline n");
-    let base = baseline(n);
-    let mut left: BTreeMap<_, _> = base.iter().copied().collect();
-    let mut right = left.clone();
-    let ranks = sampled_ranks(n, d, seed ^ scenario as u64);
-
-    match scenario {
-        Scenario::UpdateRandom => {
-            for &rank in &ranks {
-                let key = 2 * rank as u64;
-                right.insert(key, changed_digest(key, rank as u64 + 1));
-            }
-        }
-        Scenario::DeleteRandom => {
-            for &rank in &ranks {
-                right.remove(&(2 * rank as u64));
-            }
-        }
-        Scenario::InsertInterleaved => {
-            for &rank in &ranks {
-                let key = 2 * rank as u64 + 1;
-                right.insert(key, base_digest(key));
-            }
-        }
-        Scenario::InsertOutsideRange => {
-            for ordinal in 0..d {
-                let key = 2 * n as u64 + 1 + 2 * ordinal as u64;
-                right.insert(key, base_digest(key));
-            }
-        }
-        Scenario::BalancedInsertDelete => {
-            let deletes = d / 2;
-            for &rank in &ranks[..deletes] {
-                left.remove(&(2 * rank as u64));
-            }
-            for &rank in &ranks[deletes..] {
-                let key = 2 * rank as u64 + 1;
-                right.insert(key, base_digest(key));
-            }
-        }
-        Scenario::MixedAutonomous => {
-            let a = d / 3;
-            let b = 2 * d / 3;
-            for &rank in &ranks[..a] {
-                let key = 2 * rank as u64;
-                left.insert(key, changed_digest(key, rank as u64 + 1));
-            }
-            for &rank in &ranks[a..b] {
-                left.remove(&(2 * rank as u64));
-            }
-            for &rank in &ranks[b..] {
-                let key = 2 * rank as u64 + 1;
-                right.insert(key, changed_digest(key, rank as u64 + 1));
-            }
-        }
-    }
-
-    let left: Vec<_> = left.into_iter().collect();
-    let right: Vec<_> = right.into_iter().collect();
-    let expected_diff = diff_keys(&left, &right);
-    assert_eq!(
-        expected_diff.len(),
-        d,
-        "business-level divergence must stay fixed at d"
-    );
-
-    Corpus {
-        set_difference_symbols: set_difference_symbols(&left, &right),
-        left,
-        right,
-        expected_diff,
-    }
 }
 
 fn fingerprint_map(rows: &[(u64, u64)]) -> FingerprintTreeMap<u64, u64> {
@@ -512,6 +352,66 @@ fn run_case(n: usize, d: usize, scenario: Scenario, seed: u64) -> (Corpus, CaseR
     let (merkle, merkle_diff) = merkle_report(&left_merkle, &right_merkle);
     assert_eq!(merkle_diff, corpus.expected_diff);
 
+    let workload = format!("n={n}-d={d}-{scenario}-symbol=16-radix=16");
+    let revision = env::var("RECONCILE_BENCH_REVISION").unwrap_or_default();
+    let arms = [
+        (
+            "rbsr-ftm",
+            "rbsr",
+            revision.as_str(),
+            rbsr_setup,
+            rbsr_time,
+            rbsr_bytes(&rbsr),
+        ),
+        (
+            "riblt",
+            "do-riblt",
+            "1.0.2",
+            riblt_setup,
+            riblt.elapsed,
+            riblt.bytes,
+        ),
+        (
+            "merkle",
+            "radix-merkle",
+            revision.as_str(),
+            merkle_setup,
+            merkle.elapsed,
+            merkle.bytes,
+        ),
+    ]
+    .into_iter()
+    .map(|(id, implementation, version, setup, session, bytes)| {
+        Arm::new(
+            id,
+            implementation,
+            version,
+            vec![
+                elapsed(
+                    LifecyclePhase::InitialArchitectureBuild,
+                    CostOwner::Addon,
+                    setup,
+                ),
+                elapsed(LifecyclePhase::SessionWork, CostOwner::Protocol, session),
+                protocol_bytes(bytes, &format!("{id}-source-byte-model"), &workload),
+            ],
+        )
+    })
+    .collect();
+    write_case_from_env(
+        Case {
+            target: "state-repair-mutations",
+            workload: &workload,
+            seed,
+            records: [
+                ("left".to_owned(), corpus.left.len()),
+                ("right".to_owned(), corpus.right.len()),
+            ]
+            .into(),
+            symmetric_difference: Some(corpus.set_difference_symbols),
+        },
+        arms,
+    );
     (
         corpus,
         CaseResult {
