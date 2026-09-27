@@ -330,8 +330,7 @@ pub fn estimate(exchange: Exchange, link: LinkProfile, transport: TransportProfi
             let success = (1.0 - link.packet_loss).powi(average_packets as i32);
             let attempts = 1.0 / success;
             let loss_recovery = base_propagation * (attempts - 1.0);
-            let any_reordered =
-                1.0 - (1.0 - link.packet_reorder).powi(average_packets as i32);
+            let any_reordered = 1.0 - (1.0 - link.packet_reorder).powi(average_packets as i32);
             // A reordered datagram is displaced by one additional one-way link delay in netem.
             // Only the successful attempt determines completion, so this term is not multiplied by
             // the number of loss retries.
@@ -560,10 +559,7 @@ mod tests {
         assert_close(estimate.propagation_ms, 10.0);
         assert_close(estimate.loss_recovery_ms, completion - 10.0);
         assert_close(estimate.reorder_wait_ms, 0.0);
-        assert_close(
-            estimate.total_ms,
-            completion + estimate.serialization_ms,
-        );
+        assert_close(estimate.total_ms, completion + estimate.serialization_ms);
     }
 
     #[test]
