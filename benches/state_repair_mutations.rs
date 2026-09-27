@@ -170,7 +170,7 @@ fn base_digest(key: u64) -> u64 {
 }
 
 fn changed_digest(key: u64, variant: u64) -> u64 {
-    base_digest(key) ^ 0xa5a5_5a5a_d3c3_b4b4 ^ variant.wrapping_mul(0x517c_c1b7_2722_0a95)
+    base_digest(key).wrapping_add(variant.wrapping_mul(2).wrapping_add(1))
 }
 
 fn baseline(n: usize) -> Vec<(u64, u64)> {
@@ -221,7 +221,7 @@ fn corpus(n: usize, d: usize, scenario: Scenario, seed: u64) -> Corpus {
         Scenario::UpdateRandom => {
             for &rank in &ranks {
                 let key = 2 * rank as u64;
-                right.insert(key, changed_digest(key, 1));
+                right.insert(key, changed_digest(key, rank as u64 + 1));
             }
         }
         Scenario::DeleteRandom => {
@@ -256,14 +256,14 @@ fn corpus(n: usize, d: usize, scenario: Scenario, seed: u64) -> Corpus {
             let b = 2 * d / 3;
             for &rank in &ranks[..a] {
                 let key = 2 * rank as u64;
-                left.insert(key, changed_digest(key, 11));
+                left.insert(key, changed_digest(key, rank as u64 + 1));
             }
             for &rank in &ranks[a..b] {
                 left.remove(&(2 * rank as u64));
             }
             for &rank in &ranks[b..] {
                 let key = 2 * rank as u64 + 1;
-                right.insert(key, changed_digest(key, 29));
+                right.insert(key, changed_digest(key, rank as u64 + 1));
             }
         }
     }
