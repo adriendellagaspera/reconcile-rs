@@ -9,6 +9,7 @@ Benchmarks measure the code that ships in this repository. Results are not versi
 | protocol | RBSR reconciliation cost |
 | history_independent_catchup | RBSR catch-up cost vs superseded mutation history at fixed current state |
 | runtime_history_independent_catchup | ReplicatedMap partition catch-up and causal-stability GC |
+| state_repair_comparison | Prepared-state RBSR vs Rateless IBLT vs Merkle divergence discovery |
 | contention | concurrent write cost |
 | snapshot_write_amplification | snapshot write/restart cost |
 
@@ -36,3 +37,13 @@ are `n=10000`, `d=100`, and `t={0,100,1000}`; override them with
 `RECONCILE_RUNTIME_HISTORY_N`, `RECONCILE_RUNTIME_HISTORY_D`, and
 `RECONCILE_RUNTIME_TOMBSTONES`. Larger tombstone sweeps are opt-in because causal-stability
 acknowledgment drainage can dominate wall time.
+
+The `state_repair_comparison` target compares three prepared-state repair strategies over the same
+sorted `u64 -> u64 digest` manifest. Both replicas contain the same keys and exactly `d` values
+differ, which deliberately gives the Merkle baseline an aligned-key workload. It reports discovery
+metadata only; application payload transfer is excluded. RBSR uses the repository's counted
+protocol driver and prices each enumerated `(key,digest)` symbol at 16 bytes. Rateless IBLT uses
+the external `riblt` crate and reports exact bincode bytes plus coded-symbol count. The Merkle
+baseline uses BLAKE3, fanout 16, and reports hash/request/symbol bytes. Defaults are `n=100000` and
+`d={1,10,100,1000,10000}`; override them with `RECONCILE_STATE_REPAIR_N` and
+`RECONCILE_STATE_REPAIR_D`.
