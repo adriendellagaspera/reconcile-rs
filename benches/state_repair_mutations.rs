@@ -28,9 +28,7 @@
 use devkit::experiment::producer::{
     elapsed, protocol_bytes, write_case_from_env, write_repair_trace_from_env, Arm, Case,
 };
-use devkit::experiment::{
-    CostOwner, LifecyclePhase, RepairStage, RepairStrategy, RepairTrace,
-};
+use devkit::experiment::{CostOwner, LifecyclePhase, RepairStage, RepairStrategy, RepairTrace};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::time::{Duration, Instant};
@@ -95,7 +93,6 @@ struct CaseResult {
     rbsr_setup: Duration,
     rbsr: Cost,
     rbsr_time: Duration,
-    rbsr_trace: RepairTrace,
     riblt_setup: Duration,
     riblt: Report,
     merkle_setup: Duration,
@@ -493,7 +490,6 @@ fn run_case(n: usize, d: usize, scenario: Scenario, seed: u64) -> (Corpus, CaseR
             rbsr_setup,
             rbsr,
             rbsr_time,
-            rbsr_trace,
             riblt_setup,
             riblt,
             merkle_setup,
