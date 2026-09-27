@@ -1,5 +1,7 @@
 use super::*;
 
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn local_measurements_preserve_boundaries_and_round_trip() {
     let report = Case {
@@ -58,6 +60,7 @@ fn local_measurements_preserve_boundaries_and_round_trip() {
 
 #[test]
 fn environment_writer_creates_the_declared_artifact() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let directory =
         std::env::temp_dir().join(format!("reconcile-devkit-producer-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&directory);
