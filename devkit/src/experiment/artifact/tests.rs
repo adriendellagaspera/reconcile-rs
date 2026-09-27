@@ -272,7 +272,18 @@ fn compatible_prepared_states_deduplicate_and_conflicts_are_rejected() {
         id: "prepared".to_owned(),
         architecture_id: left.architectures[0].id.clone(),
         logical_view_id: left.experiment.logical_view.id.clone(),
-        build_costs: vec![],
+        build_costs: vec![CostRecord {
+            phase: LifecyclePhase::InitialArchitectureBuild,
+            owner: CostOwner::Addon,
+            metrics: vec![CostMetric {
+                kind: MetricKind::IoReadBytes,
+                peer: None,
+                measurement: Measurement::Missing {
+                    unit: Unit::Bytes,
+                    reason: MissingReason::NotMeasured,
+                },
+            }],
+        }],
     };
     left.prepared_states.push(state.clone());
 
