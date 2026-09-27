@@ -2,7 +2,7 @@ name: main
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "bench/riblt-preparation" ]
   pull_request:
   merge_group:
 
@@ -172,6 +172,14 @@ jobs:
     - run: cargo bench --no-run
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+    - name: Measure RIBLT preparation tradeoffs
+      run: cargo bench --bench riblt_preparation
+      env:
+        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+        RECONCILE_RIBLT_N: "100000"
+        RECONCILE_RIBLT_D: "1000"
+        RECONCILE_RIBLT_PEERS: "1,2,4,8"
+        RECONCILE_RIBLT_SEED: "42"
 
   package:
     needs: changes
