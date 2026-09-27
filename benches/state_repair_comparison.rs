@@ -37,7 +37,7 @@ use devkit::protocol_cost::{reconcile, Cost};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rbsr::{FanOut, FixedFanOut};
-use riblt::{RatelessIBLT, Symbol, UnmanagedRatelessIBLT};
+use do_riblt::{Decoder, Encoder, Peeled, Symbol};
 use rsos::FingerprintTreeMap;
 
 const DEFAULT_N: usize = 100_000;
@@ -45,6 +45,7 @@ const DEFAULT_D: &[usize] = &[1, 10, 100, 1_000, 10_000];
 const MERKLE_FANOUT: usize = 16;
 const SESSION_SEED: u64 = 42;
 const SYMBOL_BYTES: usize = 16;
+const RIBLT_CODED_SYMBOL_BYTES: usize = SYMBOL_BYTES + 8;
 const MERKLE_HASH_BYTES: usize = 32;
 const MERKLE_INDEX_BYTES: usize = 8;
 
@@ -54,18 +55,15 @@ struct KvSymbol {
     digest: u64,
 }
 
-impl Symbol for KvSymbol {
-    const BYTE_ARRAY_LENGTH: usize = SYMBOL_BYTES;
-
-    fn encode_to_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![0; Self::BYTE_ARRAY_LENGTH];
+impl Symbol<SYMBOL_BYTES> for KvSymbol {
+    fn to_bytes(&self) -> [u8; SYMBOL_BYTES] {
+        let mut bytes = [0; SYMBOL_BYTES];
         bytes[..8].copy_from_slice(&self.key.to_le_bytes());
         bytes[8..].copy_from_slice(&self.digest.to_le_bytes());
         bytes
     }
 
-    fn decode_from_bytes(bytes: &Vec<u8>) -> Self {
-        assert_eq!(bytes.len(), Self::BYTE_ARRAY_LENGTH);
+    fn from_bytes(bytes: &[u8; SYMBOL_BYTES]) -> Self {
         Self {
             key: u64::from_le_bytes(bytes[..8].try_into().unwrap()),
             digest: u64::from_le_bytes(bytes[8..].try_into().unwrap()),
@@ -95,7 +93,6 @@ struct Report {
 
 struct RibltReport {
     report: Report,
-    logical_bytes: usize,
     recovered_keys: Vec<u64>,
 }
 
@@ -130,9 +127,7 @@ fn divergence_sweep() -> Vec<usize> {
 }
 
 fn base_digest(key: u64) -> u64 {
-    key.wrapping_mul(0x9e37_79b9_7f4a_7c15)
-        .rotate_left(17)
-        ^ 0xd6e8_feb8_6659_fd93
+    key.wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(17) ^ 0xd6e8_feb8_6659_fd93
 }
 
 fn changed_digest(key: u64) -> u64 {
@@ -208,43 +203,33 @@ fn rbsr_report(
 
 fn riblt_report(left: Vec<KvSymbol>, right: Vec<KvSymbol>) -> RibltReport {
     let symbol_count = left.len().max(right.len());
-    let mut local = RatelessIBLT::new(left);
-    let mut remote = RatelessIBLT::new(right);
-    let mut received: UnmanagedRatelessIBLT<KvSymbol> = UnmanagedRatelessIBLT::new();
+    let mut encoder = Encoder::<SYMBOL_BYTES>::new(right.into_iter());
+    let mut decoder = Decoder::<SYMBOL_BYTES, KvSymbol>::new(left.into_iter());
     let max_symbols = 1_024 + 2 * symbol_count;
 
     let started = Instant::now();
-    let mut serialized_bytes = 0;
-    let mut logical_bytes = 0;
+    let mut recovered = Vec::new();
     for index in 0..max_symbols {
-        let coded = remote.get_coded_symbol(index);
-        serialized_bytes += bincode::serialize(&coded)
-            .expect("serializing a RIBLT coded symbol")
-            .len();
-        logical_bytes += SYMBOL_BYTES + 8 + 8;
-        received.add_coded_symbol(&coded);
-
-        let mut collapsed = local.collapse(&received);
-        let peeled = collapsed.peel_all_symbols();
-        if collapsed.is_empty() {
-            let mut recovered_keys: Vec<_> = peeled
+        let coded = encoder.next().expect("RIBLT encoder is rateless");
+        let (done, peeled) = decoder.next_symbol(coded);
+        recovered.extend(peeled);
+        if done {
+            let mut recovered_keys: Vec<_> = recovered
                 .into_iter()
-                .filter_map(|item| match item {
-                    riblt::Local(symbol) | riblt::Remote(symbol) => Some(symbol.key),
-                    riblt::NotPeelable => None,
+                .map(|item| match item {
+                    Peeled::MissingLocal(symbol) | Peeled::MissingRemote(symbol) => symbol.key,
                 })
                 .collect();
             recovered_keys.sort_unstable();
             recovered_keys.dedup();
             return RibltReport {
                 report: Report {
-                    bytes: serialized_bytes,
+                    bytes: (index + 1) * RIBLT_CODED_SYMBOL_BYTES,
                     units: index + 1,
                     messages: 1,
                     rounds: 1,
                     elapsed: started.elapsed(),
                 },
-                logical_bytes,
                 recovered_keys,
             };
         }
@@ -270,11 +255,10 @@ fn parent_hash(children: &[[u8; MERKLE_HASH_BYTES]]) -> [u8; MERKLE_HASH_BYTES] 
 impl MerkleTree {
     fn new(rows: &[(u64, u64)]) -> Self {
         assert!(!rows.is_empty(), "Merkle corpus must not be empty");
-        let mut levels = vec![
-            rows.iter()
-                .map(|&(key, digest)| leaf_hash(key, digest))
-                .collect::<Vec<_>>(),
-        ];
+        let mut levels = vec![rows
+            .iter()
+            .map(|&(key, digest)| leaf_hash(key, digest))
+            .collect::<Vec<_>>()];
         while levels.last().unwrap().len() > 1 {
             let parent = levels
                 .last()
@@ -376,7 +360,7 @@ fn main() {
         "[state-repair] n={n}; same aligned key universe; value digest differs on d keys; payload transfer excluded"
     );
     println!(
-        "[state-repair] RIBLT bytes are exact bincode coded-symbol bytes; RBSR prices each enumerated row symbol at {SYMBOL_BYTES} B; Merkle uses {MERKLE_HASH_BYTES} B BLAKE3 hashes and fanout {MERKLE_FANOUT}"
+        "[state-repair] RIBLT uses fixed {RIBLT_CODED_SYMBOL_BYTES} B coded-symbol payloads; RBSR prices each enumerated row symbol at {SYMBOL_BYTES} B; Merkle uses {MERKLE_HASH_BYTES} B BLAKE3 hashes and fanout {MERKLE_FANOUT}"
     );
 
     for d in sweep {
@@ -410,13 +394,12 @@ fn main() {
         );
 
         println!(
-            "[state-repair] d={d:>6} | RBSR bytes={rbsr_bytes:>9}, msg={:>3}, ranges={:>7}, idlist={:>7}, time={:>9.3} ms | RIBLT bytes={:>9} (logical={:>9}), coded={:>7}, time={:>9.3} ms | Merkle bytes={:>9}, hashes={:>7}, msg={:>3}, rounds={:>2}, time={:>9.3} ms",
+            "[state-repair] d={d:>6} | RBSR bytes={rbsr_bytes:>9}, msg={:>3}, ranges={:>7}, idlist={:>7}, time={:>9.3} ms | RIBLT bytes={:>9}, coded={:>7}, time={:>9.3} ms | Merkle bytes={:>9}, hashes={:>7}, msg={:>3}, rounds={:>2}, time={:>9.3} ms",
             rbsr.messages,
             rbsr.ranges,
             rbsr.enumerated_elements,
             rbsr_elapsed.as_secs_f64() * 1_000.0,
             riblt.report.bytes,
-            riblt.logical_bytes,
             riblt.report.units,
             riblt.report.elapsed.as_secs_f64() * 1_000.0,
             merkle.report.bytes,
