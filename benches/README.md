@@ -39,11 +39,15 @@ are `n=10000`, `d=100`, and `t={0,100,1000}`; override them with
 acknowledgment drainage can dominate wall time.
 
 The `state_repair_comparison` target compares three prepared-state repair strategies over the same
-sorted `u64 -> u64 digest` manifest. Both replicas contain the same keys and exactly `d` values
-differ, which deliberately gives the Merkle baseline an aligned-key workload. It reports discovery
-metadata only; application payload transfer is excluded. RBSR uses the repository's counted
-protocol driver and prices each enumerated `(key,digest)` symbol at 16 bytes. Rateless IBLT uses
-the external `do-riblt` crate and reports its fixed 24-byte coded-symbol payload plus coded-symbol count. The Merkle
-baseline uses BLAKE3, fanout 16, and reports hash/request/symbol bytes. Each strategy also reports bootstrap/preparation time separately from prepared-state repair time. Defaults are `n=100000` and
-`d={1,10,100,1000,10000}`; override them with `RECONCILE_STATE_REPAIR_N` and
-`RECONCILE_STATE_REPAIR_D`.
+sorted `u64 -> u64 digest` manifest. It varies both divergence cardinality and placement while
+keeping the key universe aligned: contiguous, 4/16 compact clusters, uniform random, evenly spaced,
+and a deterministic `max-spread` stress profile. `max-spread` is not a claimed formal worst case.
+Uniform-random runs use configurable deterministic seeds and report min/p50/mean/p90/max bytes.
+The synchronized `d=0` control is included; RIBLT uses a 32-byte state-digest equality preflight
+before its rateless stream. RBSR prices each enumerated `(key,digest)` symbol at 16 bytes, RIBLT
+uses the external `do-riblt` crate with 24-byte coded symbols, and the Merkle baseline uses BLAKE3
+with fanout 16. Application payload transfer is excluded, and setup time remains separate from
+prepared-state repair time. Defaults are `n=100000`, `d={0,1,10,100,1000,10000}`, and three
+uniform-random seeds. Override them with `RECONCILE_STATE_REPAIR_N`,
+`RECONCILE_STATE_REPAIR_D`, `RECONCILE_STATE_REPAIR_PROFILES`,
+`RECONCILE_STATE_REPAIR_RANDOM_SEEDS`, and `RECONCILE_STATE_REPAIR_SEED_BASE`.
