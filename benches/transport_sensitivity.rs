@@ -41,11 +41,15 @@ struct TraceInput {
 }
 
 #[derive(Clone, Copy)]
+struct FiniteFlight {
+    forward: bool,
+    app_bytes: usize,
+}
+
 struct FiniteShape {
     forward_app_bytes: usize,
     reverse_app_bytes: usize,
-    interaction_rtts: f64,
-    logical_messages: usize,
+    flights: Vec<FiniteFlight>,
 }
 
 const LINKS: &[LinkProfile] = &[
@@ -234,42 +238,53 @@ fn one_payload_variant(bytes: &[u64]) -> usize {
 fn finite_shape(trace: &RepairTrace) -> FiniteShape {
     let mut forward = 0usize;
     let mut reverse = 0usize;
-    let mut rtts = 0.0;
-    let mut messages = 0usize;
+    let mut flights = Vec::new();
 
     match trace.strategy {
         RepairStrategy::Rbsr => {
-            for (index, stage) in trace.stages.iter().enumerate() {
+            // A round's enumeration travels back with the next round's refined child ranges.
+            // Reconstruct those causal one-way flights explicitly so MTU rounding/retry is applied
+            // per flight instead of once to aggregate session bytes.
+            let mut pending_enumeration = 0usize;
+            for stage in &trace.stages {
                 let RepairStage::RbsrRound {
                     responder,
                     refinement_bytes,
                     enumerated_bytes,
-                    frameable_outputs,
                     ..
                 } = stage
                 else {
                     panic!("RBSR trace contains a non-RBSR stage");
                 };
+                let refinement = *refinement_bytes as usize;
                 let enumeration = one_payload_variant(enumerated_bytes);
-                match responder {
-                    PeerSide::Right => {
-                        forward += *refinement_bytes as usize;
-                        reverse += enumeration;
-                    }
-                    PeerSide::Left => {
-                        reverse += *refinement_bytes as usize;
-                        forward += enumeration;
-                    }
+                let forward_flight = matches!(responder, PeerSide::Right);
+                let bytes = refinement + pending_enumeration;
+                if bytes > 0 {
+                    flights.push(FiniteFlight {
+                        forward: forward_flight,
+                        app_bytes: bytes,
+                    });
                 }
-                rtts += 0.5;
-                messages += (*frameable_outputs as usize).max(1);
+                if forward_flight {
+                    forward += refinement;
+                    reverse += enumeration;
+                } else {
+                    reverse += refinement;
+                    forward += enumeration;
+                }
+                pending_enumeration = enumeration;
+            }
 
-                // An enumeration in the final round still has to travel back to the requester.
-                // Earlier enumeration payload can travel alongside the next round's refined
-                // child ranges, which already account for that return half-RTT.
-                if index + 1 == trace.stages.len() && enumeration > 0 {
-                    rtts += 0.5;
-                }
+            if pending_enumeration > 0 {
+                let last_responder = trace.stages.last().and_then(|stage| match stage {
+                    RepairStage::RbsrRound { responder, .. } => Some(*responder),
+                    _ => None,
+                });
+                flights.push(FiniteFlight {
+                    forward: matches!(last_responder, Some(PeerSide::Left)),
+                    app_bytes: pending_enumeration,
+                });
             }
         }
         RepairStrategy::Merkle => {
@@ -289,12 +304,18 @@ fn finite_shape(trace: &RepairTrace) -> FiniteShape {
                         let response = *response_bytes as usize;
                         forward += request;
                         reverse += response;
-                        messages += usize::from(request > 0) + usize::from(response > 0);
-                        rtts += match (request > 0, response > 0) {
-                            (true, true) => 1.0,
-                            (true, false) | (false, true) => 0.5,
-                            (false, false) => 0.0,
-                        };
+                        if request > 0 {
+                            flights.push(FiniteFlight {
+                                forward: true,
+                                app_bytes: request,
+                            });
+                        }
+                        if response > 0 {
+                            flights.push(FiniteFlight {
+                                forward: false,
+                                app_bytes: response,
+                            });
+                        }
                     }
                     _ => panic!("Merkle trace contains a non-Merkle stage"),
                 }
@@ -306,8 +327,7 @@ fn finite_shape(trace: &RepairTrace) -> FiniteShape {
     FiniteShape {
         forward_app_bytes: forward,
         reverse_app_bytes: reverse,
-        interaction_rtts: rtts,
-        logical_messages: messages.max(1),
+        flights,
     }
 }
 
@@ -332,16 +352,28 @@ fn handshake_ms(link: LinkProfile, transport: TransportProfile) -> f64 {
 
 fn print_finite(input: &TraceInput, link: LinkProfile, transport: TransportProfile) {
     let shape = finite_shape(&input.trace);
-    let network = estimate(
-        Exchange {
-            forward_app_bytes: shape.forward_app_bytes,
-            reverse_app_bytes: shape.reverse_app_bytes,
-            interaction_rtts: shape.interaction_rtts,
-            logical_messages: shape.logical_messages,
-        },
-        link,
-        transport,
-    );
+    let bare_transport = no_handshake(transport);
+    let mut network = Estimate::default();
+    for flight in &shape.flights {
+        let flight_link = if flight.forward { link } else { swap_link(link) };
+        network = add_estimates(
+            network,
+            estimate(
+                Exchange {
+                    forward_app_bytes: flight.app_bytes,
+                    reverse_app_bytes: 0,
+                    interaction_rtts: 0.5,
+                    logical_messages: 1,
+                },
+                flight_link,
+                bare_transport,
+            ),
+        );
+    }
+    network.handshake_ms = handshake_ms(link, transport);
+    network.total_ms += network.handshake_ms;
+    let interaction_rtts = shape.flights.len() as f64 * 0.5;
+
     println!(
         "[transport] workload={} arm={} strategy={:?} link={} transport={} forward_app={} reverse_app={} app_bytes={} framed_bytes={} expected_wire={:.0} packets={} interaction_rtts={:.1} logical_messages={} handshake={:.2}ms propagation={:.2}ms serialization={:.2}ms loss={:.2}ms reorder={:.2}ms network={:.2}ms cpu={:.3}ms additive_total={:.2}ms",
         input.workload,
@@ -355,8 +387,8 @@ fn print_finite(input: &TraceInput, link: LinkProfile, transport: TransportProfi
         network.framed_bytes,
         network.expected_wire_bytes,
         network.packets,
-        shape.interaction_rtts,
-        shape.logical_messages,
+        interaction_rtts,
+        shape.flights.len(),
         network.handshake_ms,
         network.propagation_ms,
         network.serialization_ms,
@@ -392,6 +424,7 @@ fn add_estimates(mut left: Estimate, right: Estimate) -> Estimate {
     left.expected_wire_bytes += right.expected_wire_bytes;
     left.packets += right.packets;
     left.retransmitted_bytes += right.retransmitted_bytes;
+    left.handshake_ms += right.handshake_ms;
     left.propagation_ms += right.propagation_ms;
     left.serialization_ms += right.serialization_ms;
     left.loss_recovery_ms += right.loss_recovery_ms;
