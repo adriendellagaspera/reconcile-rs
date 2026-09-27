@@ -172,7 +172,7 @@ jobs:
     - run: cargo bench --no-run
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-    - name: Measure generic transport sensitivity
+    - name: Generate structured repair traces
       run: |
         rm -rf /tmp/reconcile-transport-traces
         mkdir -p /tmp/reconcile-transport-traces
@@ -194,11 +194,13 @@ jobs:
         RECONCILE_MUTATION_D="100,1000" \
         RECONCILE_MUTATION_SEED=42 \
           cargo bench --bench state_repair_mutations
-
-        RECONCILE_TRANSPORT_TRACE_DIR=/tmp/reconcile-transport-traces \
-          cargo bench --bench transport_sensitivity
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+    - name: Measure generic transport sensitivity
+      run: cargo bench --bench transport_sensitivity
+      env:
+        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+        RECONCILE_TRANSPORT_TRACE_DIR: /tmp/reconcile-transport-traces
 
   package:
     needs: changes
