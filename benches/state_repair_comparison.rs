@@ -31,14 +31,18 @@
 //
 // Run with `cargo bench --bench state_repair_comparison`.
 
-use devkit::experiment::producer::{elapsed, protocol_bytes, write_case_from_env, Arm, Case};
-use devkit::experiment::{CostOwner, LifecyclePhase};
+use devkit::experiment::producer::{
+    elapsed, protocol_bytes, write_case_from_env, write_repair_trace_from_env, Arm, Case,
+};
+use devkit::experiment::{
+    CostOwner, LifecyclePhase, RepairStage, RepairStrategy, RepairTrace,
+};
 use std::collections::BTreeSet;
 use std::env;
 use std::time::{Duration, Instant};
 
 use devkit::corpus::placement::{corpus, Profile};
-use devkit::protocol_cost::{reconcile, Cost};
+use devkit::protocol_cost::{reconcile_traced, Cost};
 use do_riblt::{Decoder, Encoder, Peeled, Symbol};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -96,18 +100,21 @@ struct RibltReport {
     setup: Duration,
     report: Report,
     recovered_keys: Vec<u64>,
+    trace: RepairTrace,
 }
 
 struct MerkleReport {
     report: Report,
     hashes_sent: usize,
     recovered_keys: Vec<u64>,
+    trace: RepairTrace,
 }
 
 struct CaseResult {
     rbsr_setup: Duration,
     rbsr: Cost,
     rbsr_elapsed: Duration,
+    rbsr_trace: RepairTrace,
     riblt: RibltReport,
     merkle_setup: Duration,
     merkle: MerkleReport,
@@ -186,7 +193,7 @@ fn state_digest(rows: &[(u64, u64)]) -> [u8; STATE_DIGEST_BYTES] {
 fn rbsr_report(
     left: &FingerprintTreeMap<u64, u64>,
     right: &FingerprintTreeMap<u64, u64>,
-) -> (Cost, Duration, Vec<u64>) {
+) -> (Cost, Duration, Vec<u64>, RepairTrace) {
     let policy = FixedFanOut::new(FanOut::NEGENTROPY);
     let mut candidates = BTreeSet::new();
     let mut price = |key| {
@@ -195,13 +202,14 @@ fn rbsr_report(
     };
     let mut rng = StdRng::seed_from_u64(SESSION_SEED);
     let started = Instant::now();
-    let cost = reconcile(left, right, &policy, Some(&mut price), &mut rng);
+    let (cost, trace) = reconcile_traced(left, right, &policy, Some(&mut price), &mut rng);
     let elapsed = started.elapsed();
     let recovered = candidates
         .into_iter()
         .filter(|key| left.get(key) != right.get(key))
         .collect();
-    (cost, elapsed, recovered)
+    assert_eq!(trace.total_byte_variants(), vec![rbsr_bytes(&cost) as u64]);
+    (cost, elapsed, recovered, trace)
 }
 
 fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> RibltReport {
@@ -209,6 +217,12 @@ fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> RibltReport {
     let left_digest = state_digest(left);
     let right_digest = state_digest(right);
     if left_digest == right_digest {
+        let trace = RepairTrace::new(
+            RepairStrategy::Riblt,
+            vec![RepairStage::RibltEquality {
+                bytes: STATE_DIGEST_BYTES as u64,
+            }],
+        );
         return RibltReport {
             setup: setup_started.elapsed(),
             report: Report {
@@ -218,6 +232,7 @@ fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> RibltReport {
                 elapsed: Duration::ZERO,
             },
             recovered_keys: Vec::new(),
+            trace,
         };
     }
 
@@ -244,15 +259,32 @@ fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> RibltReport {
                 .collect();
             recovered_keys.sort_unstable();
             recovered_keys.dedup();
+            let coded_symbols = index + 1;
+            let bytes = STATE_DIGEST_BYTES + coded_symbols * RIBLT_CODED_SYMBOL_BYTES;
+            let trace = RepairTrace::new(
+                RepairStrategy::Riblt,
+                vec![
+                    RepairStage::RibltEquality {
+                        bytes: STATE_DIGEST_BYTES as u64,
+                    },
+                    RepairStage::RibltStream {
+                        coded_symbols: coded_symbols as u64,
+                        coded_symbol_bytes: RIBLT_CODED_SYMBOL_BYTES as u64,
+                    },
+                    RepairStage::RibltStopAck { bytes: 0 },
+                ],
+            );
+            assert_eq!(trace.total_byte_variants(), vec![bytes as u64]);
             return RibltReport {
                 setup,
                 report: Report {
-                    bytes: STATE_DIGEST_BYTES + (index + 1) * RIBLT_CODED_SYMBOL_BYTES,
-                    units: index + 1,
+                    bytes,
+                    units: coded_symbols,
                     rounds: 2,
                     elapsed: started.elapsed(),
                 },
                 recovered_keys,
+                trace,
             };
         }
     }
@@ -309,6 +341,13 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
     let mut bytes = MERKLE_HASH_BYTES;
     let mut hashes_sent = 1;
     let mut rounds = 1;
+    let mut stages = vec![RepairStage::MerkleExchange {
+        depth: 0,
+        request_prefixes: 0,
+        request_bytes: 0,
+        response_hashes: 1,
+        response_bytes: MERKLE_HASH_BYTES as u64,
+    }];
     let top = left.levels.len() - 1;
     let mut mismatching = if left.root() == right.root() {
         Vec::new()
@@ -321,28 +360,46 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
             break;
         }
 
-        bytes += mismatching.len() * MERKLE_INDEX_BYTES;
+        let request_prefixes = mismatching.len();
+        let request_bytes = request_prefixes * MERKLE_INDEX_BYTES;
+        bytes += request_bytes;
         let child_level = level - 1;
         let mut next = Vec::new();
+        let mut response_hashes = 0usize;
         for parent in &mismatching {
             let start = parent * MERKLE_FANOUT;
             let end = (start + MERKLE_FANOUT).min(right.levels[child_level].len());
             for child in start..end {
                 bytes += MERKLE_HASH_BYTES;
                 hashes_sent += 1;
+                response_hashes += 1;
                 if left.levels[child_level][child] != right.levels[child_level][child] {
                     next.push(child);
                 }
             }
         }
+        stages.push(RepairStage::MerkleExchange {
+            depth: child_level as u32,
+            request_prefixes: request_prefixes as u64,
+            request_bytes: request_bytes as u64,
+            response_hashes: response_hashes as u64,
+            response_bytes: (response_hashes * MERKLE_HASH_BYTES) as u64,
+        });
         rounds += 1;
         mismatching = next;
     }
 
     let mut recovered_keys = Vec::with_capacity(mismatching.len());
     if !mismatching.is_empty() {
-        bytes += mismatching.len() * MERKLE_INDEX_BYTES;
-        bytes += mismatching.len() * SYMBOL_BYTES;
+        let request_bytes = mismatching.len() * MERKLE_INDEX_BYTES;
+        let response_bytes = mismatching.len() * SYMBOL_BYTES;
+        bytes += request_bytes + response_bytes;
+        stages.push(RepairStage::MerkleFetch {
+            request_keys: mismatching.len() as u64,
+            request_bytes: request_bytes as u64,
+            returned_rows: mismatching.len() as u64,
+            response_bytes: response_bytes as u64,
+        });
         rounds += 1;
         for &index in &mismatching {
             assert_eq!(left.rows[index].0, right.rows[index].0);
@@ -350,6 +407,8 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
         }
     }
 
+    let trace = RepairTrace::new(RepairStrategy::Merkle, stages);
+    assert_eq!(trace.total_byte_variants(), vec![bytes as u64]);
     MerkleReport {
         report: Report {
             bytes,
@@ -359,6 +418,7 @@ fn merkle_report(left: &MerkleTree, right: &MerkleTree) -> MerkleReport {
         },
         hashes_sent,
         recovered_keys,
+        trace,
     }
 }
 
@@ -369,7 +429,8 @@ fn run_case(n: usize, d: usize, profile: Profile, seed: u64) -> CaseResult {
     let left_map = fingerprint_map(&corpus.left_rows);
     let right_map = fingerprint_map(&corpus.right_rows);
     let rbsr_setup = rbsr_setup_started.elapsed();
-    let (rbsr, rbsr_elapsed, rbsr_recovered) = rbsr_report(&left_map, &right_map);
+    let (rbsr, rbsr_elapsed, rbsr_recovered, rbsr_trace) =
+        rbsr_report(&left_map, &right_map);
     assert_eq!(
         rbsr_recovered, corpus.expected_diff,
         "RBSR recovered a different business-key set"
@@ -395,6 +456,7 @@ fn run_case(n: usize, d: usize, profile: Profile, seed: u64) -> CaseResult {
         rbsr_setup,
         rbsr,
         rbsr_elapsed,
+        rbsr_trace,
         riblt,
         merkle_setup,
         merkle,
@@ -481,6 +543,27 @@ fn print_case(n: usize, d: usize, profile: Profile, seed: u64, case: &CaseResult
             symmetric_difference: Some(2 * d),
         },
         arms,
+    );
+    write_repair_trace_from_env(
+        "state-repair-comparison",
+        &workload,
+        seed,
+        "rbsr-ftm",
+        &case.rbsr_trace,
+    );
+    write_repair_trace_from_env(
+        "state-repair-comparison",
+        &workload,
+        seed,
+        "riblt",
+        &case.riblt.trace,
+    );
+    write_repair_trace_from_env(
+        "state-repair-comparison",
+        &workload,
+        seed,
+        "merkle",
+        &case.merkle.trace,
     );
 
     println!(
