@@ -496,6 +496,7 @@ dependencies = [
  "bincode",
  "rand 0.8.7",
  "rbsr",
+ "riblt",
  "rsos",
 ]
 
@@ -1308,6 +1309,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "riblt"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "347358da6253049fb278b140d8ced7223bb4a191b572326727ee9b2b2bbce2db"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "rbsr"
 version = "0.2.1"
 dependencies = [
@@ -1325,6 +1335,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "bincode",
+ "blake3",
  "chrono",
  "clap",
  "criterion",
