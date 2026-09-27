@@ -11,6 +11,7 @@ Benchmarks measure the code that ships in this repository. Results are not versi
 | runtime_history_independent_catchup | ReplicatedMap partition catch-up and causal-stability GC |
 | state_repair_comparison | Prepared-state RBSR vs Rateless IBLT vs Merkle divergence discovery |
 | riblt_preparation | RIBLT on-demand vs cached multi-peer preparation and rebuild cost |
+| state_repair_mutations | RBSR vs RIBLT vs key-stable Merkle under arbitrary insert/delete/mixed divergence |
 | contention | concurrent write cost |
 | snapshot_write_amplification | snapshot write/restart cost |
 
@@ -63,3 +64,13 @@ public coded-symbol and cache-slot types; total encoder HashMap heap usage is in
 as opaque rather than guessed. Defaults are `n=100000`, `d=1000`, and
 `peers={1,2,4,8}`; override them with `RECONCILE_RIBLT_N`, `RECONCILE_RIBLT_D`,
 `RECONCILE_RIBLT_PEERS`, and `RECONCILE_RIBLT_SEED`.
+
+
+The `state_repair_mutations` target removes the aligned-key assumption from the first state-repair
+comparison. Baseline keys are even `u64` values, leaving odd keys for true insertions between
+existing rows. It compares random updates/deletes, interleaved inserts, outside-range inserts,
+balanced insert/delete, and a mixed case where both replicas mutate autonomously. The Merkle
+baseline is a fixed 16-way sparse radix tree over the `u64` key bits, so insertion/deletion affects
+only the key's root-to-leaf path instead of shifting positional leaves. Payload transfer remains
+excluded. Defaults are `n=100000` and `d={100,1000,10000}`; override them with
+`RECONCILE_MUTATION_N`, `RECONCILE_MUTATION_D`, and `RECONCILE_MUTATION_SEED`.
