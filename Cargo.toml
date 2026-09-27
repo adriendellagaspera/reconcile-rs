@@ -61,6 +61,10 @@ name = "state_repair_mutations"
 harness = false
 
 [[bench]]
+name = "cold_start_repair"
+harness = false
+
+[[bench]]
 name = "contention"
 harness = false
 
