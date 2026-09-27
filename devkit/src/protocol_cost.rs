@@ -21,6 +21,10 @@ use rbsr::{
 };
 use rsos::{Aggregate, Rsos};
 
+use crate::transport_trace::{
+    Direction, MessageKind, ProtocolTrace, TraceMessage, TraceStage,
+};
+
 /// The payload one datagram can carry: the IPv4 ceiling, the most optimistic split point — a
 /// keyed deployment subtracts the authenticator's overhead.
 pub const MAX_DATAGRAM_PAYLOAD: usize = 65_507;
@@ -124,6 +128,15 @@ impl<K, S: Rsos<K>> Rsos<K> for Counting<'_, S> {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RoundCost {
+    pub direction: Direction,
+    pub ranges: usize,
+    pub refinement_bytes: usize,
+    pub enumerated_elements: usize,
+    pub enumerated_bytes: Vec<usize>,
+}
+
 /// What one full reconciliation cost.
 #[derive(Debug, Default)]
 pub struct Cost {
@@ -152,6 +165,8 @@ pub struct Cost {
     pub enumerated_bytes: Vec<usize>,
     /// Local RSOS queries, summed over both peers.
     pub queries: Queries,
+    /// Per-driver-round detail used to reconstruct dependency-preserving transport traces.
+    pub rounds_trace: Vec<RoundCost>,
 }
 
 impl Cost {
@@ -162,6 +177,78 @@ impl Cost {
             .iter()
             .map(|&bytes| bytes + self.refinement_bytes)
             .collect()
+    }
+
+    /// Reconstruct the logical one-way wire sequence for one priced payload variant.
+    ///
+    /// Round `i`'s enumeration payload is produced while processing its incoming refinement and
+    /// is therefore coalesced with round `i+1`'s opposite-direction refinement when one exists.
+    /// A final enumeration-only response becomes its own terminal stage.
+    pub fn transport_trace(&self, payload_variant: usize) -> ProtocolTrace {
+        let mut stages = Vec::new();
+        if let Some(first) = self.rounds_trace.first() {
+            stages.push(TraceStage {
+                messages: vec![TraceMessage {
+                    direction: first.direction,
+                    kind: MessageKind::Refinement,
+                    payload_bytes: first.refinement_bytes,
+                    streamable: false,
+                }],
+            });
+        }
+
+        for index in 1..self.rounds_trace.len() {
+            let previous = &self.rounds_trace[index - 1];
+            let current = &self.rounds_trace[index];
+            let enum_bytes = previous
+                .enumerated_bytes
+                .get(payload_variant)
+                .copied()
+                .unwrap_or(0);
+            let mut messages = Vec::new();
+            if current.refinement_bytes > 0 {
+                messages.push(TraceMessage {
+                    direction: current.direction,
+                    kind: MessageKind::Refinement,
+                    payload_bytes: current.refinement_bytes,
+                    streamable: false,
+                });
+            }
+            if enum_bytes > 0 {
+                messages.push(TraceMessage {
+                    direction: current.direction,
+                    kind: MessageKind::Enumeration,
+                    payload_bytes: enum_bytes,
+                    streamable: false,
+                });
+            }
+            if !messages.is_empty() {
+                stages.push(TraceStage { messages });
+            }
+        }
+
+        if let Some(last) = self.rounds_trace.last() {
+            let enum_bytes = last
+                .enumerated_bytes
+                .get(payload_variant)
+                .copied()
+                .unwrap_or(0);
+            if enum_bytes > 0 {
+                stages.push(TraceStage {
+                    messages: vec![TraceMessage {
+                        direction: last.direction.reverse(),
+                        kind: MessageKind::Enumeration,
+                        payload_bytes: enum_bytes,
+                        streamable: false,
+                    }],
+                });
+            }
+        }
+
+        ProtocolTrace {
+            protocol: "rbsr".to_owned(),
+            stages,
+        }
     }
 
     /// What this reconciliation *decided*, as opposed to what those decisions encoded to.
@@ -222,6 +309,17 @@ pub fn reconcile<S: Rsos<u64>>(
                     as usize
             })
             .sum();
+        let direction = if responder_is_b {
+            Direction::AToB
+        } else {
+            Direction::BToA
+        };
+        let mut round = RoundCost {
+            direction,
+            ranges: active.len(),
+            refinement_bytes: round_bytes,
+            ..RoundCost::default()
+        };
         cost.messages += 1;
         cost.ranges += active.len();
         cost.refinement_bytes += round_bytes;
@@ -251,18 +349,26 @@ pub fn reconcile<S: Rsos<u64>>(
         for range in enumerations {
             for (&key, _) in responder.enumerate(range) {
                 cost.enumerated_elements += 1;
+                round.enumerated_elements += 1;
                 if let Some(price) = price_element.as_deref_mut() {
                     let bytes = price(key);
                     if needs_enumerated_bytes_init(&cost.enumerated_bytes, &bytes) {
                         cost.enumerated_bytes = vec![0; bytes.len()];
                     }
-                    for (total, element) in cost.enumerated_bytes.iter_mut().zip(bytes) {
+                    if needs_enumerated_bytes_init(&round.enumerated_bytes, &bytes) {
+                        round.enumerated_bytes = vec![0; bytes.len()];
+                    }
+                    for (total, element) in cost.enumerated_bytes.iter_mut().zip(&bytes) {
+                        *total += *element;
+                    }
+                    for (total, element) in round.enumerated_bytes.iter_mut().zip(bytes) {
                         *total += element;
                     }
                 }
             }
         }
 
+        cost.rounds_trace.push(round);
         active = children;
         responder_is_b = !responder_is_b;
         assert!(
