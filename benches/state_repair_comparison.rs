@@ -14,9 +14,10 @@
 //
 // The benchmark measures divergence discovery metadata only. The application payload fetched after
 // discovery is intentionally excluded and would be identical regardless of the discovery method.
-// Index construction is also excluded from the timed repair section: FingerprintTreeMap and the
-// Merkle tree are built before timing; the RIBLT encoder object is constructed before timing and
-// produces its rateless coded-symbol stream on demand.
+// Index/sketch preparation is excluded from the timed repair section and reported separately.
+// This keeps the prepared-state session comparison distinct from bootstrap cost: FingerprintTreeMap
+// and Merkle structures can be maintained incrementally, while the RIBLT implementation used here
+// constructs its encoder/decoder state from the current rows before producing coded symbols.
 //
 // Defaults:
 //   n = 100_000 rows
@@ -92,6 +93,7 @@ struct Report {
 }
 
 struct RibltReport {
+    setup: Duration,
     report: Report,
     recovered_keys: Vec<u64>,
 }
@@ -201,10 +203,14 @@ fn rbsr_report(
     (cost, elapsed, recovered)
 }
 
-fn riblt_report(left: Vec<KvSymbol>, right: Vec<KvSymbol>) -> RibltReport {
+fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> RibltReport {
+    let setup_started = Instant::now();
+    let left = symbols(left);
+    let right = symbols(right);
     let symbol_count = left.len().max(right.len());
     let mut encoder = Encoder::<SYMBOL_BYTES>::new(right.into_iter());
     let mut decoder = Decoder::<SYMBOL_BYTES, KvSymbol>::new(left.into_iter());
+    let setup = setup_started.elapsed();
     let max_symbols = 1_024 + 2 * symbol_count;
 
     let started = Instant::now();
@@ -223,6 +229,7 @@ fn riblt_report(left: Vec<KvSymbol>, right: Vec<KvSymbol>) -> RibltReport {
             recovered_keys.sort_unstable();
             recovered_keys.dedup();
             return RibltReport {
+                setup,
                 report: Report {
                     bytes: (index + 1) * RIBLT_CODED_SYMBOL_BYTES,
                     units: index + 1,
@@ -366,8 +373,10 @@ fn main() {
     for d in sweep {
         let corpus = corpus(n, d);
 
+        let rbsr_setup_started = Instant::now();
         let left_map = fingerprint_map(&corpus.left_rows);
         let right_map = fingerprint_map(&corpus.right_rows);
+        let rbsr_setup = rbsr_setup_started.elapsed();
         let (rbsr, rbsr_elapsed, rbsr_recovered) = rbsr_report(&left_map, &right_map);
         assert_eq!(
             rbsr_recovered, corpus.expected_diff,
@@ -379,20 +388,28 @@ fn main() {
             .copied()
             .unwrap_or(rbsr.refinement_bytes);
 
-        let riblt = riblt_report(symbols(&corpus.left_rows), symbols(&corpus.right_rows));
+        let riblt = riblt_report(&corpus.left_rows, &corpus.right_rows);
         assert_eq!(
             riblt.recovered_keys, corpus.expected_diff,
             "RIBLT recovered a different business-key set"
         );
 
+        let merkle_setup_started = Instant::now();
         let left_merkle = MerkleTree::new(&corpus.left_rows);
         let right_merkle = MerkleTree::new(&corpus.right_rows);
+        let merkle_setup = merkle_setup_started.elapsed();
         let merkle = merkle_report(&left_merkle, &right_merkle);
         assert_eq!(
             merkle.recovered_keys, corpus.expected_diff,
             "Merkle recovered a different business-key set"
         );
 
+        println!(
+            "[state-repair-setup] d={d:>6} | RBSR build={:>9.3} ms | RIBLT build={:>9.3} ms | Merkle build={:>9.3} ms",
+            rbsr_setup.as_secs_f64() * 1_000.0,
+            riblt.setup.as_secs_f64() * 1_000.0,
+            merkle_setup.as_secs_f64() * 1_000.0,
+        );
         println!(
             "[state-repair] d={d:>6} | RBSR bytes={rbsr_bytes:>9}, msg={:>3}, ranges={:>7}, idlist={:>7}, time={:>9.3} ms | RIBLT bytes={:>9}, coded={:>7}, time={:>9.3} ms | Merkle bytes={:>9}, hashes={:>7}, msg={:>3}, rounds={:>2}, time={:>9.3} ms",
             rbsr.messages,
