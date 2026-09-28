@@ -125,7 +125,9 @@ pub(super) fn read_manifest(backend: &FileSnapshot) -> io::Result<Option<Manifes
 pub(super) fn validate_manifest(manifest: &Manifest) -> io::Result<()> {
     validate_segment_name(&manifest.base.file)?;
     if manifest.base.generation > manifest.current_generation {
-        return Err(invalid("manifest base generation is newer than current generation"));
+        return Err(invalid(
+            "manifest base generation is newer than current generation",
+        ));
     }
 
     let mut expected = manifest.base.generation.saturating_add(1);
@@ -201,7 +203,11 @@ pub(super) fn publish_manifest(backend: &FileSnapshot, manifest: &Manifest) -> i
 pub(super) fn remove_legacy_after_migration(backend: &FileSnapshot) {
     match fs::remove_file(&backend.path) {
         Ok(()) => {
-            if let Some(parent) = backend.path.parent().filter(|path| !path.as_os_str().is_empty()) {
+            if let Some(parent) = backend
+                .path
+                .parent()
+                .filter(|path| !path.as_os_str().is_empty())
+            {
                 sync_dir(parent);
             }
         }
