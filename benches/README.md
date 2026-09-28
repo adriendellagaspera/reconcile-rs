@@ -6,6 +6,7 @@ Benchmarks measure code that ships in this repository. Comparative algorithm and
 
 | target | scope |
 |---|---|
+| replicated_map | ReplicatedMap structure, send/reconcile, RTT, and reconcile-interval lanes |
 | system | end-to-end ReplicatedMap behavior |
 | protocol | shipped RBSR reconciliation cost |
 | runtime_history_independent_catchup | ReplicatedMap partition catch-up and causal-stability GC |
