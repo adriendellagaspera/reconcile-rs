@@ -27,7 +27,9 @@ use storage::{
 };
 
 #[cfg(test)]
-pub(super) use storage::paths;
+pub(super) fn paths(backend: &FileSnapshot) -> (std::path::PathBuf, std::path::PathBuf) {
+    storage::paths(backend)
+}
 
 const FORMAT_VERSION: u32 = 1;
 const HEADER_LEN: usize = 8;
