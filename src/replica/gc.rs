@@ -122,14 +122,19 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use crate::replicated_map::Config;
+
     use super::*;
 
-    /// Pins the exact formula (`rsos::digest`'s low limb), not just "some function of the
-    /// value" — a mutant hardcoding a constant return has no other caller in this crate that
-    /// would catch it (every existing test only compares `version_hash` against itself).
     #[test]
     fn gc_collect_counts_physical_delete_and_ack_cleanup() {
-        let replica = super::tests::replica::<u32, u32>();
+        let config = Config::default()
+            .with_port(5000)
+            .with_listen_addr("127.0.0.120".parse().unwrap())
+            .with_insecure_no_key();
+        let replica = crate::replica::tests::in_memory_test_replica::<u32, u32>(config);
         let key = 7;
         let peer: IpAddr = "127.0.0.9".parse().unwrap();
         replica.just_insert(key, Entry::tombstone(replica.clock_now()));
@@ -147,6 +152,9 @@ mod tests {
         );
     }
 
+    /// Pins the exact formula (`rsos::digest`'s low limb), not just "some function of the
+    /// value" — a mutant hardcoding a constant return has no other caller in this crate that
+    /// would catch it (every existing test only compares `version_hash` against itself).
     #[test]
     fn version_hash_matches_the_digest_low_limb() {
         assert_eq!(version_hash(&42u32), rsos::digest(&42u32).0[0]);
