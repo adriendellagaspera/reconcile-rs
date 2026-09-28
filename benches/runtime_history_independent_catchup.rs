@@ -14,8 +14,8 @@
 // dated store as tombstones until causal-stability GC.
 //
 // The report varies the number of transient tombstones while holding the live states and fixed
-// final deletions constant. It counts the resulting RBSR trace before healing, observes real
-// in-memory catch-up traffic, proves expired tombstones survive while the causal peer is
+// final deletions constant. It observes the raw dated-store divergence and real in-memory
+// catch-up traffic, proves expired tombstones survive while the causal peer is
 // unreachable, then verifies GC removes the historical footprint after convergence.
 //
 // Defaults:
