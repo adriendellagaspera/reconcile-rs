@@ -53,6 +53,7 @@ struct Traffic {
     rx_datagrams: Arc<AtomicU64>,
     tx_bytes: Arc<AtomicU64>,
     tx_datagrams: Arc<AtomicU64>,
+    tx_by_peer: Arc<Mutex<HashMap<IpAddr, (u64, u64)>>>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -69,6 +70,19 @@ impl Traffic {
         self.rx_datagrams.store(0, Ordering::Relaxed);
         self.tx_bytes.store(0, Ordering::Relaxed);
         self.tx_datagrams.store(0, Ordering::Relaxed);
+        self.tx_by_peer
+            .lock()
+            .expect("traffic mutex poisoned")
+            .clear();
+    }
+
+    fn peer_tx(&self, peer: IpAddr) -> (u64, u64) {
+        self.tx_by_peer
+            .lock()
+            .expect("traffic mutex poisoned")
+            .get(&peer)
+            .copied()
+            .unwrap_or_default()
     }
 
     fn snapshot(&self) -> TrafficSnapshot {
@@ -103,6 +117,14 @@ impl Transport for CountingTransport {
             .tx_bytes
             .fetch_add(sent as u64, Ordering::Relaxed);
         self.traffic.tx_datagrams.fetch_add(1, Ordering::Relaxed);
+        let mut by_peer = self
+            .traffic
+            .tx_by_peer
+            .lock()
+            .expect("traffic mutex poisoned");
+        let entry = by_peer.entry(dst.ip()).or_default();
+        entry.0 += sent as u64;
+        entry.1 += 1;
         Ok(sent)
     }
 
@@ -397,7 +419,15 @@ async fn one_unreachable(members: usize, tombstones: usize) {
     traffic.reset();
     tokio::time::sleep(REPAIR_OBSERVATION).await;
     let repair = traffic.snapshot();
-    assert_eq!(repair.tx_datagrams, 4);
+    let (unreachable_repair_bytes, unreachable_repair_dgrams) =
+        traffic.peer_tx(peer_ip(unreachable));
+    assert_eq!(
+        unreachable_repair_dgrams, 4,
+        "the silent member must receive exactly the bounded four repair retries"
+    );
+    let other_repair_dgrams = repair
+        .tx_datagrams
+        .saturating_sub(unreachable_repair_dgrams);
 
     assert_eq!(tombstone_count(&store), tombstones);
 
@@ -427,7 +457,7 @@ async fn one_unreachable(members: usize, tombstones: usize) {
     let gc_after_forget_ms = gc_started.elapsed().as_secs_f64() * 1_000.0;
 
     println!(
-        "[causal-unreachable] members={members},tombstones={tombstones},responsive={},round_tx_bytes={},round_tx_dgrams={},round_rx_bytes={},round_rx_dgrams={},round_ms={round_ms:.3},repair_tx_bytes={},repair_tx_dgrams={},forget_acked_ms={forget_acked_ms:.3},forget_unacked_ms={forget_unacked_ms:.3},gc_after_forget_ms={gc_after_forget_ms:.3}",
+        "[causal-unreachable] members={members},tombstones={tombstones},responsive={},round_tx_bytes={},round_tx_dgrams={},round_rx_bytes={},round_rx_dgrams={},round_ms={round_ms:.3},repair_tx_bytes={},repair_tx_dgrams={},unreachable_repair_tx_bytes={unreachable_repair_bytes},unreachable_repair_tx_dgrams={unreachable_repair_dgrams},other_repair_tx_dgrams={other_repair_dgrams},forget_acked_ms={forget_acked_ms:.3},forget_unacked_ms={forget_unacked_ms:.3},gc_after_forget_ms={gc_after_forget_ms:.3}",
         members - 1,
         round.tx_bytes,
         round.tx_datagrams,
