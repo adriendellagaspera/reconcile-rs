@@ -14,7 +14,8 @@ Benchmarks measure code that ships in this repository. Comparative algorithm and
 | read_replica_fleet | many read replicas against a small authoritative set, including authenticated ingress state |
 | membership_churn | sustained authoritative member replacement with ACK coverage rebuilt through real dated traffic |
 | contention | concurrent write cost |
-| snapshot_write_amplification | current full-snapshot write/restart baseline |
+| snapshot_write_amplification | paired full-vs-incremental writes, retained storage, segment-chain peaks, and restart cost |
+| snapshot_metadata_only | metadata-only membership/ACK persistence under peer decommission churn |
 
 Run a target with `cargo bench --bench <target>`. Criterion reports are written under `target/criterion/`.
 
@@ -34,4 +35,6 @@ The `membership_churn` target keeps authoritative fleet size constant while repl
 
 The `contention` target compares `FingerprintTreeMap` with `BTreeMap` behind the same `parking_lot::RwLock`, using paired trials across writer counts. It reports throughput plus the per-operation cost delta after cancelling the shared lock term. Override the writer sweep with `CONTENTION_WRITERS`; set `CONTENTION_RAW=1` for trial-level rows.
 
-The `snapshot_write_amplification` target records the current full-snapshot baseline before incremental persistence lands. It varies store size and changed-key count, reporting snapshot bytes, rewrite time, and restart time from a fresh store. Configure with `RECONCILE_BASELINE_SIZES`, `RECONCILE_BASELINE_DELTAS`, and `RECONCILE_BASELINE_TRIALS`.
+The `snapshot_write_amplification` target is revision-pairable: it observes durable files rather than depending on either persistence layout. It reports changed/new durable bytes per checkpoint, total and peak retained bytes, final and peak delta-segment counts, checkpoint time, and fresh-process restart time. Pair sweeps use `RECONCILE_SNAPSHOT_SIZES` and `RECONCILE_SNAPSHOT_DELTAS`; long-chain sweeps use `RECONCILE_SNAPSHOT_CHAIN_LENGTHS` and `RECONCILE_SNAPSHOT_CHAIN_DELTAS`; set `RECONCILE_SNAPSHOT_TRIALS` for repetitions.
+
+The `snapshot_metadata_only` target isolates causal metadata persistence: it seeds membership plus tombstone ACK state, then removes peers through `forget_peer` without changing entry values. It reports checkpoint bytes/time, retained/peak storage, final/peak segment counts, and restart time. Configure with `RECONCILE_METADATA_MEMBERS`, `RECONCILE_METADATA_BATCHES`, `RECONCILE_METADATA_CHAIN_LENGTHS`, and `RECONCILE_METADATA_TRIALS`.
