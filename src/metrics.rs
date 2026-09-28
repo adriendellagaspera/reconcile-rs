@@ -41,6 +41,7 @@
 //! | [`SNAPSHOT_FULL_MATERIALIZATIONS_TOTAL`](crate::metrics::SNAPSHOT_FULL_MATERIALIZATIONS_TOTAL) | counter | full FileSnapshot base publications |
 //! | [`SNAPSHOT_DELTA_COMMITS_TOTAL`](crate::metrics::SNAPSHOT_DELTA_COMMITS_TOTAL) | counter | incremental FileSnapshot delta publications |
 //! | [`SNAPSHOT_COMPACTIONS_TOTAL`](crate::metrics::SNAPSHOT_COMPACTIONS_TOTAL) | counter | full bases replacing an existing delta chain |
+//! | [`SNAPSHOT_CLEANUP_FAILURES_TOTAL`](crate::metrics::SNAPSHOT_CLEANUP_FAILURES_TOTAL) | counter | failed removal of superseded snapshot files |
 //! | [`SNAPSHOT_SEGMENTS_CURRENT`](crate::metrics::SNAPSHOT_SEGMENTS_CURRENT) | gauge | currently committed base + delta segment count |
 //! | [`SNAPSHOT_SEGMENT_BYTES_CURRENT`](crate::metrics::SNAPSHOT_SEGMENT_BYTES_CURRENT) | gauge | bytes in currently committed base + delta segments |
 //! | [`SNAPSHOT_RECOVERY_SEGMENTS`](crate::metrics::SNAPSHOT_RECOVERY_SEGMENTS) | gauge | segment count replayed by the latest FileSnapshot load |
