@@ -38,6 +38,29 @@ impl PausedSave {
     }
 }
 
+struct DeltaFirstSave {
+    full_saves: AtomicUsize,
+    delta_saves: AtomicUsize,
+}
+
+impl Persistence<u32, u32> for DeltaFirstSave {
+    fn load(&self) -> io::Result<Option<PersistedState<u32, u32>>> {
+        Ok(Some(PersistedState::default()))
+    }
+
+    fn save(&self, _state: &PersistedState<u32, u32>) -> io::Result<()> {
+        self.full_saves.fetch_add(1, Ordering::AcqRel);
+        Ok(())
+    }
+
+    fn try_save_delta(
+        &self,
+        _delta: Option<&crate::persistence::PersistenceDelta<u32, u32>>,
+    ) -> io::Result<bool> {
+        self.delta_saves.fetch_add(1, Ordering::AcqRel);
+        Ok(true)
+    }
+}
 struct FailFirstSave {
     failed_once: AtomicBool,
     saved: Mutex<Vec<PersistedState<u32, u32>>>,
@@ -117,6 +140,23 @@ async fn write_during_save_stays_pending_and_is_recovered_by_next_snapshot() {
     assert_eq!(restarted.fingerprint(..), store.fingerprint(..));
 }
 
+#[tokio::test]
+async fn accepted_delta_bypasses_full_state_save() {
+    let backend = Arc::new(DeltaFirstSave {
+        full_saves: AtomicUsize::new(0),
+        delta_saves: AtomicUsize::new(0),
+    });
+    let store = virtual_map::<u32, u32>(virtual_config().with_snapshot_interval(None))
+        .with_persistence(backend.clone())
+        .unwrap();
+
+    store.just_insert(1, 10);
+    store.snapshot_now().unwrap();
+
+    assert_eq!(backend.delta_saves.load(Ordering::Acquire), 1);
+    assert_eq!(backend.full_saves.load(Ordering::Acquire), 0);
+    assert_eq!(store.engine.change_count(), 0);
+}
 #[tokio::test]
 async fn failed_generation_retries_without_retiring_newer_writes() {
     let backend = Arc::new(FailFirstSave::new());
