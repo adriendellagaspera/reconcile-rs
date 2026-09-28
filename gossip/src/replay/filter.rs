@@ -29,7 +29,21 @@ impl ReplayFilter {
             peers: Mutex::new(HashMap::new()),
             freshness_window,
             enabled,
+            max_senders: usize::MAX,
         }
+    }
+
+    /// Set the maximum number of distinct authenticated sender IPs whose replay state may be
+    /// retained concurrently.
+    ///
+    /// At capacity, already-tracked senders continue through the normal replay checks. A new
+    /// sender is rejected until an entry becomes older than the freshness window and is purged.
+    /// Fresh entries are never evicted to make room, because doing so would reopen their replay
+    /// window. Disabled filters allocate no sender state, so this limit has no effect on them.
+    #[must_use]
+    pub fn with_max_senders(mut self, max_senders: usize) -> Self {
+        self.max_senders = max_senders;
+        self
     }
 
     /// Whether a datagram from `sender` is fresh and unique; `false` means drop it silently.
@@ -60,11 +74,12 @@ impl ReplayFilter {
         map.retain(|_, s| s.stamp_at_max().age_relative_to(now) <= window.as_millis() as u64);
 
         match map.get_mut(&sender) {
+            Some(state) => state.accept(seq, stamp),
+            None if map.len() >= self.max_senders => false,
             None => {
                 map.insert(sender, PeerState::new(seq, stamp));
                 true
             }
-            Some(state) => state.accept(seq, stamp),
         }
     }
 
