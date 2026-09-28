@@ -192,10 +192,9 @@ pub fn causal_flights(trace: &RepairTrace) -> Vec<CausalFlight> {
     flights
 }
 
-fn swapped(link: LinkProfile) -> LinkProfile {
+fn reverse_flight_link(link: LinkProfile) -> LinkProfile {
     LinkProfile {
         forward_mbps: link.reverse_mbps,
-        reverse_mbps: link.forward_mbps,
         ..link
     }
 }
@@ -240,7 +239,7 @@ pub fn estimate_finite_trace(
             }
             FlightDirection::Reverse => {
                 reverse += flight.app_bytes;
-                swapped(link)
+                reverse_flight_link(link)
             }
         };
         network = accumulate(

@@ -127,3 +127,24 @@ fn rateless_quiescence_counts_only_one_stop_signal_and_one_bdp() {
     assert_eq!(projection.quiescence.app_bytes, 13_532);
     assert_eq!(projection.quiescence.packets, 11);
 }
+
+#[test]
+fn merkle_response_without_request_uses_one_reverse_flight() {
+    let trace = RepairTrace::new(
+        RepairStrategy::Merkle,
+        vec![RepairStage::MerkleExchange {
+            depth: 0,
+            request_prefixes: 0,
+            request_bytes: 0,
+            response_hashes: 1,
+            response_bytes: 17,
+        }],
+    );
+    assert_eq!(
+        causal_flights(&trace),
+        vec![CausalFlight {
+            direction: FlightDirection::Reverse,
+            app_bytes: 17,
+        }]
+    );
+}
