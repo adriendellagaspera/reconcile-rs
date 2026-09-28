@@ -14,6 +14,7 @@ use parking_lot::{Mutex, MutexGuard};
 
 use crate::clock::Timestamp;
 use crate::entry::Entry;
+use crate::persistence::PersistenceDelta;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum EntryDelta<V> {
@@ -34,6 +35,30 @@ pub(crate) struct SnapshotGeneration<K, V> {
 impl<K, V> SnapshotGeneration<K, V> {
     fn is_empty(&self) -> bool {
         self.raw_changes == 0
+    }
+
+    pub(crate) fn persistence_delta(&self) -> PersistenceDelta<K, V>
+    where
+        K: Clone + Eq + Hash,
+        V: Clone,
+    {
+        let entries = self
+            .entries
+            .iter()
+            .map(|(key, delta)| {
+                let entry = match delta {
+                    EntryDelta::Upsert(entry) => Some(entry.clone()),
+                    EntryDelta::PhysicalDelete => None,
+                };
+                (key.clone(), entry)
+            })
+            .collect();
+        PersistenceDelta::new(
+            entries,
+            self.members.clone(),
+            self.ack_key_clears.clone(),
+            self.ack_peers.clone(),
+        )
     }
 }
 
