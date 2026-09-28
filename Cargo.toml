@@ -48,12 +48,9 @@ harness = false
 name = "runtime_history_independent_catchup"
 harness = false
 
-
-
-
-
-
-
+[[bench]]
+name = "membership_scaling"
+harness = false
 
 [[bench]]
 name = "contention"
