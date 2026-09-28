@@ -119,12 +119,8 @@ where
         incremental::save_full(self, state)
     }
 
-    fn save_generation(
-        &self,
-        state: &PersistedState<K, V>,
-        delta: Option<&PersistenceDelta<K, V>>,
-    ) -> io::Result<()> {
-        incremental::save_generation(self, state, delta)
+    fn try_save_delta(&self, delta: Option<&PersistenceDelta<K, V>>) -> io::Result<bool> {
+        incremental::try_save_delta(self, delta)
     }
 }
 
