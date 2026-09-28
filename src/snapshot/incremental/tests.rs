@@ -7,12 +7,16 @@ use super::storage::{
 };
 use super::*;
 
-fn reference(generation: u64) -> SegmentRef {
+fn reference_with_bytes(generation: u64, bytes: u64) -> SegmentRef {
     SegmentRef {
         generation,
         file: format!("delta-{generation:020}.bin"),
-        bytes: 0,
+        bytes,
     }
+}
+
+fn reference(generation: u64) -> SegmentRef {
+    reference_with_bytes(generation, 0)
 }
 
 #[test]
@@ -123,4 +127,47 @@ fn delta_from_generation_must_match_manifest_slot() {
 #[test]
 fn delta_to_generation_must_match_manifest_slot() {
     assert_bad_delta_generation(1, 99);
+}
+
+
+fn policy_manifest(base_bytes: u64, delta_bytes: &[u64]) -> Manifest {
+    let base = SegmentRef {
+        generation: 1,
+        file: "base-00000000000000000001.bin".to_string(),
+        bytes: base_bytes,
+    };
+    let deltas: Vec<_> = delta_bytes
+        .iter()
+        .enumerate()
+        .map(|(index, bytes)| reference_with_bytes(index as u64 + 2, *bytes))
+        .collect();
+    Manifest {
+        current_generation: deltas
+            .last()
+            .map_or(base.generation, |delta| delta.generation),
+        base,
+        deltas,
+    }
+}
+
+#[test]
+fn adaptive_policy_caps_committed_delta_chain_at_32() {
+    let thirty_one = policy_manifest(1_000_000, &vec![100; 31]);
+    assert!(!should_materialize(&thirty_one, 100));
+
+    let thirty_two = policy_manifest(1_000_000, &vec![100; 32]);
+    assert!(
+        should_materialize(&thirty_two, 100),
+        "publishing a 33rd delta must fall back to a fresh base"
+    );
+}
+
+#[test]
+fn adaptive_policy_compacts_at_one_base_equivalent_of_delta_bytes() {
+    let manifest = policy_manifest(1_000, &[200, 300]);
+    assert!(!should_materialize(&manifest, 499));
+    assert!(
+        should_materialize(&manifest, 500),
+        "candidate delta that reaches one base-equivalent must compact"
+    );
 }
