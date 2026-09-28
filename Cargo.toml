@@ -57,6 +57,10 @@ name = "membership_causal_debt"
 harness = false
 
 [[bench]]
+name = "read_replica_fleet"
+harness = false
+
+[[bench]]
 name = "contention"
 harness = false
 
