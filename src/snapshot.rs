@@ -134,6 +134,7 @@ mod tests {
 
     use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
     use crate::entry::Entry;
+    use crate::persistence::PersistenceDelta;
 
     use super::*;
 
@@ -203,6 +204,149 @@ mod tests {
             .unwrap()
             .expect("a snapshot was saved");
         assert_states_eq(&loaded, &state);
+    }
+
+    fn assert_states_equivalent(
+        a: &PersistedState<i32, String>,
+        b: &PersistedState<i32, String>,
+    ) {
+        let a_entries: HashMap<_, _> = a.entries.iter().cloned().collect();
+        let b_entries: HashMap<_, _> = b.entries.iter().cloned().collect();
+        assert_eq!(a_entries, b_entries);
+        assert_eq!(a.members, b.members);
+        assert_eq!(a.tombstone_acks, b.tombstone_acks);
+    }
+
+    fn legacy_bytes(state: &PersistedState<i32, String>) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&SNAPSHOT_MAGIC);
+        bytes.extend_from_slice(&SNAPSHOT_FORMAT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&bincode::serialize(state).unwrap());
+        bytes
+    }
+
+    #[test]
+    fn incremental_delta_replays_entries_members_and_acks() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
+        let first = sample_state();
+        Persistence::<i32, String>::save_generation(&backend, &first, None).unwrap();
+
+        let peer1 = "127.0.0.1".parse().unwrap();
+        let peer2 = "127.0.0.2".parse().unwrap();
+        let peer3 = "127.0.0.3".parse().unwrap();
+        let updated = Entry::present(
+            Timestamp::new(
+                Hlc::new(PhysicalTime::from_millis(3_000), LogicalCounter::new(0)),
+                NodeId::new(7),
+            ),
+            "updated".to_string(),
+        );
+        let added = Entry::present(
+            Timestamp::new(
+                Hlc::new(PhysicalTime::from_millis(4_000), LogicalCounter::new(0)),
+                NodeId::new(7),
+            ),
+            "added".to_string(),
+        );
+        let expected = PersistedState::new(
+            vec![(1, updated.clone()), (3, added.clone())],
+            HashSet::from([peer1, peer3]),
+            HashMap::from([(9, HashMap::from([(peer3, 99)]))]),
+        );
+        let delta = PersistenceDelta::new(
+            HashMap::from([(1, Some(updated)), (2, None), (3, Some(added))]),
+            HashMap::from([(peer2, false), (peer3, true)]),
+            HashSet::from([7]),
+            HashMap::from([(9, HashMap::from([(peer3, Some(99))]))]),
+        );
+
+        Persistence::<i32, String>::save_generation(&backend, &expected, Some(&delta)).unwrap();
+        let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
+        assert_states_equivalent(&loaded, &expected);
+    }
+
+    #[test]
+    fn committed_missing_or_corrupt_delta_is_rejected() {
+        for corrupt in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
+            let first = sample_state();
+            Persistence::<i32, String>::save_generation(&backend, &first, None).unwrap();
+
+            let mut expected = first.clone();
+            let added = Entry::present(
+                Timestamp::new(
+                    Hlc::new(PhysicalTime::from_millis(5_000), LogicalCounter::new(0)),
+                    NodeId::new(7),
+                ),
+                "delta".to_string(),
+            );
+            expected.entries.push((3, added.clone()));
+            let delta = PersistenceDelta::new(
+                HashMap::from([(3, Some(added))]),
+                HashMap::new(),
+                HashSet::new(),
+                HashMap::new(),
+            );
+            Persistence::<i32, String>::save_generation(&backend, &expected, Some(&delta)).unwrap();
+
+            let (store_dir, _) = incremental::paths(&backend);
+            let delta_path = fs::read_dir(&store_dir)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .find(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.starts_with("delta-"))
+                })
+                .unwrap();
+            if corrupt {
+                let mut bytes = fs::read(&delta_path).unwrap();
+                let last = bytes.len() - 1;
+                bytes[last] ^= 0xff;
+                fs::write(&delta_path, bytes).unwrap();
+            } else {
+                fs::remove_file(&delta_path).unwrap();
+            }
+
+            let err = Persistence::<i32, String>::load(&backend).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn uncommitted_orphan_segment_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
+        let state = sample_state();
+        Persistence::<i32, String>::save_generation(&backend, &state, None).unwrap();
+
+        let (store_dir, _) = incremental::paths(&backend);
+        fs::write(store_dir.join("delta-99999999999999999999.bin"), b"orphan").unwrap();
+
+        let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
+        assert_states_eq(&loaded, &state);
+    }
+
+    #[test]
+    fn legacy_snapshot_migrates_on_next_generation_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snapshot.bin");
+        let state = sample_state();
+        fs::write(&path, legacy_bytes(&state)).unwrap();
+        let backend = FileSnapshot::new(&path);
+
+        let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
+        assert_states_eq(&loaded, &state);
+
+        Persistence::<i32, String>::save_generation(&backend, &state, None).unwrap();
+        assert!(!path.exists(), "legacy file should not shadow the committed manifest");
+        let (_, manifest) = incremental::paths(&backend);
+        assert!(manifest.exists());
+
+        let migrated = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
+        assert_states_eq(&migrated, &state);
     }
 
     #[test]
