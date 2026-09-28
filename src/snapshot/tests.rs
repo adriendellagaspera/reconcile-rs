@@ -74,10 +74,7 @@ fn file_snapshot_save_then_load() {
     assert_states_eq(&loaded, &state);
 }
 
-fn assert_states_equivalent(
-    a: &PersistedState<i32, String>,
-    b: &PersistedState<i32, String>,
-) {
+fn assert_states_equivalent(a: &PersistedState<i32, String>, b: &PersistedState<i32, String>) {
     let a_entries: HashMap<_, _> = a.entries.iter().cloned().collect();
     let b_entries: HashMap<_, _> = b.entries.iter().cloned().collect();
     assert_eq!(a_entries, b_entries);
@@ -209,7 +206,10 @@ fn legacy_snapshot_migrates_on_next_generation_save() {
     assert_states_eq(&loaded, &state);
 
     Persistence::<i32, String>::save_generation(&backend, &state, None).unwrap();
-    assert!(!path.exists(), "legacy file should not shadow the committed manifest");
+    assert!(
+        !path.exists(),
+        "legacy file should not shadow the committed manifest"
+    );
     let (_, manifest) = incremental::paths(&backend);
     assert!(manifest.exists());
 
