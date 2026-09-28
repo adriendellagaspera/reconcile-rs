@@ -95,7 +95,7 @@ fn incremental_delta_replays_entries_members_and_acks() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
     let first = sample_state();
-    Persistence::<i32, String>::save_generation(&backend, &first, None).unwrap();
+    Persistence::<i32, String>::save(&backend, &first).unwrap();
 
     let peer1 = "127.0.0.1".parse().unwrap();
     let peer2 = "127.0.0.2".parse().unwrap();
@@ -126,7 +126,7 @@ fn incremental_delta_replays_entries_members_and_acks() {
         HashMap::from([(9, HashMap::from([(peer3, Some(99))]))]),
     );
 
-    Persistence::<i32, String>::save_generation(&backend, &expected, Some(&delta)).unwrap();
+    assert!(Persistence::<i32, String>::try_save_delta(&backend, Some(&delta)).unwrap());
     let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
     assert_states_equivalent(&loaded, &expected);
 }
@@ -137,7 +137,7 @@ fn committed_missing_or_corrupt_delta_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
         let first = sample_state();
-        Persistence::<i32, String>::save_generation(&backend, &first, None).unwrap();
+        Persistence::<i32, String>::save(&backend, &first).unwrap();
 
         let mut expected = first.clone();
         let added = Entry::present(
@@ -154,7 +154,7 @@ fn committed_missing_or_corrupt_delta_is_rejected() {
             HashSet::new(),
             HashMap::new(),
         );
-        Persistence::<i32, String>::save_generation(&backend, &expected, Some(&delta)).unwrap();
+        assert!(Persistence::<i32, String>::try_save_delta(&backend, Some(&delta)).unwrap());
 
         let (store_dir, _) = incremental::paths(&backend);
         let delta_path = fs::read_dir(&store_dir)
@@ -185,7 +185,7 @@ fn corrupt_manifest_is_rejected() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
     let state = sample_state();
-    Persistence::<i32, String>::save_generation(&backend, &state, None).unwrap();
+    Persistence::<i32, String>::save(&backend, &state).unwrap();
 
     let (_, manifest_path) = incremental::paths(&backend);
     let mut bytes = fs::read(&manifest_path).unwrap();
@@ -203,7 +203,7 @@ fn uncommitted_orphan_segment_is_ignored() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
     let state = sample_state();
-    Persistence::<i32, String>::save_generation(&backend, &state, None).unwrap();
+    Persistence::<i32, String>::save(&backend, &state).unwrap();
 
     let (store_dir, _) = incremental::paths(&backend);
     fs::write(store_dir.join("delta-99999999999999999999.bin"), b"orphan").unwrap();
@@ -223,7 +223,7 @@ fn legacy_snapshot_migrates_on_next_generation_save() {
     let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
     assert_states_eq(&loaded, &state);
 
-    Persistence::<i32, String>::save_generation(&backend, &state, None).unwrap();
+    Persistence::<i32, String>::save(&backend, &state).unwrap();
     assert!(
         path.exists(),
         "post-publication legacy cleanup is deferred to compaction"
