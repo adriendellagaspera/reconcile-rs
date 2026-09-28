@@ -73,14 +73,14 @@ impl ReplayFilter {
         let window = self.freshness_window;
         map.retain(|_, s| s.stamp_at_max().age_relative_to(now) <= window.as_millis() as u64);
 
-        match map.get_mut(&sender) {
-            Some(state) => state.accept(seq, stamp),
-            None if map.len() >= self.max_senders => false,
-            None => {
-                map.insert(sender, PeerState::new(seq, stamp));
-                true
-            }
+        if let Some(state) = map.get_mut(&sender) {
+            return state.accept(seq, stamp);
         }
+        if map.len() >= self.max_senders {
+            return false;
+        }
+        map.insert(sender, PeerState::new(seq, stamp));
+        true
     }
 
     /// Number of peers currently tracked. For test assertions; the `reconcile_internal_testing` gate sits
