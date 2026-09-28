@@ -8,20 +8,16 @@
 
 //! Last-write-wins register domain used by `reconcile`.
 //!
-//! This crate defines register entries, timestamps and clock arithmetic, key/value bounds, and the
-//! persistence contract. It contains no network, async-runtime, wire-codec, or wall-clock adapter.
+//! This crate defines register entries plus timestamp and clock arithmetic. It contains no
+//! replication membership, persistence, network, async-runtime, wire-codec, or wall-clock adapter.
 //!
 //! Applications should normally depend on
 //! [`reconcile`](https://crates.io/crates/reconcile), which re-exports the supported API.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-pub mod bounds;
 pub mod clock;
 pub mod entry;
-pub mod persistence;
 
-pub use bounds::{Key, Value};
 pub use clock::{Clock, Timestamp};
 pub use entry::{Entry, State};
-pub use persistence::{DatedEntries, InMemoryPersistence, PersistedState, Persistence};
