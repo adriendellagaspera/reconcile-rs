@@ -1,6 +1,6 @@
 # Benchmarks
 
-RSOS/RBSR-only benchmarks live in [`range-based-set-reconciliation`](https://github.com/adriendellagaspera/range-based-set-reconciliation): `rsos` owns `contention`, and `rbsr` owns `history_independence`. This repository keeps only benchmarks whose measured behavior belongs to the `reconcile` runtime/product boundary.
+RSOS/RBSR-only benchmarks live in [`range-based-set-reconciliation`](https://github.com/adriendellagaspera/range-based-set-reconciliation): `rsos` owns `micro` and `contention`, while `rbsr` owns `protocol` and `history_independence`. This repository keeps only benchmarks whose measured behavior belongs to the `reconcile` runtime/product boundary.
 
 Benchmarks measure code that ships in this repository. Comparative algorithm and transport research belongs in [rbsr-research](https://github.com/adriendellagaspera/rbsr-research); measurements and historical conclusions belong in GitHub issues, not versioned documentation.
 
@@ -8,7 +8,6 @@ Benchmarks measure code that ships in this repository. Comparative algorithm and
 |---|---|
 | replicated_map | ReplicatedMap structure, send/reconcile, RTT, and reconcile-interval lanes |
 | system | end-to-end ReplicatedMap behavior |
-| protocol | shipped RBSR reconciliation cost |
 | runtime_history_independent_catchup | ReplicatedMap partition catch-up and causal-stability GC |
 | membership_scaling | ReplicatedMap membership, peer-routing, durable causal-state, and GC scaling |
 | membership_causal_debt | tombstone ACK resend, unreachable-member repair tax, and decommission cost |
@@ -20,7 +19,7 @@ Run a target with `cargo bench --bench <target>`. Criterion reports are written 
 
 Benchmark inputs are deterministic where practical. Compare timings on the same machine/build; do not treat loopback as WAN or component controls as product comparisons. Source files define exact corpora, units, and environment variables. CI only compile-checks benchmark targets.
 
-The `runtime_history_independent_catchup` target drives two authoritative `ReplicatedMap` peers through blocked in-memory transport. Live states/final deletions stay fixed while transient insert-delete history grows raw tombstones; it reports raw dated RBSR cost, catch-up, and causal-stability GC. Defaults: `n=10000`, `d=100`, `t={0,100,1000}`; configure with `RECONCILE_RUNTIME_HISTORY_N`, `RECONCILE_RUNTIME_HISTORY_D`, and `RECONCILE_RUNTIME_TOMBSTONES`.
+The `runtime_history_independent_catchup` target drives two authoritative `ReplicatedMap` peers through blocked in-memory transport. Live states/final deletions stay fixed while transient insert-delete history grows raw tombstones; it reports raw-store divergence, real catch-up traffic, convergence latency, and causal-stability GC. Defaults: `n=10000`, `d=100`, `t={0,100,1000}`; configure with `RECONCILE_RUNTIME_HISTORY_N`, `RECONCILE_RUNTIME_HISTORY_D`, and `RECONCILE_RUNTIME_TOMBSTONES`.
 
 The `membership_scaling` target isolates runtime membership from algorithm research. It measures authoritative/read-replica peer-routing heap, admits 2/10/100/1000 authoritative peers through real dated traffic on `InMemoryNetwork`, counts one full anti-entropy initiation round, and prices persisted membership plus full tombstone-ack matrices through `FileSnapshot`. The largest live point also proves that an expired tombstone remains blocked by unreachable authoritative members until they are decommissioned. A 100k result is never live-measured: the target prints only an explicit `MODEL` extrapolation from the two largest measured points. Configure with `RECONCILE_MEMBERSHIP_COUNTS`, `RECONCILE_MEMBERSHIP_TOMBSTONES`, and `RECONCILE_MEMBERSHIP_MODEL_TARGET`.
 

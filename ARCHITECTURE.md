@@ -23,22 +23,17 @@ graph LR
     rbsr["rbsr\nexternal range reconciliation"]
     gossip["gossip\ntransport, auth, discovery"]
     reconcile["reconcile\npublic facade and runtime"]
-    devkit["devkit\nbenchmark support"]
 
     rsos -. crates.io .-> rbsr
     rsos -. crates.io .-> reconcile
     rbsr -. crates.io .-> reconcile
-    rsos -. crates.io .-> devkit
-    rbsr -. crates.io .-> devkit
     gossip --> reconcile
-    devkit --> reconcile
 ```
 
 | crate | responsibility |
 |---|---|
 | `gossip` | datagram transport, wire codec, authentication, replay protection, discovery |
 | `reconcile` | replicated maps/sets, key/value bounds, persistence state/ports/adapters, lifecycle, observability |
-| `devkit` | unpublished benchmark utilities |
 
 External domain dependencies are `rsos` (ordered storage and range aggregates) and `rbsr`
 (range reconciliation), both maintained in `range-based-set-reconciliation`, plus

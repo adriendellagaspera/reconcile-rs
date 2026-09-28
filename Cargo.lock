@@ -489,17 +489,6 @@ dependencies = [
  "typenum",
 ]
 
-[[package]]
-name = "devkit"
-version = "0.0.0"
-dependencies = [
- "bincode",
- "rand 0.8.7",
- "rbsr",
- "rsos",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "digest"
@@ -1343,7 +1332,6 @@ dependencies = [
  "chrono",
  "clap",
  "criterion",
- "devkit",
  "do-riblt",
  "ipnet",
  "lww-register",
