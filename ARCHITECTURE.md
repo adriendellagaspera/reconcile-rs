@@ -65,25 +65,18 @@ snapshots therefore do not hold the writer lock.
 complete `PersistedState`. Incremental persistence is an optimization owned by `FileSnapshot`;
 it must not change the semantics required of generic persistence implementations.
 
-A durable generation is one coherent cut across all authoritative state:
-
-- the immutable dated-entry root;
-- causal-stability membership;
-- per-tombstone acknowledgement state;
-- physical deletion of entries after tombstone GC.
+A durable generation is one coherent cut across the immutable dated-entry root, causal-stability
+membership, per-tombstone acknowledgement state, and physical deletion after tombstone GC.
 
 A mutation belongs to exactly one generation. Once generation `g` is frozen for persistence,
 later writes are recorded only in `g + 1` and must never be retired by success or failure of
 `g`. Multiple changes to the same key within an unfrozen generation coalesce to its final durable
 effect. Physical deletion is a distinct delta operation from writing an LWW tombstone.
 
-The in-memory generation boundary has three logical states:
-
-1. **open** — accepts mutations and coalesces the pending durable delta;
-2. **frozen** — immutable work handed to persistence while a new open generation immediately
-   accepts writes;
-3. **committed** — retired only after durable publication succeeds. A failed frozen generation
-   remains retryable and cannot consume or reorder mutations from newer generations.
+The in-memory boundary has three logical states: **open** accepts mutations and coalesces the
+pending durable delta; **frozen** is immutable work handed to persistence while a new open generation
+accepts writes; **committed** is retired only after durable publication succeeds. A failed frozen
+generation remains retryable and cannot consume or reorder newer mutations.
 
 At most one generation is frozen for publication at a time. The open generation may continue to
 grow behind it, but failed persistence must not create an unbounded queue of immutable generations.
