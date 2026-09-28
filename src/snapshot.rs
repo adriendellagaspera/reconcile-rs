@@ -95,7 +95,6 @@ impl FileSnapshot {
             path: path.as_ref().to_path_buf(),
         }
     }
-
 }
 
 impl<K, V> Persistence<K, V> for FileSnapshot
