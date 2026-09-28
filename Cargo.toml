@@ -48,33 +48,12 @@ harness = false
 name = "runtime_history_independent_catchup"
 harness = false
 
-[[bench]]
-name = "state_repair_comparison"
-harness = false
 
-[[bench]]
-name = "riblt_preparation"
-harness = false
 
-[[bench]]
-name = "state_repair_mutations"
-harness = false
 
-[[bench]]
-name = "cold_start_repair"
-harness = false
 
-[[bench]]
-name = "transport_sensitivity"
-harness = false
 
-[[bench]]
-name = "netem_trace_validation"
-harness = false
 
-[[bench]]
-name = "state_repair_sensitivity"
-harness = false
 
 [[bench]]
 name = "contention"
@@ -131,7 +110,6 @@ gossip = { package = "reconcile-gossip", version = "0.5.0", path = "gossip", def
 metrics-util = { version = "0.19", default-features = false, features = ["debugging"] }
 proptest = "1.11.0"
 rand = "0.8.5"
-do-riblt = "1.0.2"
 socket2 = "0.5"
 tempfile = "3"
 tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread", "io-util"] }
