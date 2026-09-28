@@ -48,6 +48,7 @@ fn config_on_port(port: u16) -> Config {
         send_buffer_size: Some(super::config::DEFAULT_SOCKET_BUFFER_SIZE),
         freshness_window: gossip::replay::FRESHNESS_WINDOW_DEFAULT,
         max_peers: super::config::DEFAULT_MAX_PEERS,
+        max_replay_senders: super::config::DEFAULT_MAX_REPLAY_SENDERS,
         max_concurrent_bulk_dumps: super::config::DEFAULT_MAX_CONCURRENT_BULK_DUMPS,
         max_concurrent_broadcasts: super::config::DEFAULT_MAX_CONCURRENT_BROADCASTS,
         snapshot_interval: Some(super::persistence::SNAPSHOT_INTERVAL),
