@@ -273,6 +273,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // Reconcile again under the write lock: state may have changed while hooks ran.
         if !to_apply.is_empty() {
             let change_count = to_apply.len();
+            let mut generation = self.snapshot_generations.mutation();
             let _guard = self.write_lock.lock();
             let mut map = (*self.map.load_full()).clone();
             let mut projection = (*self.projection.load_full()).clone();
@@ -289,7 +290,13 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                     None => v,
                 };
                 let version = merged_v.is_tombstone().then(|| version_hash(&merged_v));
-                self.map_insert(&mut map, &mut projection, k.clone(), merged_v);
+                self.map_insert(
+                    &mut map,
+                    &mut projection,
+                    &mut generation,
+                    k.clone(),
+                    merged_v,
+                );
                 if let Some(version) = version {
                     acks_to_send.push(Message::TombstoneAck::<K, Entry<Timestamp, V>, State<V>>((
                         k, version,
