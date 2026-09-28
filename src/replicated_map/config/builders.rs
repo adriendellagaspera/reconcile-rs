@@ -201,11 +201,19 @@ impl Config {
         self
     }
 
-    /// Set the maximum number of distinct peers tracked (default 1024). See
+    /// Set the maximum number of causal/gossip peers tracked (default 1024). See
     /// [`max_peers`](Config::max_peers).
     #[must_use]
     pub fn with_max_peers(mut self, max: usize) -> Self {
         self.max_peers = max;
+        self
+    }
+
+    /// Set the maximum number of distinct authenticated sender IPs retained in replay state
+    /// (default 1024). See [`max_replay_senders`](Config::max_replay_senders).
+    #[must_use]
+    pub fn with_max_replay_senders(mut self, max: usize) -> Self {
+        self.max_replay_senders = max;
         self
     }
 
