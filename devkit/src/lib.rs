@@ -7,15 +7,11 @@
 
 //! Shared benchmark utilities.
 //!
-//! [`stats`] summarizes repeated trials, [`protocol_cost`] measures reconciliation cost,
-//! [`transport_model`] projects protocol traces onto explicit network assumptions, and
-//! [`contention`] provides the concurrent-writer harness. This crate is repository-only and is not
-//! published.
+//! [`protocol_cost`] measures reconciliation cost, while [`transport_model`] and the experiment
+//! helpers support repository-only benchmark analysis. This crate is not published.
 #![forbid(unsafe_code)]
 
-pub mod contention;
 pub mod corpus;
 pub mod experiment;
 pub mod protocol_cost;
-pub mod stats;
 pub mod transport_model;
