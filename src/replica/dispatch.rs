@@ -280,8 +280,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // Reconcile again under the write lock: state may have changed while hooks ran.
         if !to_apply.is_empty() {
             let change_count = to_apply.len();
-            let mut generation = self.snapshot_generations.mutation();
             let _guard = self.write_lock.lock();
+            let mut generation = self.snapshot_generations.mutation();
             let mut map = (*self.map.load_full()).clone();
             let mut projection = (*self.projection.load_full()).clone();
             for (k, v) in to_apply {
