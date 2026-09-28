@@ -210,20 +210,19 @@ where
     Ok(())
 }
 
-pub(super) fn save_generation<K, V>(
+pub(super) fn try_save_delta<K, V>(
     backend: &FileSnapshot,
-    full_state: &PersistedState<K, V>,
     delta: Option<&PersistenceDelta<K, V>>,
-) -> io::Result<()>
+) -> io::Result<bool>
 where
     K: Eq + Hash + Serialize + DeserializeOwned,
     V: Serialize + DeserializeOwned,
 {
     let Some(mut manifest) = read_manifest(backend)? else {
-        return save_full(backend, full_state);
+        return Ok(false);
     };
     let Some(delta) = delta else {
-        return Ok(());
+        return Ok(true);
     };
 
     let from_generation = manifest.current_generation;
@@ -238,8 +237,7 @@ where
     manifest.deltas.push(reference);
     manifest.current_generation = to_generation;
     publish_manifest(backend, &manifest)?;
-    Ok(())
+    Ok(true)
 }
-
 #[cfg(test)]
 mod tests;
