@@ -4,42 +4,12 @@ set -Eeuo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR/.."
 
-DOMAIN_FILES=(
-    lww-register/src/lib.rs
-    lww-register/src/clock.rs
-    lww-register/src/clock/*.rs
-    lww-register/src/entry.rs
-)
-
-FORBIDDEN='^\s*use\s+(tokio|bincode|chrono|ipnet|mio|reqwest|hyper|std::net)\b'
-
 status=0
-for f in "${DOMAIN_FILES[@]}"; do
-    if [ ! -f "$f" ]; then
-        echo "check-domain-purity: $f listed but missing — update the script" >&2
-        status=1
-        continue
-    fi
-    if hits=$(grep -nE "$FORBIDDEN" "$f"); then
-        echo "check-domain-purity: infrastructure import(s) in domain module $f:" >&2
-        echo "$hits" >&2
-        status=1
-    fi
-done
-
-if [ "$status" -ne 0 ]; then
-    echo >&2
-    echo "Domain modules must stay infrastructure-free." >&2
-    echo "Route the dependency through a port/adapter instead, or move the code out of the domain." >&2
-    echo >&2
-fi
-
 manifest_status=0
 
 STANDALONE_MANIFESTS=(
     rsos/Cargo.toml
     rbsr/Cargo.toml
-    lww-register/Cargo.toml
 )
 
 FORBIDDEN_DEPS='tokio|bincode|chrono|ipnet|mio|reqwest|hyper|socket2|async-trait'
@@ -95,8 +65,8 @@ done
 
 if [ "$manifest_status" -ne 0 ]; then
     echo >&2
-    echo "rsos/rbsr/lww-register must stay standalone: no async runtime, socket, wire codec or" >&2
-    echo "wall clock in their manifests. Put the adapter" >&2
+    echo "rsos/rbsr must stay standalone: no async runtime, socket, wire codec or wall clock" >&2
+    echo "in their manifests. Put the adapter" >&2
     echo "in gossip or reconcile instead." >&2
     status=1
 fi

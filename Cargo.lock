@@ -918,6 +918,8 @@ checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 [[package]]
 name = "lww-register"
 version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2898da5108dd752e99a5d6d863c94370116fac9ff333cd30b8c2c998edccf7e"
 dependencies = [
  "serde",
 ]

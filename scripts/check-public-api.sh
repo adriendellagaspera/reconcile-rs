@@ -4,11 +4,10 @@ set -Eeuo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR/.."
 
-CRATES=(rsos rbsr lww-register gossip .)
+CRATES=(rsos rbsr gossip .)
 declare -A PKG_NAME=(
     [rsos]=rsos
     [rbsr]=rbsr
-    [lww-register]=lww-register
     [gossip]=reconcile-gossip
     [.]=reconcile
 )
