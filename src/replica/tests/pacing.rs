@@ -207,7 +207,7 @@ async fn oversized_refinement_batch_is_split_without_dropping_ranges() {
     let mut messages = Vec::new();
     let mut encoded = Vec::new();
     while encoded.len() < 67_794 {
-        let message = Message::EntryFingerprint(segment.clone());
+        let message: Msg = Message::EntryFingerprint(segment.clone());
         gossip::bincode::encode(&message, &mut encoded).unwrap();
         messages.push(message);
     }
@@ -248,5 +248,9 @@ async fn oversized_refinement_batch_is_split_without_dropping_ranges() {
         received += decoded.len();
     }
     assert!(datagrams >= 2, "batch was not split");
-    assert_eq!(received, messages.len(), "lost a fingerprint during packing");
+    assert_eq!(
+        received,
+        messages.len(),
+        "lost a fingerprint during packing"
+    );
 }
