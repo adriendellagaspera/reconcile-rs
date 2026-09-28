@@ -31,7 +31,6 @@ fn manifest_requires_contiguous_committed_generations() {
     assert!(err.to_string().contains("continuity"));
 }
 
-
 #[test]
 fn framing_rejects_short_objects_but_reaches_decode_at_exact_minimum() {
     let short = vec![0u8; HEADER_LEN + OBJECT_CHECKSUM_LEN - 1];
@@ -104,8 +103,7 @@ fn assert_bad_delta_generation(from_generation: u64, to_generation: u64) {
         to_generation,
         delta: &delta,
     };
-    let reference =
-        write_segment(&store_dir(&backend), DELTA_MAGIC, "delta", 2, &segment).unwrap();
+    let reference = write_segment(&store_dir(&backend), DELTA_MAGIC, "delta", 2, &segment).unwrap();
     manifest.deltas.push(reference);
     manifest.current_generation = 2;
     publish_manifest(&backend, &manifest).unwrap();
