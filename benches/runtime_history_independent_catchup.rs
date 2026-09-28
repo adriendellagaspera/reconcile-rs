@@ -122,7 +122,6 @@ struct Pair {
 type LiveState = Vec<(u64, u64)>;
 type LiveStatePair = (LiveState, LiveState);
 
-
 fn env_usize(name: &str, default: usize) -> usize {
     std::env::var(name).map_or(default, |raw| {
         raw.parse::<usize>()
