@@ -54,6 +54,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         &self,
         map: &mut FingerprintTreeMap<K, Entry<Timestamp, V>>,
         projection: &mut FingerprintTreeMap<K, State<V>>,
+        generation: &mut super::generation::GenerationMutation<'_, K, V>,
         key: K,
         value: Entry<Timestamp, V>,
     ) -> Option<Entry<Timestamp, V>> {
@@ -69,6 +70,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 live_tombstones.remove(&key);
             }
         }
+        generation.record_entry(key.clone(), value.clone());
         projection.insert(key.clone(), value.project());
         map.insert(key, value)
     }
@@ -91,10 +93,11 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         } else {
             observability::record_insert();
         }
+        let mut generation = self.snapshot_generations.mutation();
         let _guard = self.write_lock.lock();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
-        let ret = self.map_insert(&mut map, &mut projection, key, value);
+        let ret = self.map_insert(&mut map, &mut projection, &mut generation, key, value);
         self.map.store(Arc::new(map));
         self.projection.store(Arc::new(projection));
         self.record_changes(1);
@@ -265,11 +268,18 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 observability::record_insert();
             }
         }
+        let mut generation = self.snapshot_generations.mutation();
         let _guard = self.write_lock.lock();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
         for (key, value) in key_values {
-            self.map_insert(&mut map, &mut projection, key.clone(), value.clone());
+            self.map_insert(
+                &mut map,
+                &mut projection,
+                &mut generation,
+                key.clone(),
+                value.clone(),
+            );
         }
         self.map.store(Arc::new(map));
         self.projection.store(Arc::new(projection));
