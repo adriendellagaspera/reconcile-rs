@@ -59,8 +59,8 @@ fn runtime_compacts_before_publishing_a_33rd_delta() {
     }
     assert_eq!(segment_counts(&path), (1, 32));
 
-    let expected = store.fingerprint(..);
     store.load_bulk(&[(0, vec![33; 64])]);
+    let expected = store.fingerprint(..);
     store.snapshot_now().unwrap();
 
     assert_eq!(
@@ -71,12 +71,5 @@ fn runtime_compacts_before_publishing_a_33rd_delta() {
 
     let restart_network = InMemoryNetwork::new();
     let restarted = store(&restart_network, &path, 11);
-    assert_eq!(restarted.fingerprint(..), expected_after_write(expected, &store));
-}
-
-fn expected_after_write(
-    _before: crate::Fingerprint,
-    store: &ReplicatedMap<u32, Vec<u8>>,
-) -> crate::Fingerprint {
-    store.fingerprint(..)
+    assert_eq!(restarted.fingerprint(..), expected);
 }
