@@ -38,6 +38,13 @@
 //! | [`BROADCASTS_IN_FLIGHT`](crate::metrics::BROADCASTS_IN_FLIGHT) | gauge | write-broadcast tasks in flight right now |
 //! | [`BROADCAST_BACKPRESSURE_TOTAL`](crate::metrics::BROADCAST_BACKPRESSURE_TOTAL) | counter (`path` label) | writes that hit the egress budget |
 //! | [`PERSISTENCE_FAILURES_CURRENT`](crate::metrics::PERSISTENCE_FAILURES_CURRENT) | gauge | consecutive snapshot failures since the last success (0 when healthy) |
+//! | [`SNAPSHOT_FULL_MATERIALIZATIONS_TOTAL`](crate::metrics::SNAPSHOT_FULL_MATERIALIZATIONS_TOTAL) | counter | full FileSnapshot base publications |
+//! | [`SNAPSHOT_DELTA_COMMITS_TOTAL`](crate::metrics::SNAPSHOT_DELTA_COMMITS_TOTAL) | counter | incremental FileSnapshot delta publications |
+//! | [`SNAPSHOT_COMPACTIONS_TOTAL`](crate::metrics::SNAPSHOT_COMPACTIONS_TOTAL) | counter | full bases replacing an existing delta chain |
+//! | [`SNAPSHOT_SEGMENTS_CURRENT`](crate::metrics::SNAPSHOT_SEGMENTS_CURRENT) | gauge | currently committed base + delta segment count |
+//! | [`SNAPSHOT_SEGMENT_BYTES_CURRENT`](crate::metrics::SNAPSHOT_SEGMENT_BYTES_CURRENT) | gauge | bytes in currently committed base + delta segments |
+//! | [`SNAPSHOT_RECOVERY_SEGMENTS`](crate::metrics::SNAPSHOT_RECOVERY_SEGMENTS) | gauge | segment count replayed by the latest FileSnapshot load |
+//! | [`SNAPSHOT_RECOVERY_DURATION_SECONDS`](crate::metrics::SNAPSHOT_RECOVERY_DURATION_SECONDS) | histogram | FileSnapshot recovery wall time |
 
 /// Local key insertions.
 pub const INSERTS_TOTAL: &str = "reconcile_inserts_total";
