@@ -84,6 +84,39 @@ impl<K, V> From<DatedEntries<K, V>> for PersistedState<K, V> {
     }
 }
 
+/// Coalesced durable effects captured at one snapshot-generation boundary.
+///
+/// Hidden from the ordinary persistence API surface: generic backends can ignore it and keep using
+/// full-state save/load. FileSnapshot consumes it to append an incremental segment.
+#[doc(hidden)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(bound(
+    serialize = "K: Serialize, V: Serialize",
+    deserialize = "K: Deserialize<'de> + Eq + std::hash::Hash, V: Deserialize<'de>"
+))]
+pub struct PersistenceDelta<K, V> {
+    pub(crate) entries: HashMap<K, Option<Entry<Timestamp, V>>>,
+    pub(crate) members: HashMap<IpAddr, bool>,
+    pub(crate) ack_key_clears: HashSet<K>,
+    pub(crate) ack_peers: HashMap<K, HashMap<IpAddr, Option<u64>>>,
+}
+
+impl<K, V> PersistenceDelta<K, V> {
+    pub(crate) fn new(
+        entries: HashMap<K, Option<Entry<Timestamp, V>>>,
+        members: HashMap<IpAddr, bool>,
+        ack_key_clears: HashSet<K>,
+        ack_peers: HashMap<K, HashMap<IpAddr, Option<u64>>>,
+    ) -> Self {
+        Self {
+            entries,
+            members,
+            ack_key_clears,
+            ack_peers,
+        }
+    }
+}
+
 /// A pluggable durable backend for a replicated map.
 /// Held behind an [`Arc`](std::sync::Arc) and snapshotted from a background task, hence
 /// `Send + Sync + 'static`.
@@ -106,6 +139,18 @@ pub trait Persistence<K, V>: Send + Sync + 'static {
     /// linearizable instant across all of them — a write concurrent with the snapshot's
     /// construction may or may not be reflected in it.
     fn save(&self, state: &PersistedState<K, V>) -> io::Result<()>;
+
+    /// Save one coherent generation. Backends that do not implement incremental persistence get
+    /// the unchanged full-state behavior through this default.
+    #[doc(hidden)]
+    fn save_generation(
+        &self,
+        state: &PersistedState<K, V>,
+        delta: Option<&PersistenceDelta<K, V>>,
+    ) -> io::Result<()> {
+        let _ = delta;
+        self.save(state)
+    }
 }
 
 /// The **default** backend: the latest snapshot in RAM, so **a restart loses everything**. Use
