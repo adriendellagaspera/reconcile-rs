@@ -33,6 +33,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         // (clock, then map → projection).
         let now = self.engine.clock_now();
         let mut updated: Option<Entry<Timestamp, V>> = None;
+        let mut generation = self.engine.snapshot_generations.mutation();
         let _guard = self.engine.write_lock.lock();
         let mut map = (*self.engine.map.load_full()).clone();
         map.with_mut(k, |maybe_entry| {
@@ -92,7 +93,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             // above, which only runs for a live entry.
             validate(entry.value().expect("just-mutated live entry has a value"))?;
         }
-        if updated.is_some() {
+        if let Some(entry) = &updated {
+            generation.record_entry(k.clone(), entry.clone());
+            self.engine.record_changes(1);
             if let Some(entry) = map.get(k) {
                 let projected = entry.project();
                 let mut projection = (*self.engine.projection.load_full()).clone();
