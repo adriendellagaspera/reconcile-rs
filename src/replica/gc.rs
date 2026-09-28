@@ -29,6 +29,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Remove a key from the dated `map`, its value-only projection, and the live-tombstone
     /// index (the GC removal path).
     pub(crate) fn gc_remove(&self, key: &K) -> Option<Entry<Timestamp, V>> {
+        let mut generation = self.snapshot_generations.mutation();
         let _guard = self.write_lock.lock();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
@@ -38,6 +39,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.map.store(Arc::new(map));
         self.projection.store(Arc::new(projection));
         if ret.is_some() {
+            generation.record_physical_delete(key.clone());
             self.record_changes(1);
         }
         ret
@@ -61,7 +63,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Drop the acknowledgment bookkeeping for a key once its tombstone has been collected.
     pub(crate) fn forget_tombstone(&self, key: &K) {
+        let mut generation = self.snapshot_generations.mutation();
         if self.tombstone_acks.write().remove(key).is_some() {
+            generation.record_ack_key_clear(key.clone());
             self.record_changes(1);
         }
     }
