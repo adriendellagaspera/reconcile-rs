@@ -137,17 +137,16 @@ pub trait Persistence<K, V>: Send + Sync + 'static {
     /// published after that generation was frozen remains pending for the next save.
     fn save(&self, state: &PersistedState<K, V>) -> io::Result<()>;
 
-    /// Save one coherent generation. `state` is always the complete materialized state; `delta`
-    /// is an optional coalesced optimization hint. Backends that do not override this method keep
-    /// the unchanged full-state behavior through the default implementation.
+    /// Try to durably commit a coherent generation from its coalesced delta without requiring a
+    /// materialized full state. Return `Ok(true)` only when the generation is durably handled;
+    /// `Ok(false)` asks the runtime to collect the complete state and call [`save`](Self::save).
+    ///
+    /// The default preserves historical behavior for every existing backend by always requesting
+    /// the full-state fallback.
     #[doc(hidden)]
-    fn save_generation(
-        &self,
-        state: &PersistedState<K, V>,
-        delta: Option<&PersistenceDelta<K, V>>,
-    ) -> io::Result<()> {
+    fn try_save_delta(&self, delta: Option<&PersistenceDelta<K, V>>) -> io::Result<bool> {
         let _ = delta;
-        self.save(state)
+        Ok(false)
     }
 }
 
