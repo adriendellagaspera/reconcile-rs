@@ -84,6 +84,39 @@ impl<K, V> From<DatedEntries<K, V>> for PersistedState<K, V> {
     }
 }
 
+/// Coalesced durable effects captured at one snapshot-generation boundary.
+///
+/// Hidden from the ordinary persistence API surface: generic backends can ignore it and keep using
+/// full-state save/load. FileSnapshot consumes it to append an incremental segment.
+#[doc(hidden)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(bound(
+    serialize = "K: Serialize, V: Serialize",
+    deserialize = "K: Deserialize<'de> + Eq + std::hash::Hash, V: Deserialize<'de>"
+))]
+pub struct PersistenceDelta<K, V> {
+    pub(crate) entries: HashMap<K, Option<Entry<Timestamp, V>>>,
+    pub(crate) members: HashMap<IpAddr, bool>,
+    pub(crate) ack_key_clears: HashSet<K>,
+    pub(crate) ack_peers: HashMap<K, HashMap<IpAddr, Option<u64>>>,
+}
+
+impl<K, V> PersistenceDelta<K, V> {
+    pub(crate) fn new(
+        entries: HashMap<K, Option<Entry<Timestamp, V>>>,
+        members: HashMap<IpAddr, bool>,
+        ack_key_clears: HashSet<K>,
+        ack_peers: HashMap<K, HashMap<IpAddr, Option<u64>>>,
+    ) -> Self {
+        Self {
+            entries,
+            members,
+            ack_key_clears,
+            ack_peers,
+        }
+    }
+}
+
 /// A pluggable durable backend for a replicated map.
 /// Held behind an [`Arc`](std::sync::Arc) and snapshotted from a background task, hence
 /// `Send + Sync + 'static`.
@@ -98,14 +131,23 @@ pub trait Persistence<K, V>: Send + Sync + 'static {
     fn load(&self) -> io::Result<Option<PersistedState<K, V>>>;
     /// Durably save the given state, atomically replacing any previous snapshot.
     /// # Call context
-    /// Called synchronously and inline — never via `spawn_blocking` — both from the periodic
-    /// background snapshot task and from an explicit caller-triggered flush; a slow implementation
-    /// blocks whichever Tokio worker thread is running that call for as long as it takes. `O(state
-    /// size)` — every call transfers the *entire* map, never a diff since the last save. `state`
-    /// is internally consistent per key (each entry was read atomically) but not a single
-    /// linearizable instant across all of them — a write concurrent with the snapshot's
-    /// construction may or may not be reflected in it.
+    /// Called synchronously and inline — never via `spawn_blocking`. The default generation hook
+    /// delegates here with the complete state, so existing backends keep their historical
+    /// `O(state size)` behavior unchanged. `state` is one coherent durable generation; a write
+    /// published after that generation was frozen remains pending for the next save.
     fn save(&self, state: &PersistedState<K, V>) -> io::Result<()>;
+
+    /// Try to durably commit a coherent generation from its coalesced delta without requiring a
+    /// materialized full state. Return `Ok(true)` only when the generation is durably handled;
+    /// `Ok(false)` asks the runtime to collect the complete state and call [`save`](Self::save).
+    ///
+    /// The default preserves historical behavior for every existing backend by always requesting
+    /// the full-state fallback.
+    #[doc(hidden)]
+    fn try_save_delta(&self, delta: Option<&PersistenceDelta<K, V>>) -> io::Result<bool> {
+        let _ = delta;
+        Ok(false)
+    }
 }
 
 /// The **default** backend: the latest snapshot in RAM, so **a restart loses everything**. Use
