@@ -186,7 +186,7 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - run: rm -rf ~/.cargo/registry/src/*/{rsos,rbsr,lww-register,reconcile-gossip}-* ~/.cargo/registry/cache/*/{rsos,rbsr,lww-register,reconcile-gossip}-*
+    - run: rm -rf ~/.cargo/registry/src/*/{lww-register,reconcile-gossip}-* ~/.cargo/registry/cache/*/{rsos,rbsr,lww-register,reconcile-gossip}-*
     - run: cargo package --workspace --allow-dirty
 
   deny:
