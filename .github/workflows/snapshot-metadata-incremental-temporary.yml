@@ -1,0 +1,27 @@
+name: snapshot-metadata-incremental-temporary
+
+on:
+  push:
+    branches:
+      - bench/snapshot-metadata-incremental
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+      - name: Run metadata-only incremental snapshot sweep
+        env:
+          RECONCILE_METADATA_MEMBERS: "10000"
+          RECONCILE_METADATA_BATCHES: "1,10,100,1000"
+          RECONCILE_METADATA_CHAIN_LENGTHS: "1,8,32,128"
+          RECONCILE_METADATA_TRIALS: "1"
+        run: cargo bench --bench snapshot_metadata_only
