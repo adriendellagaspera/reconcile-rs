@@ -1,0 +1,16 @@
+name: causal-debt-benchmark-temporary
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  causal-debt-benchmark:
+    if: github.event.pull_request.number == 228
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - name: Run causal debt benchmark
+        run: cargo bench --bench membership_causal_debt
