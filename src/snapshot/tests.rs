@@ -181,6 +181,24 @@ fn committed_missing_or_corrupt_delta_is_rejected() {
 }
 
 #[test]
+fn corrupt_manifest_is_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
+    let state = sample_state();
+    Persistence::<i32, String>::save_generation(&backend, &state, None).unwrap();
+
+    let (_, manifest_path) = incremental::paths(&backend);
+    let mut bytes = fs::read(&manifest_path).unwrap();
+    let body_index = SNAPSHOT_HEADER_LEN.min(bytes.len() - 1);
+    bytes[body_index] ^= 0xff;
+    fs::write(&manifest_path, bytes).unwrap();
+
+    let err = Persistence::<i32, String>::load(&backend).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("checksum"));
+}
+
+#[test]
 fn uncommitted_orphan_segment_is_ignored() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
