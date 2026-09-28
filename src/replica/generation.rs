@@ -142,7 +142,7 @@ pub(crate) struct GenerationMutation<'a, K, V> {
     state: MutexGuard<'a, GenerationState<K, V>>,
 }
 
-impl<K: Eq + Hash, V> GenerationMutation<'_, K, V> {
+impl<K: Eq + Hash + Clone, V> GenerationMutation<'_, K, V> {
     fn enabled(&self) -> bool {
         self.state.tracking_enabled
     }
