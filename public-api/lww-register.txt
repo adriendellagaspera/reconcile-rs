@@ -1,9 +1,4 @@
 pub mod lww_register
-pub mod lww_register::bounds
-pub trait lww_register::bounds::Key: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
-impl<T> lww_register::bounds::Key for T where T: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
-pub trait lww_register::bounds::Value: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
-impl<T> lww_register::bounds::Value for T where T: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
 pub mod lww_register::clock
 pub struct lww_register::clock::AdmittedTime
 impl lww_register::clock::AdmittedTime
@@ -306,54 +301,6 @@ impl<T, V> core::marker::Unpin for lww_register::entry::Entry<T, V> where T: cor
 impl<T, V> core::marker::UnsafeUnpin for lww_register::entry::Entry<T, V> where T: core::marker::UnsafeUnpin, lww_register::entry::State<V>: core::marker::UnsafeUnpin
 impl<T, V> core::panic::unwind_safe::RefUnwindSafe for lww_register::entry::Entry<T, V> where T: core::panic::unwind_safe::RefUnwindSafe, lww_register::entry::State<V>: core::panic::unwind_safe::RefUnwindSafe
 impl<T, V> core::panic::unwind_safe::UnwindSafe for lww_register::entry::Entry<T, V> where T: core::panic::unwind_safe::UnwindSafe, lww_register::entry::State<V>: core::panic::unwind_safe::UnwindSafe
-pub mod lww_register::persistence
-pub struct lww_register::persistence::InMemoryPersistence<K, V>
-impl<K, V> lww_register::persistence::InMemoryPersistence<K, V>
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::new() -> Self
-impl<K, V> core::default::Default for lww_register::persistence::InMemoryPersistence<K, V>
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::default() -> Self
-impl<K, V> lww_register::persistence::Persistence<K, V> for lww_register::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<lww_register::persistence::PersistedState<K, V>>>
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::save(&self, &lww_register::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-impl<K, V> !core::marker::Freeze for lww_register::persistence::InMemoryPersistence<K, V>
-impl<K, V> core::marker::Send for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::marker::Send
-impl<K, V> core::marker::Sync for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::marker::UnsafeUnpin
-impl<K, V> core::panic::unwind_safe::RefUnwindSafe for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::RefUnwindSafe
-impl<K, V> core::panic::unwind_safe::UnwindSafe for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::UnwindSafe
-#[non_exhaustive] pub struct lww_register::persistence::PersistedState<K, V>
-pub lww_register::persistence::PersistedState::entries: lww_register::persistence::DatedEntries<K, V>
-pub lww_register::persistence::PersistedState::members: std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>
-pub lww_register::persistence::PersistedState::tombstone_acks: std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>
-impl<K, V> lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::new(lww_register::persistence::DatedEntries<K, V>, std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>) -> Self
-impl<'de, K, V> serde::de::Deserialize<'de> for lww_register::persistence::PersistedState<K, V> where K: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash, V: serde::de::Deserialize<'de>
-pub fn lww_register::persistence::PersistedState<K, V>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde::de::Deserializer>::Error> where __D: serde::de::Deserializer<'de>
-impl<K, V> core::convert::From<alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>> for lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::from(lww_register::persistence::DatedEntries<K, V>) -> Self
-impl<K, V> core::default::Default for lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::default() -> Self
-impl<K, V> serde::ser::Serialize for lww_register::persistence::PersistedState<K, V> where K: serde::ser::Serialize, V: serde::ser::Serialize
-pub fn lww_register::persistence::PersistedState<K, V>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde::ser::Serializer>::Ok, <__S as serde::ser::Serializer>::Error> where __S: serde::ser::Serializer
-impl<K: core::clone::Clone, V: core::clone::Clone> core::clone::Clone for lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::clone(&self) -> lww_register::persistence::PersistedState<K, V>
-impl<K: core::fmt::Debug, V: core::fmt::Debug> core::fmt::Debug for lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<K, V> core::marker::Freeze for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Freeze, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Freeze
-impl<K, V> core::marker::Send for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Send, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Send
-impl<K, V> core::marker::Sync for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Sync, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Unpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::UnsafeUnpin
-impl<K, V> core::panic::unwind_safe::RefUnwindSafe for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::RefUnwindSafe
-impl<K, V> core::panic::unwind_safe::UnwindSafe for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::UnwindSafe
-pub trait lww_register::persistence::Persistence<K, V>: core::marker::Send + core::marker::Sync + 'static
-pub fn lww_register::persistence::Persistence::load(&self) -> core::io::error::Result<core::option::Option<lww_register::persistence::PersistedState<K, V>>>
-pub fn lww_register::persistence::Persistence::save(&self, &lww_register::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-impl<K, V> lww_register::persistence::Persistence<K, V> for lww_register::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<lww_register::persistence::PersistedState<K, V>>>
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::save(&self, &lww_register::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-pub type lww_register::persistence::DatedEntries<K, V> = alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>
 pub enum lww_register::State<V>
 pub lww_register::State::Present(V)
 pub lww_register::State::Tombstone
@@ -420,46 +367,6 @@ impl<T, V> core::marker::Unpin for lww_register::entry::Entry<T, V> where T: cor
 impl<T, V> core::marker::UnsafeUnpin for lww_register::entry::Entry<T, V> where T: core::marker::UnsafeUnpin, lww_register::entry::State<V>: core::marker::UnsafeUnpin
 impl<T, V> core::panic::unwind_safe::RefUnwindSafe for lww_register::entry::Entry<T, V> where T: core::panic::unwind_safe::RefUnwindSafe, lww_register::entry::State<V>: core::panic::unwind_safe::RefUnwindSafe
 impl<T, V> core::panic::unwind_safe::UnwindSafe for lww_register::entry::Entry<T, V> where T: core::panic::unwind_safe::UnwindSafe, lww_register::entry::State<V>: core::panic::unwind_safe::UnwindSafe
-pub struct lww_register::InMemoryPersistence<K, V>
-impl<K, V> lww_register::persistence::InMemoryPersistence<K, V>
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::new() -> Self
-impl<K, V> core::default::Default for lww_register::persistence::InMemoryPersistence<K, V>
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::default() -> Self
-impl<K, V> lww_register::persistence::Persistence<K, V> for lww_register::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<lww_register::persistence::PersistedState<K, V>>>
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::save(&self, &lww_register::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-impl<K, V> !core::marker::Freeze for lww_register::persistence::InMemoryPersistence<K, V>
-impl<K, V> core::marker::Send for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::marker::Send
-impl<K, V> core::marker::Sync for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::marker::UnsafeUnpin
-impl<K, V> core::panic::unwind_safe::RefUnwindSafe for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::RefUnwindSafe
-impl<K, V> core::panic::unwind_safe::UnwindSafe for lww_register::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<lww_register::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::UnwindSafe
-#[non_exhaustive] pub struct lww_register::PersistedState<K, V>
-pub lww_register::PersistedState::entries: lww_register::persistence::DatedEntries<K, V>
-pub lww_register::PersistedState::members: std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>
-pub lww_register::PersistedState::tombstone_acks: std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>
-impl<K, V> lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::new(lww_register::persistence::DatedEntries<K, V>, std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>) -> Self
-impl<'de, K, V> serde::de::Deserialize<'de> for lww_register::persistence::PersistedState<K, V> where K: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash, V: serde::de::Deserialize<'de>
-pub fn lww_register::persistence::PersistedState<K, V>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde::de::Deserializer>::Error> where __D: serde::de::Deserializer<'de>
-impl<K, V> core::convert::From<alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>> for lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::from(lww_register::persistence::DatedEntries<K, V>) -> Self
-impl<K, V> core::default::Default for lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::default() -> Self
-impl<K, V> serde::ser::Serialize for lww_register::persistence::PersistedState<K, V> where K: serde::ser::Serialize, V: serde::ser::Serialize
-pub fn lww_register::persistence::PersistedState<K, V>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde::ser::Serializer>::Ok, <__S as serde::ser::Serializer>::Error> where __S: serde::ser::Serializer
-impl<K: core::clone::Clone, V: core::clone::Clone> core::clone::Clone for lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::clone(&self) -> lww_register::persistence::PersistedState<K, V>
-impl<K: core::fmt::Debug, V: core::fmt::Debug> core::fmt::Debug for lww_register::persistence::PersistedState<K, V>
-pub fn lww_register::persistence::PersistedState<K, V>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<K, V> core::marker::Freeze for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Freeze, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Freeze
-impl<K, V> core::marker::Send for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Send, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Send
-impl<K, V> core::marker::Sync for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Sync, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Unpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::UnsafeUnpin
-impl<K, V> core::panic::unwind_safe::RefUnwindSafe for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::RefUnwindSafe
-impl<K, V> core::panic::unwind_safe::UnwindSafe for lww_register::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::UnwindSafe
 pub struct lww_register::Timestamp
 impl lww_register::clock::Timestamp
 pub const fn lww_register::clock::Timestamp::hlc(&self) -> lww_register::clock::Hlc
@@ -500,14 +407,3 @@ pub fn lww_register::Clock::node_id(&self) -> lww_register::clock::NodeId
 pub fn lww_register::Clock::now(&self) -> lww_register::clock::Timestamp
 pub fn lww_register::Clock::observe(&self, lww_register::clock::Timestamp)
 pub fn lww_register::Clock::observe_trusted(&self, lww_register::clock::Timestamp)
-pub trait lww_register::Key: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
-impl<T> lww_register::bounds::Key for T where T: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
-pub trait lww_register::Persistence<K, V>: core::marker::Send + core::marker::Sync + 'static
-pub fn lww_register::Persistence::load(&self) -> core::io::error::Result<core::option::Option<lww_register::persistence::PersistedState<K, V>>>
-pub fn lww_register::Persistence::save(&self, &lww_register::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-impl<K, V> lww_register::persistence::Persistence<K, V> for lww_register::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<lww_register::persistence::PersistedState<K, V>>>
-pub fn lww_register::persistence::InMemoryPersistence<K, V>::save(&self, &lww_register::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-pub trait lww_register::Value: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
-impl<T> lww_register::bounds::Value for T where T: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
-pub type lww_register::DatedEntries<K, V> = alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>
