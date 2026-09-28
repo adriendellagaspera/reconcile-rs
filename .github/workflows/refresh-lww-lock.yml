@@ -16,7 +16,7 @@ jobs:
         with:
           ref: externalize-lww-register-0.6
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo update -p lww-register --precise 0.6.0
+      - run: cargo generate-lockfile
       - name: Commit lockfile
         run: |
           set -euo pipefail
