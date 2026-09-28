@@ -40,7 +40,8 @@ pub(crate) enum InboundRejection {
     Replay { seq: Seq, stamp: Stamp },
 }
 
-/// Authenticate, version-check, apply the peer cap, then replay-check one inbound datagram.
+/// Authenticate, version-check, apply the topology peer cap, then replay-check one inbound
+/// datagram. The replay check also owns its independent authenticated-sender capacity bound.
 ///
 /// `peer_state` is deliberately lazy: reading membership/peer state happens only after
 /// authentication and wire-version validation, preserving the receive-path ordering while letting
