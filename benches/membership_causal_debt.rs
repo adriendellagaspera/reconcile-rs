@@ -90,14 +90,18 @@ struct CountingTransport {
 impl Transport for CountingTransport {
     async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         let (size, peer) = self.inner.recv_from(buf).await?;
-        self.traffic.rx_bytes.fetch_add(size as u64, Ordering::Relaxed);
+        self.traffic
+            .rx_bytes
+            .fetch_add(size as u64, Ordering::Relaxed);
         self.traffic.rx_datagrams.fetch_add(1, Ordering::Relaxed);
         Ok((size, peer))
     }
 
     async fn send_to(&self, buf: &[u8], dst: &SocketAddr) -> io::Result<usize> {
         let sent = self.inner.send_to(buf, dst).await?;
-        self.traffic.tx_bytes.fetch_add(sent as u64, Ordering::Relaxed);
+        self.traffic
+            .tx_bytes
+            .fetch_add(sent as u64, Ordering::Relaxed);
         self.traffic.tx_datagrams.fetch_add(1, Ordering::Relaxed);
         Ok(sent)
     }
@@ -154,7 +158,11 @@ fn env_list(name: &str, default: &str) -> Vec<usize> {
     let mut values: Vec<_> = std::env::var(name)
         .unwrap_or_else(|_| default.to_owned())
         .split(',')
-        .map(|raw| raw.trim().parse::<usize>().unwrap_or_else(|_| panic!("{name}: {raw:?}")))
+        .map(|raw| {
+            raw.trim()
+                .parse::<usize>()
+                .unwrap_or_else(|_| panic!("{name}: {raw:?}"))
+        })
         .collect();
     values.sort_unstable();
     values.dedup();
@@ -326,8 +334,7 @@ async fn one_unreachable(members: usize, tombstones: usize) {
     let network = InMemoryNetwork::new();
     let traffic = Traffic::default();
     let initial = state_with_members(members, tombstones, false, None);
-    let (store, capture) =
-        store_from_state(initial, &network, traffic.clone(), REPAIR_INTERVAL);
+    let (store, capture) = store_from_state(initial, &network, traffic.clone(), REPAIR_INTERVAL);
 
     let run_shutdown = CancellationToken::new();
     let run_store = store.clone();
@@ -356,7 +363,9 @@ async fn one_unreachable(members: usize, tombstones: usize) {
 
     let unreachable = members - 1;
     for (index, responder) in responders.iter().enumerate() {
-        responder.armed.store(index != unreachable, Ordering::Release);
+        responder
+            .armed
+            .store(index != unreachable, Ordering::Release);
     }
 
     traffic.reset();
@@ -439,8 +448,7 @@ fn forget_from_state(members: usize, tombstones: usize, missing_ack: bool) -> f6
     } else {
         peer_ip(0)
     };
-    let state =
-        state_with_members(members, tombstones, true, missing_ack.then_some(target));
+    let state = state_with_members(members, tombstones, true, missing_ack.then_some(target));
     let backend = Arc::new(InMemoryPersistence::<u64, u64>::new());
     Persistence::<u64, u64>::save(&*backend, &state).expect("seed persistence");
 
