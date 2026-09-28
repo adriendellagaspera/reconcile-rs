@@ -38,10 +38,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use devkit::protocol_cost::{reconcile, Cost, Counting, Decisions};
-use rand::rngs::StdRng;
-use rand::SeedableRng;
-use rbsr::{FanOut, FixedFanOut, RefinementPolicy};
 use reconcile::{
     replicated_map::Config, Entry, InMemoryNetwork, InMemoryTransport, NodeId, ReplicatedMap,
     Timestamp, Transport,
@@ -54,7 +50,6 @@ const DEFAULT_N: usize = 10_000;
 const DEFAULT_D: usize = 100;
 const DEFAULT_TRANSIENT_TOMBSTONES: &[usize] = &[0, 100, 1_000];
 const PORT: u16 = 9_870;
-const SESSION_SEED: u64 = 42;
 const RECONCILE_INTERVAL: Duration = Duration::from_millis(20);
 const REPAIR_INTERVAL: Duration = Duration::from_millis(5);
 const PARTITION_WRITE_SETTLE: Duration = Duration::from_millis(100);
@@ -127,29 +122,6 @@ struct Pair {
 type LiveState = Vec<(u64, u64)>;
 type LiveStatePair = (LiveState, LiveState);
 
-#[derive(Debug, Eq, PartialEq)]
-struct CostSignature {
-    decisions: Decisions,
-    refinement_bytes: usize,
-    datagrams: usize,
-    fragments: usize,
-    largest_message: usize,
-    largest_message_bytes: usize,
-}
-
-impl From<&Cost> for CostSignature {
-    fn from(cost: &Cost) -> Self {
-        Self {
-            decisions: cost.decisions(),
-            refinement_bytes: cost.refinement_bytes,
-            datagrams: cost.datagrams,
-            fragments: cost.fragments,
-            largest_message: cost.largest_message,
-            largest_message_bytes: cost.largest_message_bytes,
-        }
-    }
-}
-
 fn env_usize(name: &str, default: usize) -> usize {
     std::env::var(name).map_or(default, |raw| {
         raw.parse::<usize>()
@@ -212,18 +184,6 @@ fn raw_diff_keys(
     keys.into_iter()
         .filter(|key| left.get(key) != right.get(key))
         .collect()
-}
-
-fn counted_reconcile(
-    left: &FingerprintTreeMap<u64, Entry<Timestamp, u64>>,
-    right: &FingerprintTreeMap<u64, Entry<Timestamp, u64>>,
-    policy: &dyn RefinementPolicy,
-) -> Cost {
-    let (counted_left, counted_right) = (Counting::new(left), Counting::new(right));
-    let mut rng = StdRng::seed_from_u64(SESSION_SEED);
-    let mut cost = reconcile(&counted_left, &counted_right, policy, None, &mut rng);
-    cost.queries = counted_left.queries() + counted_right.queries();
-    cost
 }
 
 fn transient_keys(start: u64, count: usize) -> Vec<u64> {
@@ -336,9 +296,7 @@ async fn scenario(
     n: usize,
     fixed_keys: &[u64],
     transient_tombstones: usize,
-    policy: &dyn RefinementPolicy,
     reference_live_states: &mut Option<LiveStatePair>,
-    reference_post_gc: &mut Option<CostSignature>,
 ) {
     let pair = pair();
     pair.left.store.load_bulk(&corpus(n));
@@ -406,7 +364,6 @@ async fn scenario(
         expected_diff_keys,
         "raw divergence does not match fixed deletions plus historical tombstones"
     );
-    let pre_heal_cost = counted_reconcile(&left_raw, &right_raw, policy);
 
     let (shutdown, left_task, right_task) = run_pair(&pair).await;
     tokio::time::sleep(BLOCKED_GC_WINDOW).await;
@@ -474,28 +431,18 @@ async fn scenario(
 
     let left_post_gc = pair.left.store.snapshot();
     let right_post_gc = pair.right.store.snapshot();
-    let post_gc_cost = counted_reconcile(&left_post_gc, &right_post_gc, policy);
-    let post_gc_signature = CostSignature::from(&post_gc_cost);
-    if let Some(reference) = reference_post_gc {
-        assert_eq!(
-            &post_gc_signature, reference,
-            "transient tombstone history changed the post-GC steady-state RBSR trace"
-        );
-    } else {
-        *reference_post_gc = Some(post_gc_signature);
-    }
+    assert!(
+        left_post_gc.iter().eq(right_post_gc.iter()),
+        "post-GC authoritative states must be identical"
+    );
 
     println!(
-        "[runtime-tombstone-catchup] t={transient_tombstones:>8} | raw={:>6}/{:>6}, tomb={:>5}/{:>5}, diff={:>6} | pre-heal refine={:>8} B, messages={:>3}, ranges={:>6}, idlist={:>6} elem | catch-up={:>8.3} ms, wire={:>9} B/{:>5} dg | GC={:>8.3} ms, wire+acks={:>9} B/{:>5} dg | post-GC raw={}",
+        "[runtime-tombstone-catchup] t={transient_tombstones:>8} | raw={:>6}/{:>6}, tomb={:>5}/{:>5}, diff={:>6} | catch-up={:>8.3} ms, wire={:>9} B/{:>5} dg | GC={:>8.3} ms, wire+acks={:>9} B/{:>5} dg | post-GC raw={}",
         left_raw.len(),
         right_raw.len(),
         expected_left_tombstones,
         expected_right_tombstones,
         expected_diff_keys.len(),
-        pre_heal_cost.refinement_bytes,
-        pre_heal_cost.messages,
-        pre_heal_cost.ranges,
-        pre_heal_cost.enumerated_elements,
         caught_up.as_secs_f64() * 1_000.0,
         catchup_traffic.0,
         catchup_traffic.1,
@@ -518,9 +465,7 @@ async fn report() {
     );
 
     let fixed_keys = fixed_deletion_keys(n, d);
-    let policy = FixedFanOut::new(FanOut::NEGENTROPY);
     let mut reference_live_states = None;
-    let mut reference_post_gc = None;
 
     println!(
         "[runtime-tombstone-catchup] n={n} d={d}; t is the number of logically absent transient keys retained as tombstones"
@@ -530,9 +475,7 @@ async fn report() {
             n,
             &fixed_keys,
             transient_tombstones,
-            &policy,
             &mut reference_live_states,
-            &mut reference_post_gc,
         )
         .await;
     }

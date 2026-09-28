@@ -29,7 +29,7 @@ debug = true
 overflow-checks = true
 
 [[bench]]
-name = "bench"
+name = "replicated_map"
 harness = false
 
 [[bench]]
@@ -38,10 +38,6 @@ harness = false
 
 [[bench]]
 name = "protocol"
-harness = false
-
-[[bench]]
-name = "history_independent_catchup"
 harness = false
 
 [[bench]]
@@ -62,10 +58,6 @@ harness = false
 
 [[bench]]
 name = "membership_churn"
-harness = false
-
-[[bench]]
-name = "contention"
 harness = false
 
 [[bench]]
