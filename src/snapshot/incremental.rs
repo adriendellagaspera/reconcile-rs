@@ -62,6 +62,13 @@ struct DeltaSegment<K, V> {
     delta: PersistenceDelta<K, V>,
 }
 
+#[derive(Serialize)]
+struct DeltaSegmentWrite<'a, K, V> {
+    from_generation: u64,
+    to_generation: u64,
+    delta: &'a PersistenceDelta<K, V>,
+}
+
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
@@ -251,22 +258,30 @@ where
         state.tombstone_acks.remove(&key);
     }
     for (key, peer_ops) in delta.ack_peers {
-        for (peer, version) in peer_ops {
-            match version {
-                Some(version) => {
-                    state
-                        .tombstone_acks
-                        .entry(key.clone())
-                        .or_default()
-                        .insert(peer, version);
-                }
-                None => {
-                    if let Some(acks) = state.tombstone_acks.get_mut(&key) {
-                        acks.remove(&peer);
-                        if acks.is_empty() {
-                            state.tombstone_acks.remove(&key);
+        use std::collections::hash_map::Entry as MapEntry;
+        match state.tombstone_acks.entry(key) {
+            MapEntry::Occupied(mut occupied) => {
+                for (peer, version) in peer_ops {
+                    match version {
+                        Some(version) => {
+                            occupied.get_mut().insert(peer, version);
+                        }
+                        None => {
+                            occupied.get_mut().remove(&peer);
                         }
                     }
+                }
+                if occupied.get().is_empty() {
+                    occupied.remove();
+                }
+            }
+            MapEntry::Vacant(vacant) => {
+                let acks: HashMap<_, _> = peer_ops
+                    .into_iter()
+                    .filter_map(|(peer, version)| version.map(|version| (peer, version)))
+                    .collect();
+                if !acks.is_empty() {
+                    vacant.insert(acks);
                 }
             }
         }
@@ -408,8 +423,8 @@ pub(super) fn save_generation<K, V>(
     delta: Option<&PersistenceDelta<K, V>>,
 ) -> io::Result<()>
 where
-    K: Clone + Eq + Hash + Serialize + DeserializeOwned,
-    V: Clone + Serialize + DeserializeOwned,
+    K: Eq + Hash + Serialize + DeserializeOwned,
+    V: Serialize + DeserializeOwned,
 {
     let Some(mut manifest) = read_manifest(backend)? else {
         return save_full(backend, full_state);
@@ -420,10 +435,10 @@ where
 
     let from_generation = manifest.current_generation;
     let to_generation = from_generation.saturating_add(1);
-    let segment = DeltaSegment {
+    let segment = DeltaSegmentWrite {
         from_generation,
         to_generation,
-        delta: delta.clone(),
+        delta,
     };
     let dir = store_dir(backend);
     let reference = write_segment(&dir, DELTA_MAGIC, "delta", to_generation, &segment)?;
