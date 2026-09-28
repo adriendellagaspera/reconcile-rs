@@ -29,7 +29,7 @@ debug = true
 overflow-checks = true
 
 [[bench]]
-name = "bench"
+name = "replicated_map"
 harness = false
 
 [[bench]]
