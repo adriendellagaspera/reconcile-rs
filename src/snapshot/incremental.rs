@@ -51,6 +51,12 @@ struct BaseSegment<K, V> {
     state: PersistedState<K, V>,
 }
 
+#[derive(Serialize)]
+struct BaseSegmentWrite<'a, K, V> {
+    generation: u64,
+    state: &'a PersistedState<K, V>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(bound(
     serialize = "K: Serialize, V: Serialize",
@@ -404,7 +410,7 @@ where
     let dir = store_dir(backend);
     fs::create_dir_all(&dir)?;
 
-    let base = BaseSegment { generation, state };
+    let base = BaseSegmentWrite { generation, state };
     let base_ref = write_segment(&dir, BASE_MAGIC, "base", generation, &base)?;
     let manifest = Manifest {
         base: base_ref,
