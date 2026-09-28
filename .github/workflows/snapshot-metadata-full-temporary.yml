@@ -1,4 +1,5 @@
 name: snapshot-metadata-full-temporary
+# trigger metadata baseline
 
 on:
   push:
