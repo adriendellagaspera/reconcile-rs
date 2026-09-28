@@ -206,7 +206,6 @@ fn accumulate(mut left: Estimate, right: Estimate) -> Estimate {
     left.expected_wire_bytes += right.expected_wire_bytes;
     left.packets += right.packets;
     left.retransmitted_bytes += right.retransmitted_bytes;
-    left.handshake_ms += right.handshake_ms;
     left.propagation_ms += right.propagation_ms;
     left.serialization_ms += right.serialization_ms;
     left.loss_recovery_ms += right.loss_recovery_ms;
