@@ -12,6 +12,8 @@ use std::path::{Component, Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::observability;
+
 use super::{
     FileSnapshot, Manifest, SegmentRef, FORMAT_VERSION, HEADER_LEN, MANIFEST_FILE, MANIFEST_MAGIC,
 };
@@ -230,10 +232,18 @@ pub(super) fn cleanup_unreferenced_segments(backend: &FileSnapshot, keep: &Manif
             continue;
         };
         if !keep_files.contains(name) {
-            let _ = fs::remove_file(path);
+            if let Err(err) = fs::remove_file(path) {
+                if err.kind() != io::ErrorKind::NotFound {
+                    observability::record_snapshot_cleanup_failure();
+                }
+            }
         }
     }
-    let _ = fs::remove_file(&backend.path);
+    if let Err(err) = fs::remove_file(&backend.path) {
+        if err.kind() != io::ErrorKind::NotFound {
+            observability::record_snapshot_cleanup_failure();
+        }
+    }
 }
 
 #[cfg(test)]
