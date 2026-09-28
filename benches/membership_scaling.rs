@@ -606,5 +606,16 @@ fn main() {
             target,
             "bytes",
         );
+        let heap_subset: Vec<_> = durable
+            .iter()
+            .filter(|p| p.tombstones == tombstone_count)
+            .map(|p| (p.members, p.heap_bytes as f64))
+            .collect();
+        report_model(
+            &format!("causal_state_heap_tombstones_{tombstone_count}"),
+            &heap_subset,
+            target,
+            "bytes",
+        );
     }
 }
