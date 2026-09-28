@@ -137,10 +137,18 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Per-peer replay state is deliberately **kept**: dropping it would let a
     /// captured datagram replayed inside the freshness window re-add the peer.
     pub(crate) fn decommission_peer(&self, peer: IpAddr) {
-        let mut changed = usize::from(self.members.write().remove(&peer));
+        let mut generation = self.snapshot_generations.mutation();
+        let removed_member = self.members.write().remove(&peer);
+        let mut changed = usize::from(removed_member);
+        if removed_member {
+            generation.record_member(peer, false);
+        }
         self.peers.write().remove(&peer);
-        for key_acks in self.tombstone_acks.write().values_mut() {
-            changed += usize::from(key_acks.remove(&peer).is_some());
+        for (key, key_acks) in self.tombstone_acks.write().iter_mut() {
+            if key_acks.remove(&peer).is_some() {
+                generation.record_ack(key.clone(), peer, None);
+                changed += 1;
+            }
         }
         self.record_changes(changed);
     }
