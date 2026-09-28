@@ -203,10 +203,12 @@ pub struct Config {
     /// Must tolerate real skew and jitter or legitimate traffic is dropped — [`Duration::ZERO`]
     /// accepts almost nothing. Unvalidated, because too small is stricter, never unsafe.
     pub freshness_window: Duration,
-    /// Maximum number of causal/gossip peers tracked by an authoritative replica (default 1024).
-    /// This is deliberately not the replay-state bound: value-only read replicas never enter
-    /// causal membership or gate tombstone GC. See [`max_replay_senders`](Self::max_replay_senders)
-    /// for authenticated sender state.
+    /// Maximum number of topology peers tracked (default 1024). On an authoritative
+    /// [`ReplicatedMap`](super::ReplicatedMap) this bounds causal/gossip peers; on a
+    /// [`ReadReplicaMap`](crate::ReadReplicaMap) it bounds the dated peers the read replica
+    /// tracks. This is deliberately not the replay-state bound: value-only read replicas never
+    /// enter an authoritative replica's causal membership or gate tombstone GC. See
+    /// [`max_replay_senders`](Self::max_replay_senders) for authenticated sender state.
     pub max_peers: usize,
     /// Maximum number of distinct authenticated sender IPs whose replay state is retained
     /// concurrently (default 1024), independent of [`max_peers`](Self::max_peers).
