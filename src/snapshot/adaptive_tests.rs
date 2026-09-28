@@ -6,7 +6,7 @@ use crate::{FileSnapshot, InMemoryNetwork, NodeId, ReplicatedMap};
 
 use super::incremental;
 
-fn store(
+fn make_store(
     network: &InMemoryNetwork,
     path: &std::path::Path,
     octet: u8,
@@ -47,7 +47,7 @@ fn runtime_compacts_before_publishing_a_33rd_delta() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("snapshot.bin");
     let network = InMemoryNetwork::new();
-    let store = store(&network, &path, 10);
+    let store = make_store(&network, &path, 10);
 
     let initial: Vec<_> = (0..1_000u32).map(|key| (key, vec![0; 64])).collect();
     store.load_bulk(&initial);
@@ -70,6 +70,6 @@ fn runtime_compacts_before_publishing_a_33rd_delta() {
     );
 
     let restart_network = InMemoryNetwork::new();
-    let restarted = store(&restart_network, &path, 11);
+    let restarted = make_store(&restart_network, &path, 11);
     assert_eq!(restarted.fingerprint(..), expected);
 }
