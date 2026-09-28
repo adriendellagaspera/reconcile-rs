@@ -121,13 +121,20 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         if acks.is_empty() {
             return;
         }
+        let mut generation = self.snapshot_generations.mutation();
         let map_guard = self.map.load_full();
         let mut guard = self.tombstone_acks.write();
         let mut changed = 0;
         for (key, version) in acks {
             // Only acks for locally-held tombstones are retained, bounding the bookkeeping map.
             if map_guard.get(&key).is_some_and(|v| v.is_tombstone()) {
-                if guard.entry(key).or_default().insert(peer_ip, version) != Some(version) {
+                if guard
+                    .entry(key.clone())
+                    .or_default()
+                    .insert(peer_ip, version)
+                    != Some(version)
+                {
+                    generation.record_ack(key, peer_ip, Some(version));
                     changed += 1;
                 }
             } else {
