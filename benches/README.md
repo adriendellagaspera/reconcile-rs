@@ -12,6 +12,7 @@ Benchmarks measure code that ships in this repository. Comparative algorithm and
 | membership_scaling | ReplicatedMap membership, peer-routing, durable causal-state, and GC scaling |
 | membership_causal_debt | tombstone ACK resend, unreachable-member repair tax, and decommission cost |
 | read_replica_fleet | many read replicas against a small authoritative set, including authenticated ingress state |
+| membership_churn | sustained authoritative member replacement with ACK coverage rebuilt through real dated traffic |
 | contention | concurrent write cost |
 | snapshot_write_amplification | current full-snapshot write/restart baseline |
 
@@ -28,6 +29,8 @@ The `membership_scaling` target isolates runtime membership from algorithm resea
 The `membership_causal_debt` target measures shipped causal-stability mechanics once membership exists: the 8 KiB-per-round tombstone-ACK resend window, one silent authoritative member against otherwise responsive peers, the bounded RTT-scale repair retries it causes, and `forget_peer` cost as ACK maps grow. Its default live failure scenario is 1,000 authoritative members with 100 retained tombstones; the synthetic decommission sweep extends debt to 1,000 tombstones without changing protocol semantics. Configure with `RECONCILE_CAUSAL_MEMBERS`, `RECONCILE_CAUSAL_TOMBSTONES`, `RECONCILE_CAUSAL_ROUNDS`, `RECONCILE_FAILURE_MEMBERS`, and `RECONCILE_FAILURE_TOMBSTONES`.
 
 The `read_replica_fleet` target measures a topology with many `ReadReplicaMap` instances and a small authoritative set. It reports aggregate read-replica heap, known-authoritative and speculative-probe egress per round, verifies that value-only senders enter neither authoritative `peers` nor causal `members`, and contrasts authenticated vs insecure authoritative ingress heap to expose per-sender replay-state cost. The authoritative control deliberately keeps `max_peers=8` while sweeping up to 1,000 read replicas so this non-membership state is visible separately from the causal cap. Configure with `RECONCILE_READ_REPLICA_COUNTS`, `RECONCILE_READ_AUTHORITATIVE_PEERS`, and `RECONCILE_READ_MODEL_TARGET`.
+
+The `membership_churn` target keeps authoritative fleet size constant while replacing members through real authenticated dated traffic. New members preload the same tombstones and rebuild version-correct ACK coverage through the shipped bounded resend cursor; the benchmark reports `forget_peer` and end-to-end replacement latency, traffic per replacement, and initial/final persisted-state size. Defaults are 1,000 authoritative members, 100 replacements, 0/100/1,000 tombstones, and three ACK rounds per newcomer. Configure with `RECONCILE_CHURN_MEMBERS`, `RECONCILE_CHURN_TOMBSTONES`, `RECONCILE_CHURN_REPLACEMENTS`, and `RECONCILE_CHURN_ACK_ROUNDS`.
 
 The `contention` target compares `FingerprintTreeMap` with `BTreeMap` behind the same `parking_lot::RwLock`, using paired trials across writer counts. It reports throughput plus the per-operation cost delta after cancelling the shared lock term. Override the writer sweep with `CONTENTION_WRITERS`; set `CONTENTION_RAW=1` for trial-level rows.
 

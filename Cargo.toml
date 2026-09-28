@@ -61,6 +61,10 @@ name = "read_replica_fleet"
 harness = false
 
 [[bench]]
+name = "membership_churn"
+harness = false
+
+[[bench]]
 name = "contention"
 harness = false
 
