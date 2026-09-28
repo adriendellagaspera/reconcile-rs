@@ -28,6 +28,7 @@ pub(crate) fn version_hash<V: Serialize>(value: &V) -> u64 {
 impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Remove a key from the dated `map`, its value-only projection, and the live-tombstone
     /// index (the GC removal path).
+    #[cfg(test)]
     pub(crate) fn gc_remove(&self, key: &K) -> Option<Entry<Timestamp, V>> {
         let _guard = self.write_lock.lock();
         let mut generation = self.snapshot_generations.mutation();
@@ -88,6 +89,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Drop the acknowledgment bookkeeping for a key once its tombstone has been collected.
+    #[cfg(test)]
     pub(crate) fn forget_tombstone(&self, key: &K) {
         let mut generation = self.snapshot_generations.mutation();
         if self.tombstone_acks.write().remove(key).is_some() {
