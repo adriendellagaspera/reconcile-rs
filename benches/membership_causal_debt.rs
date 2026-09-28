@@ -85,18 +85,32 @@ impl Traffic {
             .unwrap_or_default()
     }
 
-    fn classify_tx_dgrams(&self, known_members: &HashSet<IpAddr>) -> (u64, u64) {
+    fn classify_tx(&self, known_members: &HashSet<IpAddr>) -> (u64, u64, u64, u64) {
         self.tx_by_peer
             .lock()
             .expect("traffic mutex poisoned")
             .iter()
-            .fold((0, 0), |(known, speculative), (peer, (_, dgrams))| {
-                if known_members.contains(peer) {
-                    (known + dgrams, speculative)
-                } else {
-                    (known, speculative + dgrams)
-                }
-            })
+            .fold(
+                (0, 0, 0, 0),
+                |(known_bytes, known_dgrams, speculative_bytes, speculative_dgrams),
+                 (peer, (bytes, dgrams))| {
+                    if known_members.contains(peer) {
+                        (
+                            known_bytes + bytes,
+                            known_dgrams + dgrams,
+                            speculative_bytes,
+                            speculative_dgrams,
+                        )
+                    } else {
+                        (
+                            known_bytes,
+                            known_dgrams,
+                            speculative_bytes + bytes,
+                            speculative_dgrams + dgrams,
+                        )
+                    }
+                },
+            )
     }
 
     fn snapshot(&self) -> TrafficSnapshot {
@@ -322,15 +336,18 @@ async fn resend_point(members: usize, tombstones: usize, rounds: usize) {
         store.seed_peer(peer_ip(index));
     }
 
+    let known_members: HashSet<_> = (0..members).map(peer_ip).collect();
     for round in 1..=rounds {
         traffic.reset();
         let started = Instant::now();
         store.start_reconciliation().await;
         let elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0;
         let wire = traffic.snapshot();
-        let bytes_per_peer = wire.tx_bytes as f64 / members as f64;
+        let (known_bytes, known_dgrams, speculative_bytes, speculative_dgrams) =
+            traffic.classify_tx(&known_members);
+        let bytes_per_member = known_bytes as f64 / members as f64;
         println!(
-            "[causal-resend] members={members},tombstones={tombstones},round={round},tx_bytes={},tx_dgrams={},bytes_per_peer={bytes_per_peer:.3},round_ms={elapsed_ms:.3}",
+            "[causal-resend] members={members},tombstones={tombstones},round={round},tx_bytes={},tx_dgrams={},known_member_tx_bytes={known_bytes},known_member_tx_dgrams={known_dgrams},speculative_tx_bytes={speculative_bytes},speculative_tx_dgrams={speculative_dgrams},bytes_per_member={bytes_per_member:.3},round_ms={elapsed_ms:.3}",
             wire.tx_bytes, wire.tx_datagrams
         );
     }
@@ -440,8 +457,12 @@ async fn one_unreachable(members: usize, tombstones: usize) {
         "the silent member must receive exactly the bounded four repair retries"
     );
     let known_members: HashSet<_> = (0..members).map(peer_ip).collect();
-    let (known_member_repair_dgrams, speculative_repair_dgrams) =
-        traffic.classify_tx_dgrams(&known_members);
+    let (
+        _known_member_repair_bytes,
+        known_member_repair_dgrams,
+        speculative_repair_bytes,
+        speculative_repair_dgrams,
+    ) = traffic.classify_tx(&known_members);
     let responsive_member_repair_dgrams =
         known_member_repair_dgrams.saturating_sub(unreachable_repair_dgrams);
     assert_eq!(
@@ -477,7 +498,7 @@ async fn one_unreachable(members: usize, tombstones: usize) {
     let gc_after_forget_ms = gc_started.elapsed().as_secs_f64() * 1_000.0;
 
     println!(
-        "[causal-unreachable] members={members},tombstones={tombstones},responsive={},round_tx_bytes={},round_tx_dgrams={},round_rx_bytes={},round_rx_dgrams={},round_ms={round_ms:.3},repair_tx_bytes={},repair_tx_dgrams={},unreachable_repair_tx_bytes={unreachable_repair_bytes},unreachable_repair_tx_dgrams={unreachable_repair_dgrams},responsive_member_repair_tx_dgrams={responsive_member_repair_dgrams},speculative_repair_tx_dgrams={speculative_repair_dgrams},forget_acked_ms={forget_acked_ms:.3},forget_unacked_ms={forget_unacked_ms:.3},gc_after_forget_ms={gc_after_forget_ms:.3}",
+        "[causal-unreachable] members={members},tombstones={tombstones},responsive={},round_tx_bytes={},round_tx_dgrams={},round_rx_bytes={},round_rx_dgrams={},round_ms={round_ms:.3},repair_tx_bytes={},repair_tx_dgrams={},unreachable_repair_tx_bytes={unreachable_repair_bytes},unreachable_repair_tx_dgrams={unreachable_repair_dgrams},responsive_member_repair_tx_dgrams={responsive_member_repair_dgrams},speculative_repair_tx_bytes={speculative_repair_bytes},speculative_repair_tx_dgrams={speculative_repair_dgrams},forget_acked_ms={forget_acked_ms:.3},forget_unacked_ms={forget_unacked_ms:.3},gc_after_forget_ms={gc_after_forget_ms:.3}",
         members - 1,
         round.tx_bytes,
         round.tx_datagrams,
