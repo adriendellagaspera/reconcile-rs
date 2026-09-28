@@ -1,0 +1,28 @@
+name: snapshot-incremental-long-chain-temporary
+
+on:
+  push:
+    branches:
+      - bench/snapshot-incremental-long-chain
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+      - name: Run incremental long-chain sweep
+        env:
+          RECONCILE_SNAPSHOT_SIZES: "100000"
+          RECONCILE_SNAPSHOT_DELTAS: "1000,10000,50000"
+          RECONCILE_SNAPSHOT_CHAIN_LENGTHS: "32,64,128"
+          RECONCILE_SNAPSHOT_CHAIN_DELTAS: "1,100,1000,10000"
+          RECONCILE_SNAPSHOT_TRIALS: "1"
+        run: cargo bench --bench snapshot_write_amplification
