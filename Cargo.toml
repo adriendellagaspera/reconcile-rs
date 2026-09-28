@@ -1,5 +1,5 @@
 [workspace]
-members = ["rsos", "rbsr", "gossip", "devkit", "."]
+members = ["gossip", "devkit", "."]
 resolver = "2"
 
 [package]
@@ -102,8 +102,8 @@ metrics = { version = "0.24", optional = true }
 metrics-exporter-prometheus = { version = "0.16", optional = true, default-features = false, features = ["http-listener"] }
 parking_lot = "0.12.1"
 rand = "0.8.5"
-rbsr = { version = "0.2.1", path = "rbsr" }
-rsos = { version = "0.5.0", path = "rsos" }
+rbsr = "=0.2.2"
+rsos = "=0.5.1"
 serde = { version = "1.0.192", features = ["derive"] }
 tokio = { version = "1.33.0", features = ["net", "time", "rt", "macros", "sync"] }
 tokio-util = { version = "0.7", default-features = false }

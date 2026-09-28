@@ -65,13 +65,15 @@ jobs:
             echo "::error::$name $version did not appear in the crates.io index" >&2
             return 1
           }
-          publish_crate rsos
-          publish_crate rbsr
           publish_crate reconcile-gossip
           publish_crate reconcile
-      - name: Create GitHub release
+      - name: Create GitHub release if missing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF##*/}"
-          gh release create "$tag" --title "$tag" --generate-notes
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "GitHub release $tag already exists"
+          else
+            gh release create "$tag" --title "$tag" --generate-notes
+          fi

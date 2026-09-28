@@ -5,71 +5,9 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR/.."
 
 status=0
-manifest_status=0
 
-STANDALONE_MANIFESTS=(
-    rsos/Cargo.toml
-    rbsr/Cargo.toml
-)
-
-FORBIDDEN_DEPS='tokio|bincode|chrono|ipnet|mio|reqwest|hyper|socket2|async-trait'
-
-for m in "${STANDALONE_MANIFESTS[@]}"; do
-    if [ ! -f "$m" ]; then
-        echo "check-domain-purity: $m listed but missing — update the script" >&2
-        manifest_status=1
-        continue
-    fi
-    crate_dir=$(dirname "$m")
-    if ! awk -v forb="^(${FORBIDDEN_DEPS})\$" \
-             -v crate="$crate_dir" '
-        { line = $0; sub(/#.*$/, "", line) }
-        line ~ /^[[:space:]]*\[/ {
-            hdr = line
-            sub(/^[[:space:]]*\[+/, "", hdr)
-            sub(/\]+.*$/, "", hdr)
-            gsub(/[[:space:]"'"'"']/, "", hdr)
-            insec = (hdr ~ /(^|\.)(dependencies|dev-dependencies|build-dependencies)$/)
-            if (hdr ~ /(^|\.)(dependencies|dev-dependencies|build-dependencies)\.[A-Za-z0-9_.-]+$/) {
-                nm = hdr
-                sub(/^.*dependencies\./, "", nm)
-                if (nm ~ forb) {
-                    printf "  line %d: [%s]\n", NR, hdr; bad = 1
-                }
-            }
-            next
-        }
-        insec && line ~ /=/ {
-            key = line
-            sub(/=.*$/, "", key)
-            gsub(/[[:space:]"'"'"']/, "", key)
-            sub(/\..*$/, "", key)
-            if (key ~ forb) {
-                printf "  line %d: %s\n", NR, key; bad = 1
-            }
-            if (match(line, /package[[:space:]]*=[[:space:]]*"[^"]+"/)) {
-                pkg = substr(line, RSTART, RLENGTH)
-                sub(/^[^"]*"/, "", pkg)
-                sub(/".*$/, "", pkg)
-                if (pkg ~ forb) {
-                    printf "  line %d: %s (renamed dependency)\n", NR, pkg; bad = 1
-                }
-            }
-        }
-        END { exit bad ? 1 : 0 }
-    ' "$m"; then
-        echo "check-domain-purity: forbidden infrastructure dependency in $m (see above)" >&2
-        manifest_status=1
-    fi
-done
-
-if [ "$manifest_status" -ne 0 ]; then
-    echo >&2
-    echo "rsos/rbsr must stay standalone: no async runtime, socket, wire codec or wall clock" >&2
-    echo "in their manifests. Put the adapter" >&2
-    echo "in gossip or reconcile instead." >&2
-    status=1
-fi
+# RSOS/RBSR purity is enforced in their canonical repository.
+# This gate now checks only local workspace dependency edges against ARCHITECTURE.md.
 
 graph_status=0
 if [ -f ARCHITECTURE.md ]; then

@@ -1322,10 +1322,11 @@ dependencies = [
 
 [[package]]
 name = "rbsr"
-version = "0.2.1"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b673b8855157324e85c9daaa7d8e15a9f5d98e1971ba1ce8a71b497ffbb091e0"
 dependencies = [
- "proptest",
- "rand 0.8.7",
+ "rand 0.8.8",
  "rsos",
  "serde",
  "tracing",
@@ -1425,12 +1426,12 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "rsos"
-version = "0.5.0"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "842a6d0bca729eef4672490daac648638a226e174ec838c01f4177a129948c54"
 dependencies = [
  "arrayvec",
  "blake3",
- "once_cell",
- "rand 0.8.7",
  "range-cmp",
  "serde",
  "tracing",

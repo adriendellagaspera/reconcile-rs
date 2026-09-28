@@ -4,7 +4,7 @@ set -Eeuo pipefail
 GIT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$GIT_ROOT"
 
-CRATE_SRC_DIRS=(src rsos/src rbsr/src gossip/src)
+CRATE_SRC_DIRS=(src gossip/src)
 TOP_N=15
 
 RCA_OUT=$(mktemp -d)
