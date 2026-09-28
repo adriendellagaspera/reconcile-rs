@@ -201,7 +201,7 @@ impl Config {
         self
     }
 
-    /// Set the maximum number of causal/gossip peers tracked (default 1024). See
+    /// Set the maximum number of topology peers tracked (default 1024). See
     /// [`max_peers`](Config::max_peers).
     #[must_use]
     pub fn with_max_peers(mut self, max: usize) -> Self {
