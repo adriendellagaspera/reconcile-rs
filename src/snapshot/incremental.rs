@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::Timestamp;
 use crate::entry::Entry;
+use crate::observability;
 use crate::persistence::{PersistedState, PersistenceDelta};
 
 use super::FileSnapshot;
@@ -51,6 +52,18 @@ struct Manifest {
     base: SegmentRef,
     deltas: Vec<SegmentRef>,
     current_generation: u64,
+}
+
+impl Manifest {
+    fn segment_count(&self) -> usize {
+        1 + self.deltas.len()
+    }
+
+    fn segment_bytes(&self) -> u64 {
+        self.deltas
+            .iter()
+            .fold(self.base.bytes, |sum, segment| sum.saturating_add(segment.bytes))
+    }
 }
 
 fn should_materialize(manifest: &Manifest, candidate_delta_bytes: u64) -> bool {
@@ -167,6 +180,7 @@ where
     K: DeserializeOwned + Eq + Hash,
     V: DeserializeOwned,
 {
+    let recovery_start = observability::timer();
     let Some(manifest) = read_manifest(backend)? else {
         return Ok(None);
     };
@@ -195,6 +209,7 @@ where
         }
         state = apply_delta(state, segment.delta);
     }
+    observability::record_snapshot_recovery(recovery_start, manifest.segment_count());
     Ok(Some(state))
 }
 
@@ -221,6 +236,11 @@ where
         current_generation: generation,
     };
     publish_manifest(backend, &manifest)?;
+    observability::record_snapshot_full(
+        previous.is_some(),
+        manifest.segment_count(),
+        manifest.segment_bytes(),
+    );
     cleanup_unreferenced_segments(backend, &manifest);
     Ok(())
 }
@@ -258,6 +278,7 @@ where
     manifest.deltas.push(reference);
     manifest.current_generation = to_generation;
     publish_manifest(backend, &manifest)?;
+    observability::record_snapshot_delta(manifest.segment_count(), manifest.segment_bytes());
     Ok(true)
 }
 #[cfg(test)]
