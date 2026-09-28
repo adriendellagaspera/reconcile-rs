@@ -1,5 +1,5 @@
 [workspace]
-members = ["gossip", "devkit", "."]
+members = ["gossip", "."]
 resolver = "2"
 
 [package]
@@ -34,10 +34,6 @@ harness = false
 
 [[bench]]
 name = "system"
-harness = false
-
-[[bench]]
-name = "protocol"
 harness = false
 
 [[bench]]
@@ -106,7 +102,6 @@ async-trait = "0.1"
 clap = { version = "4.4.6", features = ["derive"] }
 criterion = "0.5.1"
 blake3 = "1.8.5"
-devkit = { path = "devkit" }
 gossip = { package = "reconcile-gossip", version = "0.5.0", path = "gossip", default-features = false, features = ["netem"] }
 metrics-util = { version = "0.19", default-features = false, features = ["debugging"] }
 proptest = "1.11.0"
