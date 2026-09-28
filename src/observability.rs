@@ -148,6 +148,11 @@ mod imp {
     }
 
     #[inline]
+    pub(crate) fn record_snapshot_cleanup_failure() {
+        counter!(SNAPSHOT_CLEANUP_FAILURES_TOTAL).increment(1);
+    }
+
+    #[inline]
     pub(crate) fn record_snapshot_recovery(start: Option<Instant>, segments: usize) {
         gauge!(SNAPSHOT_RECOVERY_SEGMENTS).set(segments as f64);
         if let Some(start) = start {
@@ -304,6 +309,11 @@ mod imp {
             Unit::Count,
             "Full base publications replacing an existing delta chain"
         );
+        describe_counter!(
+            SNAPSHOT_CLEANUP_FAILURES_TOTAL,
+            Unit::Count,
+            "Failed removal of superseded FileSnapshot files after manifest publication"
+        );
         describe_gauge!(
             SNAPSHOT_SEGMENTS_CURRENT,
             Unit::Count,
@@ -389,6 +399,9 @@ mod imp {
 
     #[inline(always)]
     pub(crate) fn record_snapshot_delta(_segments: usize, _bytes: u64) {}
+
+    #[inline(always)]
+    pub(crate) fn record_snapshot_cleanup_failure() {}
 
     #[inline(always)]
     pub(crate) fn record_snapshot_recovery(_start: Option<Instant>, _segments: usize) {}
