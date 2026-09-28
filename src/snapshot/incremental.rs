@@ -21,7 +21,9 @@ use super::FileSnapshot;
 
 mod storage;
 
-use storage::{decode, invalid, publish_manifest, read_manifest, read_segment_bytes, store_dir, write_segment};
+use storage::{
+    decode, invalid, publish_manifest, read_manifest, read_segment_bytes, store_dir, write_segment,
+};
 
 #[cfg(test)]
 pub(super) fn paths(backend: &FileSnapshot) -> (std::path::PathBuf, std::path::PathBuf) {
@@ -171,8 +173,7 @@ where
         let bytes = read_segment_bytes(&dir, reference)?;
         let segment: DeltaSegment<K, V> = decode(&bytes, DELTA_MAGIC)?;
         let expected_from = reference.generation.saturating_sub(1);
-        if segment.from_generation != expected_from
-            || segment.to_generation != reference.generation
+        if segment.from_generation != expected_from || segment.to_generation != reference.generation
         {
             return Err(invalid(format!(
                 "delta continuity error: expected {expected_from}..{}, got {}..{}",
