@@ -114,8 +114,8 @@ or full-base publication from measured cost, but must keep these operational qua
 - recovery work/latency;
 - retained frozen/open dirty state after repeated persistence failures.
 
-The policy threshold is derived by the paired benchmarks in #144; no fixed delta-count or
-change-ratio threshold is part of this architecture contract.
+The policy threshold is derived by paired measurements; no fixed delta-count or change-ratio
+threshold is part of this architecture contract.
 
 ## 3. Runtime boundaries
 
