@@ -10,6 +10,7 @@ Benchmarks measure code that ships in this repository. Comparative algorithm and
 | history_independent_catchup | RBSR catch-up cost vs superseded mutation history at fixed current state |
 | runtime_history_independent_catchup | ReplicatedMap partition catch-up and causal-stability GC |
 | membership_scaling | ReplicatedMap membership, peer-routing, durable causal-state, and GC scaling |
+| membership_causal_debt | tombstone ACK resend, unreachable-member repair tax, and decommission cost |
 | contention | concurrent write cost |
 | snapshot_write_amplification | current full-snapshot write/restart baseline |
 
@@ -22,6 +23,8 @@ The `history_independent_catchup` target defaults to `n=100000`, `d=100`, and `h
 The `runtime_history_independent_catchup` target drives two authoritative `ReplicatedMap` peers through blocked in-memory transport. Live states/final deletions stay fixed while transient insert-delete history grows raw tombstones; it reports raw dated RBSR cost, catch-up, and causal-stability GC. Defaults: `n=10000`, `d=100`, `t={0,100,1000}`; configure with `RECONCILE_RUNTIME_HISTORY_N`, `RECONCILE_RUNTIME_HISTORY_D`, and `RECONCILE_RUNTIME_TOMBSTONES`.
 
 The `membership_scaling` target isolates runtime membership from algorithm research. It measures authoritative/read-replica peer-routing heap, admits 2/10/100/1000 authoritative peers through real dated traffic on `InMemoryNetwork`, counts one full anti-entropy initiation round, and prices persisted membership plus full tombstone-ack matrices through `FileSnapshot`. The largest live point also proves that an expired tombstone remains blocked by unreachable authoritative members until they are decommissioned. A 100k result is never live-measured: the target prints only an explicit `MODEL` extrapolation from the two largest measured points. Configure with `RECONCILE_MEMBERSHIP_COUNTS`, `RECONCILE_MEMBERSHIP_TOMBSTONES`, and `RECONCILE_MEMBERSHIP_MODEL_TARGET`.
+
+The `membership_causal_debt` target measures shipped causal-stability mechanics once membership exists: the 8 KiB-per-round tombstone-ACK resend window, one silent authoritative member against otherwise responsive peers, the bounded RTT-scale repair retries it causes, and `forget_peer` cost as ACK maps grow. Its default live failure scenario is 1,000 authoritative members with 100 retained tombstones; the synthetic decommission sweep extends debt to 1,000 tombstones without changing protocol semantics. Configure with `RECONCILE_CAUSAL_MEMBERS`, `RECONCILE_CAUSAL_TOMBSTONES`, `RECONCILE_CAUSAL_ROUNDS`, `RECONCILE_FAILURE_MEMBERS`, and `RECONCILE_FAILURE_TOMBSTONES`.
 
 The `contention` target compares `FingerprintTreeMap` with `BTreeMap` behind the same `parking_lot::RwLock`, using paired trials across writer counts. It reports throughput plus the per-operation cost delta after cancelling the shared lock term. Override the writer sweep with `CONTENTION_WRITERS`; set `CONTENTION_RAW=1` for trial-level rows.
 
