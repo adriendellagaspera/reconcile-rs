@@ -53,6 +53,10 @@ name = "membership_scaling"
 harness = false
 
 [[bench]]
+name = "membership_causal_debt"
+harness = false
+
+[[bench]]
 name = "contention"
 harness = false
 
