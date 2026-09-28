@@ -292,3 +292,135 @@ fn needs_enumerated_bytes_init_false_once_already_sized() {
 fn needs_enumerated_bytes_init_false_for_an_empty_payload() {
     assert!(!needs_enumerated_bytes_init(&[], &[]));
 }
+
+#[test]
+fn traced_reconciliation_preserves_aggregate_byte_variants() {
+    let mut a = FingerprintTreeMap::<u64, u64>::new();
+    a.insert(1, 1);
+    let b = FingerprintTreeMap::<u64, u64>::new();
+
+    let mut price = |_key: u64| vec![10, 20];
+    let (cost, trace) = reconcile_traced(
+        &a,
+        &b,
+        &AlwaysEnumerate,
+        Some(&mut price),
+        &mut StdRng::seed_from_u64(0),
+    );
+
+    assert_eq!(
+        trace.total_byte_variants(),
+        cost.total_bytes()
+            .into_iter()
+            .map(|bytes| bytes as u64)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(trace.dependency_stages(), cost.messages);
+    let frameable: Vec<_> = trace
+        .stages
+        .iter()
+        .map(|stage| match stage {
+            RepairStage::RbsrRound {
+                refinement_ranges,
+                enumeration_ranges,
+                enumerated_elements,
+                frameable_outputs,
+                ..
+            } => {
+                assert_eq!(
+                    *frameable_outputs,
+                    refinement_ranges + enumeration_ranges,
+                    "each active range and enumeration range is independently frameable"
+                );
+                if *enumerated_elements > 0 {
+                    assert_eq!(
+                        *enumerated_elements, 1,
+                        "the fixture's non-empty enumeration round must expose its one element"
+                    );
+                }
+                *frameable_outputs
+            }
+            other => panic!("unexpected RBSR trace stage: {other:?}"),
+        })
+        .collect();
+    assert_eq!(frameable, vec![2, 2]);
+    let traced_elements: u64 = trace
+        .stages
+        .iter()
+        .map(|stage| match stage {
+            RepairStage::RbsrRound {
+                enumerated_elements,
+                ..
+            } => *enumerated_elements,
+            other => panic!("unexpected RBSR trace stage: {other:?}"),
+        })
+        .sum();
+    assert_eq!(traced_elements, cost.enumerated_elements as u64);
+}
+
+#[test]
+fn traced_reconciliation_records_alternating_responders() {
+    let mut a = FingerprintTreeMap::<u64, u64>::new();
+    a.insert(1, 1);
+    let b = FingerprintTreeMap::<u64, u64>::new();
+
+    let (_cost, trace) = reconcile_traced(
+        &a,
+        &b,
+        &AlwaysEnumerate,
+        None,
+        &mut StdRng::seed_from_u64(0),
+    );
+
+    let responders: Vec<_> = trace
+        .stages
+        .iter()
+        .map(|stage| match stage {
+            RepairStage::RbsrRound { responder, .. } => *responder,
+            other => panic!("unexpected RBSR trace stage: {other:?}"),
+        })
+        .collect();
+    assert_eq!(responders, vec![PeerSide::Right, PeerSide::Left]);
+}
+
+fn map_rows(rows: &[(u64, u64)]) -> FingerprintTreeMap<u64, u64> {
+    let mut map = FingerprintTreeMap::new();
+    for &(key, value) in rows {
+        map.insert(key, value);
+    }
+    map
+}
+
+#[test]
+fn trace_matches_cost_for_equality_scattered_and_outside_range_corpora() {
+    use crate::corpus::mutation::{corpus as mutation_corpus, Scenario};
+    use crate::corpus::placement::{corpus as placement_corpus, Profile};
+
+    let equality = placement_corpus(256, 0, Profile::UniformRandom, 42);
+    let scattered = placement_corpus(256, 17, Profile::UniformRandom, 42);
+    let outside = mutation_corpus(256, 17, Scenario::InsertOutsideRange, 42);
+
+    for (left_rows, right_rows) in [
+        (equality.left_rows, equality.right_rows),
+        (scattered.left_rows, scattered.right_rows),
+        (outside.left, outside.right),
+    ] {
+        let left = map_rows(&left_rows);
+        let right = map_rows(&right_rows);
+        let mut price = |_key: u64| vec![16];
+        let (cost, trace) = reconcile_traced(
+            &left,
+            &right,
+            &FixedFanOut::default(),
+            Some(&mut price),
+            &mut StdRng::seed_from_u64(42),
+        );
+        let expected = cost
+            .total_bytes()
+            .first()
+            .copied()
+            .unwrap_or(cost.refinement_bytes) as u64;
+        assert_eq!(trace.total_byte_variants(), vec![expected]);
+        assert_eq!(trace.dependency_stages(), cost.messages);
+    }
+}

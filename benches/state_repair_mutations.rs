@@ -25,14 +25,16 @@
 //
 // Run with `cargo bench --bench state_repair_mutations`.
 
-use devkit::experiment::producer::{elapsed, protocol_bytes, write_case_from_env, Arm, Case};
-use devkit::experiment::{CostOwner, LifecyclePhase};
+use devkit::experiment::producer::{
+    elapsed, protocol_bytes, write_case_from_env, write_repair_trace_from_env, Arm, Case,
+};
+use devkit::experiment::{CostOwner, LifecyclePhase, RepairStage, RepairStrategy, RepairTrace};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::time::{Duration, Instant};
 
 use devkit::corpus::mutation::{corpus, Corpus, Scenario};
-use devkit::protocol_cost::{reconcile, Cost};
+use devkit::protocol_cost::{reconcile_traced, Cost};
 use do_riblt::{Decoder, Encoder, Peeled, Symbol};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -84,6 +86,7 @@ struct Report {
     units: usize,
     rounds: usize,
     elapsed: Duration,
+    trace: RepairTrace,
 }
 
 struct CaseResult {
@@ -136,7 +139,7 @@ fn fingerprint_map(rows: &[(u64, u64)]) -> FingerprintTreeMap<u64, u64> {
 fn rbsr_report(
     left: &FingerprintTreeMap<u64, u64>,
     right: &FingerprintTreeMap<u64, u64>,
-) -> (Cost, Duration, Vec<u64>) {
+) -> (Cost, Duration, Vec<u64>, RepairTrace) {
     let policy = FixedFanOut::new(FanOut::NEGENTROPY);
     let mut candidates = BTreeSet::new();
     let mut price = |key| {
@@ -145,13 +148,14 @@ fn rbsr_report(
     };
     let mut rng = StdRng::seed_from_u64(SESSION_SEED);
     let started = Instant::now();
-    let cost = reconcile(left, right, &policy, Some(&mut price), &mut rng);
+    let (cost, trace) = reconcile_traced(left, right, &policy, Some(&mut price), &mut rng);
     let elapsed = started.elapsed();
     let recovered = candidates
         .into_iter()
         .filter(|key| left.get(key) != right.get(key))
         .collect();
-    (cost, elapsed, recovered)
+    assert_eq!(trace.total_byte_variants(), vec![rbsr_bytes(&cost) as u64]);
+    (cost, elapsed, recovered, trace)
 }
 
 fn state_digest(rows: &[(u64, u64)]) -> [u8; STATE_DIGEST_BYTES] {
@@ -173,6 +177,12 @@ fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> (Duration, Report,
                 units: 0,
                 rounds: 1,
                 elapsed: Duration::ZERO,
+                trace: RepairTrace::new(
+                    RepairStrategy::Riblt,
+                    vec![RepairStage::RibltEquality {
+                        bytes: STATE_DIGEST_BYTES as u64,
+                    }],
+                ),
             },
             Vec::new(),
         );
@@ -208,6 +218,19 @@ fn riblt_report(left: &[(u64, u64)], right: &[(u64, u64)]) -> (Duration, Report,
                     units: index + 1,
                     rounds: 2,
                     elapsed: started.elapsed(),
+                    trace: RepairTrace::new(
+                        RepairStrategy::Riblt,
+                        vec![
+                            RepairStage::RibltEquality {
+                                bytes: STATE_DIGEST_BYTES as u64,
+                            },
+                            RepairStage::RibltStream {
+                                coded_symbols: (index + 1) as u64,
+                                coded_symbol_bytes: RIBLT_CODED_SYMBOL_BYTES as u64,
+                            },
+                            RepairStage::RibltStopAck { bytes: 0 },
+                        ],
+                    ),
                 },
                 recovered,
             );
@@ -276,6 +299,13 @@ fn merkle_report(left: &RadixMerkle, right: &RadixMerkle) -> (Report, Vec<u64>) 
     let mut bytes = MERKLE_HASH_BYTES;
     let mut hashes = 1;
     let mut rounds = 1;
+    let mut stages = vec![RepairStage::MerkleExchange {
+        depth: 0,
+        request_prefixes: 0,
+        request_bytes: 0,
+        response_hashes: 1,
+        response_bytes: MERKLE_HASH_BYTES as u64,
+    }];
     let mut mismatching = if left.hash(0, 0) == right.hash(0, 0) {
         Vec::new()
     } else {
@@ -287,39 +317,60 @@ fn merkle_report(left: &RadixMerkle, right: &RadixMerkle) -> (Report, Vec<u64>) 
             break;
         }
 
-        bytes += mismatching.len() * MERKLE_PREFIX_BYTES;
+        let request_prefixes = mismatching.len();
+        let request_bytes = request_prefixes * MERKLE_PREFIX_BYTES;
+        bytes += request_bytes;
         let mut next = Vec::new();
+        let mut response_hashes = 0usize;
         for &parent in &mismatching {
             for slot in 0..MERKLE_FANOUT {
                 let child = (parent << 4) | slot as u64;
                 bytes += MERKLE_HASH_BYTES;
                 hashes += 1;
+                response_hashes += 1;
                 if left.hash(depth + 1, child) != right.hash(depth + 1, child) {
                     next.push(child);
                 }
             }
         }
+        stages.push(RepairStage::MerkleExchange {
+            depth: (depth + 1) as u32,
+            request_prefixes: request_prefixes as u64,
+            request_bytes: request_bytes as u64,
+            response_hashes: response_hashes as u64,
+            response_bytes: (response_hashes * MERKLE_HASH_BYTES) as u64,
+        });
         rounds += 1;
         mismatching = next;
     }
 
     let recovered = mismatching;
     if !recovered.is_empty() {
-        bytes += recovered.len() * 8; // batched row request by key
-        bytes += recovered
+        let request_bytes = recovered.len() * 8;
+        let returned_rows = recovered
             .iter()
             .filter(|key| right.rows.contains_key(key))
-            .count()
-            * SYMBOL_BYTES;
+            .count();
+        let response_bytes = returned_rows * SYMBOL_BYTES;
+        bytes += request_bytes + response_bytes;
+        stages.push(RepairStage::MerkleFetch {
+            request_keys: recovered.len() as u64,
+            request_bytes: request_bytes as u64,
+            returned_rows: returned_rows as u64,
+            response_bytes: response_bytes as u64,
+        });
         rounds += 1;
     }
 
+    let trace = RepairTrace::new(RepairStrategy::Merkle, stages);
+    assert_eq!(trace.total_byte_variants(), vec![bytes as u64]);
     (
         Report {
             bytes,
             units: hashes,
             rounds,
             elapsed: started.elapsed(),
+            trace,
         },
         recovered,
     )
@@ -339,7 +390,7 @@ fn run_case(n: usize, d: usize, scenario: Scenario, seed: u64) -> (Corpus, CaseR
     let left_map = fingerprint_map(&corpus.left);
     let right_map = fingerprint_map(&corpus.right);
     let rbsr_setup = rbsr_setup_started.elapsed();
-    let (rbsr, rbsr_time, rbsr_diff) = rbsr_report(&left_map, &right_map);
+    let (rbsr, rbsr_time, rbsr_diff, rbsr_trace) = rbsr_report(&left_map, &right_map);
     assert_eq!(rbsr_diff, corpus.expected_diff);
 
     let (riblt_setup, riblt, riblt_diff) = riblt_report(&corpus.left, &corpus.right);
@@ -411,6 +462,27 @@ fn run_case(n: usize, d: usize, scenario: Scenario, seed: u64) -> (Corpus, CaseR
             symmetric_difference: Some(corpus.set_difference_symbols),
         },
         arms,
+    );
+    write_repair_trace_from_env(
+        "state-repair-mutations",
+        &workload,
+        seed,
+        "rbsr-ftm",
+        &rbsr_trace,
+    );
+    write_repair_trace_from_env(
+        "state-repair-mutations",
+        &workload,
+        seed,
+        "riblt",
+        &riblt.trace,
+    );
+    write_repair_trace_from_env(
+        "state-repair-mutations",
+        &workload,
+        seed,
+        "merkle",
+        &merkle.trace,
     );
     (
         corpus,

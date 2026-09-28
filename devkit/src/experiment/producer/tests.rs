@@ -98,3 +98,32 @@ fn environment_writer_creates_the_declared_artifact() {
     std::env::remove_var("RECONCILE_BENCH_RESOURCE_PROFILE");
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn repair_trace_env_output_writes_a_readable_sidecar() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let directory =
+        std::env::temp_dir().join(format!("reconcile-devkit-trace-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).unwrap();
+
+    let previous = std::env::var_os("RECONCILE_BENCH_OUTPUT");
+    std::env::set_var("RECONCILE_BENCH_OUTPUT", &directory);
+
+    let trace = RepairTrace::new(
+        RepairStrategy::Riblt,
+        vec![RepairStage::RibltEquality { bytes: 32 }],
+    );
+    write_repair_trace_from_env("trace-test", "fixture", 7, "riblt", &trace);
+
+    let path = directory.join("trace-test-fixture-7-riblt.trace.json");
+    let decoded = read_repair_trace(std::fs::File::open(&path).unwrap()).unwrap();
+    assert_eq!(decoded, trace);
+
+    match previous {
+        Some(value) => std::env::set_var("RECONCILE_BENCH_OUTPUT", value),
+        None => std::env::remove_var("RECONCILE_BENCH_OUTPUT"),
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}

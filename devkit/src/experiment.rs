@@ -4,8 +4,13 @@ mod metrics;
 mod model;
 pub mod producer;
 mod render;
+mod trace;
 mod validate;
 pub use render::write_experiment_summary;
+pub use trace::{
+    read_repair_trace, write_repair_trace, PeerSide, RepairStage, RepairStrategy, RepairTrace,
+    REPAIR_TRACE_SCHEMA_VERSION,
+};
 
 pub use artifact::{
     join_experiment_reports, read_experiment_report, validate_experiment_report,
