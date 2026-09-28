@@ -143,6 +143,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             }
         };
         if let Some(state) = loaded {
+            self.engine.snapshot_generations.set_tracking_enabled(false);
             *self.engine.members.write() = state.members;
             *self.engine.tombstone_acks.write() = state.tombstone_acks;
             // Advance past every persisted stamp, or a fresh write can lose LWW to this node's
@@ -153,6 +154,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             }
             // Replay through the wrapped hook: the public insert helpers would re-stamp.
             self.engine.just_insert_bulk(&state.entries);
+            self.engine.snapshot_generations.reset_clean();
+            let restored_changes = self.engine.change_count();
+            self.engine.retire_change_count(restored_changes);
         }
         self.persistence = backend;
         Ok(self)
@@ -182,11 +186,14 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// (behind the `metrics` feature) plus [`on_persistence_error`](Self::on_persistence_error) on
     /// failure.
     fn snapshot_inner(&self) -> io::Result<()> {
-        // Concurrent snapshots must not each retire the other's pending change count.
+        // Concurrent snapshots must not each retire the other's pending generation.
         let _snapshot_guard = self.snapshot_lock.lock();
-        // Count only changes committed before collection began. A write racing the
-        // chunked collection remains pending (possibly causing one redundant flush).
-        let counted_before_capture = self.engine.change_count();
+        // The generation cut is atomic with every durable mutation sink. Writes after this point
+        // accumulate in the next open generation while this immutable one is persisted/retried.
+        let frozen_generation = self.engine.snapshot_generations.freeze();
+        let counted_before_capture = frozen_generation
+            .as_ref()
+            .map_or(0, |generation| generation.raw_changes);
         let mut entries: DatedEntries<K, V> = Vec::new();
         let mut cursor: Option<K> = None;
         loop {
@@ -222,6 +229,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
                 // keep its changes counted, or a threshold-gated periodic wakeup could go quiet
                 // on a backend that is failing every attempt.
                 self.engine.retire_change_count(counted_before_capture);
+                if let Some(generation) = frozen_generation {
+                    debug_assert!(
+                        self.engine.snapshot_generations.commit(generation.id),
+                        "the snapshot lock keeps the frozen generation stable until commit"
+                    );
+                }
                 self.persistence_consecutive_failures
                     .store(0, Ordering::Relaxed);
                 observability::record_persistence_success();
