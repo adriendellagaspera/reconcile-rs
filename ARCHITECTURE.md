@@ -40,19 +40,14 @@ graph LR
 | `reconcile` | replicated maps/sets, key/value bounds, persistence state/ports/adapters, lifecycle, observability |
 | `devkit` | unpublished benchmark utilities |
 
-External domain dependencies:
-
-| crate | canonical repository | responsibility |
-|---|---|---|
-| `rsos` | `range-based-set-reconciliation` | ordered storage, range aggregates, canonical fingerprint input |
-| `rbsr` | `range-based-set-reconciliation` | transport-independent range reconciliation |
-| `lww-register` | `lww-register` | LWW entries, timestamps and clock primitives |
+External domain dependencies are `rsos` (ordered storage and range aggregates) and `rbsr`
+(range reconciliation), both maintained in `range-based-set-reconciliation`, plus
+`lww-register` for LWW entries, timestamps, and clock primitives.
 
 ### 2.1 Domain boundary
-
-`rsos`, `rbsr`, and `lww-register` are external crates.io dependencies. Their standalone
-domain invariants and release gates live in their canonical repositories. `gossip` owns network
-concerns; `reconcile` composes those domain crates with runtime adapters.
+`rsos`, `rbsr`, and `lww-register` are crates.io dependencies whose standalone invariants and
+release gates live in their canonical repositories. `gossip` owns network concerns; `reconcile`
+composes those domain crates with runtime adapters.
 
 `gossip` does not depend on `lww-register`: its peer identity is an address and its payload is
 bytes.
