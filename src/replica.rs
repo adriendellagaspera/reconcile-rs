@@ -46,9 +46,9 @@ const MAX_SENDTO_RETRIES: u32 = 4;
 
 type PreInsertCallback<K, V> = Box<dyn Send + Sync + Fn(&K, &V)>;
 
-/// Hard cap on distinct causal/gossip peers, owning the topology admission rule both receive loops
-/// share: a sender is admitted while already known, or while the relevant peer collection is under
-/// the cap. Authenticated replay state has its own independent bound in [`replay::ReplayFilter`].
+/// Hard cap on distinct topology peers, owning the admission rule both receive loops share: a
+/// sender is admitted while already known, or while the relevant peer collection is under the cap.
+/// Authenticated replay state has its own independent bound in [`replay::ReplayFilter`].
 /// Sourced from [`Config::max_peers`](crate::replicated_map::Config::max_peers).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PeerCap(usize);
