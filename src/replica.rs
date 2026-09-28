@@ -46,9 +46,10 @@ const MAX_SENDTO_RETRIES: u32 = 4;
 
 type PreInsertCallback<K, V> = Box<dyn Send + Sync + Fn(&K, &V)>;
 
-/// Hard cap on distinct tracked peers, owning the one admission rule both receive loops share: a
-/// sender is admitted while already known, or while the count is under the cap. Sourced from
-/// [`Config::max_peers`](crate::replicated_map::Config::max_peers).
+/// Hard cap on distinct causal/gossip peers, owning the topology admission rule both receive loops
+/// share: a sender is admitted while already known, or while the relevant peer collection is under
+/// the cap. Authenticated replay state has its own independent bound in [`replay::ReplayFilter`].
+/// Sourced from [`Config::max_peers`](crate::replicated_map::Config::max_peers).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PeerCap(usize);
 
@@ -229,8 +230,9 @@ pub(crate) struct Inner<K, V> {
     /// Reports a node-id collision once, however many keys and rounds keep tripping the detector
     /// (`collision::is_node_id_collision`).
     pub(crate) collision_reporter: collision::CollisionReporter,
-    /// Hard cap on the number of tracked remote peers. Datagrams from unknown senders are dropped
-    /// before any per-sender state is allocated when the membership set reaches this size.
+    /// Hard cap on the number of tracked causal/gossip peers. Independent from the replay
+    /// filter's authenticated-sender bound: value-only read replicas never enter causal
+    /// membership.
     max_peers: PeerCap,
     /// How long a write waits, batched with any other writes, before the accumulated batch is
     /// broadcast as one send loop. [`Duration::ZERO`] (the default) disables coalescing —
