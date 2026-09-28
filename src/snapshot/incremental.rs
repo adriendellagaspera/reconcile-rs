@@ -6,6 +6,7 @@
 // except according to those terms.
 
 use std::collections::HashMap;
+use std::fs;
 use std::hash::Hash;
 use std::io;
 
@@ -21,8 +22,8 @@ use super::FileSnapshot;
 mod storage;
 
 use storage::{
-    cleanup_replaced_segments, publish_manifest, read_manifest, read_segment_bytes,
-    remove_legacy_after_migration, store_dir, write_segment,
+    cleanup_replaced_segments, decode, invalid, publish_manifest, read_manifest,
+    read_segment_bytes, remove_legacy_after_migration, store_dir, write_segment,
 };
 
 #[cfg(test)]
@@ -250,7 +251,6 @@ where
     publish_manifest(backend, &manifest)?;
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests;
