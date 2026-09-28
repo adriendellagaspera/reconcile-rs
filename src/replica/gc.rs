@@ -128,6 +128,26 @@ mod tests {
     /// value" — a mutant hardcoding a constant return has no other caller in this crate that
     /// would catch it (every existing test only compares `version_hash` against itself).
     #[test]
+    fn gc_collect_counts_physical_delete_and_ack_cleanup() {
+        let replica = super::tests::replica::<u32, u32>();
+        let key = 7;
+        let peer: IpAddr = "127.0.0.9".parse().unwrap();
+        replica.just_insert(key, Entry::tombstone(replica.clock_now()));
+        replica
+            .tombstone_acks
+            .write()
+            .insert(key, HashMap::from([(peer, 11)]));
+        let before = replica.change_count();
+
+        assert!(replica.gc_collect(&key).is_some());
+        assert_eq!(
+            replica.change_count() - before,
+            2,
+            "physical deletion and ACK cleanup are two durable mutations"
+        );
+    }
+
+    #[test]
     fn version_hash_matches_the_digest_low_limb() {
         assert_eq!(version_hash(&42u32), rsos::digest(&42u32).0[0]);
     }
