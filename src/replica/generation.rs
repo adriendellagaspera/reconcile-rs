@@ -151,7 +151,10 @@ impl<K: Eq + Hash + Clone, V> GenerationMutation<'_, K, V> {
         if !self.enabled() {
             return;
         }
-        self.state.open.entries.insert(key, EntryDelta::Upsert(entry));
+        self.state
+            .open
+            .entries
+            .insert(key, EntryDelta::Upsert(entry));
         self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
     }
 
@@ -159,7 +162,10 @@ impl<K: Eq + Hash + Clone, V> GenerationMutation<'_, K, V> {
         if !self.enabled() {
             return;
         }
-        self.state.open.entries.insert(key, EntryDelta::PhysicalDelete);
+        self.state
+            .open
+            .entries
+            .insert(key, EntryDelta::PhysicalDelete);
         self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
     }
 
