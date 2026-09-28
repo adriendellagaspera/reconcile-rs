@@ -6,10 +6,8 @@
 // except according to those terms.
 
 use std::collections::HashMap;
-use std::fs;
 use std::hash::Hash;
-use std::io::{self, Write};
-use std::path::{Component, Path, PathBuf};
+use std::io;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -19,6 +17,16 @@ use crate::entry::Entry;
 use crate::persistence::{PersistedState, PersistenceDelta};
 
 use super::FileSnapshot;
+
+mod storage;
+
+use storage::{
+    cleanup_replaced_segments, publish_manifest, read_manifest, read_segment_bytes,
+    remove_legacy_after_migration, store_dir, write_segment,
+};
+
+#[cfg(test)]
+pub(super) use storage::paths;
 
 const FORMAT_VERSION: u32 = 1;
 const HEADER_LEN: usize = 8;
@@ -73,164 +81,6 @@ struct DeltaSegmentWrite<'a, K, V> {
     from_generation: u64,
     to_generation: u64,
     delta: &'a PersistenceDelta<K, V>,
-}
-
-fn invalid(message: impl Into<String>) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, message.into())
-}
-
-fn append_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut value = path.as_os_str().to_os_string();
-    value.push(suffix);
-    PathBuf::from(value)
-}
-
-fn store_dir(backend: &FileSnapshot) -> PathBuf {
-    append_suffix(&backend.path, ".d")
-}
-
-fn manifest_path(backend: &FileSnapshot) -> PathBuf {
-    store_dir(backend).join(MANIFEST_FILE)
-}
-
-fn encode<T: Serialize>(magic: [u8; 4], value: &T) -> io::Result<Vec<u8>> {
-    let body =
-        bincode::serialize(value).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-    let mut bytes = Vec::with_capacity(HEADER_LEN + body.len());
-    bytes.extend_from_slice(&magic);
-    bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
-    bytes.extend_from_slice(&body);
-    Ok(bytes)
-}
-
-fn decode<T: DeserializeOwned>(bytes: &[u8], expected_magic: [u8; 4]) -> io::Result<T> {
-    if bytes.len() < HEADER_LEN {
-        return Err(invalid(format!(
-            "incremental snapshot object is {} bytes, shorter than its {HEADER_LEN}-byte header",
-            bytes.len()
-        )));
-    }
-    if bytes[..4] != expected_magic {
-        return Err(invalid(format!(
-            "incremental snapshot magic {:02x?} does not match {:02x?}",
-            &bytes[..4],
-            expected_magic
-        )));
-    }
-    let version = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-    if version != FORMAT_VERSION {
-        return Err(invalid(format!(
-            "incremental snapshot format version {version} is unsupported (expected {FORMAT_VERSION})"
-        )));
-    }
-    bincode::deserialize(&bytes[HEADER_LEN..])
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
-}
-
-fn checksum(bytes: &[u8]) -> [u8; 32] {
-    *blake3::hash(bytes).as_bytes()
-}
-
-fn sync_dir(path: &Path) {
-    if let Ok(dir) = fs::File::open(path) {
-        let _ = dir.sync_all();
-    }
-}
-
-fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent)?;
-    let tmp = append_suffix(path, ".tmp");
-    {
-        let mut file = fs::File::create(&tmp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-    }
-    fs::rename(&tmp, path)?;
-    sync_dir(parent);
-    Ok(())
-}
-
-fn segment_file_name(kind: &str, generation: u64) -> String {
-    format!("{kind}-{generation:020}.bin")
-}
-
-fn validate_segment_name(name: &str) -> io::Result<()> {
-    let mut components = Path::new(name).components();
-    match (components.next(), components.next()) {
-        (Some(Component::Normal(_)), None) => Ok(()),
-        _ => Err(invalid(format!(
-            "incremental snapshot manifest contains invalid segment path {name:?}"
-        ))),
-    }
-}
-
-fn read_manifest(backend: &FileSnapshot) -> io::Result<Option<Manifest>> {
-    let path = manifest_path(backend);
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(err),
-    };
-    let manifest: Manifest = decode(&bytes, MANIFEST_MAGIC)?;
-    validate_manifest(&manifest)?;
-    Ok(Some(manifest))
-}
-
-fn validate_manifest(manifest: &Manifest) -> io::Result<()> {
-    validate_segment_name(&manifest.base.file)?;
-    if manifest.base.generation > manifest.current_generation {
-        return Err(invalid("manifest base generation is newer than current generation"));
-    }
-
-    let mut expected = manifest.base.generation.saturating_add(1);
-    for delta in &manifest.deltas {
-        validate_segment_name(&delta.file)?;
-        if delta.generation != expected {
-            return Err(invalid(format!(
-                "manifest delta continuity error: expected generation {expected}, got {}",
-                delta.generation
-            )));
-        }
-        expected = expected.saturating_add(1);
-    }
-    let recovered = manifest
-        .deltas
-        .last()
-        .map_or(manifest.base.generation, |delta| delta.generation);
-    if recovered != manifest.current_generation {
-        return Err(invalid(format!(
-            "manifest current generation {} does not match referenced generation {recovered}",
-            manifest.current_generation
-        )));
-    }
-    Ok(())
-}
-
-fn read_segment_bytes(dir: &Path, reference: &SegmentRef) -> io::Result<Vec<u8>> {
-    validate_segment_name(&reference.file)?;
-    let path = dir.join(&reference.file);
-    let bytes = fs::read(&path).map_err(|err| {
-        if err.kind() == io::ErrorKind::NotFound {
-            invalid(format!(
-                "committed incremental snapshot segment {:?} is missing",
-                reference.file
-            ))
-        } else {
-            err
-        }
-    })?;
-    let actual = checksum(&bytes);
-    if actual != reference.checksum {
-        return Err(invalid(format!(
-            "incremental snapshot segment {:?} failed checksum validation",
-            reference.file
-        )));
-    }
-    Ok(bytes)
 }
 
 fn apply_delta<K, V>(
@@ -342,60 +192,6 @@ where
     Ok(Some(state))
 }
 
-fn write_segment<T: Serialize>(
-    dir: &Path,
-    magic: [u8; 4],
-    kind: &str,
-    generation: u64,
-    value: &T,
-) -> io::Result<SegmentRef> {
-    let bytes = encode(magic, value)?;
-    let file = segment_file_name(kind, generation);
-    write_atomic(&dir.join(&file), &bytes)?;
-    Ok(SegmentRef {
-        generation,
-        file,
-        checksum: checksum(&bytes),
-    })
-}
-
-fn publish_manifest(backend: &FileSnapshot, manifest: &Manifest) -> io::Result<()> {
-    validate_manifest(manifest)?;
-    let bytes = encode(MANIFEST_MAGIC, manifest)?;
-    write_atomic(&manifest_path(backend), &bytes)
-}
-
-fn remove_legacy_after_migration(backend: &FileSnapshot) {
-    match fs::remove_file(&backend.path) {
-        Ok(()) => {
-            if let Some(parent) = backend.path.parent().filter(|path| !path.as_os_str().is_empty()) {
-                sync_dir(parent);
-            }
-        }
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-        Err(_) => {}
-    }
-}
-
-fn cleanup_replaced_segments(dir: &Path, previous: Option<&Manifest>, keep: &Manifest) {
-    let Some(previous) = previous else {
-        return;
-    };
-    let mut keep_files = std::collections::HashSet::new();
-    keep_files.insert(keep.base.file.as_str());
-    for delta in &keep.deltas {
-        keep_files.insert(delta.file.as_str());
-    }
-
-    let refs = std::iter::once(&previous.base).chain(previous.deltas.iter());
-    for reference in refs {
-        if !keep_files.contains(reference.file.as_str()) {
-            let _ = fs::remove_file(dir.join(&reference.file));
-        }
-    }
-    sync_dir(dir);
-}
-
 pub(super) fn save_full<K, V>(
     backend: &FileSnapshot,
     state: &PersistedState<K, V>,
@@ -455,36 +251,6 @@ where
     Ok(())
 }
 
-#[cfg(test)]
-pub(super) fn paths(backend: &FileSnapshot) -> (PathBuf, PathBuf) {
-    (store_dir(backend), manifest_path(backend))
-}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn reference(generation: u64) -> SegmentRef {
-        SegmentRef {
-            generation,
-            file: format!("delta-{generation:020}.bin"),
-            checksum: [0; 32],
-        }
-    }
-
-    #[test]
-    fn manifest_requires_contiguous_committed_generations() {
-        let manifest = Manifest {
-            base: SegmentRef {
-                generation: 1,
-                file: "base-00000000000000000001.bin".to_string(),
-                checksum: [0; 32],
-            },
-            deltas: vec![reference(2), reference(4)],
-            current_generation: 4,
-        };
-        let err = validate_manifest(&manifest).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-        assert!(err.to_string().contains("continuity"));
-    }
-}
+mod tests;
