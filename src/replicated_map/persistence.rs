@@ -178,22 +178,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self
     }
 
-    /// Capture the full store state and hand it to the persistence backend.
-    /// Clones the map in [`SNAPSHOT_CHUNK_SIZE`]-entry chunks — see that constant's doc for why a
-    /// non-instantaneous snapshot is an acceptable trade-off here. Records
-    /// [`last_snapshot_at`](super::ReplicatedMap::sync_state) on success, and the
-    /// `reconcile_persistence_failures_total`/`reconcile_persistence_failures_current` metrics
-    /// (behind the `metrics` feature) plus [`on_persistence_error`](Self::on_persistence_error) on
-    /// failure.
-    fn snapshot_inner(&self) -> io::Result<()> {
-        // Concurrent snapshots must not each retire the other's pending generation.
-        let _snapshot_guard = self.snapshot_lock.lock();
-        // The generation cut is atomic with every durable mutation sink. Writes after this point
-        // accumulate in the next open generation while this immutable one is persisted/retried.
-        let frozen_generation = self.engine.snapshot_generations.freeze();
-        let counted_before_capture = frozen_generation
-            .as_ref()
-            .map_or(0, |generation| generation.raw_changes);
+    fn collect_persisted_state(&self) -> PersistedState<K, V> {
         let mut entries: DatedEntries<K, V> = Vec::new();
         let mut cursor: Option<K> = None;
         loop {
@@ -217,26 +202,41 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             cursor = Some(last_key.clone());
             entries.extend(chunk);
         }
-        let state = PersistedState::new(
+        PersistedState::new(
             entries,
             self.engine.members.read().clone(),
             self.engine.tombstone_acks.read().clone(),
-        );
+        )
+    }
+
+    /// Persist one coherent generation. Incremental backends get the coalesced delta first and
+    /// can commit it without forcing a full-state clone; backends that decline use the unchanged
+    /// full [`PersistedState`] fallback.
+    fn snapshot_inner(&self) -> io::Result<()> {
+        let _snapshot_guard = self.snapshot_lock.lock();
+        let frozen_generation = self.engine.snapshot_generations.freeze();
+        let counted_before_capture = frozen_generation
+            .as_ref()
+            .map_or(0, |generation| generation.raw_changes);
         let persistence_delta = frozen_generation
             .as_ref()
             .map(|generation| generation.persistence_delta());
-        match self
-            .persistence
-            .save_generation(&state, persistence_delta.as_ref())
-        {
+
+        let save_result = match self.persistence.try_save_delta(persistence_delta.as_ref()) {
+            Ok(true) => Ok(()),
+            Ok(false) => {
+                let state = self.collect_persisted_state();
+                self.persistence.save(&state)
+            }
+            Err(err) => Err(err),
+        };
+
+        match save_result {
             Ok(()) => {
                 *self.last_snapshot_at.write() = Some(Instant::now());
-                // Only a *successful* write clears the pending count: a failed write must
-                // keep its changes counted, or a threshold-gated periodic wakeup could go quiet
-                // on a backend that is failing every attempt.
                 self.engine.retire_change_count(counted_before_capture);
                 if let Some(generation) = frozen_generation {
-                    debug_assert!(
+                    assert!(
                         self.engine.snapshot_generations.commit(generation.id),
                         "the snapshot lock keeps the frozen generation stable until commit"
                     );
