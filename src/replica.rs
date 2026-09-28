@@ -249,6 +249,9 @@ pub(crate) struct Inner<K, V> {
     /// is compared against. Successful snapshots retire only the pre-capture count, so
     /// concurrent writes remain pending and failures retire nothing.
     changes_since_snapshot: Arc<AtomicUsize>,
+    /// Coalesced durable mutation journal used by incremental snapshot generations. The tracker
+    /// retains at most one frozen retryable generation plus the current open generation.
+    pub(crate) snapshot_generations: generation::GenerationTracker<K, V>,
 }
 
 /// One atomic message of the reconciliation protocol.
@@ -307,6 +310,7 @@ mod collision;
 mod construct;
 mod dispatch;
 mod gc;
+mod generation;
 mod inbound;
 mod membership;
 mod pacing;
