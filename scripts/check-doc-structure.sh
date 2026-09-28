@@ -50,7 +50,7 @@ done
 CURRENT_DOCS=(
   README.md ARCHITECTURE.md SECURITY.md CONTRIBUTING.md AGENTS.md CLAUDE.md
   benches/README.md examples/README.md examples/k8s/README.md examples/k8s/kind/README.md
-  gossip/README.md rbsr/README.md rsos/README.md public-api/README.md
+  gossip/README.md public-api/README.md
 )
 for doc in "${CURRENT_DOCS[@]}"; do
   if grep -nE '#[0-9]+' "$doc" >/dev/null; then fail "$doc: tracker references do not belong in current-state documentation"; fi
