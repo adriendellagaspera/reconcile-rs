@@ -29,8 +29,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Remove a key from the dated `map`, its value-only projection, and the live-tombstone
     /// index (the GC removal path).
     pub(crate) fn gc_remove(&self, key: &K) -> Option<Entry<Timestamp, V>> {
-        let mut generation = self.snapshot_generations.mutation();
         let _guard = self.write_lock.lock();
+        let mut generation = self.snapshot_generations.mutation();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
         self.live_tombstones.write().remove(key);
