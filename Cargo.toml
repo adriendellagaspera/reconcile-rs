@@ -65,6 +65,14 @@ name = "cold_start_repair"
 harness = false
 
 [[bench]]
+name = "transport_sensitivity"
+harness = false
+
+[[bench]]
+name = "netem_trace_validation"
+harness = false
+
+[[bench]]
 name = "state_repair_sensitivity"
 harness = false
 

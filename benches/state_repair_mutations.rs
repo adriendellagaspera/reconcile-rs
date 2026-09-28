@@ -517,11 +517,12 @@ fn main() {
         for scenario in Scenario::ALL {
             let (corpus, case) = run_case(n, d, scenario, seed);
             println!(
-                "[mutation-repair] d={d} scenario={scenario} left_n={} right_n={} set_diff_symbols={} | RBSR bytes={} ranges={} idlist={} setup={:.3}ms repair={:.3}ms | RIBLT bytes={} coded={} setup={:.3}ms repair={:.3}ms | Merkle bytes={} hashes={} rounds={} setup={:.3}ms repair={:.3}ms",
+                "[mutation-repair] d={d} scenario={scenario} left_n={} right_n={} set_diff_symbols={} | RBSR bytes={} msg={} ranges={} idlist={} setup={:.3}ms repair={:.3}ms | RIBLT bytes={} coded={} setup={:.3}ms repair={:.3}ms | Merkle bytes={} hashes={} rounds={} setup={:.3}ms repair={:.3}ms",
                 corpus.left.len(),
                 corpus.right.len(),
                 corpus.set_difference_symbols,
                 rbsr_bytes(&case.rbsr),
+                case.rbsr.messages,
                 case.rbsr.ranges,
                 case.rbsr.enumerated_elements,
                 ms(case.rbsr_setup),
