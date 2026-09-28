@@ -41,10 +41,6 @@ name = "protocol"
 harness = false
 
 [[bench]]
-name = "history_independent_catchup"
-harness = false
-
-[[bench]]
 name = "runtime_history_independent_catchup"
 harness = false
 
@@ -62,10 +58,6 @@ harness = false
 
 [[bench]]
 name = "membership_churn"
-harness = false
-
-[[bench]]
-name = "contention"
 harness = false
 
 [[bench]]
