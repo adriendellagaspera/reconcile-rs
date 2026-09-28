@@ -45,6 +45,32 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         ret
     }
 
+    /// Atomically collect one causally-stable tombstone and its acknowledgement bookkeeping under
+    /// the same snapshot-generation boundary.
+    pub(crate) fn gc_collect(&self, key: &K) -> Option<Entry<Timestamp, V>> {
+        let mut generation = self.snapshot_generations.mutation();
+        let _guard = self.write_lock.lock();
+        let mut map = (*self.map.load_full()).clone();
+        let mut projection = (*self.projection.load_full()).clone();
+        self.live_tombstones.write().remove(key);
+        projection.remove(key);
+        let ret = map.remove(key);
+        self.map.store(Arc::new(map));
+        self.projection.store(Arc::new(projection));
+
+        let mut changed = 0;
+        if ret.is_some() {
+            generation.record_physical_delete(key.clone());
+            changed += 1;
+        }
+        if self.tombstone_acks.write().remove(key).is_some() {
+            generation.record_ack_key_clear(key.clone());
+            changed += 1;
+        }
+        self.record_changes(changed);
+        ret
+    }
+
     /// Whether the tombstone for `key` at this version has been acknowledged by every member and
     /// is safe to collect. With no members known, GC is allowed.
     pub(crate) fn is_tombstone_stable(&self, key: &K, version: u64) -> bool {
