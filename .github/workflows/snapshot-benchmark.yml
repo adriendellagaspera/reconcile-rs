@@ -1,0 +1,47 @@
+name: snapshot-baseline
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/snapshot-benchmark.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install paired benchmark harness
+        run: |
+          git fetch origin bench/adaptive-snapshot-materialization
+          git show FETCH_HEAD:benches/snapshot_write_amplification.rs > benches/snapshot_write_amplification.rs
+      - name: Run full-snapshot baseline
+        env:
+          RECONCILE_SNAPSHOT_SIZES: "10000,100000"
+          RECONCILE_SNAPSHOT_DELTAS: "0,1,100,1000"
+          RECONCILE_SNAPSHOT_CHAIN_LENGTHS: "1,8,32"
+          RECONCILE_SNAPSHOT_CHAIN_DELTAS: "1,100"
+          RECONCILE_SNAPSHOT_TRIALS: "1"
+        run: |
+          cargo bench --bench snapshot_write_amplification 2>&1 | tee snapshot-baseline.csv
+      - name: Publish summary
+        run: |
+          {
+            echo '## Full-snapshot baseline'
+            echo
+            echo '~~~text'
+            cat snapshot-baseline.csv
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-baseline
+          path: snapshot-baseline.csv
