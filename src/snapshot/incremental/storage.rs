@@ -180,6 +180,21 @@ pub(super) fn read_segment_bytes(dir: &Path, reference: &SegmentRef) -> io::Resu
     Ok(bytes)
 }
 
+pub(super) fn write_encoded_segment(
+    dir: &Path,
+    kind: &str,
+    generation: u64,
+    bytes: &[u8],
+) -> io::Result<SegmentRef> {
+    let file = segment_file_name(kind, generation);
+    write_atomic(&dir.join(&file), bytes)?;
+    Ok(SegmentRef {
+        generation,
+        file,
+        bytes: bytes.len() as u64,
+    })
+}
+
 pub(super) fn write_segment<T: Serialize>(
     dir: &Path,
     magic: [u8; 4],
@@ -188,19 +203,37 @@ pub(super) fn write_segment<T: Serialize>(
     value: &T,
 ) -> io::Result<SegmentRef> {
     let bytes = encode(magic, value)?;
-    let file = segment_file_name(kind, generation);
-    write_atomic(&dir.join(&file), &bytes)?;
-    Ok(SegmentRef {
-        generation,
-        file,
-        bytes: bytes.len() as u64,
-    })
+    write_encoded_segment(dir, kind, generation, &bytes)
 }
 
 pub(super) fn publish_manifest(backend: &FileSnapshot, manifest: &Manifest) -> io::Result<()> {
     validate_manifest(manifest)?;
     let bytes = encode(MANIFEST_MAGIC, manifest)?;
     write_atomic(&manifest_path(backend), &bytes)
+}
+
+pub(super) fn cleanup_unreferenced_segments(backend: &FileSnapshot, keep: &Manifest) {
+    let dir = store_dir(backend);
+    let mut keep_files = std::collections::HashSet::new();
+    keep_files.insert(keep.base.file.as_str());
+    for delta in &keep.deltas {
+        keep_files.insert(delta.file.as_str());
+    }
+    keep_files.insert(MANIFEST_FILE);
+
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !keep_files.contains(name) {
+            let _ = fs::remove_file(path);
+        }
+    }
+    let _ = fs::remove_file(&backend.path);
 }
 
 #[cfg(test)]
