@@ -262,6 +262,7 @@ impl reconcile_gossip::replay::ReplayFilter
 pub fn reconcile_gossip::replay::ReplayFilter::check_and_record(&self, core::net::ip_addr::IpAddr, reconcile_gossip::replay::Seq, reconcile_gossip::replay::Stamp) -> bool
 pub fn reconcile_gossip::replay::ReplayFilter::len(&self) -> usize
 pub fn reconcile_gossip::replay::ReplayFilter::new(core::time::Duration, bool) -> Self
+pub fn reconcile_gossip::replay::ReplayFilter::with_max_senders(self, usize) -> Self
 impl core::fmt::Debug for reconcile_gossip::replay::ReplayFilter
 pub fn reconcile_gossip::replay::ReplayFilter::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl !core::marker::Freeze for reconcile_gossip::replay::ReplayFilter
