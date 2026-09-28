@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::transport::{InMemoryNetwork, Transport};
 
-use crate::{replicated_map::Config, ReplicatedMap};
+use crate::{replicated_map::Config, ClusterKey, ReadReplicaMap, ReplicatedMap};
 
 /// The default cap must be 1024.
 #[test]
@@ -236,9 +236,83 @@ async fn decommission_frees_peer_cap_slot() {
 
 /// In authenticated mode, datagrams from a capped-out sender must not create a replay-filter
 /// entry.  The cap check runs before `replay_filter.check_and_record` for unknown senders.
+/// Value-only senders are intentionally outside causal membership, but authenticated replay
+/// state still has its own hard bound. Once that independent bound is full, further fresh read
+/// replicas must not allocate replay entries, and none of them may become a causal member.
+#[tokio::test(flavor = "multi_thread")]
+async fn replay_sender_cap_bounds_value_only_senders_outside_membership() {
+    let port = 9804u16;
+    let target_addr: std::net::IpAddr = "127.0.2.1".parse().unwrap();
+    let cluster_key = ClusterKey::new([0x66; 32]);
+    let net = InMemoryNetwork::new();
+
+    let store = ReplicatedMap::<i32, i32>::new_with_transport(
+        Config::new(port)
+            .with_listen_addr(target_addr)
+            .with_net("127.0.2.0/24".parse().unwrap())
+            .unwrap()
+            .with_cluster_key(cluster_key.clone())
+            .with_max_peers(1)
+            .with_max_replay_senders(2)
+            .with_reconcile_interval(std::time::Duration::from_secs(60)),
+        Arc::new(net.bind(SocketAddr::new(target_addr, port))),
+    )
+    .expect("valid test config");
+
+    let mut replicas = Vec::new();
+    for octet in 2..=5 {
+        let addr: std::net::IpAddr = format!("127.0.2.{octet}").parse().unwrap();
+        let replica = ReadReplicaMap::<i32, i32>::new_with_transport(
+            Config::new(port)
+                .with_listen_addr(addr)
+                .with_net("127.0.2.0/24".parse().unwrap())
+                .unwrap()
+                .with_cluster_key(cluster_key.clone())
+                .with_max_peers(8)
+                .with_max_replay_senders(8)
+                .with_reconcile_interval(std::time::Duration::from_secs(60)),
+            Arc::new(net.bind(SocketAddr::new(addr, port))),
+        )
+        .expect("valid read-replica config")
+        .with_seed(target_addr);
+        replicas.push(replica);
+    }
+
+    let task = tokio::spawn(store.clone().run(CancellationToken::new()));
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+
+    for replica in &replicas {
+        replica.start_reconciliation().await;
+    }
+
+    for _ in 0..100 {
+        if store.engine.replay_filter_len() == 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    assert_eq!(
+        store.engine.replay_filter_len(),
+        2,
+        "authenticated value-only sender replay state must stop at its independent cap"
+    );
+    assert!(
+        store.engine.members.read().is_empty(),
+        "read replicas must remain outside causal membership even when replay state is capped"
+    );
+    assert!(
+        store.engine.peers.read().is_empty(),
+        "value-only senders must remain outside authoritative gossip routing"
+    );
+
+    task.abort();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn peer_cap_no_replay_entry_for_capped_sender() {
-    let port = 9804u16;
+    let port = 9805u16;
     let target_addr: std::net::IpAddr = "127.0.0.192".parse().unwrap();
     let peer1: std::net::IpAddr = "127.0.0.193".parse().unwrap();
     let peer2: std::net::IpAddr = "127.0.0.194".parse().unwrap();

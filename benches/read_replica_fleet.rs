@@ -10,7 +10,7 @@
 // Measures shipped ReadReplicaMap behavior only:
 // - aggregate heap and round egress for many read replicas tracking a small authoritative set;
 // - authoritative peers/members after value-only read-replica traffic;
-// - authenticated per-sender ingress state by contrasting keyed vs insecure controls.
+// - bounded authenticated per-sender ingress state by contrasting keyed vs insecure controls.
 //
 // Run:
 //   cargo bench --bench read_replica_fleet
@@ -43,6 +43,7 @@ const LONG_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 const SETTLE: Duration = Duration::from_millis(25);
 const MAX_PEERS_CONTROL: usize = 8;
+const MAX_REPLAY_SENDERS_CONTROL: usize = 8;
 
 struct CountingAllocator;
 static LIVE_BYTES: AtomicI64 = AtomicI64::new(0);
@@ -260,6 +261,7 @@ fn authoritative_config(authenticated: bool) -> Config {
         .expect("one network fits")
         .with_node_id(NodeId::new(1))
         .with_max_peers(MAX_PEERS_CONTROL)
+        .with_max_replay_senders(MAX_REPLAY_SENDERS_CONTROL)
         .with_reconcile_interval(LONG_INTERVAL)
         .with_repair_interval(LONG_INTERVAL)
         .with_snapshot_interval(None);
@@ -459,9 +461,10 @@ fn main() {
             .authenticated_heap_delta
             .saturating_sub(point.insecure_heap_delta);
         println!(
-            "[read-ingress] replicas={},authoritative_max_peers={},insecure_heap_delta={},authenticated_heap_delta={},auth_extra_heap={auth_extra}",
+            "[read-ingress] replicas={},authoritative_max_peers={},authoritative_max_replay_senders={},insecure_heap_delta={},authenticated_heap_delta={},auth_extra_heap={auth_extra}",
             point.replicas,
             MAX_PEERS_CONTROL,
+            MAX_REPLAY_SENDERS_CONTROL,
             point.insecure_heap_delta,
             point.authenticated_heap_delta,
         );
@@ -486,19 +489,15 @@ fn main() {
         model_target,
         "bytes",
     );
-    report_model(
-        "authoritative_authenticated_ingress_extra_heap",
-        &ingress_points
-            .iter()
-            .map(|p| {
-                (
-                    p.replicas,
-                    p.authenticated_heap_delta
-                        .saturating_sub(p.insecure_heap_delta) as f64,
-                )
-            })
-            .collect::<Vec<_>>(),
-        model_target,
-        "bytes",
+    let max_auth_extra_heap = ingress_points
+        .iter()
+        .map(|p| {
+            p.authenticated_heap_delta
+                .saturating_sub(p.insecure_heap_delta)
+        })
+        .max()
+        .unwrap_or(0);
+    println!(
+        "[read-ingress-bound] max_replay_senders={MAX_REPLAY_SENDERS_CONTROL},max_observed_auth_extra_heap={max_auth_extra_heap} bytes"
     );
 }

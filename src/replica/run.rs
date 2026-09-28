@@ -97,8 +97,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                             }
                             Err(InboundRejection::Replay { seq, stamp }) => {
                                 trace!(
-                                    "dropped replayed or stale datagram from {peer}: \
-                                     seq={seq} stamp={stamp}"
+                                    "dropped replayed, stale, or replay-capacity datagram from \
+                                     {peer}: seq={seq} stamp={stamp}"
                                 );
                                 observability::record_datagram_dropped("replay");
                                 continue;

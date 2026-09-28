@@ -47,6 +47,7 @@ fn config_on_port(port: u16) -> Config {
         send_buffer_size: Some(8 * 1024 * 1024),
         freshness_window: gossip::replay::FRESHNESS_WINDOW_DEFAULT,
         max_peers: 1024,
+        max_replay_senders: 1024,
         max_concurrent_bulk_dumps: 4,
         max_concurrent_broadcasts: 1024,
         snapshot_interval: Some(Duration::from_secs(5)),

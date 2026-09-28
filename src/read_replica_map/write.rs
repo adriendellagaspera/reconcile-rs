@@ -262,8 +262,8 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                             }
                             Err(InboundRejection::Replay { seq, stamp }) => {
                                 trace!(
-                                    "read replica dropped replayed datagram from {peer}: \
-                                     seq={seq} stamp={stamp}"
+                                    "read replica dropped replayed, stale, or replay-capacity \
+                                     datagram from {peer}: seq={seq} stamp={stamp}"
                                 );
                                 continue;
                             }

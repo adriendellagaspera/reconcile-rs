@@ -289,10 +289,10 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             peers: Arc::new(RwLock::new(HashMap::new())),
             authenticator,
             sender_counter: Arc::new(replay::SenderCounter::new()),
-            replay_filter: Arc::new(replay::ReplayFilter::new(
-                config.freshness_window,
-                authenticator_enabled,
-            )),
+            replay_filter: Arc::new(
+                replay::ReplayFilter::new(config.freshness_window, authenticator_enabled)
+                    .with_max_senders(config.max_replay_senders),
+            ),
             on_update: Arc::new(RwLock::new(Box::new(|_, _| {}))),
             max_peers: PeerCap::new(config.max_peers),
             discovery: None,

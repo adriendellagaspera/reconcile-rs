@@ -35,9 +35,14 @@ pub(crate) const MIN_BULK_SEND_RATE: usize = 1024 * 1024;
 /// while the stock default holds too few datagrams for a cold-sync burst.
 pub(super) const DEFAULT_SOCKET_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 
-/// Default cap on tracked peers (see [`Config::max_peers`]). Raise via
+/// Default cap on tracked causal/gossip peers (see [`Config::max_peers`]). Raise via
 /// [`Config::with_max_peers`].
 pub(super) const DEFAULT_MAX_PEERS: usize = 1024;
+
+/// Default cap on authenticated sender IPs retained in replay state (see
+/// [`Config::max_replay_senders`]). Kept independent from causal membership so value-only read
+/// replicas can be sized without making them tombstone-GC participants.
+pub(super) const DEFAULT_MAX_REPLAY_SENDERS: usize = 1024;
 
 /// Default RTT-scale repair timer (see [`Config::repair_interval`]) — comfortably above the
 /// 0-50 ms RTT sweep `benches/`'s injected-RTT lane measures, comfortably below
@@ -198,12 +203,23 @@ pub struct Config {
     /// Must tolerate real skew and jitter or legitimate traffic is dropped — [`Duration::ZERO`]
     /// accepts almost nothing. Unvalidated, because too small is stricter, never unsafe.
     pub freshness_window: Duration,
-    /// Maximum number of distinct remote peers tracked (default 1024).
-    /// At capacity an unknown sender's datagram is dropped before any per-sender state is
-    /// allocated; tracked senders are unaffected and
-    /// [`forget_peer`](crate::ReplicatedMap::forget_peer) frees a slot. Read replicas count too,
-    /// so size for members *plus* replicas.
+    /// Maximum number of topology peers tracked (default 1024). On an authoritative
+    /// [`ReplicatedMap`](super::ReplicatedMap) this bounds causal/gossip peers; on a
+    /// [`ReadReplicaMap`](crate::ReadReplicaMap) it bounds the dated peers the read replica
+    /// tracks. This is deliberately not the replay-state bound: value-only read replicas never
+    /// enter an authoritative replica's causal membership or gate tombstone GC. See
+    /// [`max_replay_senders`](Self::max_replay_senders) for authenticated sender state.
     pub max_peers: usize,
+    /// Maximum number of distinct authenticated sender IPs whose replay state is retained
+    /// concurrently (default 1024), independent of [`max_peers`](Self::max_peers).
+    ///
+    /// At capacity, already-tracked senders continue through normal replay checks. A new
+    /// authenticated sender is dropped until an existing replay entry becomes older than
+    /// [`freshness_window`](Self::freshness_window) and is opportunistically purged. Fresh replay
+    /// state is never evicted to make room, because that would reopen a replay window. Size this
+    /// for the authenticated senders concurrently active inside one freshness window, including
+    /// value-only read replicas. It has no effect in unauthenticated mode.
+    pub max_replay_senders: usize,
     /// Maximum concurrently active paced bulk dumps across all peers (default 4).
     /// Each holds a snapshot of the differing range for the transfer's duration, so M cold peers
     /// would otherwise cost M × dataset memory. An exhausted budget skips the dump before
@@ -312,6 +328,7 @@ impl fmt::Debug for Config {
             .field("send_buffer_size", &self.send_buffer_size)
             .field("freshness_window", &self.freshness_window)
             .field("max_peers", &self.max_peers)
+            .field("max_replay_senders", &self.max_replay_senders)
             .field("max_concurrent_bulk_dumps", &self.max_concurrent_bulk_dumps)
             .field("max_concurrent_broadcasts", &self.max_concurrent_broadcasts)
             .field("snapshot_interval", &self.snapshot_interval)
@@ -343,6 +360,7 @@ impl Default for Config {
             send_buffer_size: Some(DEFAULT_SOCKET_BUFFER_SIZE),
             freshness_window: gossip::replay::FRESHNESS_WINDOW_DEFAULT,
             max_peers: DEFAULT_MAX_PEERS,
+            max_replay_senders: DEFAULT_MAX_REPLAY_SENDERS,
             max_concurrent_bulk_dumps: DEFAULT_MAX_CONCURRENT_BULK_DUMPS,
             max_concurrent_broadcasts: DEFAULT_MAX_CONCURRENT_BROADCASTS,
             snapshot_interval: Some(SNAPSHOT_INTERVAL),

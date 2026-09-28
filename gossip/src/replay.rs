@@ -75,6 +75,10 @@ pub struct ReplayFilter {
     peers: Mutex<HashMap<IpAddr, PeerState>>,
     freshness_window: Duration,
     enabled: bool,
+    /// Hard ceiling on distinct authenticated sender IPs retained at once. Existing senders keep
+    /// their replay history at capacity; a new sender is admitted only after stale state has been
+    /// purged. `usize::MAX` preserves the standalone gossip crate's historical default.
+    max_senders: usize,
 }
 
 #[cfg(test)]
