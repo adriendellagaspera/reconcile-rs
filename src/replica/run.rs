@@ -113,7 +113,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         // membership; value-only read replicas never gate tombstone GC.
                         if spoke_dated {
                             self.peers.write().insert(sender, Instant::now());
+                            let mut generation = self.snapshot_generations.mutation();
                             if self.members.write().insert(sender) {
+                                generation.record_member(sender, true);
                                 self.record_changes(1);
                             }
                         }

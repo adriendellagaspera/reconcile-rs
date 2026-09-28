@@ -291,6 +291,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 coalesce_window: Arc::new(RwLock::new(config.coalesce_window)),
                 coalesce_pending: Arc::new(RwLock::new(HashMap::new())),
                 changes_since_snapshot: Arc::new(AtomicUsize::new(0)),
+                snapshot_generations: super::generation::GenerationTracker::default(),
             }),
         })
     }

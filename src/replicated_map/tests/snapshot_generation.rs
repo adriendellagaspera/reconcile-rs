@@ -38,6 +38,34 @@ impl PausedSave {
     }
 }
 
+struct FailFirstSave {
+    failed_once: AtomicBool,
+    saved: Mutex<Vec<PersistedState<u32, u32>>>,
+}
+
+impl FailFirstSave {
+    fn new() -> Self {
+        Self {
+            failed_once: AtomicBool::new(false),
+            saved: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl Persistence<u32, u32> for FailFirstSave {
+    fn load(&self) -> io::Result<Option<PersistedState<u32, u32>>> {
+        Ok(self.saved.lock().unwrap().last().cloned())
+    }
+
+    fn save(&self, state: &PersistedState<u32, u32>) -> io::Result<()> {
+        if !self.failed_once.swap(true, Ordering::AcqRel) {
+            return Err(io::Error::other("injected first-save failure"));
+        }
+        self.saved.lock().unwrap().push(state.clone());
+        Ok(())
+    }
+}
+
 impl Persistence<u32, u32> for PausedSave {
     fn load(&self) -> io::Result<Option<PersistedState<u32, u32>>> {
         Ok(self.saved.lock().unwrap().last().cloned())
@@ -87,6 +115,33 @@ async fn write_during_save_stays_pending_and_is_recovered_by_next_snapshot() {
     assert_eq!(restarted.get_cloned(&1), Some(10));
     assert_eq!(restarted.get_cloned(&2), Some(20));
     assert_eq!(restarted.fingerprint(..), store.fingerprint(..));
+}
+
+#[tokio::test]
+async fn failed_generation_retries_without_retiring_newer_writes() {
+    let backend = Arc::new(FailFirstSave::new());
+    let store = virtual_map::<u32, u32>(virtual_config().with_snapshot_interval(None))
+        .with_persistence(backend.clone())
+        .unwrap();
+
+    store.just_insert(1, 10);
+    assert!(store.snapshot_now().is_err());
+    assert_eq!(store.engine.change_count(), 1);
+
+    store.just_insert(2, 20);
+    assert_eq!(store.engine.change_count(), 2);
+
+    store.snapshot_now().unwrap();
+    assert_eq!(
+        store.engine.change_count(),
+        1,
+        "successful retry retired a write from the newer open generation"
+    );
+
+    store.snapshot_now().unwrap();
+    assert_eq!(store.engine.change_count(), 0);
+    let last = backend.saved.lock().unwrap().last().unwrap().clone();
+    assert_eq!(last.entries.len(), 2);
 }
 
 #[tokio::test]

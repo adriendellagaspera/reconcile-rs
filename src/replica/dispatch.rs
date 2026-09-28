@@ -121,13 +121,20 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         if acks.is_empty() {
             return;
         }
+        let mut generation = self.snapshot_generations.mutation();
         let map_guard = self.map.load_full();
         let mut guard = self.tombstone_acks.write();
         let mut changed = 0;
         for (key, version) in acks {
             // Only acks for locally-held tombstones are retained, bounding the bookkeeping map.
             if map_guard.get(&key).is_some_and(|v| v.is_tombstone()) {
-                if guard.entry(key).or_default().insert(peer_ip, version) != Some(version) {
+                if guard
+                    .entry(key.clone())
+                    .or_default()
+                    .insert(peer_ip, version)
+                    != Some(version)
+                {
+                    generation.record_ack(key, peer_ip, Some(version));
                     changed += 1;
                 }
             } else {
@@ -274,6 +281,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         if !to_apply.is_empty() {
             let change_count = to_apply.len();
             let _guard = self.write_lock.lock();
+            let mut generation = self.snapshot_generations.mutation();
             let mut map = (*self.map.load_full()).clone();
             let mut projection = (*self.projection.load_full()).clone();
             for (k, v) in to_apply {
@@ -289,7 +297,13 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                     None => v,
                 };
                 let version = merged_v.is_tombstone().then(|| version_hash(&merged_v));
-                self.map_insert(&mut map, &mut projection, k.clone(), merged_v);
+                self.map_insert(
+                    &mut map,
+                    &mut projection,
+                    &mut generation,
+                    k.clone(),
+                    merged_v,
+                );
                 if let Some(version) = version {
                     acks_to_send.push(Message::TombstoneAck::<K, Entry<Timestamp, V>, State<V>>((
                         k, version,

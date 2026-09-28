@@ -28,8 +28,10 @@ pub(crate) fn version_hash<V: Serialize>(value: &V) -> u64 {
 impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Remove a key from the dated `map`, its value-only projection, and the live-tombstone
     /// index (the GC removal path).
+    #[cfg(test)]
     pub(crate) fn gc_remove(&self, key: &K) -> Option<Entry<Timestamp, V>> {
         let _guard = self.write_lock.lock();
+        let mut generation = self.snapshot_generations.mutation();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
         self.live_tombstones.write().remove(key);
@@ -38,8 +40,35 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.map.store(Arc::new(map));
         self.projection.store(Arc::new(projection));
         if ret.is_some() {
+            generation.record_physical_delete(key.clone());
             self.record_changes(1);
         }
+        ret
+    }
+
+    /// Atomically collect one causally-stable tombstone and its acknowledgement bookkeeping under
+    /// the same snapshot-generation boundary.
+    pub(crate) fn gc_collect(&self, key: &K) -> Option<Entry<Timestamp, V>> {
+        let mut generation = self.snapshot_generations.mutation();
+        let _guard = self.write_lock.lock();
+        let mut map = (*self.map.load_full()).clone();
+        let mut projection = (*self.projection.load_full()).clone();
+        self.live_tombstones.write().remove(key);
+        projection.remove(key);
+        let ret = map.remove(key);
+        self.map.store(Arc::new(map));
+        self.projection.store(Arc::new(projection));
+
+        let mut changed = 0;
+        if ret.is_some() {
+            generation.record_physical_delete(key.clone());
+            changed += 1;
+        }
+        if self.tombstone_acks.write().remove(key).is_some() {
+            generation.record_ack_key_clear(key.clone());
+            changed += 1;
+        }
+        self.record_changes(changed);
         ret
     }
 
@@ -60,8 +89,11 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Drop the acknowledgment bookkeeping for a key once its tombstone has been collected.
+    #[cfg(test)]
     pub(crate) fn forget_tombstone(&self, key: &K) {
+        let mut generation = self.snapshot_generations.mutation();
         if self.tombstone_acks.write().remove(key).is_some() {
+            generation.record_ack_key_clear(key.clone());
             self.record_changes(1);
         }
     }
@@ -90,7 +122,35 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use crate::replicated_map::Config;
+
     use super::*;
+
+    #[test]
+    fn gc_collect_counts_physical_delete_and_ack_cleanup() {
+        let config = Config::default()
+            .with_port(5000)
+            .with_listen_addr("127.0.0.120".parse().unwrap())
+            .with_insecure_no_key();
+        let replica = crate::replica::tests::in_memory_test_replica::<u32, u32>(config);
+        let key = 7;
+        let peer: IpAddr = "127.0.0.9".parse().unwrap();
+        replica.just_insert(key, Entry::tombstone(replica.clock_now()));
+        replica
+            .tombstone_acks
+            .write()
+            .insert(key, HashMap::from([(peer, 11)]));
+        let before = replica.change_count();
+
+        assert!(replica.gc_collect(&key).is_some());
+        assert_eq!(
+            replica.change_count() - before,
+            2,
+            "physical deletion and ACK cleanup are two durable mutations"
+        );
+    }
 
     /// Pins the exact formula (`rsos::digest`'s low limb), not just "some function of the
     /// value" — a mutant hardcoding a constant return has no other caller in this crate that

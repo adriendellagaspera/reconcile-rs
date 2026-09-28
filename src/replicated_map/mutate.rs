@@ -51,7 +51,15 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             projection.insert(k.clone(), projected);
             self.engine.projection.store(Arc::new(projection));
         }
+        let mut generation = updated
+            .as_ref()
+            .map(|_| self.engine.snapshot_generations.mutation());
+        if let (Some(value), Some(generation)) = (&updated, generation.as_mut()) {
+            generation.record_entry(k.clone(), value.clone());
+            self.engine.record_changes(1);
+        }
         self.engine.map.store(Arc::new(map));
+        drop(generation);
         drop(_guard);
         if let Some(value) = updated {
             self.engine.broadcast_update(k.clone(), value);
@@ -92,7 +100,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             // above, which only runs for a live entry.
             validate(entry.value().expect("just-mutated live entry has a value"))?;
         }
-        if updated.is_some() {
+        let mut generation = updated
+            .as_ref()
+            .map(|_| self.engine.snapshot_generations.mutation());
+        if let (Some(entry), Some(generation)) = (&updated, generation.as_mut()) {
+            generation.record_entry(k.clone(), entry.clone());
+            self.engine.record_changes(1);
             if let Some(entry) = map.get(k) {
                 let projected = entry.project();
                 let mut projection = (*self.engine.projection.load_full()).clone();
@@ -101,6 +114,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             }
         }
         self.engine.map.store(Arc::new(map));
+        drop(generation);
         Ok(updated)
     }
 
