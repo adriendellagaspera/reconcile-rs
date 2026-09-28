@@ -93,8 +93,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         } else {
             observability::record_insert();
         }
-        let mut generation = self.snapshot_generations.mutation();
         let _guard = self.write_lock.lock();
+        let mut generation = self.snapshot_generations.mutation();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
         let ret = self.map_insert(&mut map, &mut projection, &mut generation, key, value);
