@@ -22,7 +22,8 @@ use super::FileSnapshot;
 mod storage;
 
 use storage::{
-    decode, invalid, publish_manifest, read_manifest, read_segment_bytes, store_dir, write_segment,
+    cleanup_unreferenced_segments, decode, encode, invalid, publish_manifest, read_manifest,
+    read_segment_bytes, store_dir, write_encoded_segment, write_segment,
 };
 
 #[cfg(test)]
@@ -36,6 +37,7 @@ const BASE_MAGIC: [u8; 4] = *b"RCNB";
 const DELTA_MAGIC: [u8; 4] = *b"RCND";
 const MANIFEST_MAGIC: [u8; 4] = *b"RCNM";
 const MANIFEST_FILE: &str = "manifest";
+const MAX_COMMITTED_DELTAS: usize = 32;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct SegmentRef {
@@ -49,6 +51,17 @@ struct Manifest {
     base: SegmentRef,
     deltas: Vec<SegmentRef>,
     current_generation: u64,
+}
+
+fn should_materialize(manifest: &Manifest, candidate_delta_bytes: u64) -> bool {
+    if manifest.deltas.len() >= MAX_COMMITTED_DELTAS {
+        return true;
+    }
+    let committed_delta_bytes = manifest
+        .deltas
+        .iter()
+        .fold(0u64, |sum, segment| sum.saturating_add(segment.bytes));
+    committed_delta_bytes.saturating_add(candidate_delta_bytes) >= manifest.base.bytes
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -208,6 +221,7 @@ where
         current_generation: generation,
     };
     publish_manifest(backend, &manifest)?;
+    cleanup_unreferenced_segments(backend, &manifest);
     Ok(())
 }
 
@@ -233,8 +247,14 @@ where
         to_generation,
         delta,
     };
+    let encoded = encode(DELTA_MAGIC, &segment)?;
+    if should_materialize(&manifest, encoded.len() as u64) {
+        return Ok(false);
+    }
+
     let dir = store_dir(backend);
-    let reference = write_segment(&dir, DELTA_MAGIC, "delta", to_generation, &segment)?;
+    let reference =
+        write_encoded_segment(&dir, "delta", to_generation, &encoded)?;
     manifest.deltas.push(reference);
     manifest.current_generation = to_generation;
     publish_manifest(backend, &manifest)?;
