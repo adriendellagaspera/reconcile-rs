@@ -343,6 +343,7 @@ pub reconcile::replicated_map::Config::max_clock_drift: lww_register::clock::Clo
 pub reconcile::replicated_map::Config::max_concurrent_broadcasts: usize
 pub reconcile::replicated_map::Config::max_concurrent_bulk_dumps: usize
 pub reconcile::replicated_map::Config::max_peers: usize
+pub reconcile::replicated_map::Config::max_replay_senders: usize
 pub reconcile::replicated_map::Config::max_value_size: core::option::Option<usize>
 pub reconcile::replicated_map::Config::nets: [core::option::Option<ipnet::ipnet::IpNet>; 8]
 pub reconcile::replicated_map::Config::node_id: core::option::Option<lww_register::clock::NodeId>
@@ -368,6 +369,7 @@ pub fn reconcile::replicated_map::Config::with_max_clock_drift(self, lww_registe
 pub fn reconcile::replicated_map::Config::with_max_concurrent_broadcasts(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_max_concurrent_bulk_dumps(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_max_peers(self, usize) -> Self
+pub fn reconcile::replicated_map::Config::with_max_replay_senders(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_max_value_size(self, usize) -> Self
 pub fn reconcile::replicated_map::Config::with_net(self, ipnet::ipnet::IpNet) -> core::result::Result<Self, reconcile::replicated_map::ConfigError>
 pub fn reconcile::replicated_map::Config::with_nets(self, &[ipnet::ipnet::IpNet]) -> core::result::Result<Self, reconcile::replicated_map::ConfigError>
