@@ -8,11 +8,8 @@
 //! The file-backed [`Persistence`] adapter for a replicated map.
 //! This module holds the half of persistence that touches the outside world: [`FileSnapshot`], a
 //! durable backend that writes a whole [`PersistedState`] to one file as
-//! `magic || version || bincode(state)`, atomically. The port it implements
-//! ([`lww_register::persistence::Persistence`]), the snapshot value type, and the non-durable
-//! [`InMemoryPersistence`](lww_register::persistence::InMemoryPersistence) default live in the
-//! infrastructure-free `lww-register` crate — the domain owns the contract, this adapter owns the
-//! filesystem and the codec.
+//! `magic || version || bincode(state)`, atomically. The port, snapshot value type and non-durable
+//! default live in [`crate::persistence`]; this module owns the filesystem and codec adapter.
 //! One type with no standalone reuse value outside this workspace, so it stays folded into
 //! `reconcile` rather than earning its own crate. [`FileSnapshot`] is
 //! re-exported from [`crate::persistence`] and from the crate root.
@@ -24,7 +21,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use lww_register::persistence::{PersistedState, Persistence};
+use crate::persistence::{PersistedState, Persistence};
 
 /// On-disk snapshot header: a 4-byte magic then a little-endian `u32` format version.
 /// The body is bincode, not self-describing, so without this a format change would be silently
@@ -165,8 +162,8 @@ where
 mod tests {
     use std::collections::{HashMap, HashSet};
 
-    use lww_register::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
-    use lww_register::entry::Entry;
+    use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
+    use crate::entry::Entry;
 
     use super::*;
 
