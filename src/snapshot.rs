@@ -125,4 +125,6 @@ where
 }
 
 #[cfg(test)]
+mod adaptive_tests;
+#[cfg(test)]
 mod tests;
