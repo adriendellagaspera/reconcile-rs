@@ -52,8 +52,13 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             projection.insert(k.clone(), projected);
             self.engine.projection.store(Arc::new(projection));
         }
+        if let Some(value) = &updated {
+            generation.record_entry(k.clone(), value.clone());
+            self.engine.record_changes(1);
+        }
         self.engine.map.store(Arc::new(map));
         drop(_guard);
+        drop(generation);
         if let Some(value) = updated {
             self.engine.broadcast_update(k.clone(), value);
         }
