@@ -22,7 +22,7 @@ jobs:
         env:
           RECONCILE_SNAPSHOT_SIZES: "100000"
           RECONCILE_SNAPSHOT_DELTAS: "0"
-          RECONCILE_SNAPSHOT_CHAIN_LENGTHS: "64,128"
-          RECONCILE_SNAPSHOT_CHAIN_DELTAS: "1,100"
+          RECONCILE_SNAPSHOT_CHAIN_LENGTHS: "8,16,32"
+          RECONCILE_SNAPSHOT_CHAIN_DELTAS: "1000,10000"
           RECONCILE_SNAPSHOT_TRIALS: "1"
         run: cargo bench --bench snapshot_write_amplification
