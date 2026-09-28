@@ -195,3 +195,62 @@ async fn oversized_message_is_dropped_not_sent_empty_or_oversized() {
         "unexpected datagram size {sizes:?}"
     );
 }
+
+/// A refinement *round* above the UDP payload ceiling is a batch of atomic fingerprints,
+/// not one oversized message. The sender must split it without losing a range.
+#[tokio::test]
+async fn oversized_refinement_batch_is_split_without_dropping_ranges() {
+    use crate::transport::{InMemoryNetwork, Transport};
+
+    let empty = rsos::FingerprintTreeMap::<u64, u64>::new();
+    let segment = rbsr::initial_ranges(&empty).pop().unwrap();
+    let mut messages = Vec::new();
+    let mut encoded = Vec::new();
+    while encoded.len() < 67_794 {
+        let message: Msg = Message::EntryFingerprint(segment.clone());
+        gossip::bincode::encode(&message, &mut encoded).unwrap();
+        messages.push(message);
+    }
+    assert!(encoded.len() > super::super::BUFFER_SIZE);
+
+    let net = InMemoryNetwork::new();
+    let sender_addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
+    let receiver_addr: SocketAddr = "127.0.0.1:2".parse().unwrap();
+    let sender_transport = net.bind(sender_addr);
+    let receiver_transport = net.bind(receiver_addr);
+    let authenticator = Authenticator::new(None, false).unwrap();
+    let sender_counter = gossip::replay::SenderCounter::new();
+    let ports = SendPorts {
+        transport: &sender_transport,
+        authenticator: &authenticator,
+        sender_counter: &sender_counter,
+    };
+    let mut send_buf = Vec::new();
+    send_messages_paced(&messages, &ports, &receiver_addr, &mut send_buf, None).await;
+
+    let mut datagrams = 0;
+    let mut received = 0;
+    let mut buf = [0u8; 1 << 17];
+    while let Ok(Ok((len, _))) = tokio::time::timeout(
+        Duration::from_millis(50),
+        receiver_transport.recv_from(&mut buf),
+    )
+    .await
+    {
+        datagrams += 1;
+        assert!(len <= super::super::BUFFER_SIZE, "datagram length {len}");
+        let decoded: Vec<Msg> =
+            gossip::bincode::decode_stream(&buf[authenticator.overhead()..len], messages.len())
+                .unwrap();
+        assert!(decoded
+            .iter()
+            .all(|msg| matches!(msg, Message::EntryFingerprint(_))));
+        received += decoded.len();
+    }
+    assert!(datagrams >= 2, "batch was not split");
+    assert_eq!(
+        received,
+        messages.len(),
+        "lost a fingerprint during packing"
+    );
+}
