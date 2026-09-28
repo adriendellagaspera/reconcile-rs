@@ -230,7 +230,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
                 // on a backend that is failing every attempt.
                 self.engine.retire_change_count(counted_before_capture);
                 if let Some(generation) = frozen_generation {
-                    debug_assert!(
+                    assert!(
                         self.engine.snapshot_generations.commit(generation.id),
                         "the snapshot lock keeps the frozen generation stable until commit"
                     );
