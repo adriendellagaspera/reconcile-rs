@@ -32,15 +32,15 @@
 //
 // Run with `cargo bench --bench riblt_preparation`.
 
+use devkit::experiment::producer::{elapsed, protocol_bytes, write_case_from_env, Arm, Case};
+use devkit::experiment::{CostOwner, LifecyclePhase};
 use std::collections::BTreeSet;
 use std::env;
 use std::mem::size_of;
 use std::time::{Duration, Instant};
 
+use devkit::corpus::{base_digest, sampled_ranks};
 use do_riblt::{CachedEncoder, CodedSymbol, Decoder, Encoder, Peeled, Symbol};
-use rand::rngs::StdRng;
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
 
 const DEFAULT_N: usize = 100_000;
 const DEFAULT_D: usize = 1_000;
@@ -118,10 +118,6 @@ fn peer_sweep() -> Vec<usize> {
     )
 }
 
-fn base_digest(key: u64) -> u64 {
-    key.wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(17) ^ 0xd6e8_feb8_6659_fd93
-}
-
 fn changed_digest(key: u64, peer: usize) -> u64 {
     base_digest(key) ^ 0xa5a5_5a5a_d3c3_b4b4 ^ (peer as u64).wrapping_mul(0x517c_c1b7_2722_0a95)
 }
@@ -132,11 +128,7 @@ fn base_rows(n: usize) -> Vec<(u64, u64)> {
 
 fn make_peer(base: &[(u64, u64)], d: usize, seed: u64, peer: usize) -> Peer {
     assert!(d <= base.len(), "d must not exceed n");
-    let mut ranks: Vec<_> = (0..base.len()).collect();
-    let mut rng = StdRng::seed_from_u64(seed.wrapping_add(peer as u64));
-    ranks.shuffle(&mut rng);
-    ranks.truncate(d);
-    ranks.sort_unstable();
+    let ranks = sampled_ranks(base.len(), d, seed.wrapping_add(peer as u64));
 
     let changed: BTreeSet<_> = ranks.iter().copied().collect();
     let rows = base
@@ -341,6 +333,60 @@ fn main() {
             .map(|session| session.setup + session.repair)
             .sum();
         let cached_total = cached.build + cached.precompute + warm_total;
+        let workload = format!("n={n}-d={d}-peers={count}-prefix={cache_depth}-symbol=16");
+        let mut arms = Vec::new();
+        for (id, sessions) in [("on-demand", &on_demand), ("cached", &warm)] {
+            let mut costs = Vec::new();
+            if id == "cached" {
+                costs.push(elapsed(
+                    LifecyclePhase::InitialArchitectureBuild,
+                    CostOwner::Addon,
+                    cached.build,
+                ));
+                costs.push(elapsed(
+                    LifecyclePhase::InitialArchitectureBuild,
+                    CostOwner::Addon,
+                    cached.precompute,
+                ));
+            }
+            for (index, session) in sessions[..count].iter().enumerate() {
+                let mut setup = elapsed(
+                    LifecyclePhase::SessionPreparation,
+                    CostOwner::Addon,
+                    session.setup,
+                );
+                setup.metrics[0].peer = Some(format!("pair-{}", index + 1));
+                let mut repair = elapsed(
+                    LifecyclePhase::SessionWork,
+                    CostOwner::Protocol,
+                    session.repair,
+                );
+                repair.metrics[0].peer = Some(format!("pair-{}", index + 1));
+                costs.extend([
+                    setup,
+                    repair,
+                    protocol_bytes(
+                        session.coded * CODED_SYMBOL_BYTES,
+                        "riblt-coded-payload-no-preflight",
+                        &workload,
+                    ),
+                ]);
+            }
+            arms.push(Arm::new(id, "do-riblt", "1.0.2", costs));
+        }
+        write_case_from_env(
+            Case {
+                target: "riblt-preparation",
+                workload: &workload,
+                seed,
+                records: std::iter::once(("remote".to_owned(), n))
+                    .chain((1..=count).map(|i| (format!("peer-{i}"), n)))
+                    .collect(),
+                symmetric_difference: None,
+            },
+            arms,
+        );
+
         println!(
             "[riblt-multipeer] peers={count} on_demand_total={:.3}ms cached_prepare={:.3}ms cached_warm_sessions={:.3}ms cached_total={:.3}ms ratio={:.3}",
             duration_ms(on_demand_total),
