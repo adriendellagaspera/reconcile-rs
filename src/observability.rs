@@ -130,6 +130,31 @@ mod imp {
         gauge!(PERSISTENCE_FAILURES_CURRENT).set(0.0);
     }
 
+    #[inline]
+    pub(crate) fn record_snapshot_full(compaction: bool, segments: usize, bytes: u64) {
+        counter!(SNAPSHOT_FULL_MATERIALIZATIONS_TOTAL).increment(1);
+        if compaction {
+            counter!(SNAPSHOT_COMPACTIONS_TOTAL).increment(1);
+        }
+        gauge!(SNAPSHOT_SEGMENTS_CURRENT).set(segments as f64);
+        gauge!(SNAPSHOT_SEGMENT_BYTES_CURRENT).set(bytes as f64);
+    }
+
+    #[inline]
+    pub(crate) fn record_snapshot_delta(segments: usize, bytes: u64) {
+        counter!(SNAPSHOT_DELTA_COMMITS_TOTAL).increment(1);
+        gauge!(SNAPSHOT_SEGMENTS_CURRENT).set(segments as f64);
+        gauge!(SNAPSHOT_SEGMENT_BYTES_CURRENT).set(bytes as f64);
+    }
+
+    #[inline]
+    pub(crate) fn record_snapshot_recovery(start: Option<Instant>, segments: usize) {
+        gauge!(SNAPSHOT_RECOVERY_SEGMENTS).set(segments as f64);
+        if let Some(start) = start {
+            histogram!(SNAPSHOT_RECOVERY_DURATION_SECONDS).record(start.elapsed().as_secs_f64());
+        }
+    }
+
     /// A discovery-source resolution failed; the round is skipped, membership untouched.
     #[inline]
     pub(crate) fn record_discovery_failure() {
@@ -264,6 +289,41 @@ mod imp {
             Unit::Count,
             "Consecutive persistence-backend snapshot failures since the last success"
         );
+        describe_counter!(
+            SNAPSHOT_FULL_MATERIALIZATIONS_TOTAL,
+            Unit::Count,
+            "Full FileSnapshot base publications"
+        );
+        describe_counter!(
+            SNAPSHOT_DELTA_COMMITS_TOTAL,
+            Unit::Count,
+            "Incremental FileSnapshot delta publications"
+        );
+        describe_counter!(
+            SNAPSHOT_COMPACTIONS_TOTAL,
+            Unit::Count,
+            "Full base publications replacing an existing delta chain"
+        );
+        describe_gauge!(
+            SNAPSHOT_SEGMENTS_CURRENT,
+            Unit::Count,
+            "Currently committed FileSnapshot base plus delta segment count"
+        );
+        describe_gauge!(
+            SNAPSHOT_SEGMENT_BYTES_CURRENT,
+            Unit::Bytes,
+            "Bytes retained by committed FileSnapshot base and delta segments"
+        );
+        describe_gauge!(
+            SNAPSHOT_RECOVERY_SEGMENTS,
+            Unit::Count,
+            "FileSnapshot segments replayed by the latest successful load"
+        );
+        describe_histogram!(
+            SNAPSHOT_RECOVERY_DURATION_SECONDS,
+            Unit::Seconds,
+            "FileSnapshot recovery wall time"
+        );
     }
 }
 
@@ -323,6 +383,15 @@ mod imp {
 
     #[inline(always)]
     pub(crate) fn record_persistence_success() {}
+
+    #[inline(always)]
+    pub(crate) fn record_snapshot_full(_compaction: bool, _segments: usize, _bytes: u64) {}
+
+    #[inline(always)]
+    pub(crate) fn record_snapshot_delta(_segments: usize, _bytes: u64) {}
+
+    #[inline(always)]
+    pub(crate) fn record_snapshot_recovery(_start: Option<Instant>, _segments: usize) {}
 
     #[inline(always)]
     pub(crate) fn record_discovery_failure() {}
