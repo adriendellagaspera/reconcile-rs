@@ -257,6 +257,43 @@ fn legacy_snapshot_migrates_on_next_generation_save() {
 }
 
 #[test]
+fn full_materialization_removes_superseded_segments_after_manifest_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("snapshot.bin");
+    let backend = FileSnapshot::new(&path);
+    let first = sample_state();
+    Persistence::<i32, String>::save(&backend, &first).unwrap();
+
+    let delta = PersistenceDelta::new(
+        HashMap::new(),
+        HashMap::new(),
+        HashSet::new(),
+        HashMap::new(),
+    );
+    assert!(Persistence::<i32, String>::try_save_delta(&backend, Some(&delta)).unwrap());
+
+    let (store_dir, _) = incremental::paths(&backend);
+    fs::write(store_dir.join("orphan.bin"), b"orphan").unwrap();
+    fs::write(&path, b"legacy").unwrap();
+
+    let mut second = first.clone();
+    second.members.clear();
+    Persistence::<i32, String>::save(&backend, &second).unwrap();
+
+    let names: HashSet<_> = fs::read_dir(&store_dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 2, "only manifest plus fresh base should remain");
+    assert!(names.contains("manifest"));
+    assert_eq!(
+        names.iter().filter(|name| name.starts_with("base-")).count(),
+        1
+    );
+    assert!(!path.exists(), "legacy file is removed only after manifest publication");
+}
+
+#[test]
 fn file_snapshot_save_is_atomic_replace() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
