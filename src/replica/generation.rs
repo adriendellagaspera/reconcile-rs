@@ -206,7 +206,7 @@ mod tests {
                 Hlc::new(PhysicalTime::from_millis(millis), LogicalCounter::ZERO),
                 NodeId::new(7),
             ),
-            state: State::Value(value),
+            state: State::Present(value),
         }
     }
 
