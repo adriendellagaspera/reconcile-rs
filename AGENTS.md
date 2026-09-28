@@ -31,8 +31,7 @@ diagnosis, not as a second copy of the gate sequence.
 - Every crate root forbids unsafe code.
 - Model domain and wire concepts with dedicated types; validation belongs to the type that owns the
   invariant.
-- Keep `rsos`, `rbsr`, and `lww-register` infrastructure-free as defined by
-  `ARCHITECTURE.md`.
+- Keep `rsos` and `rbsr` infrastructure-free as defined by `ARCHITECTURE.md`.
 - `gossip` owns transport/authentication/discovery; `reconcile` composes adapters and domain.
 - Repository-only test seams use `cfg(reconcile_internal_testing)`, not a Cargo feature.
 - New behavior requires tests. Prefer properties over implementation literals and keep randomized

@@ -21,7 +21,6 @@ protocol but does not originate authoritative values or participate in tombstone
 graph LR
     rsos["rsos\nrange-summarizable ordered store"]
     rbsr["rbsr\nrange reconciliation"]
-    lww["lww-register\nLWW domain"]
     gossip["gossip\ntransport, auth, discovery"]
     reconcile["reconcile\npublic facade and runtime"]
     devkit["devkit\nbenchmark support"]
@@ -29,7 +28,6 @@ graph LR
     rsos --> rbsr
     rsos --> reconcile
     rbsr --> reconcile
-    lww --> reconcile
     gossip --> reconcile
     rsos --> devkit
     rbsr --> devkit
@@ -40,15 +38,16 @@ graph LR
 |---|---|
 | `rsos` | ordered storage, range aggregates, canonical fingerprint input |
 | `rbsr` | transport-independent range reconciliation |
-| `lww-register` | entries, timestamps, clock arithmetic and the `Clock` port |
 | `gossip` | datagram transport, wire codec, authentication, replay protection, discovery |
 | `reconcile` | replicated maps/sets, key/value bounds, persistence state/ports/adapters, lifecycle, observability |
 | `devkit` | unpublished benchmark utilities |
 
 ### 2.1 Domain boundary
 
-`rsos`, `rbsr`, and `lww-register` do not depend on runtime, network, wire-codec, or wall-clock
-infrastructure. `gossip` owns network concerns; `reconcile` composes domain and adapters.
+`rsos` and `rbsr` do not depend on runtime, network, wire-codec, or wall-clock infrastructure.
+`lww-register` is an external crates.io dependency that owns LWW entries, timestamps, clock
+arithmetic and the `Clock` port. `gossip` owns network concerns; `reconcile` composes domain and
+adapters.
 
 `gossip` does not depend on `lww-register`: its peer identity is an address and its payload is
 bytes.

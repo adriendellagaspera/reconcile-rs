@@ -67,7 +67,6 @@ jobs:
           }
           publish_crate rsos
           publish_crate rbsr
-          publish_crate lww-register
           publish_crate reconcile-gossip
           publish_crate reconcile
       - name: Create GitHub release
