@@ -17,6 +17,8 @@ use super::{
     MANIFEST_MAGIC,
 };
 
+const OBJECT_CHECKSUM_LEN: usize = 32;
+
 pub(super) fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
@@ -38,17 +40,19 @@ pub(super) fn manifest_path(backend: &FileSnapshot) -> PathBuf {
 pub(super) fn encode<T: Serialize>(magic: [u8; 4], value: &T) -> io::Result<Vec<u8>> {
     let body =
         bincode::serialize(value).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-    let mut bytes = Vec::with_capacity(HEADER_LEN + body.len());
+    let digest = blake3::hash(&body);
+    let mut bytes = Vec::with_capacity(HEADER_LEN + body.len() + OBJECT_CHECKSUM_LEN);
     bytes.extend_from_slice(&magic);
     bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
     bytes.extend_from_slice(&body);
+    bytes.extend_from_slice(digest.as_bytes());
     Ok(bytes)
 }
 
 pub(super) fn decode<T: DeserializeOwned>(bytes: &[u8], expected_magic: [u8; 4]) -> io::Result<T> {
-    if bytes.len() < HEADER_LEN {
+    if bytes.len() < HEADER_LEN + OBJECT_CHECKSUM_LEN {
         return Err(invalid(format!(
-            "incremental snapshot object is {} bytes, shorter than its {HEADER_LEN}-byte header",
+            "incremental snapshot object is {} bytes, shorter than its header plus checksum",
             bytes.len()
         )));
     }
@@ -65,8 +69,14 @@ pub(super) fn decode<T: DeserializeOwned>(bytes: &[u8], expected_magic: [u8; 4])
             "incremental snapshot format version {version} is unsupported (expected {FORMAT_VERSION})"
         )));
     }
-    bincode::deserialize(&bytes[HEADER_LEN..])
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+    let checksum_offset = bytes.len() - OBJECT_CHECKSUM_LEN;
+    let body = &bytes[HEADER_LEN..checksum_offset];
+    let expected = &bytes[checksum_offset..];
+    let actual = blake3::hash(body);
+    if actual.as_bytes() != expected {
+        return Err(invalid("incremental snapshot object failed checksum validation"));
+    }
+    bincode::deserialize(body).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
 }
 
 pub(super) fn checksum(bytes: &[u8]) -> [u8; 32] {
