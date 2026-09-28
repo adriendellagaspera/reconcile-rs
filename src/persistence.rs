@@ -240,6 +240,15 @@ mod tests {
     }
 
     #[test]
+    fn default_delta_hook_requests_full_state_fallback() {
+        let backend = InMemoryPersistence::<i32, String>::new();
+        assert!(
+            !backend.try_save_delta(None).unwrap(),
+            "generic persistence backends must request the full-state fallback"
+        );
+    }
+
+    #[test]
     fn in_memory_roundtrips_within_process() {
         let backend = InMemoryPersistence::<i32, String>::new();
         assert!(backend.load().unwrap().is_none());
