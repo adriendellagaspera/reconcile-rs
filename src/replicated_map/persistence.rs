@@ -222,7 +222,13 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             self.engine.members.read().clone(),
             self.engine.tombstone_acks.read().clone(),
         );
-        match self.persistence.save(&state) {
+        let persistence_delta = frozen_generation
+            .as_ref()
+            .map(|generation| generation.persistence_delta());
+        match self
+            .persistence
+            .save_generation(&state, persistence_delta.as_ref())
+        {
             Ok(()) => {
                 *self.last_snapshot_at.write() = Some(Instant::now());
                 // Only a *successful* write clears the pending count: a failed write must
