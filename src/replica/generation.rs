@@ -34,10 +34,6 @@ pub(crate) struct SnapshotGeneration<K, V> {
 impl<K, V> SnapshotGeneration<K, V> {
     fn is_empty(&self) -> bool {
         self.raw_changes == 0
-            && self.entries.is_empty()
-            && self.members.is_empty()
-            && self.ack_key_clears.is_empty()
-            && self.ack_peers.is_empty()
     }
 }
 
@@ -283,8 +279,11 @@ mod tests {
         let tracker = GenerationTracker::<u64, u64>::default();
         tracker.set_tracking_enabled(false);
         tracker.mutation().record_entry(1, entry(10, 1));
+        assert!(
+            tracker.freeze().is_none(),
+            "restored durable state must not create a pending generation"
+        );
         tracker.reset_clean();
-        assert!(tracker.freeze().is_none());
 
         tracker.mutation().record_entry(2, entry(20, 2));
         assert!(tracker.freeze().is_some());
