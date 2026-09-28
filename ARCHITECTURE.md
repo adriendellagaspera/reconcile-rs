@@ -40,9 +40,9 @@ graph LR
 |---|---|
 | `rsos` | ordered storage, range aggregates, canonical fingerprint input |
 | `rbsr` | transport-independent range reconciliation |
-| `lww-register` | entries, timestamps, clocks, persistence contracts |
+| `lww-register` | entries, timestamps, clock arithmetic and the `Clock` port |
 | `gossip` | datagram transport, wire codec, authentication, replay protection, discovery |
-| `reconcile` | replicated maps/sets, lifecycle, persistence adapters, observability |
+| `reconcile` | replicated maps/sets, key/value bounds, persistence state/ports/adapters, lifecycle, observability |
 | `devkit` | unpublished benchmark utilities |
 
 ### 2.1 Domain boundary
@@ -67,7 +67,7 @@ The main ports are:
 |---|---|---|
 | `Rsos` / `RsosView` | `rsos` / `rbsr` | `FingerprintTreeMap` |
 | `Clock` | `lww-register` | `HlcClock` |
-| `Persistence` | `lww-register` | in-memory, file snapshot, downstream implementations |
+| `Persistence` | `reconcile` | in-memory, file snapshot, downstream implementations |
 | `Transport` | `gossip` | UDP, in-memory, network-emulation decorator |
 | `Discovery` | `gossip` | random probing, DNS |
 

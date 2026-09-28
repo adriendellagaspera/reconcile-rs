@@ -22,6 +22,7 @@
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod bounds;
 pub mod clock;
 /// Public, stable metric names — see the module's own docs.
 #[cfg(feature = "metrics")]
@@ -37,7 +38,7 @@ pub mod value_ref;
 // Stable facade re-exports.
 pub use gossip::auth::{ClusterKey, ClusterKeyError};
 pub use gossip::{discovery, transport};
-pub use lww_register::{bounds, entry};
+pub use lww_register::entry;
 
 // Re-exported so no public signature that names one of these types — `Config::nets`'
 // `ipnet::IpNet`, `UdpTransport::new`/`socket`'s `tokio::net::UdpSocket`, `RandomProbe::new`'s

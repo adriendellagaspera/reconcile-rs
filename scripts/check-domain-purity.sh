@@ -6,16 +6,12 @@ cd "$SCRIPT_DIR/.."
 
 DOMAIN_FILES=(
     lww-register/src/lib.rs
-    lww-register/src/bounds.rs
     lww-register/src/clock.rs
+    lww-register/src/clock/*.rs
     lww-register/src/entry.rs
-    lww-register/src/persistence.rs
 )
 
 FORBIDDEN='^\s*use\s+(tokio|bincode|chrono|ipnet|mio|reqwest|hyper|std::net)\b'
-
-NET_VALUE_TYPES='(IpAddr|Ipv4Addr|Ipv6Addr|SocketAddr|SocketAddrV4|SocketAddrV6|AddrParseError)'
-ALLOWED="^[0-9]+:[[:space:]]*use[[:space:]]+std::net::(\{[[:space:]]*)?(${NET_VALUE_TYPES}([[:space:]]*,[[:space:]]*)?)+[[:space:]]*\}?[[:space:]]*;[[:space:]]*$"
 
 status=0
 for f in "${DOMAIN_FILES[@]}"; do
@@ -24,7 +20,7 @@ for f in "${DOMAIN_FILES[@]}"; do
         status=1
         continue
     fi
-    if hits=$(grep -nE "$FORBIDDEN" "$f" | grep -vE "$ALLOWED"); then
+    if hits=$(grep -nE "$FORBIDDEN" "$f"); then
         echo "check-domain-purity: infrastructure import(s) in domain module $f:" >&2
         echo "$hits" >&2
         status=1

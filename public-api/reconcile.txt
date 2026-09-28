@@ -15,20 +15,16 @@ pub use reconcile::Fingerprint
 pub use reconcile::FingerprintTreeMap
 pub use reconcile::Hlc
 pub use reconcile::InMemoryNetwork
-pub use reconcile::InMemoryPersistence
 pub use reconcile::InMemoryTransport
 pub use reconcile::IntoIter
 pub use reconcile::IntoKeys
 pub use reconcile::IntoValues
 pub use reconcile::ItemRange
 pub use reconcile::Iter
-pub use reconcile::Key
 pub use reconcile::Keys
 pub use reconcile::LogicalCounter
 pub use reconcile::MAX_CLOCK_DRIFT
 pub use reconcile::NodeId
-pub use reconcile::PersistedState
-pub use reconcile::Persistence
 pub use reconcile::PhysicalTime
 pub use reconcile::RandomProbe
 pub use reconcile::Rsos
@@ -36,10 +32,8 @@ pub use reconcile::State
 pub use reconcile::Timestamp
 pub use reconcile::Transport
 pub use reconcile::UdpTransport
-pub use reconcile::Value
 pub use reconcile::Values
 pub use reconcile::async_trait
-pub use reconcile::bounds
 pub use reconcile::discovery
 pub use reconcile::entry
 pub use reconcile::ipnet
@@ -48,6 +42,11 @@ pub use reconcile::rand
 pub use reconcile::tokio
 pub use reconcile::tokio_util
 pub use reconcile::transport
+pub mod reconcile::bounds
+pub trait reconcile::bounds::Key: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
+impl<T> reconcile::bounds::Key for T where T: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
+pub trait reconcile::bounds::Value: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
+impl<T> reconcile::bounds::Value for T where T: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
 pub mod reconcile::clock
 pub use reconcile::clock::AdmittedTime
 pub use reconcile::clock::Clock
@@ -60,10 +59,6 @@ pub use reconcile::clock::PhysicalTime
 pub use reconcile::clock::Timestamp
 pub use reconcile::clock::assert_conformance
 pub mod reconcile::persistence
-pub use reconcile::persistence::DatedEntries
-pub use reconcile::persistence::InMemoryPersistence
-pub use reconcile::persistence::PersistedState
-pub use reconcile::persistence::Persistence
 pub struct reconcile::persistence::FileSnapshot
 impl reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::new(impl core::convert::AsRef<std::path::Path>) -> Self
@@ -71,9 +66,9 @@ impl core::clone::Clone for reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::clone(&self) -> reconcile::FileSnapshot
 impl core::fmt::Debug for reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<K, V> lww_register::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
-pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<lww_register::persistence::PersistedState<K, V>>>
-pub fn reconcile::FileSnapshot::save(&self, &lww_register::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
 impl core::marker::Freeze for reconcile::FileSnapshot
 impl core::marker::Send for reconcile::FileSnapshot
 impl core::marker::Sync for reconcile::FileSnapshot
@@ -81,9 +76,59 @@ impl core::marker::Unpin for reconcile::FileSnapshot
 impl core::marker::UnsafeUnpin for reconcile::FileSnapshot
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::FileSnapshot
 impl core::panic::unwind_safe::UnwindSafe for reconcile::FileSnapshot
+pub struct reconcile::persistence::InMemoryPersistence<K, V>
+impl<K, V> reconcile::persistence::InMemoryPersistence<K, V>
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::new() -> Self
+impl<K, V> core::default::Default for reconcile::persistence::InMemoryPersistence<K, V>
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::default() -> Self
+impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+impl<K, V> !core::marker::Freeze for reconcile::persistence::InMemoryPersistence<K, V>
+impl<K, V> core::marker::Send for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::UnsafeUnpin
+impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::UnwindSafe
+#[non_exhaustive] pub struct reconcile::persistence::PersistedState<K, V>
+pub reconcile::persistence::PersistedState::entries: reconcile::persistence::DatedEntries<K, V>
+pub reconcile::persistence::PersistedState::members: std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>
+pub reconcile::persistence::PersistedState::tombstone_acks: std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>
+impl<K, V> reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::new(reconcile::persistence::DatedEntries<K, V>, std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>) -> Self
+impl<'de, K, V> serde::de::Deserialize<'de> for reconcile::persistence::PersistedState<K, V> where K: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash, V: serde::de::Deserialize<'de>
+pub fn reconcile::persistence::PersistedState<K, V>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde::de::Deserializer>::Error> where __D: serde::de::Deserializer<'de>
+impl<K, V> core::convert::From<alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>> for reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::from(reconcile::persistence::DatedEntries<K, V>) -> Self
+impl<K, V> core::default::Default for reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::default() -> Self
+impl<K, V> serde::ser::Serialize for reconcile::persistence::PersistedState<K, V> where K: serde::ser::Serialize, V: serde::ser::Serialize
+pub fn reconcile::persistence::PersistedState<K, V>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde::ser::Serializer>::Ok, <__S as serde::ser::Serializer>::Error> where __S: serde::ser::Serializer
+impl<K: core::clone::Clone, V: core::clone::Clone> core::clone::Clone for reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::clone(&self) -> reconcile::persistence::PersistedState<K, V>
+impl<K: core::fmt::Debug, V: core::fmt::Debug> core::fmt::Debug for reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<K, V> core::marker::Freeze for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Freeze, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Freeze
+impl<K, V> core::marker::Send for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Send, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Sync, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Unpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::UnsafeUnpin
+impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::UnwindSafe
+pub trait reconcile::persistence::Persistence<K, V>: core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::Persistence::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::persistence::Persistence::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+pub type reconcile::persistence::DatedEntries<K, V> = alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>
 pub mod reconcile::read_replica_map
 pub struct reconcile::read_replica_map::ReadReplicaMap<K, V>
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::contains_key(&self, &K) -> bool
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::first_key_value(&self) -> core::option::Option<(K, V)>
@@ -100,23 +145,23 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::snapshot(&self) -> all
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::to_vec(&self) -> alloc::vec::Vec<(K, V)>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::values(&self) -> alloc::vec::Vec<V>
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::net(&self) -> ipnet::ipnet::IpNet
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_net(&self, ipnet::ipnet::IpNet)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_reconcile_interval(&self, core::time::Duration)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::run(self)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<V>) + 'static>(&self, F)
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::start_reconciliation(&self)
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
@@ -147,7 +192,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for reconcile::read_replica_map::Re
 impl core::panic::unwind_safe::UnwindSafe for reconcile::read_replica_map::ReadSyncState
 pub mod reconcile::read_replica_set
 pub struct reconcile::read_replica_set::ReadReplicaSet<K>(_)
-impl<K: lww_register::bounds::Key> reconcile::read_replica_set::ReadReplicaSet<K>
+impl<K: reconcile::bounds::Key> reconcile::read_replica_set::ReadReplicaSet<K>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::contains(&self, &K) -> bool
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::is_empty(&self) -> bool
@@ -371,7 +416,7 @@ impl core::marker::UnsafeUnpin for reconcile::replicated_map::NotAuthoritative
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::NotAuthoritative
 impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::NotAuthoritative
 pub struct reconcile::replicated_map::ReplicatedMap<K, V> where K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::add_net(&self, ipnet::ipnet::IpNet) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::forget_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
@@ -389,7 +434,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::set_remote_interval(&self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::set_repair_interval(&self, core::time::Duration)
 pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::start_reconciliation(&self)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::sync_state(&self) -> reconcile::replicated_map::SyncState
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::clear(&self)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::delete_range<R: core::ops::range::RangeBounds<K>>(&self, R)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::insert(&self, K, V) -> core::option::Option<V>
@@ -401,7 +446,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::retain<P: core::ops::func
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::set_pre_insert<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::Entry<lww_register::clock::Timestamp, V>) + 'static>(&self, F)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::set_tombstone_timeout(&self, core::time::Duration)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_tombstone_timeout(self, core::time::Duration) -> Self
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::contains_key(&self, &K) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::first_key_value(&self) -> core::option::Option<(K, V)>
@@ -419,26 +464,26 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::to_vec(&self) -> alloc::v
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::value_snapshot(&self) -> alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::values(&self) -> alloc::vec::Vec<V>
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_mut<F: core::ops::function::FnOnce(core::option::Option<&mut V>)>(&self, &K, F)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_or_insert_with<F: core::ops::function::FnOnce() -> V>(&self, &K, F) -> V
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> core::result::Result<bool, reconcile::replicated_map::WriteRejected>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::upsert<F: core::ops::function::FnOnce(&mut V)>(&self, K, V, F)
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_clock(reconcile::replicated_map::Config, alloc::sync::Arc<dyn lww_register::clock::Clock>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::node_id(&self) -> lww_register::clock::NodeId
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::on_persistence_error<F: core::ops::function::Fn(&core::io::error::Error) + core::marker::Send + core::marker::Sync + 'static>(self, F) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot_now(&self) -> core::io::error::Result<()>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::WriteRejected>
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
@@ -446,11 +491,11 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_miss_thres
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
 impl<K, V> core::clone::Clone for reconcile::replicated_map::ReplicatedMap<K, V> where K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::clone(&self) -> Self
-impl<K, V> core::marker::Freeze for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Freeze, TimeoutWheel<K>: core::marker::Freeze, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::Freeze
-impl<K, V> core::marker::Send for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Send, TimeoutWheel<K>: core::marker::Send, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::Send
-impl<K, V> core::marker::Sync for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Sync, TimeoutWheel<K>: core::marker::Sync, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Unpin, TimeoutWheel<K>: core::marker::Unpin, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::UnsafeUnpin, TimeoutWheel<K>: core::marker::UnsafeUnpin, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::UnsafeUnpin
+impl<K, V> core::marker::Freeze for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Freeze, TimeoutWheel<K>: core::marker::Freeze, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::Freeze
+impl<K, V> core::marker::Send for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Send, TimeoutWheel<K>: core::marker::Send, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Sync, TimeoutWheel<K>: core::marker::Sync, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Unpin, TimeoutWheel<K>: core::marker::Unpin, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::UnsafeUnpin, TimeoutWheel<K>: core::marker::UnsafeUnpin, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::UnsafeUnpin
 impl<K, V> !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::ReplicatedMap<K, V>
 impl<K, V> !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::ReplicatedMap<K, V>
 #[non_exhaustive] pub struct reconcile::replicated_map::RunOutcome
@@ -507,7 +552,7 @@ impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::ValueTo
 pub const reconcile::replicated_map::MAX_NETS: usize
 pub mod reconcile::replicated_set
 pub struct reconcile::replicated_set::ReplicatedSet<K> where K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync(_)
-impl<K: lww_register::bounds::Key + core::hash::Hash> reconcile::replicated_set::ReplicatedSet<K>
+impl<K: reconcile::bounds::Key + core::hash::Hash> reconcile::replicated_set::ReplicatedSet<K>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::add_net(&self, ipnet::ipnet::IpNet) -> bool
 pub fn reconcile::replicated_set::ReplicatedSet<K>::clear(&self)
 pub fn reconcile::replicated_set::ReplicatedSet<K>::contains(&self, &K) -> bool
@@ -548,7 +593,7 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_decommission_
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_miss_threshold(self, u32) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
-pub fn reconcile::replicated_set::ReplicatedSet<K>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, ()>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
+pub fn reconcile::replicated_set::ReplicatedSet<K>::with_persistence(self, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, ()>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_tombstone_timeout(self, core::time::Duration) -> Self
 impl<K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync> core::clone::Clone for reconcile::replicated_set::ReplicatedSet<K>
@@ -579,9 +624,9 @@ impl core::clone::Clone for reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::clone(&self) -> reconcile::FileSnapshot
 impl core::fmt::Debug for reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<K, V> lww_register::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
-pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<lww_register::persistence::PersistedState<K, V>>>
-pub fn reconcile::FileSnapshot::save(&self, &lww_register::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
 impl core::marker::Freeze for reconcile::FileSnapshot
 impl core::marker::Send for reconcile::FileSnapshot
 impl core::marker::Sync for reconcile::FileSnapshot
@@ -589,8 +634,48 @@ impl core::marker::Unpin for reconcile::FileSnapshot
 impl core::marker::UnsafeUnpin for reconcile::FileSnapshot
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::FileSnapshot
 impl core::panic::unwind_safe::UnwindSafe for reconcile::FileSnapshot
+pub struct reconcile::InMemoryPersistence<K, V>
+impl<K, V> reconcile::persistence::InMemoryPersistence<K, V>
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::new() -> Self
+impl<K, V> core::default::Default for reconcile::persistence::InMemoryPersistence<K, V>
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::default() -> Self
+impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+impl<K, V> !core::marker::Freeze for reconcile::persistence::InMemoryPersistence<K, V>
+impl<K, V> core::marker::Send for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::UnsafeUnpin
+impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::UnwindSafe
+#[non_exhaustive] pub struct reconcile::PersistedState<K, V>
+pub reconcile::PersistedState::entries: reconcile::persistence::DatedEntries<K, V>
+pub reconcile::PersistedState::members: std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>
+pub reconcile::PersistedState::tombstone_acks: std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>
+impl<K, V> reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::new(reconcile::persistence::DatedEntries<K, V>, std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>) -> Self
+impl<'de, K, V> serde::de::Deserialize<'de> for reconcile::persistence::PersistedState<K, V> where K: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash, V: serde::de::Deserialize<'de>
+pub fn reconcile::persistence::PersistedState<K, V>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde::de::Deserializer>::Error> where __D: serde::de::Deserializer<'de>
+impl<K, V> core::convert::From<alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>> for reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::from(reconcile::persistence::DatedEntries<K, V>) -> Self
+impl<K, V> core::default::Default for reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::default() -> Self
+impl<K, V> serde::ser::Serialize for reconcile::persistence::PersistedState<K, V> where K: serde::ser::Serialize, V: serde::ser::Serialize
+pub fn reconcile::persistence::PersistedState<K, V>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde::ser::Serializer>::Ok, <__S as serde::ser::Serializer>::Error> where __S: serde::ser::Serializer
+impl<K: core::clone::Clone, V: core::clone::Clone> core::clone::Clone for reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::clone(&self) -> reconcile::persistence::PersistedState<K, V>
+impl<K: core::fmt::Debug, V: core::fmt::Debug> core::fmt::Debug for reconcile::persistence::PersistedState<K, V>
+pub fn reconcile::persistence::PersistedState<K, V>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<K, V> core::marker::Freeze for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Freeze, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Freeze
+impl<K, V> core::marker::Send for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Send, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Sync, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Unpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::UnsafeUnpin
+impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::UnwindSafe
 pub struct reconcile::ReadReplicaMap<K, V>
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::contains_key(&self, &K) -> bool
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::first_key_value(&self) -> core::option::Option<(K, V)>
@@ -607,23 +692,23 @@ pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::snapshot(&self) -> all
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::to_vec(&self) -> alloc::vec::Vec<(K, V)>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::values(&self) -> alloc::vec::Vec<V>
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::net(&self) -> ipnet::ipnet::IpNet
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::peers(&self) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_net(&self, ipnet::ipnet::IpNet)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_reconcile_interval(&self, core::time::Duration)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::sync_state(&self) -> reconcile::read_replica_map::ReadSyncState
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::run(self)
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::set_on_update<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::State<V>) + 'static>(&self, F)
 pub async fn reconcile::read_replica_map::ReadReplicaMap<K, V>::start_reconciliation(&self)
-impl<K: lww_register::bounds::Key, V: lww_register::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
+impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> Self
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
@@ -637,7 +722,7 @@ impl<K, V> core::marker::UnsafeUnpin for reconcile::read_replica_map::ReadReplic
 impl<K, V> !core::panic::unwind_safe::RefUnwindSafe for reconcile::read_replica_map::ReadReplicaMap<K, V>
 impl<K, V> !core::panic::unwind_safe::UnwindSafe for reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub struct reconcile::ReadReplicaSet<K>(_)
-impl<K: lww_register::bounds::Key> reconcile::read_replica_set::ReadReplicaSet<K>
+impl<K: reconcile::bounds::Key> reconcile::read_replica_set::ReadReplicaSet<K>
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::contains(&self, &K) -> bool
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::read_replica_set::ReadReplicaSet<K>::is_empty(&self) -> bool
@@ -669,7 +754,7 @@ impl<K> core::marker::UnsafeUnpin for reconcile::read_replica_set::ReadReplicaSe
 impl<K> !core::panic::unwind_safe::RefUnwindSafe for reconcile::read_replica_set::ReadReplicaSet<K>
 impl<K> !core::panic::unwind_safe::UnwindSafe for reconcile::read_replica_set::ReadReplicaSet<K>
 pub struct reconcile::ReplicatedMap<K, V> where K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::add_net(&self, ipnet::ipnet::IpNet) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::forget_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
@@ -687,7 +772,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::set_remote_interval(&self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::set_repair_interval(&self, core::time::Duration)
 pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::start_reconciliation(&self)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::sync_state(&self) -> reconcile::replicated_map::SyncState
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::clear(&self)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::delete_range<R: core::ops::range::RangeBounds<K>>(&self, R)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::insert(&self, K, V) -> core::option::Option<V>
@@ -699,7 +784,7 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::retain<P: core::ops::func
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::set_pre_insert<F: core::marker::Send + core::marker::Sync + core::ops::function::Fn(&K, &lww_register::entry::Entry<lww_register::clock::Timestamp, V>) + 'static>(&self, F)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::set_tombstone_timeout(&self, core::time::Duration)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_tombstone_timeout(self, core::time::Duration) -> Self
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::contains_key(&self, &K) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::first_key_value(&self) -> core::option::Option<(K, V)>
@@ -717,26 +802,26 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::to_vec(&self) -> alloc::v
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::value_fingerprint<R: core::ops::range::RangeBounds<K>>(&self, R) -> rsos::fingerprint::Fingerprint
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::value_snapshot(&self) -> alloc::sync::Arc<rsos::fingerprint_tree_map::FingerprintTreeMap<K, lww_register::entry::State<V>>>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::values(&self) -> alloc::vec::Vec<V>
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_mut<F: core::ops::function::FnOnce(core::option::Option<&mut V>)>(&self, &K, F)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::get_or_insert_with<F: core::ops::function::FnOnce() -> V>(&self, &K, F) -> V
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> core::result::Result<bool, reconcile::replicated_map::WriteRejected>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::update<F: core::ops::function::FnOnce(&mut V)>(&self, &K, F) -> bool
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::upsert<F: core::ops::function::FnOnce(&mut V)>(&self, K, V, F)
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new(reconcile::replicated_map::Config) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub async fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_clock(reconcile::replicated_map::Config, alloc::sync::Arc<dyn lww_register::clock::Clock>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::new_with_transport(reconcile::replicated_map::Config, alloc::sync::Arc<dyn reconcile_gossip::transport::Transport>) -> core::result::Result<Self, reconcile::replicated_map::ConstructionError>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::node_id(&self) -> lww_register::clock::NodeId
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::seed_peer(&self, core::net::ip_addr::IpAddr)
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::on_persistence_error<F: core::ops::function::Fn(&core::io::error::Error) + core::marker::Send + core::marker::Sync + 'static>(self, F) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::snapshot_now(&self) -> core::io::error::Result<()>
-pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_persistence(self, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::try_insert(&self, K, V) -> core::result::Result<core::option::Option<V>, reconcile::replicated_map::WriteRejected>
-impl<K: lww_register::bounds::Key + core::hash::Hash, V: lww_register::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value> reconcile::replicated_map::ReplicatedMap<K, V>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery(self, alloc::sync::Arc<dyn reconcile_gossip::discovery::Discovery>) -> core::result::Result<Self, reconcile::replicated_map::NotAuthoritative>
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_decommission_floor(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_interval(self, core::time::Duration) -> Self
@@ -744,15 +829,15 @@ pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_discovery_miss_thres
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
 impl<K, V> core::clone::Clone for reconcile::replicated_map::ReplicatedMap<K, V> where K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync
 pub fn reconcile::replicated_map::ReplicatedMap<K, V>::clone(&self) -> Self
-impl<K, V> core::marker::Freeze for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Freeze, TimeoutWheel<K>: core::marker::Freeze, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::Freeze
-impl<K, V> core::marker::Send for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Send, TimeoutWheel<K>: core::marker::Send, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::Send
-impl<K, V> core::marker::Sync for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Sync, TimeoutWheel<K>: core::marker::Sync, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Unpin, TimeoutWheel<K>: core::marker::Unpin, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::UnsafeUnpin, TimeoutWheel<K>: core::marker::UnsafeUnpin, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, V>>: core::marker::UnsafeUnpin
+impl<K, V> core::marker::Freeze for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Freeze, TimeoutWheel<K>: core::marker::Freeze, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::Freeze
+impl<K, V> core::marker::Send for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Send, TimeoutWheel<K>: core::marker::Send, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::Send
+impl<K, V> core::marker::Sync for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Sync, TimeoutWheel<K>: core::marker::Sync, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::Sync
+impl<K, V> core::marker::Unpin for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::Unpin, TimeoutWheel<K>: core::marker::Unpin, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::Unpin
+impl<K, V> core::marker::UnsafeUnpin for reconcile::replicated_map::ReplicatedMap<K, V> where Replica<K, V>: core::marker::UnsafeUnpin, TimeoutWheel<K>: core::marker::UnsafeUnpin, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V>>: core::marker::UnsafeUnpin
 impl<K, V> !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::ReplicatedMap<K, V>
 impl<K, V> !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::ReplicatedMap<K, V>
 pub struct reconcile::ReplicatedSet<K> where K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync(_)
-impl<K: lww_register::bounds::Key + core::hash::Hash> reconcile::replicated_set::ReplicatedSet<K>
+impl<K: reconcile::bounds::Key + core::hash::Hash> reconcile::replicated_set::ReplicatedSet<K>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::add_net(&self, ipnet::ipnet::IpNet) -> bool
 pub fn reconcile::replicated_set::ReplicatedSet<K>::clear(&self)
 pub fn reconcile::replicated_set::ReplicatedSet<K>::contains(&self, &K) -> bool
@@ -793,7 +878,7 @@ pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_decommission_
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_interval(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_discovery_miss_threshold(self, u32) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_dns_discovery(self, impl core::convert::Into<alloc::string::String>, u16) -> Self
-pub fn reconcile::replicated_set::ReplicatedSet<K>::with_persistence(self, alloc::sync::Arc<dyn lww_register::persistence::Persistence<K, ()>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
+pub fn reconcile::replicated_set::ReplicatedSet<K>::with_persistence(self, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, ()>>) -> core::result::Result<Self, reconcile::replicated_map::PersistenceLoadError>
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_seed(self, core::net::ip_addr::IpAddr) -> Self
 pub fn reconcile::replicated_set::ReplicatedSet<K>::with_tombstone_timeout(self, core::time::Duration) -> Self
 impl<K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync> core::clone::Clone for reconcile::replicated_set::ReplicatedSet<K>
@@ -816,3 +901,16 @@ impl<K, V> core::marker::Unpin for reconcile::value_ref::ValueRef<K, V> where Sn
 impl<K, V> core::marker::UnsafeUnpin for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::marker::UnsafeUnpin
 impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::panic::unwind_safe::RefUnwindSafe
 impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::panic::unwind_safe::UnwindSafe
+pub trait reconcile::Key: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
+impl<T> reconcile::bounds::Key for T where T: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
+pub trait reconcile::Persistence<K, V>: core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::Persistence::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::Persistence::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
+pub fn reconcile::persistence::InMemoryPersistence<K, V>::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+pub trait reconcile::Value: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
+impl<T> reconcile::bounds::Value for T where T: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
