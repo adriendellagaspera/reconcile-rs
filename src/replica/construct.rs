@@ -276,10 +276,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 pre_insert: Arc::new(RwLock::new(Box::new(|_, _| {}))),
                 authenticator,
                 sender_counter: Arc::new(replay::SenderCounter::new()),
-                replay_filter: Arc::new(replay::ReplayFilter::new(
-                    config.freshness_window,
-                    authenticator_enabled,
-                )),
+                replay_filter: Arc::new(
+                    replay::ReplayFilter::new(config.freshness_window, authenticator_enabled)
+                        .with_max_senders(config.max_replay_senders),
+                ),
                 members: Arc::new(RwLock::new(HashSet::new())),
                 tombstone_acks: Arc::new(RwLock::new(HashMap::new())),
                 live_tombstones: Arc::new(RwLock::new(HashSet::new())),
