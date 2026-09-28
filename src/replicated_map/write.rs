@@ -297,8 +297,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
                 if self.engine.is_tombstone_stable(&key, version) {
                     self.tombstones.remove(&key);
                     // Remove from the dated map *and* the value-only projection together.
-                    self.engine.gc_remove(&key);
-                    self.engine.forget_tombstone(&key);
+                    self.engine.gc_collect(&key);
                 }
                 // Otherwise keep the tombstone and re-check on a later iteration.
             }
