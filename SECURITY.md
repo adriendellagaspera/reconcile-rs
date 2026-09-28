@@ -33,7 +33,10 @@ Use unauthenticated mode only on a trusted underlay.
 
 Authenticated datagrams carry protected sender sequence and time metadata. Receivers reject
 duplicates, stale sequences, and timestamps outside the freshness window. Replay state is retained
-independently of transient peer membership.
+independently of transient peer membership and is bounded by `Config::max_replay_senders`. At that
+bound, already-tracked senders keep their replay history and continue through normal checks; a new
+authenticated sender is dropped until stale replay state ages past the freshness window and is
+purged. Fresh replay state is never evicted to make room.
 
 ## Fingerprints
 
@@ -70,7 +73,7 @@ other. A wire-format change therefore requires a coordinated cluster upgrade.
 - Restrict the gossip UDP port to intended participants.
 - Use a cluster key unless the underlay is the authentication boundary.
 - Enable `encryption` when payload confidentiality is not supplied elsewhere.
-- Set peer and value-size bounds appropriate to the deployment.
+- Set causal-peer, authenticated replay-sender, and value-size bounds appropriate to the deployment.
 - Coordinate key rotation and wire-version changes across the cluster.
 - The optional Prometheus HTTP endpoint is unauthenticated; restrict its bind address or network
   reachability.
