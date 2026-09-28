@@ -91,6 +91,26 @@ fn legacy_bytes(state: &PersistedState<i32, String>) -> Vec<u8> {
 }
 
 #[test]
+fn delta_hook_requests_initial_base_then_handles_clean_noop() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
+
+    assert!(
+        !Persistence::<i32, String>::try_save_delta(&backend, None).unwrap(),
+        "an empty backend needs a materialized base"
+    );
+    let state = sample_state();
+    Persistence::<i32, String>::save(&backend, &state).unwrap();
+    let (store_dir, _) = incremental::paths(&backend);
+    let before = fs::read_dir(&store_dir).unwrap().count();
+
+    assert!(
+        Persistence::<i32, String>::try_save_delta(&backend, None).unwrap(),
+        "an existing base can treat a clean generation as a no-op"
+    );
+    assert_eq!(fs::read_dir(&store_dir).unwrap().count(), before);
+}
+#[test]
 fn incremental_delta_replays_entries_members_and_acks() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
