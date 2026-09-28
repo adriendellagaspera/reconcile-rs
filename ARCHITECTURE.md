@@ -19,35 +19,40 @@ protocol but does not originate authoritative values or participate in tombstone
 
 ```mermaid
 graph LR
-    rsos["rsos\nrange-summarizable ordered store"]
-    rbsr["rbsr\nrange reconciliation"]
+    rsos["rsos\nexternal range store"]
+    rbsr["rbsr\nexternal range reconciliation"]
     gossip["gossip\ntransport, auth, discovery"]
     reconcile["reconcile\npublic facade and runtime"]
     devkit["devkit\nbenchmark support"]
 
-    rsos --> rbsr
-    rsos --> reconcile
-    rbsr --> reconcile
+    rsos -. crates.io .-> rbsr
+    rsos -. crates.io .-> reconcile
+    rbsr -. crates.io .-> reconcile
+    rsos -. crates.io .-> devkit
+    rbsr -. crates.io .-> devkit
     gossip --> reconcile
-    rsos --> devkit
-    rbsr --> devkit
     devkit --> reconcile
 ```
 
 | crate | responsibility |
 |---|---|
-| `rsos` | ordered storage, range aggregates, canonical fingerprint input |
-| `rbsr` | transport-independent range reconciliation |
 | `gossip` | datagram transport, wire codec, authentication, replay protection, discovery |
 | `reconcile` | replicated maps/sets, key/value bounds, persistence state/ports/adapters, lifecycle, observability |
 | `devkit` | unpublished benchmark utilities |
 
+External domain dependencies:
+
+| crate | canonical repository | responsibility |
+|---|---|---|
+| `rsos` | `range-based-set-reconciliation` | ordered storage, range aggregates, canonical fingerprint input |
+| `rbsr` | `range-based-set-reconciliation` | transport-independent range reconciliation |
+| `lww-register` | `lww-register` | LWW entries, timestamps and clock primitives |
+
 ### 2.1 Domain boundary
 
-`rsos` and `rbsr` do not depend on runtime, network, wire-codec, or wall-clock infrastructure.
-`lww-register` is an external crates.io dependency that owns LWW entries, timestamps, clock
-arithmetic and the `Clock` port. `gossip` owns network concerns; `reconcile` composes domain and
-adapters.
+`rsos`, `rbsr`, and `lww-register` are external crates.io dependencies. Their standalone
+domain invariants and release gates live in their canonical repositories. `gossip` owns network
+concerns; `reconcile` composes those domain crates with runtime adapters.
 
 `gossip` does not depend on `lww-register`: its peer identity is an address and its payload is
 bytes.
