@@ -1,5 +1,7 @@
 use super::*;
 
+mod edge_cases;
+
 const LINK: LinkProfile = LinkProfile {
     name: "test",
     rtt_ms: 10.0,
