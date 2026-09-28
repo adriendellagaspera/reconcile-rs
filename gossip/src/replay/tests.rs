@@ -228,6 +228,58 @@ fn replay_of_same_datagram_rejected() {
 }
 
 #[test]
+fn sender_capacity_rejects_new_sender_without_evicting_fresh_state() {
+    let filter = filter_5min().with_max_senders(2);
+    let first: IpAddr = "127.0.0.30".parse().unwrap();
+    let second: IpAddr = "127.0.0.31".parse().unwrap();
+    let newcomer: IpAddr = "127.0.0.32".parse().unwrap();
+    let now = phys_now_ms();
+
+    assert!(filter.check_and_record(first, Seq::new(1), Stamp::new(now)));
+    assert!(filter.check_and_record(second, Seq::new(1), Stamp::new(now)));
+    assert_eq!(filter.len(), 2);
+
+    assert!(
+        !filter.check_and_record(newcomer, Seq::new(1), Stamp::new(now)),
+        "a fresh sender must not displace replay history at capacity"
+    );
+    assert_eq!(filter.len(), 2);
+
+    assert!(
+        filter.check_and_record(first, Seq::new(2), Stamp::new(now)),
+        "an already-tracked sender must remain usable at capacity"
+    );
+}
+
+#[test]
+fn stale_sender_purge_reopens_capacity() {
+    let filter = filter_5min().with_max_senders(1);
+    let first: IpAddr = "127.0.0.33".parse().unwrap();
+    let newcomer: IpAddr = "127.0.0.34".parse().unwrap();
+    let t0 = 1_700_000_000_000_u64;
+    let after_window = t0 + FRESHNESS_WINDOW_DEFAULT.as_millis() as u64 + 1;
+
+    assert!(check_at(&filter, first, 1, t0, t0));
+    assert!(!check_at(&filter, newcomer, 1, t0, t0));
+    assert_eq!(filter.len(), 1);
+
+    assert!(
+        check_at(&filter, newcomer, 1, after_window, after_window),
+        "purging stale replay state must free the bounded slot"
+    );
+    assert_eq!(filter.len(), 1);
+}
+
+#[test]
+fn disabled_filter_does_not_consume_sender_capacity() {
+    let filter = ReplayFilter::new(FRESHNESS_WINDOW_DEFAULT, false).with_max_senders(0);
+    let peer: IpAddr = "127.0.0.35".parse().unwrap();
+
+    assert!(filter.check_and_record(peer, Seq::NONE, Stamp::NONE));
+    assert_eq!(filter.len(), 0);
+}
+
+#[test]
 fn stale_stamp_rejected() {
     let filter = filter_5min();
     let peer: IpAddr = "127.0.0.3".parse().unwrap();
