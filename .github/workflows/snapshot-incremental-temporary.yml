@@ -20,9 +20,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run paired snapshot incremental
         env:
-          RECONCILE_SNAPSHOT_SIZES: "10000,100000"
-          RECONCILE_SNAPSHOT_DELTAS: "0,1,100,1000"
-          RECONCILE_SNAPSHOT_CHAIN_LENGTHS: "1,8,32"
+          RECONCILE_SNAPSHOT_SIZES: "100000"
+          RECONCILE_SNAPSHOT_DELTAS: "0"
+          RECONCILE_SNAPSHOT_CHAIN_LENGTHS: "64,128"
           RECONCILE_SNAPSHOT_CHAIN_DELTAS: "1,100"
           RECONCILE_SNAPSHOT_TRIALS: "1"
         run: cargo bench --bench snapshot_write_amplification
