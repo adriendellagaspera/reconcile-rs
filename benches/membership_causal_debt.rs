@@ -85,6 +85,20 @@ impl Traffic {
             .unwrap_or_default()
     }
 
+    fn classify_tx_dgrams(&self, known_members: &HashSet<IpAddr>) -> (u64, u64) {
+        self.tx_by_peer
+            .lock()
+            .expect("traffic mutex poisoned")
+            .iter()
+            .fold((0, 0), |(known, speculative), (peer, (_, dgrams))| {
+                if known_members.contains(peer) {
+                    (known + dgrams, speculative)
+                } else {
+                    (known, speculative + dgrams)
+                }
+            })
+    }
+
     fn snapshot(&self) -> TrafficSnapshot {
         TrafficSnapshot {
             rx_bytes: self.rx_bytes.load(Ordering::Relaxed),
@@ -425,9 +439,15 @@ async fn one_unreachable(members: usize, tombstones: usize) {
         unreachable_repair_dgrams, 4,
         "the silent member must receive exactly the bounded four repair retries"
     );
-    let other_repair_dgrams = repair
-        .tx_datagrams
-        .saturating_sub(unreachable_repair_dgrams);
+    let known_members: HashSet<_> = (0..members).map(peer_ip).collect();
+    let (known_member_repair_dgrams, speculative_repair_dgrams) =
+        traffic.classify_tx_dgrams(&known_members);
+    let responsive_member_repair_dgrams =
+        known_member_repair_dgrams.saturating_sub(unreachable_repair_dgrams);
+    assert_eq!(
+        responsive_member_repair_dgrams, 0,
+        "responsive known members must clear their pending repairs"
+    );
 
     assert_eq!(tombstone_count(&store), tombstones);
 
@@ -457,7 +477,7 @@ async fn one_unreachable(members: usize, tombstones: usize) {
     let gc_after_forget_ms = gc_started.elapsed().as_secs_f64() * 1_000.0;
 
     println!(
-        "[causal-unreachable] members={members},tombstones={tombstones},responsive={},round_tx_bytes={},round_tx_dgrams={},round_rx_bytes={},round_rx_dgrams={},round_ms={round_ms:.3},repair_tx_bytes={},repair_tx_dgrams={},unreachable_repair_tx_bytes={unreachable_repair_bytes},unreachable_repair_tx_dgrams={unreachable_repair_dgrams},other_repair_tx_dgrams={other_repair_dgrams},forget_acked_ms={forget_acked_ms:.3},forget_unacked_ms={forget_unacked_ms:.3},gc_after_forget_ms={gc_after_forget_ms:.3}",
+        "[causal-unreachable] members={members},tombstones={tombstones},responsive={},round_tx_bytes={},round_tx_dgrams={},round_rx_bytes={},round_rx_dgrams={},round_ms={round_ms:.3},repair_tx_bytes={},repair_tx_dgrams={},unreachable_repair_tx_bytes={unreachable_repair_bytes},unreachable_repair_tx_dgrams={unreachable_repair_dgrams},responsive_member_repair_tx_dgrams={responsive_member_repair_dgrams},speculative_repair_tx_dgrams={speculative_repair_dgrams},forget_acked_ms={forget_acked_ms:.3},forget_unacked_ms={forget_unacked_ms:.3},gc_after_forget_ms={gc_after_forget_ms:.3}",
         members - 1,
         round.tx_bytes,
         round.tx_datagrams,
