@@ -402,54 +402,13 @@ fn print_order_effect(points: &[Point]) {
     }
 }
 
-// The machine-independent half.
-// Reports how many cached aggregates one insert maintains — the work the RSOS contract mandates
-// and a plain `BTreeMap`, doing the same descent with no summary to keep, does not do at all. Run
-// single-threaded, untimed, outside any lock: the number is deterministic, so one pass
-// characterizes every writer count, and nothing here can perturb the timed phases above.
-#[cfg(reconcile_internal_testing)]
-fn print_counted_summary(prefill: usize) {
-    use rsos::counters;
-
-    let mut map = FingerprintTreeMap::<u64, u64>::new();
-    for key in 0..prefill as u64 {
-        map.insert(key, key);
-    }
-
-    const PROBE: u64 = 4_096;
-    let before = counters::snapshot();
-    for i in 0..PROBE {
-        map.insert(prefill as u64 + i, i);
-    }
-    let fresh = (counters::snapshot() - before).aggregate_updates;
-
-    let before = counters::snapshot();
-    for i in 0..PROBE {
-        map.insert(i, i + 1);
-    }
-    let overwrite = (counters::snapshot() - before).aggregate_updates;
-
-    println!(
-        "[contention] Counted (machine-independent), map of {prefill} entries, {PROBE} probes:"
-    );
-    println!(
-        "[contention] {:>34} {:.2}   (BTreeMap control: 0.00, by construction)",
-        "aggregate updates / fresh insert",
-        fresh as f64 / PROBE as f64,
-    );
-    println!(
-        "[contention] {:>34} {:.2}   -- one per level of the key's root path",
-        "aggregate updates / overwrite",
-        overwrite as f64 / PROBE as f64,
-    );
-}
-
-#[cfg(not(reconcile_internal_testing))]
+// Machine-independent RSOS aggregate-update counters are owned by the standalone
+// range-based-set-reconciliation repository. This downstream benchmark keeps only the
+// application-relevant timed contention comparison.
 fn print_counted_summary(_prefill: usize) {
     println!(
-        "[contention] Counted half skipped: rebuild with \
-         `RUSTFLAGS='--cfg reconcile_internal_testing'` for the machine-independent \
-         aggregate-update counts."
+        "[contention] Structural RSOS aggregate-update counters live in \
+         range-based-set-reconciliation; this benchmark reports downstream timed contention only."
     );
 }
 
