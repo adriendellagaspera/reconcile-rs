@@ -55,18 +55,14 @@ struct Traffic {
 #[derive(Clone, Copy, Default)]
 struct TrafficSnapshot {
     rx_bytes: u64,
-    rx_datagrams: u64,
     tx_bytes: u64,
-    tx_datagrams: u64,
 }
 
 impl Traffic {
     fn snapshot(&self) -> TrafficSnapshot {
         TrafficSnapshot {
             rx_bytes: self.rx_bytes.load(Ordering::Relaxed),
-            rx_datagrams: self.rx_datagrams.load(Ordering::Relaxed),
             tx_bytes: self.tx_bytes.load(Ordering::Relaxed),
-            tx_datagrams: self.tx_datagrams.load(Ordering::Relaxed),
         }
     }
 }
@@ -273,7 +269,9 @@ async fn churn_scenario(
     let path = dir.path().join("snapshot.bin");
     let backend = Arc::new(FileSnapshot::new(&path));
     Persistence::<u64, u64>::save(&*backend, &initial).expect("persist initial churn state");
-    let initial_snapshot_bytes = fs::metadata(&path).expect("initial snapshot metadata").len();
+    let initial_snapshot_bytes = fs::metadata(&path)
+        .expect("initial snapshot metadata")
+        .len();
 
     let network = InMemoryNetwork::new();
     let traffic = Traffic::default();
@@ -353,13 +351,10 @@ async fn churn_scenario(
     }
     assert_eq!(final_state.tombstone_acks.len(), tombstones);
     assert!(
-        final_state
-            .tombstone_acks
-            .iter()
-            .all(|(key, acks)| {
-                let version = rsos::digest(&tombstone_entry(*key)).0[0];
-                acks.len() == members && acks.values().all(|ack| *ack == version)
-            }),
+        final_state.tombstone_acks.iter().all(|(key, acks)| {
+            let version = rsos::digest(&tombstone_entry(*key)).0[0];
+            acks.len() == members && acks.values().all(|ack| *ack == version)
+        }),
         "every replacement must restore complete, version-correct ACK coverage"
     );
 
@@ -399,8 +394,7 @@ fn main() {
     let runtime = Runtime::new().expect("Tokio runtime");
 
     for debt in tombstones {
-        let summary =
-            runtime.block_on(churn_scenario(members, debt, replacements, ack_rounds));
+        let summary = runtime.block_on(churn_scenario(members, debt, replacements, ack_rounds));
         println!(
             "[membership-churn] members={members},tombstones={},replacements={},ack_rounds={ack_rounds},initial_snapshot_bytes={},final_snapshot_bytes={},snapshot_ms={:.3},forget_p50_ms={:.3},forget_p95_ms={:.3},forget_max_ms={:.3},cycle_p50_ms={:.3},cycle_p95_ms={:.3},cycle_max_ms={:.3},rx_bytes_per_replacement={:.3},tx_bytes_per_replacement={:.3}",
             summary.tombstones,
