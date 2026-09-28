@@ -923,9 +923,6 @@ checksum = "f2898da5108dd752e99a5d6d863c94370116fac9ff333cd30b8c2c998edccf7e"
 dependencies = [
  "serde",
 ]
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "memchr"
