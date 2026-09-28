@@ -31,7 +31,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use reconcile::{replicated_map::Config, FileSnapshot, ReplicatedMap};
 use tokio::runtime::Runtime;
@@ -40,10 +40,11 @@ const VALUE_BYTES: usize = 64;
 const HASH_BUFFER_BYTES: usize = 64 * 1024;
 static NEXT_PORT: AtomicU32 = AtomicU32::new(30_000);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct FileDigest {
     len: u64,
     hash: [u8; 32],
+    modified: Option<SystemTime>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -124,7 +125,9 @@ fn incremental_dir(path: &Path) -> PathBuf {
 
 fn digest(path: &Path) -> FileDigest {
     let mut file = fs::File::open(path).expect("open snapshot file");
-    let len = file.metadata().expect("stat snapshot file").len();
+    let metadata = file.metadata().expect("stat snapshot file");
+    let len = metadata.len();
+    let modified = metadata.modified().ok();
     let mut hasher = blake3::Hasher::new();
     let mut buffer = vec![0; HASH_BUFFER_BYTES];
     loop {
@@ -137,6 +140,7 @@ fn digest(path: &Path) -> FileDigest {
     FileDigest {
         len,
         hash: *hasher.finalize().as_bytes(),
+        modified,
     }
 }
 
