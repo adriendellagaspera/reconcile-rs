@@ -161,9 +161,9 @@ fn incremental_delta_replays_entries_members_and_acks() {
     }
     Persistence::<i32, String>::save(&backend, &first).unwrap();
 
-    let peer1 = "127.0.0.1".parse().unwrap();
-    let peer2 = "127.0.0.2".parse().unwrap();
-    let peer3 = "127.0.0.3".parse().unwrap();
+    let peer1: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+    let peer2: std::net::IpAddr = "127.0.0.2".parse().unwrap();
+    let peer3: std::net::IpAddr = "127.0.0.3".parse().unwrap();
     let updated = Entry::present(
         Timestamp::new(
             Hlc::new(PhysicalTime::from_millis(3_000), LogicalCounter::new(0)),
