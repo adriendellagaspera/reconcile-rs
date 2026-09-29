@@ -100,6 +100,7 @@ tokio-util = { version = "0.7", default-features = false }
 tracing = "0.1.40"
 
 [dev-dependencies]
+proptest = "1.11.0"
 async-trait = "0.1"
 clap = { version = "4.4.6", features = ["derive"] }
 criterion = "0.5.1"
