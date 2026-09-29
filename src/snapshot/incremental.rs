@@ -41,7 +41,6 @@ const MANIFEST_MAGIC: [u8; 4] = *b"RCNM";
 const MANIFEST_FILE: &str = "manifest";
 const MAX_COMMITTED_DELTAS: u64 = 512;
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Manifest {
     base_generation: u64,
@@ -66,10 +65,7 @@ impl Manifest {
 
 fn should_materialize(manifest: &Manifest, candidate_delta_bytes: u64) -> bool {
     manifest.delta_count() >= MAX_COMMITTED_DELTAS
-        || manifest
-            .delta_bytes
-            .saturating_add(candidate_delta_bytes)
-            >= manifest.base_bytes
+        || manifest.delta_bytes.saturating_add(candidate_delta_bytes) >= manifest.base_bytes
 }
 
 #[derive(Debug, Deserialize, Serialize)]
