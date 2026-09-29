@@ -119,7 +119,9 @@ pub(super) fn validate_manifest(manifest: &Manifest) -> io::Result<()> {
         ));
     }
     if manifest.base_bytes == 0 {
-        return Err(invalid("manifest base segment must have a nonzero encoded size"));
+        return Err(invalid(
+            "manifest base segment must have a nonzero encoded size",
+        ));
     }
     if manifest.base_generation == manifest.current_generation && manifest.delta_bytes != 0 {
         return Err(invalid(
