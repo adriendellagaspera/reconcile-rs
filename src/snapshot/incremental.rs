@@ -5,10 +5,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::hash::Hash;
 use std::io;
+use std::net::IpAddr;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -86,13 +87,13 @@ struct DeltaSegmentWrite<'a, K, V> {
 }
 
 fn apply_delta<K, V>(
-    mut state: PersistedState<K, V>,
+    entries: &mut HashMap<K, Entry<Timestamp, V>>,
+    members: &mut HashSet<IpAddr>,
+    tombstone_acks: &mut HashMap<K, HashMap<IpAddr, u64>>,
     delta: PersistenceDelta<K, V>,
-) -> PersistedState<K, V>
-where
+) where
     K: Eq + Hash,
 {
-    let mut entries: HashMap<K, Entry<Timestamp, V>> = state.entries.into_iter().collect();
     for (key, entry) in delta.entries {
         match entry {
             Some(entry) => {
@@ -103,22 +104,21 @@ where
             }
         }
     }
-    state.entries = entries.into_iter().collect();
 
     for (peer, present) in delta.members {
         if present {
-            state.members.insert(peer);
+            members.insert(peer);
         } else {
-            state.members.remove(&peer);
+            members.remove(&peer);
         }
     }
 
     for key in delta.ack_key_clears {
-        state.tombstone_acks.remove(&key);
+        tombstone_acks.remove(&key);
     }
     for (key, peer_ops) in delta.ack_peers {
         use std::collections::hash_map::Entry as MapEntry;
-        match state.tombstone_acks.entry(key) {
+        match tombstone_acks.entry(key) {
             MapEntry::Occupied(mut occupied) => {
                 for (peer, version) in peer_ops {
                     match version {
@@ -145,8 +145,6 @@ where
             }
         }
     }
-
-    state
 }
 
 pub(super) fn load<K, V>(backend: &FileSnapshot) -> io::Result<Option<PersistedState<K, V>>>
@@ -168,7 +166,13 @@ where
         )));
     }
 
-    let mut state = base.state;
+    let PersistedState {
+        entries: base_entries,
+        mut members,
+        mut tombstone_acks,
+    } = base.state;
+    let mut entries: HashMap<K, Entry<Timestamp, V>> = base_entries.into_iter().collect();
+
     for reference in &manifest.deltas {
         let bytes = read_segment_bytes(&dir, reference)?;
         let segment: DeltaSegment<K, V> = decode(&bytes, DELTA_MAGIC)?;
@@ -180,9 +184,19 @@ where
                 reference.generation, segment.from_generation, segment.to_generation
             )));
         }
-        state = apply_delta(state, segment.delta);
+        apply_delta(
+            &mut entries,
+            &mut members,
+            &mut tombstone_acks,
+            segment.delta,
+        );
     }
-    Ok(Some(state))
+
+    Ok(Some(PersistedState::new(
+        entries.into_iter().collect(),
+        members,
+        tombstone_acks,
+    )))
 }
 
 pub(super) fn save_full<K, V>(
