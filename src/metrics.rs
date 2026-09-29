@@ -38,6 +38,14 @@
 //! | [`BROADCASTS_IN_FLIGHT`](crate::metrics::BROADCASTS_IN_FLIGHT) | gauge | write-broadcast tasks in flight right now |
 //! | [`BROADCAST_BACKPRESSURE_TOTAL`](crate::metrics::BROADCAST_BACKPRESSURE_TOTAL) | counter (`path` label) | writes that hit the egress budget |
 //! | [`PERSISTENCE_FAILURES_CURRENT`](crate::metrics::PERSISTENCE_FAILURES_CURRENT) | gauge | consecutive snapshot failures since the last success (0 when healthy) |
+//! | [`SNAPSHOT_FULL_MATERIALIZATIONS_TOTAL`](crate::metrics::SNAPSHOT_FULL_MATERIALIZATIONS_TOTAL) | counter | full FileSnapshot base publications |
+//! | [`SNAPSHOT_DELTA_COMMITS_TOTAL`](crate::metrics::SNAPSHOT_DELTA_COMMITS_TOTAL) | counter | incremental FileSnapshot delta publications |
+//! | [`SNAPSHOT_COMPACTIONS_TOTAL`](crate::metrics::SNAPSHOT_COMPACTIONS_TOTAL) | counter | full bases replacing an existing delta chain |
+//! | [`SNAPSHOT_CLEANUP_FAILURES_TOTAL`](crate::metrics::SNAPSHOT_CLEANUP_FAILURES_TOTAL) | counter | failed removal of superseded snapshot files |
+//! | [`SNAPSHOT_SEGMENTS_CURRENT`](crate::metrics::SNAPSHOT_SEGMENTS_CURRENT) | gauge | currently committed base + delta segment count |
+//! | [`SNAPSHOT_SEGMENT_BYTES_CURRENT`](crate::metrics::SNAPSHOT_SEGMENT_BYTES_CURRENT) | gauge | bytes in currently committed base + delta segments |
+//! | [`SNAPSHOT_RECOVERY_SEGMENTS`](crate::metrics::SNAPSHOT_RECOVERY_SEGMENTS) | gauge | segment count replayed by the latest FileSnapshot load |
+//! | [`SNAPSHOT_RECOVERY_DURATION_SECONDS`](crate::metrics::SNAPSHOT_RECOVERY_DURATION_SECONDS) | histogram | FileSnapshot recovery wall time |
 
 /// Local key insertions.
 pub const INSERTS_TOTAL: &str = "reconcile_inserts_total";
@@ -100,3 +108,20 @@ pub const BROADCAST_BACKPRESSURE_TOTAL: &str = "reconcile_broadcast_backpressure
 /// Consecutive persistence-backend snapshot failures since the last success; `0` while healthy.
 /// A sustained non-zero value means durability has been broken since it last rose from zero.
 pub const PERSISTENCE_FAILURES_CURRENT: &str = "reconcile_persistence_failures_current";
+/// Full FileSnapshot base publications, including initial bases and compactions.
+pub const SNAPSHOT_FULL_MATERIALIZATIONS_TOTAL: &str =
+    "reconcile_snapshot_full_materializations_total";
+/// Incremental FileSnapshot delta publications.
+pub const SNAPSHOT_DELTA_COMMITS_TOTAL: &str = "reconcile_snapshot_delta_commits_total";
+/// Full base publications that replace an existing committed delta chain.
+pub const SNAPSHOT_COMPACTIONS_TOTAL: &str = "reconcile_snapshot_compactions_total";
+/// Failed removal attempts for superseded snapshot files after manifest publication.
+pub const SNAPSHOT_CLEANUP_FAILURES_TOTAL: &str = "reconcile_snapshot_cleanup_failures_total";
+/// Number of committed FileSnapshot segments in the active snapshot generation.
+pub const SNAPSHOT_SEGMENTS_CURRENT: &str = "reconcile_snapshot_segments_current";
+/// Bytes retained by committed FileSnapshot base and delta segments.
+pub const SNAPSHOT_SEGMENT_BYTES_CURRENT: &str = "reconcile_snapshot_segment_bytes_current";
+/// Number of FileSnapshot segments replayed by the latest successful recovery.
+pub const SNAPSHOT_RECOVERY_SEGMENTS: &str = "reconcile_snapshot_recovery_segments";
+/// FileSnapshot recovery wall-clock duration in seconds.
+pub const SNAPSHOT_RECOVERY_DURATION_SECONDS: &str = "reconcile_snapshot_recovery_duration_seconds";

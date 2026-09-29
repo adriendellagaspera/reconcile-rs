@@ -12,6 +12,12 @@
 //! Metric names are public, stable constants in [`crate::metrics`] — this module only
 //! records against them.
 
+mod snapshot;
+pub(crate) use snapshot::{
+    record_snapshot_cleanup_failure, record_snapshot_delta, record_snapshot_full,
+    record_snapshot_recovery,
+};
+
 #[cfg(feature = "metrics")]
 mod imp {
     use std::time::Instant;
@@ -264,6 +270,7 @@ mod imp {
             Unit::Count,
             "Consecutive persistence-backend snapshot failures since the last success"
         );
+        super::snapshot::describe_snapshot_metrics();
     }
 }
 

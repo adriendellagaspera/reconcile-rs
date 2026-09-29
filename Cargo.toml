@@ -60,6 +60,10 @@ harness = false
 name = "snapshot_write_amplification"
 harness = false
 
+[[bench]]
+name = "snapshot_metadata_only"
+harness = false
+
 [features]
 default = ["mac-blake3"]
 mac-blake3 = ["gossip/mac-blake3"]

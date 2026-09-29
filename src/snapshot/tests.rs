@@ -114,7 +114,22 @@ fn delta_hook_requests_initial_base_then_handles_clean_noop() {
 fn manifest_size_is_constant_as_delta_chain_grows() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
-    let state = sample_state();
+    let mut state = sample_state();
+    for key in 100..356 {
+        state.entries.push((
+            key,
+            Entry::present(
+                Timestamp::new(
+                    Hlc::new(
+                        PhysicalTime::from_millis(10_000 + key as u64),
+                        LogicalCounter::new(0),
+                    ),
+                    NodeId::new(7),
+                ),
+                format!("padding-{key:04}"),
+            ),
+        ));
+    }
     Persistence::<i32, String>::save(&backend, &state).unwrap();
 
     let (_, manifest_path) = incremental::paths(&backend);
@@ -143,12 +158,26 @@ fn manifest_size_is_constant_as_delta_chain_grows() {
 fn incremental_delta_replays_entries_members_and_acks() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
-    let first = sample_state();
+    let mut first = sample_state();
+    for key in 100..132 {
+        first.entries.push((
+            key,
+            Entry::present(
+                Timestamp::new(
+                    Hlc::new(
+                        PhysicalTime::from_millis(10_000 + key as u64),
+                        LogicalCounter::new(0),
+                    ),
+                    NodeId::new(7),
+                ),
+                "base-padding".repeat(8),
+            ),
+        ));
+    }
     Persistence::<i32, String>::save(&backend, &first).unwrap();
 
-    let peer1 = "127.0.0.1".parse().unwrap();
-    let peer2 = "127.0.0.2".parse().unwrap();
-    let peer3 = "127.0.0.3".parse().unwrap();
+    let peer2: std::net::IpAddr = "127.0.0.2".parse().unwrap();
+    let peer3: std::net::IpAddr = "127.0.0.3".parse().unwrap();
     let updated = Entry::present(
         Timestamp::new(
             Hlc::new(PhysicalTime::from_millis(3_000), LogicalCounter::new(0)),
@@ -163,11 +192,16 @@ fn incremental_delta_replays_entries_members_and_acks() {
         ),
         "added".to_string(),
     );
-    let expected = PersistedState::new(
-        vec![(1, updated.clone()), (3, added.clone())],
-        HashSet::from([peer1, peer3]),
-        HashMap::from([(9, HashMap::from([(peer3, 99)]))]),
-    );
+    let mut expected = first.clone();
+    expected.entries.retain(|(key, _)| *key != 1 && *key != 2);
+    expected.entries.push((1, updated.clone()));
+    expected.entries.push((3, added.clone()));
+    expected.members.remove(&peer2);
+    expected.members.insert(peer3);
+    expected.tombstone_acks.remove(&7);
+    expected
+        .tombstone_acks
+        .insert(9, HashMap::from([(peer3, 99)]));
     let delta = PersistenceDelta::new(
         HashMap::from([(1, Some(updated)), (2, None), (3, Some(added))]),
         HashMap::from([(peer2, false), (peer3, true)]),
@@ -274,15 +308,58 @@ fn legacy_snapshot_migrates_on_next_generation_save() {
 
     Persistence::<i32, String>::save(&backend, &state).unwrap();
     assert!(
-        path.exists(),
-        "post-publication legacy cleanup is deferred to compaction"
+        !path.exists(),
+        "successful base publication must retire the legacy single-file snapshot"
     );
     let (_, manifest) = incremental::paths(&backend);
     assert!(manifest.exists());
 
-    fs::write(&path, b"stale legacy bytes").unwrap();
     let migrated = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
     assert_states_eq(&migrated, &state);
+}
+
+#[test]
+fn full_materialization_cleans_superseded_segments_after_publication() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("snapshot.bin");
+    let backend = FileSnapshot::new(&path);
+    let state = sample_state();
+    Persistence::<i32, String>::save(&backend, &state).unwrap();
+
+    let delta = PersistenceDelta::<i32, String>::new(
+        HashMap::new(),
+        HashMap::new(),
+        HashSet::new(),
+        HashMap::new(),
+    );
+    assert!(Persistence::<i32, String>::try_save_delta(&backend, Some(&delta)).unwrap());
+    assert!(Persistence::<i32, String>::try_save_delta(&backend, Some(&delta)).unwrap());
+
+    let (store_dir, _) = incremental::paths(&backend);
+    fs::write(store_dir.join("delta-99999999999999999999.bin"), b"orphan").unwrap();
+    fs::write(&path, b"legacy-or-stale").unwrap();
+
+    Persistence::<i32, String>::save(&backend, &state).unwrap();
+
+    let mut bases = 0;
+    let mut deltas = 0;
+    for entry in fs::read_dir(&store_dir).unwrap() {
+        let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+        if name.starts_with("base-") {
+            bases += 1;
+        } else if name.starts_with("delta-") {
+            deltas += 1;
+        }
+    }
+    assert_eq!(bases, 1, "only the newly committed base may remain");
+    assert_eq!(deltas, 0, "all superseded/orphan deltas must be retired");
+    assert!(
+        !path.exists(),
+        "legacy path must be retired after publication"
+    );
+
+    let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
+    assert_states_equivalent(&loaded, &state);
 }
 
 #[test]
