@@ -25,6 +25,8 @@ exclude_re = [
     "snapshot/incremental\\.rs:263:56: replace > with < in save_full",
     "snapshot/incremental\\.rs:263:56: replace > with >= in save_full",
     "observability/snapshot\\.rs:18:9: replace imp::record_snapshot_full with \\(\\)",
+    "observability/snapshot\\.rs:28:9: replace imp::record_snapshot_delta with \\(\\)",
+    "observability/snapshot\\.rs:35:9: replace imp::record_snapshot_cleanup_failure with \\(\\)",
     "observability/snapshot\\.rs:40:9: replace imp::record_snapshot_recovery with \\(\\)",
     "observability/snapshot\\.rs:48:9: replace imp::describe with \\(\\)",
     "observability/snapshot\\.rs:117:5: replace describe_snapshot_metrics with \\(\\)",
