@@ -6,10 +6,10 @@
 // except according to those terms.
 
 //! The file-backed [`Persistence`] adapter for a replicated map.
-//! This module holds the half of persistence that touches the outside world: [`FileSnapshot`], a
-//! durable backend that writes a whole [`PersistedState`] to one file as
-//! `magic || version || bincode(state)`, atomically. The port, snapshot value type and non-durable
-//! default live in [`crate::persistence`]; this module owns the filesystem and codec adapter.
+//! [`FileSnapshot`] stores an immutable materialized base plus ordered delta segments behind one
+//! atomically-published manifest. Loading still accepts the previous single-file snapshot format
+//! for migration. The port, snapshot value type and non-durable default live in
+//! [`crate::persistence`]; this module owns the filesystem and codec adapter.
 //! One type with no standalone reuse value outside this workspace, so it stays folded into
 //! `reconcile` rather than earning its own crate. [`FileSnapshot`] is
 //! re-exported from [`crate::persistence`] and from the crate root.
@@ -21,7 +21,9 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::persistence::{PersistedState, Persistence};
+use crate::persistence::{PersistedState, Persistence, PersistenceDelta};
+
+mod incremental;
 
 /// On-disk snapshot header: a 4-byte magic then a little-endian `u32` format version.
 /// The body is bincode, not self-describing, so without this a format change would be silently
@@ -33,20 +35,6 @@ const SNAPSHOT_MAGIC: [u8; 4] = *b"RCNL";
 const SNAPSHOT_FORMAT_VERSION: u32 = 1;
 /// Length of the header written ahead of the bincode body: magic (4) + version (4).
 const SNAPSHOT_HEADER_LEN: usize = 8;
-
-/// Serialize a snapshot as `magic || version(LE u32) || bincode(state)`.
-fn encode_snapshot<K, V>(state: &PersistedState<K, V>) -> bincode::Result<Vec<u8>>
-where
-    K: Serialize,
-    V: Serialize,
-{
-    let body = bincode::serialize(state)?;
-    let mut out = Vec::with_capacity(SNAPSHOT_HEADER_LEN + body.len());
-    out.extend_from_slice(&SNAPSHOT_MAGIC);
-    out.extend_from_slice(&SNAPSHOT_FORMAT_VERSION.to_le_bytes());
-    out.extend_from_slice(&body);
-    Ok(out)
-}
 
 /// Validate the header, then decode the body. Every failure — short, wrong magic, unsupported
 /// version, undecodable body — becomes an `InvalidData` error rather than a silent misread.
@@ -91,10 +79,11 @@ where
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
 }
 
-/// A durable, file-based [`Persistence`] backend holding one bincode-encoded snapshot.
-/// Saves are **atomic**: written to a sibling `*.tmp`, flushed, then renamed over the target, then
-/// the containing directory is synced (best-effort — some filesystems do not support syncing a
-/// directory handle) so the rename itself survives a crash, not only the file's bytes.
+/// A durable, file-based [`Persistence`] backend.
+/// A materialized base and ordered immutable deltas are referenced by one atomically-published
+/// manifest. Segment bytes are flushed before the manifest that makes them visible; unreferenced
+/// crash leftovers are ignored on recovery. The configured path is also accepted as the legacy
+/// single-file v1 snapshot and is migrated on the next successful save.
 #[derive(Clone, Debug)]
 pub struct FileSnapshot {
     path: PathBuf,
@@ -107,12 +96,6 @@ impl FileSnapshot {
             path: path.as_ref().to_path_buf(),
         }
     }
-
-    fn tmp_path(&self) -> PathBuf {
-        let mut tmp = self.path.clone().into_os_string();
-        tmp.push(".tmp");
-        PathBuf::from(tmp)
-    }
 }
 
 impl<K, V> Persistence<K, V> for FileSnapshot
@@ -121,200 +104,25 @@ where
     V: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     fn load(&self) -> io::Result<Option<PersistedState<K, V>>> {
+        if let Some(state) = incremental::load(self)? {
+            return Ok(Some(state));
+        }
         let bytes = match fs::read(&self.path) {
             Ok(bytes) => bytes,
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err),
         };
-        let state = decode_snapshot(&bytes)?;
-        Ok(Some(state))
+        decode_snapshot(&bytes).map(Some)
     }
 
     fn save(&self, state: &PersistedState<K, V>) -> io::Result<()> {
-        let bytes = encode_snapshot(state)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-        let tmp = self.tmp_path();
-        // Write to a temporary file, flush it, then atomically rename over the target so a crash
-        // mid-write cannot corrupt a good snapshot.
-        {
-            use std::io::Write;
-            let mut file = fs::File::create(&tmp)?;
-            file.write_all(&bytes)?;
-            file.sync_all()?;
-        }
-        fs::rename(&tmp, &self.path)?;
-        // The rename itself is not durable until the *directory entry* is synced: on a crash
-        // before this, POSIX makes no guarantee the rename survived, even though `sync_all` above
-        // guaranteed the file's own bytes did — a reader could see the pre-rename directory state
-        // (missing file, or the old target) after an unclean shutdown. Best-effort: some
-        // filesystems (e.g. exFAT) don't support syncing a directory handle, so a failure here is
-        // not fatal to an otherwise-successful save.
-        if let Some(parent) = self.path.parent().filter(|p| !p.as_os_str().is_empty()) {
-            if let Ok(dir) = fs::File::open(parent) {
-                let _ = dir.sync_all();
-            }
-        }
-        Ok(())
+        incremental::save_full(self, state)
+    }
+
+    fn try_save_delta(&self, delta: Option<&PersistenceDelta<K, V>>) -> io::Result<bool> {
+        incremental::try_save_delta(self, delta)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::{HashMap, HashSet};
-
-    use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
-    use crate::entry::Entry;
-
-    use super::*;
-
-    fn sample_state() -> PersistedState<i32, String> {
-        let mut members = HashSet::new();
-        members.insert("127.0.0.1".parse().unwrap());
-        members.insert("127.0.0.2".parse().unwrap());
-
-        let mut acks = HashMap::new();
-        let mut key_acks = HashMap::new();
-        key_acks.insert("127.0.0.1".parse().unwrap(), 42u64);
-        acks.insert(7, key_acks);
-
-        PersistedState::new(
-            vec![
-                (
-                    1,
-                    Entry::present(
-                        Timestamp::new(
-                            Hlc::new(PhysicalTime::from_millis(1_000), LogicalCounter::new(0)),
-                            NodeId::new(7),
-                        ),
-                        "alive".to_string(),
-                    ),
-                ),
-                (
-                    2,
-                    Entry::tombstone(Timestamp::new(
-                        Hlc::new(PhysicalTime::from_millis(2_000), LogicalCounter::new(1)),
-                        NodeId::new(7),
-                    )),
-                ), // tombstone
-            ],
-            members,
-            acks,
-        )
-    }
-
-    fn assert_states_eq(a: &PersistedState<i32, String>, b: &PersistedState<i32, String>) {
-        assert_eq!(a.entries, b.entries);
-        assert_eq!(a.members, b.members);
-        assert_eq!(a.tombstone_acks, b.tombstone_acks);
-    }
-
-    #[test]
-    fn persisted_state_bincode_roundtrip() {
-        let state = sample_state();
-        let bytes = bincode::serialize(&state).unwrap();
-        let back: PersistedState<i32, String> = bincode::deserialize(&bytes).unwrap();
-        assert_states_eq(&back, &state);
-    }
-
-    #[test]
-    fn file_snapshot_save_then_load() {
-        let dir = tempfile::tempdir().unwrap();
-        let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
-
-        // Nothing saved yet.
-        assert!(Persistence::<i32, String>::load(&backend)
-            .unwrap()
-            .is_none());
-
-        let state = sample_state();
-        Persistence::<i32, String>::save(&backend, &state).unwrap();
-
-        let loaded = Persistence::<i32, String>::load(&backend)
-            .unwrap()
-            .expect("a snapshot was saved");
-        assert_states_eq(&loaded, &state);
-    }
-
-    #[test]
-    fn file_snapshot_save_is_atomic_replace() {
-        let dir = tempfile::tempdir().unwrap();
-        let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
-
-        let mut first = sample_state();
-        first.entries = vec![(
-            1,
-            Entry::present(
-                Timestamp::new(
-                    Hlc::new(PhysicalTime::from_millis(1), LogicalCounter::new(0)),
-                    NodeId::new(0),
-                ),
-                "first".to_string(),
-            ),
-        )];
-        Persistence::<i32, String>::save(&backend, &first).unwrap();
-
-        let mut second = sample_state();
-        second.entries = vec![(
-            1,
-            Entry::present(
-                Timestamp::new(
-                    Hlc::new(PhysicalTime::from_millis(2), LogicalCounter::new(0)),
-                    NodeId::new(0),
-                ),
-                "second".to_string(),
-            ),
-        )];
-        Persistence::<i32, String>::save(&backend, &second).unwrap();
-
-        // No leftover temporary file, and the latest snapshot wins.
-        assert!(!dir.path().join("snapshot.bin.tmp").exists());
-        let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
-        assert_eq!(loaded.entries[0].1.value(), Some(&"second".to_string()));
-    }
-
-    /// A pre-header snapshot — valid bincode, no magic/version prefix — must be rejected as
-    /// `InvalidData`, never silently misread.
-    #[test]
-    fn headerless_legacy_snapshot_is_rejected() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("snapshot.bin");
-        // Raw bincode body with no header prefix — the on-disk shape.
-        let body = bincode::serialize(&sample_state()).unwrap();
-        fs::write(&path, &body).unwrap();
-        let backend = FileSnapshot::new(&path);
-        let err = Persistence::<i32, String>::load(&backend).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-    }
-
-    /// A snapshot carrying the right magic but a **future/unknown format version** must be rejected
-    /// rather than decoded with this build's layout.
-    #[test]
-    fn unknown_format_version_is_rejected() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("snapshot.bin");
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&SNAPSHOT_MAGIC);
-        bytes.extend_from_slice(&(SNAPSHOT_FORMAT_VERSION + 1).to_le_bytes());
-        bytes.extend_from_slice(&bincode::serialize(&sample_state()).unwrap());
-        fs::write(&path, &bytes).unwrap();
-        let backend = FileSnapshot::new(&path);
-        let err = Persistence::<i32, String>::load(&backend).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-        assert!(
-            err.to_string().contains("format version"),
-            "error should name the version mismatch, got: {err}"
-        );
-    }
-
-    /// A snapshot truncated below the header length must be rejected, not panic on the
-    /// out-of-bounds header slice.
-    #[test]
-    fn truncated_snapshot_is_rejected() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("snapshot.bin");
-        fs::write(&path, [0xAB; 3]).unwrap();
-        let backend = FileSnapshot::new(&path);
-        let err = Persistence::<i32, String>::load(&backend).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-    }
-}
+mod tests;

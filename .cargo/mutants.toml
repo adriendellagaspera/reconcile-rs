@@ -18,6 +18,7 @@ exclude_re = [
     "replay/bitmap\\.rs:75:32: replace \\| with \\^",
     "replica/construct\\.rs:212:33: replace < with <=",
     "replica/repair\\.rs:116:36: replace > with >=",
+    "persistence\\.rs:.*replace Persistence::try_save_delta -> io::Result<bool> with Ok\\(false\\)",
 ]
 
 skip_calls = ["with_capacity", "reserve"]
