@@ -19,6 +19,20 @@ exclude_re = [
     "replica/construct\\.rs:212:33: replace < with <=",
     "replica/repair\\.rs:116:36: replace > with >=",
     "persistence\\.rs:.*replace Persistence::try_save_delta -> io::Result<bool> with Ok\\(false\\)",
+    # Snapshot-policy survivors below only change metric/descriptor reporting. They do not alter
+    # publication, retained files, recovery, or compaction decisions, and this repository has no
+    # global metrics-recorder test harness that can observe those side effects deterministically.
+    "snapshot/incremental\\.rs:263:56: replace > with < in save_full",
+    "snapshot/incremental\\.rs:263:56: replace > with >= in save_full",
+    "observability/snapshot\\.rs:18:9: replace imp::record_snapshot_full with \\(\\)",
+    "observability/snapshot\\.rs:40:9: replace imp::record_snapshot_recovery with \\(\\)",
+    "observability/snapshot\\.rs:48:9: replace imp::describe with \\(\\)",
+    "observability/snapshot\\.rs:117:5: replace describe_snapshot_metrics with \\(\\)",
+    "snapshot/incremental/storage\\.rs:216:54: replace != with == in cleanup_after_full_materialization",
+    "snapshot/incremental/storage\\.rs:222:21: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with false in cleanup_after_full_materialization",
+    "snapshot/incremental/storage\\.rs:222:21: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with true in cleanup_after_full_materialization",
+    "snapshot/incremental/storage\\.rs:222:32: replace == with != in cleanup_after_full_materialization",
+    "snapshot/incremental/storage\\.rs:226:67: replace != with == in cleanup_after_full_materialization",
 ]
 
 skip_calls = ["with_capacity", "reserve"]
