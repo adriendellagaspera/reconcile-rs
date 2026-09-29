@@ -194,7 +194,9 @@ fn trial(
         for index in begin..begin + batch {
             store.forget_peer(peer_ip(index));
         }
-        store.snapshot_now().expect("persist metadata-only generation");
+        store
+            .snapshot_now()
+            .expect("persist metadata-only generation");
         let after = StoreImage::capture(&path);
         written += after.write_bytes_since(&before);
         max_retained = max_retained.max(after.retained_bytes());
@@ -253,16 +255,8 @@ fn main() {
                 continue;
             }
             for trial_index in 0..trials {
-                let (
-                    elapsed,
-                    written,
-                    retained,
-                    max_retained,
-                    bases,
-                    deltas,
-                    max_deltas,
-                    restart,
-                ) = trial(&rt, members, batch, checkpoints);
+                let (elapsed, written, retained, max_retained, bases, deltas, max_deltas, restart) =
+                    trial(&rt, members, batch, checkpoints);
                 println!(
                     "{members},{batch},{checkpoints},{trial_index},{:.3},{written},{retained},{max_retained},{bases},{deltas},{max_deltas},{:.3}",
                     elapsed.as_secs_f64() * 1_000.0,
