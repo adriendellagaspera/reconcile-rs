@@ -143,7 +143,22 @@ fn manifest_size_is_constant_as_delta_chain_grows() {
 fn incremental_delta_replays_entries_members_and_acks() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
-    let first = sample_state();
+    let mut first = sample_state();
+    for key in 100..132 {
+        first.entries.push((
+            key,
+            Entry::present(
+                Timestamp::new(
+                    Hlc::new(
+                        PhysicalTime::from_millis(10_000 + key as u64),
+                        LogicalCounter::new(0),
+                    ),
+                    NodeId::new(7),
+                ),
+                "base-padding".repeat(8),
+            ),
+        ));
+    }
     Persistence::<i32, String>::save(&backend, &first).unwrap();
 
     let peer1 = "127.0.0.1".parse().unwrap();
@@ -163,11 +178,16 @@ fn incremental_delta_replays_entries_members_and_acks() {
         ),
         "added".to_string(),
     );
-    let expected = PersistedState::new(
-        vec![(1, updated.clone()), (3, added.clone())],
-        HashSet::from([peer1, peer3]),
-        HashMap::from([(9, HashMap::from([(peer3, 99)]))]),
-    );
+    let mut expected = first.clone();
+    expected.entries.retain(|(key, _)| *key != 1 && *key != 2);
+    expected.entries.push((1, updated.clone()));
+    expected.entries.push((3, added.clone()));
+    expected.members.remove(&peer2);
+    expected.members.insert(peer3);
+    expected.tombstone_acks.remove(&7);
+    expected
+        .tombstone_acks
+        .insert(9, HashMap::from([(peer3, 99)]));
     let delta = PersistenceDelta::new(
         HashMap::from([(1, Some(updated)), (2, None), (3, Some(added))]),
         HashMap::from([(peer2, false), (peer3, true)]),
