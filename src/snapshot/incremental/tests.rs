@@ -47,6 +47,59 @@ fn manifest_rejects_inconsistent_delta_byte_accounting() {
 }
 
 #[test]
+fn manifest_rejects_zero_base_size() {
+    let manifest = Manifest {
+        base_generation: 1,
+        base_bytes: 0,
+        current_generation: 1,
+        delta_bytes: 0,
+    };
+    assert!(validate_manifest(&manifest).is_err());
+}
+
+#[test]
+fn recovery_rejects_incorrect_committed_byte_totals() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
+    let state = PersistedState::<i32, String>::default();
+    save_full(&backend, &state).unwrap();
+
+    let mut manifest = read_manifest(&backend).unwrap().unwrap();
+    manifest.base_bytes = manifest.base_bytes.saturating_add(1);
+    publish_manifest(&backend, &manifest).unwrap();
+    let err = load::<i32, String>(&backend).unwrap_err();
+    assert!(err.to_string().contains("manifest records"));
+
+    save_full(&backend, &state).unwrap();
+    let mut manifest = read_manifest(&backend).unwrap().unwrap();
+    let delta = PersistenceDelta::<i32, String>::new(
+        HashMap::new(),
+        HashMap::new(),
+        HashSet::new(),
+        HashMap::new(),
+    );
+    let generation = manifest.current_generation.saturating_add(1);
+    let segment = DeltaSegmentWrite {
+        from_generation: manifest.current_generation,
+        to_generation: generation,
+        delta: &delta,
+    };
+    let bytes = write_segment(
+        &store_dir(&backend),
+        DELTA_MAGIC,
+        "delta",
+        generation,
+        &segment,
+    )
+    .unwrap();
+    manifest.current_generation = generation;
+    manifest.delta_bytes = bytes.saturating_add(1);
+    publish_manifest(&backend, &manifest).unwrap();
+    let err = load::<i32, String>(&backend).unwrap_err();
+    assert!(err.to_string().contains("committed delta bytes"));
+}
+
+#[test]
 fn framing_rejects_short_objects_but_reaches_decode_at_exact_minimum() {
     let short = vec![0u8; HEADER_LEN + OBJECT_CHECKSUM_LEN - 1];
     let err = decode::<u8>(&short, MANIFEST_MAGIC).unwrap_err();
