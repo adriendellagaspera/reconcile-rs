@@ -90,6 +90,7 @@ lww-register = { version = "=0.6.0", features = ["serde"] }
 metrics = { version = "0.24", optional = true }
 metrics-exporter-prometheus = { version = "0.16", optional = true, default-features = false, features = ["http-listener"] }
 parking_lot = "0.12.1"
+proptest = "1.11.0"
 rand = "0.8.5"
 rbsr = "=0.2.3"
 rsos = "=0.5.2"
