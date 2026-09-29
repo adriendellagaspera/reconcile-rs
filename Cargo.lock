@@ -1311,9 +1311,9 @@ dependencies = [
 
 [[package]]
 name = "rbsr"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b673b8855157324e85c9daaa7d8e15a9f5d98e1971ba1ce8a71b497ffbb091e0"
+checksum = "01bff1076c7ca6947a3b7390374721b90b5c3447c85a1bfecf8761483f0078d3"
 dependencies = [
  "rand 0.8.8",
  "rsos",
@@ -1414,9 +1414,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "rsos"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "842a6d0bca729eef4672490daac648638a226e174ec838c01f4177a129948c54"
+checksum = "864487198c993326fd885763bef28acbc4b011ce59dc6742c7087d9ea9242e2f"
 dependencies = [
  "arrayvec",
  "blake3",
