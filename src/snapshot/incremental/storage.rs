@@ -12,9 +12,7 @@ use std::path::{Component, Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use super::{
-    FileSnapshot, Manifest, SegmentRef, FORMAT_VERSION, HEADER_LEN, MANIFEST_FILE, MANIFEST_MAGIC,
-};
+use super::{FileSnapshot, Manifest, FORMAT_VERSION, HEADER_LEN, MANIFEST_FILE, MANIFEST_MAGIC};
 
 pub(super) const OBJECT_CHECKSUM_LEN: usize = 32;
 
@@ -102,16 +100,6 @@ pub(super) fn segment_file_name(kind: &str, generation: u64) -> String {
     format!("{kind}-{generation:020}.bin")
 }
 
-pub(super) fn validate_segment_name(name: &str) -> io::Result<()> {
-    let mut components = Path::new(name).components();
-    match (components.next(), components.next()) {
-        (Some(Component::Normal(_)), None) => Ok(()),
-        _ => Err(invalid(format!(
-            "incremental snapshot manifest contains invalid segment path {name:?}"
-        ))),
-    }
-}
-
 pub(super) fn read_manifest(backend: &FileSnapshot) -> io::Result<Option<Manifest>> {
     let path = manifest_path(backend);
     let bytes = match fs::read(path) {
@@ -125,57 +113,51 @@ pub(super) fn read_manifest(backend: &FileSnapshot) -> io::Result<Option<Manifes
 }
 
 pub(super) fn validate_manifest(manifest: &Manifest) -> io::Result<()> {
-    validate_segment_name(&manifest.base.file)?;
-    if manifest.base.generation > manifest.current_generation {
+    if manifest.base_generation == 0 || manifest.base_generation > manifest.current_generation {
         return Err(invalid(
-            "manifest base generation is newer than current generation",
+            "manifest base generation must be nonzero and not newer than current generation",
         ));
     }
-
-    let mut expected = manifest.base.generation.saturating_add(1);
-    for delta in &manifest.deltas {
-        validate_segment_name(&delta.file)?;
-        if delta.generation != expected {
-            return Err(invalid(format!(
-                "manifest delta continuity error: expected generation {expected}, got {}",
-                delta.generation
-            )));
-        }
-        expected = expected.saturating_add(1);
+    if manifest.base_bytes == 0 {
+        return Err(invalid("manifest base segment must have a nonzero encoded size"));
     }
-    let recovered = manifest
-        .deltas
-        .last()
-        .map_or(manifest.base.generation, |delta| delta.generation);
-    if recovered != manifest.current_generation {
-        return Err(invalid(format!(
-            "manifest current generation {} does not match referenced generation {recovered}",
-            manifest.current_generation
-        )));
+    if manifest.base_generation == manifest.current_generation && manifest.delta_bytes != 0 {
+        return Err(invalid(
+            "manifest without committed deltas must record zero delta bytes",
+        ));
+    }
+    if manifest.base_generation < manifest.current_generation && manifest.delta_bytes == 0 {
+        return Err(invalid(
+            "manifest with committed deltas must record nonzero delta bytes",
+        ));
     }
     Ok(())
 }
 
-pub(super) fn read_segment_bytes(dir: &Path, reference: &SegmentRef) -> io::Result<Vec<u8>> {
-    validate_segment_name(&reference.file)?;
-    let path = dir.join(&reference.file);
+pub(super) fn read_segment_bytes(
+    dir: &Path,
+    kind: &str,
+    generation: u64,
+    expected_bytes: Option<u64>,
+) -> io::Result<Vec<u8>> {
+    let file = segment_file_name(kind, generation);
+    let path = dir.join(&file);
     let bytes = fs::read(&path).map_err(|err| {
         if err.kind() == io::ErrorKind::NotFound {
             invalid(format!(
-                "committed incremental snapshot segment {:?} is missing",
-                reference.file
+                "committed incremental snapshot segment {file:?} is missing"
             ))
         } else {
             err
         }
     })?;
-    if bytes.len() as u64 != reference.bytes {
-        return Err(invalid(format!(
-            "incremental snapshot segment {:?} has {} bytes, manifest records {}",
-            reference.file,
-            bytes.len(),
-            reference.bytes
-        )));
+    if let Some(expected) = expected_bytes {
+        if bytes.len() as u64 != expected {
+            return Err(invalid(format!(
+                "incremental snapshot segment {file:?} has {} bytes, manifest records {expected}",
+                bytes.len()
+            )));
+        }
     }
     Ok(bytes)
 }
@@ -186,15 +168,11 @@ pub(super) fn write_segment<T: Serialize>(
     kind: &str,
     generation: u64,
     value: &T,
-) -> io::Result<SegmentRef> {
+) -> io::Result<u64> {
     let bytes = encode(magic, value)?;
     let file = segment_file_name(kind, generation);
-    write_atomic(&dir.join(&file), &bytes)?;
-    Ok(SegmentRef {
-        generation,
-        file,
-        bytes: bytes.len() as u64,
-    })
+    write_atomic(&dir.join(file), &bytes)?;
+    Ok(bytes.len() as u64)
 }
 
 pub(super) fn publish_manifest(backend: &FileSnapshot, manifest: &Manifest) -> io::Result<()> {
