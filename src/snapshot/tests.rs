@@ -114,7 +114,22 @@ fn delta_hook_requests_initial_base_then_handles_clean_noop() {
 fn manifest_size_is_constant_as_delta_chain_grows() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
-    let state = sample_state();
+    let mut state = sample_state();
+    for key in 100..356 {
+        state.entries.push((
+            key,
+            Entry::present(
+                Timestamp::new(
+                    Hlc::new(
+                        PhysicalTime::from_millis(10_000 + key as u64),
+                        LogicalCounter::new(0),
+                    ),
+                    NodeId::new(7),
+                ),
+                format!("padding-{key:04}"),
+            ),
+        ));
+    }
     Persistence::<i32, String>::save(&backend, &state).unwrap();
 
     let (_, manifest_path) = incremental::paths(&backend);
