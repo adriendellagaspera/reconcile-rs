@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::observability;
+
 use super::{FileSnapshot, Manifest, FORMAT_VERSION, HEADER_LEN, MANIFEST_FILE, MANIFEST_MAGIC};
 
 pub(super) const OBJECT_CHECKSUM_LEN: usize = 32;
@@ -164,6 +166,17 @@ pub(super) fn read_segment_bytes(
     Ok(bytes)
 }
 
+pub(super) fn write_encoded_segment(
+    dir: &Path,
+    kind: &str,
+    generation: u64,
+    bytes: &[u8],
+) -> io::Result<u64> {
+    let file = segment_file_name(kind, generation);
+    write_atomic(&dir.join(file), bytes)?;
+    Ok(bytes.len() as u64)
+}
+
 pub(super) fn write_segment<T: Serialize>(
     dir: &Path,
     magic: [u8; 4],
@@ -172,15 +185,54 @@ pub(super) fn write_segment<T: Serialize>(
     value: &T,
 ) -> io::Result<u64> {
     let bytes = encode(magic, value)?;
-    let file = segment_file_name(kind, generation);
-    write_atomic(&dir.join(file), &bytes)?;
-    Ok(bytes.len() as u64)
+    write_encoded_segment(dir, kind, generation, &bytes)
 }
 
 pub(super) fn publish_manifest(backend: &FileSnapshot, manifest: &Manifest) -> io::Result<()> {
     validate_manifest(manifest)?;
     let bytes = encode(MANIFEST_MAGIC, manifest)?;
     write_atomic(&manifest_path(backend), &bytes)
+}
+
+pub(super) fn cleanup_after_full_materialization(
+    backend: &FileSnapshot,
+    keep_base_generation: u64,
+) {
+    let dir = store_dir(backend);
+    let keep_base = segment_file_name("base", keep_base_generation);
+
+    match fs::read_dir(&dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                    continue;
+                };
+                if name == MANIFEST_FILE || name == keep_base {
+                    continue;
+                }
+                if (name.starts_with("base-") || name.starts_with("delta-"))
+                    && fs::remove_file(&path)
+                        .is_err_and(|err| err.kind() != io::ErrorKind::NotFound)
+                {
+                    observability::record_snapshot_cleanup_failure();
+                }
+            }
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+        Err(_) => observability::record_snapshot_cleanup_failure(),
+    }
+
+    if fs::remove_file(&backend.path)
+        .is_err_and(|err| err.kind() != io::ErrorKind::NotFound)
+    {
+        observability::record_snapshot_cleanup_failure();
+    }
+
+    #[cfg(unix)]
+    if let Ok(dir_handle) = fs::File::open(&dir) {
+        let _ = dir_handle.sync_all();
+    }
 }
 
 #[cfg(test)]
