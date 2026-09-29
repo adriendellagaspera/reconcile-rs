@@ -10,7 +10,8 @@ forbidden = re.compile(
 )
 
 violations = []
-for path in sorted(Path("benches").glob("*.rs")):
+paths = list(Path("benches").glob("*.rs")) + list(Path("tests").rglob("*.rs"))
+for path in sorted(paths):
     for number, line in enumerate(path.read_text().splitlines(), 1):
         stripped = line.lstrip()
         if stripped.startswith("//"):
@@ -20,13 +21,13 @@ for path in sorted(Path("benches").glob("*.rs")):
 
 if violations:
     print(
-        "reconcile-rs benchmarks own runtime/product behavior. "
-        "Direct RBSR drivers and research devkit support belong upstream/research.",
+        "reconcile-rs owns runtime/product behavior at its benchmark and test boundaries. "
+        "Direct RBSR drivers and research devkit support belong in the standalone/research repositories.",
         file=__import__("sys").stderr,
     )
     for violation in violations:
         print(f"  - {violation}", file=__import__("sys").stderr)
     raise SystemExit(1)
 
-print("runtime benchmark ownership boundary: ok")
+print("runtime benchmark/test ownership boundary: ok")
 PY
