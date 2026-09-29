@@ -13,7 +13,10 @@
 //! records against them.
 
 mod snapshot;
-pub(crate) use snapshot::*;
+pub(crate) use snapshot::{
+    record_snapshot_cleanup_failure, record_snapshot_delta, record_snapshot_full,
+    record_snapshot_recovery,
+};
 
 #[cfg(feature = "metrics")]
 mod imp {
@@ -267,7 +270,7 @@ mod imp {
             Unit::Count,
             "Consecutive persistence-backend snapshot failures since the last success"
         );
-        super::snapshot::describe();
+        super::snapshot::describe_snapshot_metrics();
     }
 }
 
