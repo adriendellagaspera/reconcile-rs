@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::Timestamp;
 use crate::entry::Entry;
+use crate::observability;
 use crate::persistence::{PersistedState, PersistenceDelta};
 
 use super::FileSnapshot;
@@ -23,7 +24,8 @@ use super::FileSnapshot;
 mod storage;
 
 use storage::{
-    decode, invalid, publish_manifest, read_manifest, read_segment_bytes, store_dir, write_segment,
+    cleanup_after_full_materialization, decode, encode, invalid, publish_manifest, read_manifest,
+    read_segment_bytes, store_dir, write_encoded_segment, write_segment,
 };
 
 #[cfg(test)]
@@ -37,6 +39,8 @@ const BASE_MAGIC: [u8; 4] = *b"RCNB";
 const DELTA_MAGIC: [u8; 4] = *b"RCND";
 const MANIFEST_MAGIC: [u8; 4] = *b"RCNM";
 const MANIFEST_FILE: &str = "manifest";
+const MAX_COMMITTED_DELTAS: u64 = 512;
+
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Manifest {
@@ -44,6 +48,28 @@ struct Manifest {
     base_bytes: u64,
     current_generation: u64,
     delta_bytes: u64,
+}
+
+impl Manifest {
+    fn delta_count(&self) -> u64 {
+        self.current_generation.saturating_sub(self.base_generation)
+    }
+
+    fn segment_count(&self) -> usize {
+        usize::try_from(self.delta_count().saturating_add(1)).unwrap_or(usize::MAX)
+    }
+
+    fn segment_bytes(&self) -> u64 {
+        self.base_bytes.saturating_add(self.delta_bytes)
+    }
+}
+
+fn should_materialize(manifest: &Manifest, candidate_delta_bytes: u64) -> bool {
+    manifest.delta_count() >= MAX_COMMITTED_DELTAS
+        || manifest
+            .delta_bytes
+            .saturating_add(candidate_delta_bytes)
+            >= manifest.base_bytes
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -146,6 +172,7 @@ where
     K: DeserializeOwned + Eq + Hash,
     V: DeserializeOwned,
 {
+    let recovery_start = observability::timer();
     let Some(manifest) = read_manifest(backend)? else {
         return Ok(None);
     };
@@ -165,6 +192,7 @@ where
         )));
     }
     if manifest.current_generation == manifest.base_generation {
+        observability::record_snapshot_recovery(recovery_start, manifest.segment_count());
         return Ok(Some(base.state));
     }
 
@@ -202,6 +230,7 @@ where
         )));
     }
 
+    observability::record_snapshot_recovery(recovery_start, manifest.segment_count());
     Ok(Some(PersistedState::new(
         entries.into_iter().collect(),
         members,
@@ -233,6 +262,15 @@ where
         delta_bytes: 0,
     };
     publish_manifest(backend, &manifest)?;
+    let compaction = previous
+        .as_ref()
+        .is_some_and(|previous| previous.delta_count() > 0);
+    observability::record_snapshot_full(
+        compaction,
+        manifest.segment_count(),
+        manifest.segment_bytes(),
+    );
+    cleanup_after_full_materialization(backend, manifest.base_generation);
     Ok(())
 }
 
@@ -258,11 +296,17 @@ where
         to_generation,
         delta,
     };
+    let encoded = encode(DELTA_MAGIC, &segment)?;
+    if should_materialize(&manifest, encoded.len() as u64) {
+        return Ok(false);
+    }
+
     let dir = store_dir(backend);
-    let bytes = write_segment(&dir, DELTA_MAGIC, "delta", to_generation, &segment)?;
+    let bytes = write_encoded_segment(&dir, "delta", to_generation, &encoded)?;
     manifest.current_generation = to_generation;
     manifest.delta_bytes = manifest.delta_bytes.saturating_add(bytes);
     publish_manifest(backend, &manifest)?;
+    observability::record_snapshot_delta(manifest.segment_count(), manifest.segment_bytes());
     Ok(true)
 }
 
