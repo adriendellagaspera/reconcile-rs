@@ -229,10 +229,11 @@ fn trial(rt: &Runtime, n: usize, delta: usize, checkpoints: usize) -> Measuremen
     let path = dir.path().join("snapshot.bin");
     let store = make_store(rt, &path);
 
-    let initial: Vec<_> = (0..n as u32).map(|key| (key, vec![0; VALUE_BYTES])).collect();
+    let initial: Vec<_> = (0..n as u32)
+        .map(|key| (key, vec![0; VALUE_BYTES]))
+        .collect();
     store.load_bulk(&initial);
-    let (reference_time, mut before, reference_write_bytes) =
-        reference_snapshot(&store, &path);
+    let (reference_time, mut before, reference_write_bytes) = reference_snapshot(&store, &path);
 
     let mut checkpoint_time = Duration::ZERO;
     let mut checkpoint_write_bytes = 0;
@@ -313,14 +314,7 @@ fn main() {
                 continue;
             }
             for repetition in 0..repeats {
-                print_measurement(
-                    "pair",
-                    n,
-                    delta,
-                    1,
-                    repetition,
-                    trial(&rt, n, delta, 1),
-                );
+                print_measurement("pair", n, delta, 1, repetition, trial(&rt, n, delta, 1));
             }
         }
 
