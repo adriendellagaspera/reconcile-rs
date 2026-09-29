@@ -5,10 +5,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::hash::Hash;
 use std::io;
+use std::net::IpAddr;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -38,17 +39,11 @@ const MANIFEST_MAGIC: [u8; 4] = *b"RCNM";
 const MANIFEST_FILE: &str = "manifest";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct SegmentRef {
-    generation: u64,
-    file: String,
-    bytes: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 struct Manifest {
-    base: SegmentRef,
-    deltas: Vec<SegmentRef>,
+    base_generation: u64,
+    base_bytes: u64,
     current_generation: u64,
+    delta_bytes: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -86,13 +81,13 @@ struct DeltaSegmentWrite<'a, K, V> {
 }
 
 fn apply_delta<K, V>(
-    mut state: PersistedState<K, V>,
+    entries: &mut HashMap<K, Entry<Timestamp, V>>,
+    members: &mut HashSet<IpAddr>,
+    tombstone_acks: &mut HashMap<K, HashMap<IpAddr, u64>>,
     delta: PersistenceDelta<K, V>,
-) -> PersistedState<K, V>
-where
+) where
     K: Eq + Hash,
 {
-    let mut entries: HashMap<K, Entry<Timestamp, V>> = state.entries.into_iter().collect();
     for (key, entry) in delta.entries {
         match entry {
             Some(entry) => {
@@ -103,22 +98,21 @@ where
             }
         }
     }
-    state.entries = entries.into_iter().collect();
 
     for (peer, present) in delta.members {
         if present {
-            state.members.insert(peer);
+            members.insert(peer);
         } else {
-            state.members.remove(&peer);
+            members.remove(&peer);
         }
     }
 
     for key in delta.ack_key_clears {
-        state.tombstone_acks.remove(&key);
+        tombstone_acks.remove(&key);
     }
     for (key, peer_ops) in delta.ack_peers {
         use std::collections::hash_map::Entry as MapEntry;
-        match state.tombstone_acks.entry(key) {
+        match tombstone_acks.entry(key) {
             MapEntry::Occupied(mut occupied) => {
                 for (peer, version) in peer_ops {
                     match version {
@@ -145,8 +139,6 @@ where
             }
         }
     }
-
-    state
 }
 
 pub(super) fn load<K, V>(backend: &FileSnapshot) -> io::Result<Option<PersistedState<K, V>>>
@@ -159,30 +151,59 @@ where
     };
     let dir = store_dir(backend);
 
-    let base_bytes = read_segment_bytes(&dir, &manifest.base)?;
+    let base_bytes = read_segment_bytes(
+        &dir,
+        "base",
+        manifest.base_generation,
+        Some(manifest.base_bytes),
+    )?;
     let base: BaseSegment<K, V> = decode(&base_bytes, BASE_MAGIC)?;
-    if base.generation != manifest.base.generation {
+    if base.generation != manifest.base_generation {
         return Err(invalid(format!(
             "base segment generation {} does not match manifest generation {}",
-            base.generation, manifest.base.generation
+            base.generation, manifest.base_generation
         )));
     }
 
-    let mut state = base.state;
-    for reference in &manifest.deltas {
-        let bytes = read_segment_bytes(&dir, reference)?;
+    let PersistedState {
+        entries: base_entries,
+        mut members,
+        mut tombstone_acks,
+    } = base.state;
+    let mut entries: HashMap<K, Entry<Timestamp, V>> = base_entries.into_iter().collect();
+    let mut observed_delta_bytes = 0u64;
+
+    for generation in manifest.base_generation.saturating_add(1)..=manifest.current_generation {
+        let bytes = read_segment_bytes(&dir, "delta", generation, None)?;
+        observed_delta_bytes = observed_delta_bytes.saturating_add(bytes.len() as u64);
         let segment: DeltaSegment<K, V> = decode(&bytes, DELTA_MAGIC)?;
-        let expected_from = reference.generation.saturating_sub(1);
-        if segment.from_generation != expected_from || segment.to_generation != reference.generation
-        {
+        let expected_from = generation.saturating_sub(1);
+        if segment.from_generation != expected_from || segment.to_generation != generation {
             return Err(invalid(format!(
-                "delta continuity error: expected {expected_from}..{}, got {}..{}",
-                reference.generation, segment.from_generation, segment.to_generation
+                "delta continuity error: expected {expected_from}..{generation}, got {}..{}",
+                segment.from_generation, segment.to_generation
             )));
         }
-        state = apply_delta(state, segment.delta);
+        apply_delta(
+            &mut entries,
+            &mut members,
+            &mut tombstone_acks,
+            segment.delta,
+        );
     }
-    Ok(Some(state))
+
+    if observed_delta_bytes != manifest.delta_bytes {
+        return Err(invalid(format!(
+            "manifest records {} committed delta bytes, recovered {observed_delta_bytes}",
+            manifest.delta_bytes
+        )));
+    }
+
+    Ok(Some(PersistedState::new(
+        entries.into_iter().collect(),
+        members,
+        tombstone_acks,
+    )))
 }
 
 pub(super) fn save_full<K, V>(
@@ -201,11 +222,12 @@ where
     fs::create_dir_all(&dir)?;
 
     let base = BaseSegmentWrite { generation, state };
-    let base_ref = write_segment(&dir, BASE_MAGIC, "base", generation, &base)?;
+    let base_bytes = write_segment(&dir, BASE_MAGIC, "base", generation, &base)?;
     let manifest = Manifest {
-        base: base_ref,
-        deltas: Vec::new(),
+        base_generation: generation,
+        base_bytes,
         current_generation: generation,
+        delta_bytes: 0,
     };
     publish_manifest(backend, &manifest)?;
     Ok(())
@@ -234,11 +256,12 @@ where
         delta,
     };
     let dir = store_dir(backend);
-    let reference = write_segment(&dir, DELTA_MAGIC, "delta", to_generation, &segment)?;
-    manifest.deltas.push(reference);
+    let bytes = write_segment(&dir, DELTA_MAGIC, "delta", to_generation, &segment)?;
     manifest.current_generation = to_generation;
+    manifest.delta_bytes = manifest.delta_bytes.saturating_add(bytes);
     publish_manifest(backend, &manifest)?;
     Ok(true)
 }
+
 #[cfg(test)]
 mod tests;
