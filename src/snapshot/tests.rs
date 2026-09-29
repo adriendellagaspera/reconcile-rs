@@ -319,7 +319,10 @@ fn full_materialization_cleans_superseded_segments_after_publication() {
     }
     assert_eq!(bases, 1, "only the newly committed base may remain");
     assert_eq!(deltas, 0, "all superseded/orphan deltas must be retired");
-    assert!(!path.exists(), "legacy path must be retired after publication");
+    assert!(
+        !path.exists(),
+        "legacy path must be retired after publication"
+    );
 
     let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
     assert_states_equivalent(&loaded, &state);
