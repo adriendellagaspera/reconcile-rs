@@ -1,0 +1,28 @@
+name: snapshot-replay-temporary
+
+on:
+  push:
+    branches:
+      - perf/incremental-snapshot-replay
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+      - name: Measure optimized incremental replay
+        env:
+          RECONCILE_SNAPSHOT_SIZES: "100000"
+          RECONCILE_SNAPSHOT_DELTAS: "1,100"
+          RECONCILE_SNAPSHOT_CHAIN_LENGTHS: "32,128,512"
+          RECONCILE_SNAPSHOT_CHAIN_DELTAS: "1,100"
+          RECONCILE_SNAPSHOT_TRIALS: "1"
+        run: cargo bench --bench snapshot_write_amplification
