@@ -274,15 +274,55 @@ fn legacy_snapshot_migrates_on_next_generation_save() {
 
     Persistence::<i32, String>::save(&backend, &state).unwrap();
     assert!(
-        path.exists(),
-        "post-publication legacy cleanup is deferred to compaction"
+        !path.exists(),
+        "successful base publication must retire the legacy single-file snapshot"
     );
     let (_, manifest) = incremental::paths(&backend);
     assert!(manifest.exists());
 
-    fs::write(&path, b"stale legacy bytes").unwrap();
     let migrated = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
     assert_states_eq(&migrated, &state);
+}
+
+#[test]
+fn full_materialization_cleans_superseded_segments_after_publication() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("snapshot.bin");
+    let backend = FileSnapshot::new(&path);
+    let state = sample_state();
+    Persistence::<i32, String>::save(&backend, &state).unwrap();
+
+    let delta = PersistenceDelta::<i32, String>::new(
+        HashMap::new(),
+        HashMap::new(),
+        HashSet::new(),
+        HashMap::new(),
+    );
+    assert!(Persistence::<i32, String>::try_save_delta(&backend, Some(&delta)).unwrap());
+    assert!(Persistence::<i32, String>::try_save_delta(&backend, Some(&delta)).unwrap());
+
+    let (store_dir, _) = incremental::paths(&backend);
+    fs::write(store_dir.join("delta-99999999999999999999.bin"), b"orphan").unwrap();
+    fs::write(&path, b"legacy-or-stale").unwrap();
+
+    Persistence::<i32, String>::save(&backend, &state).unwrap();
+
+    let mut bases = 0;
+    let mut deltas = 0;
+    for entry in fs::read_dir(&store_dir).unwrap() {
+        let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+        if name.starts_with("base-") {
+            bases += 1;
+        } else if name.starts_with("delta-") {
+            deltas += 1;
+        }
+    }
+    assert_eq!(bases, 1, "only the newly committed base may remain");
+    assert_eq!(deltas, 0, "all superseded/orphan deltas must be retired");
+    assert!(!path.exists(), "legacy path must be retired after publication");
+
+    let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
+    assert_states_equivalent(&loaded, &state);
 }
 
 #[test]
