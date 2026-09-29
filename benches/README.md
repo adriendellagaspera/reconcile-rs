@@ -13,7 +13,8 @@ Benchmarks measure code that ships in this repository. Comparative algorithm and
 | membership_causal_debt | tombstone ACK resend, unreachable-member repair tax, and decommission cost |
 | read_replica_fleet | many read replicas against a small authoritative set, including authenticated ingress state |
 | membership_churn | sustained authoritative member replacement with ACK coverage rebuilt through real dated traffic |
-| snapshot_write_amplification | current full-snapshot write/restart baseline |
+| snapshot_write_amplification | paired full-vs-incremental checkpoint writes, retained storage, segment chains, and restart cost |
+| snapshot_metadata_only | metadata-only membership/ACK persistence under peer decommission churn |
 
 Run a target with `cargo bench --bench <target>`. Criterion reports are written under `target/criterion/`.
 
@@ -29,4 +30,6 @@ The `read_replica_fleet` target measures a topology with many `ReadReplicaMap` i
 
 The `membership_churn` target keeps authoritative fleet size constant while replacing members through real authenticated dated traffic. New members preload the same tombstones and rebuild version-correct ACK coverage through the shipped bounded resend cursor; the benchmark reports `forget_peer` and end-to-end replacement latency, traffic per replacement, and initial/final persisted-state size. Defaults are 1,000 authoritative members, 100 replacements, 0/100/1,000 tombstones, and three ACK rounds per newcomer. Configure with `RECONCILE_CHURN_MEMBERS`, `RECONCILE_CHURN_TOMBSTONES`, `RECONCILE_CHURN_REPLACEMENTS`, and `RECONCILE_CHURN_ACK_ROUNDS`.
 
-The `snapshot_write_amplification` target records the current full-snapshot baseline before incremental persistence lands. It varies store size and changed-key count, reporting snapshot bytes, rewrite time, and restart time from a fresh store. Configure with `RECONCILE_BASELINE_SIZES`, `RECONCILE_BASELINE_DELTAS`, and `RECONCILE_BASELINE_TRIALS`.
+The `snapshot_write_amplification` target is revision-pairable: it observes durable files rather than depending on either persistence layout. It reports changed/new durable bytes per checkpoint, total retained bytes, base/delta segment counts, checkpoint time, and fresh-process restart time. Pair sweeps use `RECONCILE_SNAPSHOT_SIZES` and `RECONCILE_SNAPSHOT_DELTAS`; long-chain sweeps use `RECONCILE_SNAPSHOT_CHAIN_LENGTHS` and `RECONCILE_SNAPSHOT_CHAIN_DELTAS`; set `RECONCILE_SNAPSHOT_TRIALS` for repetitions.
+
+The `snapshot_metadata_only` target isolates causal metadata persistence: it seeds membership plus tombstone ACK state, then removes peers through `forget_peer` without changing entry values. It reports checkpoint bytes/time, retained/peak storage, final/peak segment counts, and restart time. Configure with `RECONCILE_METADATA_MEMBERS`, `RECONCILE_METADATA_BATCHES`, `RECONCILE_METADATA_CHAIN_LENGTHS`, and `RECONCILE_METADATA_TRIALS`.
