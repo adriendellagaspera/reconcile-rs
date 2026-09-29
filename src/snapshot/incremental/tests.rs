@@ -7,6 +7,39 @@ use super::storage::{
 };
 use super::*;
 
+fn policy_manifest(delta_count: u64, delta_bytes: u64) -> Manifest {
+    Manifest {
+        base_generation: 10,
+        base_bytes: 1_000,
+        current_generation: 10 + delta_count,
+        delta_bytes,
+    }
+}
+
+#[test]
+fn materialization_byte_trigger_is_exactly_one_base() {
+    let manifest = policy_manifest(1, 400);
+    assert!(!should_materialize(&manifest, 599));
+    assert!(should_materialize(&manifest, 600));
+}
+
+#[test]
+fn materialization_count_cap_is_exactly_512_deltas() {
+    let below = policy_manifest(MAX_COMMITTED_DELTAS - 1, 1);
+    assert!(!should_materialize(&below, 1));
+
+    let at_cap = policy_manifest(MAX_COMMITTED_DELTAS, 1);
+    assert!(should_materialize(&at_cap, 1));
+}
+
+#[test]
+fn manifest_reports_committed_segments_and_bytes() {
+    let manifest = policy_manifest(37, 250);
+    assert_eq!(manifest.delta_count(), 37);
+    assert_eq!(manifest.segment_count(), 38);
+    assert_eq!(manifest.segment_bytes(), 1_250);
+}
+
 #[test]
 fn manifest_rejects_invalid_generation_bounds() {
     let manifest = Manifest {
