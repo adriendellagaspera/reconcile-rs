@@ -116,8 +116,7 @@ pub const SNAPSHOT_DELTA_COMMITS_TOTAL: &str = "reconcile_snapshot_delta_commits
 /// Full base publications that replace an existing committed delta chain.
 pub const SNAPSHOT_COMPACTIONS_TOTAL: &str = "reconcile_snapshot_compactions_total";
 /// Failed removal attempts for superseded snapshot files after manifest publication.
-pub const SNAPSHOT_CLEANUP_FAILURES_TOTAL: &str =
-    "reconcile_snapshot_cleanup_failures_total";
+pub const SNAPSHOT_CLEANUP_FAILURES_TOTAL: &str = "reconcile_snapshot_cleanup_failures_total";
 /// Number of committed FileSnapshot segments in the active snapshot generation.
 pub const SNAPSHOT_SEGMENTS_CURRENT: &str = "reconcile_snapshot_segments_current";
 /// Bytes retained by committed FileSnapshot base and delta segments.
@@ -125,5 +124,4 @@ pub const SNAPSHOT_SEGMENT_BYTES_CURRENT: &str = "reconcile_snapshot_segment_byt
 /// Number of FileSnapshot segments replayed by the latest successful recovery.
 pub const SNAPSHOT_RECOVERY_SEGMENTS: &str = "reconcile_snapshot_recovery_segments";
 /// FileSnapshot recovery wall-clock duration in seconds.
-pub const SNAPSHOT_RECOVERY_DURATION_SECONDS: &str =
-    "reconcile_snapshot_recovery_duration_seconds";
+pub const SNAPSHOT_RECOVERY_DURATION_SECONDS: &str = "reconcile_snapshot_recovery_duration_seconds";
