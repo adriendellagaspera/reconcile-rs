@@ -3,32 +3,47 @@ use std::path::Path;
 
 use super::storage::{
     decode, manifest_path, publish_manifest, read_manifest, store_dir, validate_manifest,
-    validate_segment_name, write_atomic, write_segment, OBJECT_CHECKSUM_LEN,
+    write_atomic, write_segment, OBJECT_CHECKSUM_LEN,
 };
 use super::*;
 
-fn reference(generation: u64) -> SegmentRef {
-    SegmentRef {
-        generation,
-        file: format!("delta-{generation:020}.bin"),
-        bytes: 0,
-    }
-}
-
 #[test]
-fn manifest_requires_contiguous_committed_generations() {
+fn manifest_rejects_invalid_generation_bounds() {
     let manifest = Manifest {
-        base: SegmentRef {
-            generation: 1,
-            file: "base-00000000000000000001.bin".to_string(),
-            bytes: 0,
-        },
-        deltas: vec![reference(2), reference(4)],
-        current_generation: 4,
+        base_generation: 2,
+        base_bytes: 1,
+        current_generation: 1,
+        delta_bytes: 0,
     };
     let err = validate_manifest(&manifest).unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-    assert!(err.to_string().contains("continuity"));
+
+    let manifest = Manifest {
+        base_generation: 0,
+        base_bytes: 1,
+        current_generation: 1,
+        delta_bytes: 0,
+    };
+    assert!(validate_manifest(&manifest).is_err());
+}
+
+#[test]
+fn manifest_rejects_inconsistent_delta_byte_accounting() {
+    let no_deltas = Manifest {
+        base_generation: 1,
+        base_bytes: 1,
+        current_generation: 1,
+        delta_bytes: 7,
+    };
+    assert!(validate_manifest(&no_deltas).is_err());
+
+    let committed_delta = Manifest {
+        base_generation: 1,
+        base_bytes: 1,
+        current_generation: 2,
+        delta_bytes: 0,
+    };
+    assert!(validate_manifest(&committed_delta).is_err());
 }
 
 #[test]
@@ -47,17 +62,6 @@ fn framing_rejects_short_objects_but_reaches_decode_at_exact_minimum() {
         !err.to_string().contains("shorter"),
         "exact header+checksum length must reach body decoding"
     );
-}
-
-#[test]
-fn segment_names_must_be_single_normal_components() {
-    assert!(validate_segment_name("base-00000000000000000001.bin").is_ok());
-    for bad in ["../base.bin", "sub/base.bin", "/tmp/base.bin", "."] {
-        assert!(
-            validate_segment_name(bad).is_err(),
-            "segment path {bad:?} must be rejected"
-        );
-    }
 }
 
 #[test]
@@ -103,9 +107,9 @@ fn assert_bad_delta_generation(from_generation: u64, to_generation: u64) {
         to_generation,
         delta: &delta,
     };
-    let reference = write_segment(&store_dir(&backend), DELTA_MAGIC, "delta", 2, &segment).unwrap();
-    manifest.deltas.push(reference);
+    let bytes = write_segment(&store_dir(&backend), DELTA_MAGIC, "delta", 2, &segment).unwrap();
     manifest.current_generation = 2;
+    manifest.delta_bytes = bytes;
     publish_manifest(&backend, &manifest).unwrap();
 
     let err = load::<i32, String>(&backend).unwrap_err();
