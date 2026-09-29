@@ -113,6 +113,6 @@ pub(crate) use imp::{
 };
 
 #[cfg(feature = "metrics-prometheus")]
-pub(super) fn describe() {
+pub(crate) fn describe_snapshot_metrics() {
     imp::describe();
 }
