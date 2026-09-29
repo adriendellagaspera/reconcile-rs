@@ -107,4 +107,12 @@ mod imp {
     pub(crate) fn record_snapshot_recovery(_start: Option<Instant>, _segments: usize) {}
 }
 
-pub(crate) use imp::*;
+pub(crate) use imp::{
+    record_snapshot_cleanup_failure, record_snapshot_delta, record_snapshot_full,
+    record_snapshot_recovery,
+};
+
+#[cfg(feature = "metrics-prometheus")]
+pub(super) fn describe() {
+    imp::describe();
+}
