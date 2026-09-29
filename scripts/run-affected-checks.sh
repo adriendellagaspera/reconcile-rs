@@ -30,6 +30,7 @@ skip() {
 
 run ./scripts/check-doc-budget.sh
 run ./scripts/check-domain-purity.sh
+run bash scripts/check-benchmark-boundaries.sh
 run ./scripts/check-doc-structure.sh
 
 if [ "$RUST" -eq 1 ]; then
