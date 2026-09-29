@@ -164,6 +164,9 @@ where
             base.generation, manifest.base_generation
         )));
     }
+    if manifest.current_generation == manifest.base_generation {
+        return Ok(Some(base.state));
+    }
 
     let PersistedState {
         entries: base_entries,
