@@ -62,7 +62,7 @@ jobs:
       run: ./scripts/check-doc-budget.sh
     - name: Domain purity
       run: ./scripts/check-domain-purity.sh
-    - name: Benchmark ownership boundary
+    - name: RSOS/RBSR ownership boundary
       run: bash scripts/check-benchmark-boundaries.sh
     - name: Documentation structure
       run: ./scripts/check-doc-structure.sh
