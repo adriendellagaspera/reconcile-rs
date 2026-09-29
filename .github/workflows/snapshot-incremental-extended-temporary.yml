@@ -1,0 +1,28 @@
+name: snapshot-incremental-extended-temporary
+
+on:
+  push:
+    branches:
+      - bench/snapshot-incremental-final
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+      - name: Run extended incremental snapshot benchmark
+        env:
+          RECONCILE_SNAPSHOT_SIZES: "100000"
+          RECONCILE_SNAPSHOT_DELTAS: "10000,25000,50000,75000,100000"
+          RECONCILE_SNAPSHOT_CHAIN_LENGTHS: "128,512"
+          RECONCILE_SNAPSHOT_CHAIN_DELTAS: "1,100"
+          RECONCILE_SNAPSHOT_TRIALS: "1"
+        run: cargo bench --bench snapshot_write_amplification
