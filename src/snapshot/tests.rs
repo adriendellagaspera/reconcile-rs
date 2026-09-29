@@ -111,6 +111,35 @@ fn delta_hook_requests_initial_base_then_handles_clean_noop() {
     assert_eq!(fs::read_dir(&store_dir).unwrap().count(), before);
 }
 #[test]
+fn manifest_size_is_constant_as_delta_chain_grows() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
+    let state = sample_state();
+    Persistence::<i32, String>::save(&backend, &state).unwrap();
+
+    let (_, manifest_path) = incremental::paths(&backend);
+    let initial_len = fs::metadata(&manifest_path).unwrap().len();
+    let delta = PersistenceDelta::<i32, String>::new(
+        HashMap::new(),
+        HashMap::new(),
+        HashSet::new(),
+        HashMap::new(),
+    );
+
+    for _ in 0..16 {
+        assert!(Persistence::<i32, String>::try_save_delta(&backend, Some(&delta)).unwrap());
+        assert_eq!(
+            fs::metadata(&manifest_path).unwrap().len(),
+            initial_len,
+            "manifest encoding must not grow with segment count"
+        );
+    }
+
+    let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
+    assert_states_equivalent(&loaded, &state);
+}
+
+#[test]
 fn incremental_delta_replays_entries_members_and_acks() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
