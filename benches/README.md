@@ -1,6 +1,6 @@
 # Benchmarks
 
-RSOS/RBSR-only benchmarks live in [`set-reconciliation`](https://github.com/adriendellagaspera/range-based-set-reconciliation): `rsos` owns `micro` and `contention`, while `rbsr` owns `protocol` and `history_independence`. This repository keeps only benchmarks whose measured behavior belongs to the `reconcile` runtime/product boundary.
+RSOS/RBSR-only benchmarks live in [`set-reconciliation`](https://github.com/adriendellagaspera/set-reconciliation): `rsos` owns `micro` and `contention`, while `rbsr` owns `protocol` and `history_independence`. This repository keeps only benchmarks whose measured behavior belongs to the `reconcile` runtime/product boundary.
 
 Benchmarks measure code that ships in this repository. Comparative algorithm research, reproducible experiments, workloads, and the versioned literature survey live in [set-reconciliation](https://github.com/adriendellagaspera/set-reconciliation); runtime/product measurements remain here.
 
