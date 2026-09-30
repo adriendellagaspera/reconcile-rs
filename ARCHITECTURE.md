@@ -36,7 +36,7 @@ graph LR
 | `reconcile` | replicated maps/sets, key/value bounds, persistence state/ports/adapters, lifecycle, observability |
 
 External domain dependencies are `rsos` (ordered storage and range aggregates) and `rbsr`
-(range reconciliation), both maintained in `range-based-set-reconciliation`, plus
+(range reconciliation), both maintained in `set-reconciliation`, plus
 `lww-register` for LWW entries, timestamps, and clock primitives.
 
 ### 2.1 Domain boundary
