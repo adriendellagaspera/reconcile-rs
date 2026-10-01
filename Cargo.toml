@@ -68,6 +68,14 @@ harness = false
 name = "workload_distribution"
 harness = false
 
+[[bench]]
+name = "security_ingress"
+harness = false
+
+[[bench]]
+name = "tombstone_gc_skew"
+harness = false
+
 [features]
 default = ["mac-blake3"]
 mac-blake3 = ["gossip/mac-blake3"]
