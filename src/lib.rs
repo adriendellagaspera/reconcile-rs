@@ -110,20 +110,14 @@ pub mod testing {
     ///
     /// This is a benchmark/test seam, not protocol API: it mirrors the runtime's private
     /// `Message` decoding while keeping direct RBSR types out of runtime benchmark boundaries.
-    pub fn count_u64_dated_protocol_messages(
-        datagram: &[u8],
-    ) -> DatedProtocolMessageCounts {
+    pub fn count_u64_dated_protocol_messages(datagram: &[u8]) -> DatedProtocolMessageCounts {
         assert_eq!(
             datagram.first().copied(),
             Some(gossip::auth::WIRE_VERSION),
             "benchmark datagram must use the current insecure wire frame"
         );
         let messages: Vec<
-            crate::replica::Message<
-                u64,
-                crate::Entry<crate::Timestamp, u64>,
-                crate::State<u64>,
-            >,
+            crate::replica::Message<u64, crate::Entry<crate::Timestamp, u64>, crate::State<u64>>,
         > = gossip::bincode::decode_stream(&datagram[1..], 65_536)
             .expect("benchmark datagram must decode");
 
