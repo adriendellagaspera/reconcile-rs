@@ -65,30 +65,97 @@ const WORKLOADS: &[Workload] = &[
 // not invented; this first slice
 // reports bytes and is structured so empirical/per-d CSV inputs can replace these constants later.
 const RBSR: &[Point] = &[
-    Point { d: 0, bytes: 39.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
-    Point { d: 100, bytes: 3_600.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
-    Point { d: 1_000, bytes: 19_900.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
-    Point { d: 10_000, bytes: 165_900.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
+    Point {
+        d: 0,
+        bytes: 39.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
+    Point {
+        d: 100,
+        bytes: 3_600.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
+    Point {
+        d: 1_000,
+        bytes: 19_900.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
+    Point {
+        d: 10_000,
+        bytes: 165_900.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
 ];
 const RIBLT: &[Point] = &[
-    Point { d: 0, bytes: 32.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
-    Point { d: 100, bytes: 3_400.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
-    Point { d: 1_000, bytes: 33_800.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
-    Point { d: 10_000, bytes: 325_400.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
+    Point {
+        d: 0,
+        bytes: 32.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
+    Point {
+        d: 100,
+        bytes: 3_400.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
+    Point {
+        d: 1_000,
+        bytes: 33_800.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
+    Point {
+        d: 10_000,
+        bytes: 325_400.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
 ];
 const MERKLE: &[Point] = &[
-    Point { d: 0, bytes: 32.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
-    Point { d: 100, bytes: 11_000.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
-    Point { d: 1_000, bytes: 101_700.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
-    Point { d: 10_000, bytes: 942_300.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
+    Point {
+        d: 0,
+        bytes: 32.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
+    Point {
+        d: 100,
+        bytes: 11_000.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
+    Point {
+        d: 1_000,
+        bytes: 101_700.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
+    Point {
+        d: 10_000,
+        bytes: 942_300.0,
+        interactions: 0.0,
+        prepared_cpu_ms: 0.0,
+    },
 ];
 
 fn point(points: &[Point], d: usize) -> Point {
-    *points.iter().find(|p| p.d == d).unwrap_or_else(|| panic!("no measured point for d={d}"))
+    *points
+        .iter()
+        .find(|p| p.d == d)
+        .unwrap_or_else(|| panic!("no measured point for d={d}"))
 }
 
 fn expected(workload: Workload, points: &[Point], metric: fn(Point) -> f64) -> f64 {
-    workload.buckets.iter().map(|b| b.probability * metric(point(points, b.d))).sum()
+    workload
+        .buckets
+        .iter()
+        .map(|b| b.probability * metric(point(points, b.d)))
+        .sum()
 }
 
 fn percentile(workload: Workload, points: &[Point], q: f64, metric: fn(Point) -> f64) -> f64 {
@@ -104,14 +171,20 @@ fn percentile(workload: Workload, points: &[Point], q: f64, metric: fn(Point) ->
 
 fn validate(workload: Workload) {
     let total: f64 = workload.buckets.iter().map(|b| b.probability).sum();
-    assert!((total - 1.0).abs() < 1e-9, "{} probabilities sum to {total}", workload.name);
+    assert!(
+        (total - 1.0).abs() < 1e-9,
+        "{} probabilities sum to {total}",
+        workload.name
+    );
     assert!(workload.buckets.windows(2).all(|w| w[0].d <= w[1].d));
 }
 
 fn report(name: &str, workload: Workload, points: &[Point]) {
     let bytes = |p: Point| p.bytes;
     let expected_bytes = expected(workload, points, bytes);
-    let large = workload.buckets.iter()
+    let large = workload
+        .buckets
+        .iter()
         .filter(|b| b.d >= 10_000)
         .map(|b| b.probability * point(points, b.d).bytes)
         .sum::<f64>();
@@ -138,4 +211,3 @@ fn main() {
         report("Merkle", workload, MERKLE);
     }
 }
-
