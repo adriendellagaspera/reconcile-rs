@@ -34,6 +34,7 @@ jobs:
               - 'Cargo.lock'
               - '.cargo/mutants.toml'
               - '.github/workflows/mutants.yml'
+              - 'scripts/check-mutation-gate.sh'
 
   pr-diff:
     needs: changes
@@ -60,7 +61,37 @@ jobs:
           else
             echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
           fi
-      - run: ./scripts/check-mutation-gate.sh "${{ steps.base.outputs.ref }}" "${{ matrix.shard }}/4"
+      - name: Fingerprint effective mutation gate
+        id: fingerprint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff "${{ steps.base.outputs.ref }}..." -- '*.rs' > /tmp/mutation.diff
+          {
+            printf 'gate-v1\0'
+            git ls-files -s -- '*.rs' '**/Cargo.toml' Cargo.lock .cargo/mutants.toml scripts/check-mutation-gate.sh
+            sha256sum /tmp/mutation.diff
+          } | sha256sum | awk '{print "key=" $1}' >> "$GITHUB_OUTPUT"
+      - name: Restore successful mutation result
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: .mutation-gate-success
+          key: mutation-gate-v1-${{ steps.fingerprint.outputs.key }}-shard-${{ matrix.shard }}
+      - name: Run mutation gate
+        if: steps.reuse.outputs.cache-hit != 'true'
+        run: ./scripts/check-mutation-gate.sh "${{ steps.base.outputs.ref }}" "${{ matrix.shard }}/4"
+      - name: Mark successful mutation result
+        if: success() && steps.reuse.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .mutation-gate-success
+          printf '%s\n' "${{ steps.fingerprint.outputs.key }}" > ".mutation-gate-success/shard-${{ matrix.shard }}"
+      - name: Save successful mutation result
+        if: success() && steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .mutation-gate-success
+          key: mutation-gate-v1-${{ steps.fingerprint.outputs.key }}-shard-${{ matrix.shard }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
