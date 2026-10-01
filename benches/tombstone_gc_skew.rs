@@ -32,12 +32,10 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rbsr::RangeAggregate;
-use serde::Deserialize;
 use reconcile::{
     replicated_map::Config, Entry, Hlc, InMemoryNetwork, InMemoryPersistence, InMemoryTransport,
-    LogicalCounter, NodeId, PersistedState, Persistence, PhysicalTime, ReplicatedMap, State,
-    Timestamp, Transport,
+    LogicalCounter, NodeId, PersistedState, Persistence, PhysicalTime, ReplicatedMap, Timestamp,
+    Transport,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -49,18 +47,6 @@ const REPAIR_INTERVAL: Duration = Duration::from_millis(500);
 const TOMBSTONE_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 const SETTLE: Duration = Duration::from_millis(25);
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-enum WireMessage {
-    EntryFingerprint(RangeAggregate<u64>),
-    EntryUpdate((u64, Entry<Timestamp, u64>)),
-    TombstoneAck((u64, u64)),
-    StateFingerprint(RangeAggregate<u64>),
-    StateUpdate((u64, State<u64>)),
-    ConvergenceAck,
-    Reserved6(Vec<u8>),
-}
 
 #[derive(Clone, Default)]
 struct Traffic {
@@ -117,23 +103,13 @@ impl Transport for CountingTransport {
                 .fetch_add(sent as u64, Ordering::Relaxed);
             self.traffic.tx_datagrams.fetch_add(1, Ordering::Relaxed);
 
-            // This benchmark deliberately runs unauthenticated, whose wire frame is exactly
-            // version(1 B) || protocol_messages. Decode the shipped message stream with a
-            // benchmark-local mirror so #258 can count protocol work without exposing Message.
-            let payload = buf.get(1..).expect("outbound datagram carries wire version");
-            let messages: Vec<WireMessage> =
-                gossip::bincode::decode_stream(payload, 65_536).expect("benchmark wire decodes");
-            for message in messages {
-                match message {
-                    WireMessage::EntryFingerprint(_) => {
-                        self.traffic.advertised_ranges.fetch_add(1, Ordering::Relaxed);
-                    }
-                    WireMessage::EntryUpdate(_) => {
-                        self.traffic.enumerated_elements.fetch_add(1, Ordering::Relaxed);
-                    }
-                    _ => {}
-                }
-            }
+            let counts = reconcile::testing::count_u64_dated_protocol_messages(buf);
+            self.traffic
+                .advertised_ranges
+                .fetch_add(counts.advertised_ranges as u64, Ordering::Relaxed);
+            self.traffic
+                .enumerated_elements
+                .fetch_add(counts.enumerated_elements as u64, Ordering::Relaxed);
         }
         Ok(sent)
     }
