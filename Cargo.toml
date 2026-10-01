@@ -64,6 +64,10 @@ harness = false
 name = "snapshot_metadata_only"
 harness = false
 
+[[bench]]
+name = "workload_distribution"
+harness = false
+
 [features]
 default = ["mac-blake3"]
 mac-blake3 = ["gossip/mac-blake3"]
