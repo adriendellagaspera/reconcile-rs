@@ -11,13 +11,13 @@ env:
   RUSTFLAGS: " --cfg reconcile_internal_testing"
 
 jobs:
-  shard-zero-confirm:
+  remaining-shards-jobs-2:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        jobs: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -31,17 +31,17 @@ jobs:
           git fetch origin ef99bd840583ec67c4b923fcc142defb7110f95d 515bbc65cc7d62c7230a33e04c6434a5866bce67
           git diff ef99bd840583ec67c4b923fcc142defb7110f95d...515bbc65cc7d62c7230a33e04c6434a5866bce67 -- '*.rs' > /tmp/pr246.diff
           test -s /tmp/pr246.diff
-      - name: Confirm shard 0/4 with jobs=${{ matrix.jobs }}
+      - name: Confirm shard ${{ matrix.shard }}/4 with jobs=2
         run: |
           cargo mutants --workspace --no-shuffle -vV \
             --in-diff /tmp/pr246.diff \
             --timeout 300 \
-            --jobs "${{ matrix.jobs }}" \
+            --jobs "2" \
             --copy-target=false \
-            --shard 0/4 --sharding round-robin
+            --shard "${{ matrix.shard }}/4" --sharding round-robin
           test "$(jq '.missed' mutants.out/outcomes.json)" -eq 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mutation-bench-223-confirm-jobs-${{ matrix.jobs }}
+          name: mutation-bench-223-jobs-2-shard-${{ matrix.shard }}
           path: mutants.out
