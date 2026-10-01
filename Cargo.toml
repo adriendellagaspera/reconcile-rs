@@ -100,7 +100,7 @@ metrics-exporter-prometheus = { version = "0.16", optional = true, default-featu
 parking_lot = "0.12.1"
 rand = "0.8.5"
 rbsr = "=0.2.3"
-rsos = "=0.5.2"
+rsos = "=0.5.3"
 serde = { version = "1.0.192", features = ["derive"] }
 tokio = { version = "1.33.0", features = ["net", "time", "rt", "macros", "sync"] }
 tokio-util = { version = "0.7", default-features = false }
