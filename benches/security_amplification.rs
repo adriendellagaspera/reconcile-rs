@@ -47,7 +47,8 @@ const ATTACKER_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 82, 0, 3));
 const LONG_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const BURST_BULK_SEND_RATE: usize = 1024 * 1024;
 const WAIT_TIMEOUT: Duration = Duration::from_secs(10);
-const QUIET_FOR: Duration = Duration::from_millis(50);
+// Must exceed the 64 KiB pacing gap at the 1 MiB/s concurrency-probe rate (~62.5 ms).
+const QUIET_FOR: Duration = Duration::from_millis(150);
 const KEY: [u8; 32] = [0x5a; 32];
 
 #[derive(Clone, Default)]
