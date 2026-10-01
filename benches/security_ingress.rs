@@ -5,7 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Runtime ingress/security cost probe for #204.
+// Runtime ingress/security cost probe for authenticated and rejected datagrams.
 //
 // Measures the shipped gossip authentication and replay-protection boundary without inventing a
 // connection/session abstraction the UDP runtime does not have:
