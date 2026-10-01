@@ -27,7 +27,10 @@ jobs:
         with:
           tool: cargo-mutants@27.1.0
       - name: Reconstruct PR 246 mutation diff
-        run: git diff ef99bd840583ec67c4b923fcc142defb7110f95d...515bbc65cc7d62c7230a33e04c6434a5866bce67 -- '*.rs' > /tmp/pr246.diff
+        run: |
+          git fetch origin ef99bd840583ec67c4b923fcc142defb7110f95d 515bbc65cc7d62c7230a33e04c6434a5866bce67
+          git diff ef99bd840583ec67c4b923fcc142defb7110f95d...515bbc65cc7d62c7230a33e04c6434a5866bce67 -- '*.rs' > /tmp/pr246.diff
+          test -s /tmp/pr246.diff
       - name: Benchmark shard 0/4 with jobs=${{ matrix.jobs }}
         run: |
           cargo mutants --workspace --no-shuffle -vV \
