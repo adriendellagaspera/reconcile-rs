@@ -26,7 +26,7 @@ jobs:
             env: >-
               RECONCILE_SECURITY_ITERS=5000
               RECONCILE_SECURITY_PAYLOADS=64,1024,8192
-              RECONCILE_SECURITY_REPLAY_POPULATIONS=1,128,1024
+              RECONCILE_SECURITY_REPLAY_POPULATIONS=1,128,1024,2048,4096
           - name: tombstone-gc-skew
             target: tombstone_gc_skew
             env: >-
