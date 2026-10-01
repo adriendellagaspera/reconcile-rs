@@ -11,13 +11,13 @@ env:
   RUSTFLAGS: " --cfg reconcile_internal_testing"
 
 jobs:
-  shard-zero:
+  shard-zero-confirm:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        jobs: [1, 2, 3]
+        jobs: [1, 2]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -31,7 +31,7 @@ jobs:
           git fetch origin ef99bd840583ec67c4b923fcc142defb7110f95d 515bbc65cc7d62c7230a33e04c6434a5866bce67
           git diff ef99bd840583ec67c4b923fcc142defb7110f95d...515bbc65cc7d62c7230a33e04c6434a5866bce67 -- '*.rs' > /tmp/pr246.diff
           test -s /tmp/pr246.diff
-      - name: Benchmark shard 0/4 with jobs=${{ matrix.jobs }}
+      - name: Confirm shard 0/4 with jobs=${{ matrix.jobs }}
         run: |
           cargo mutants --workspace --no-shuffle -vV \
             --in-diff /tmp/pr246.diff \
@@ -43,5 +43,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mutation-bench-223-jobs-${{ matrix.jobs }}
+          name: mutation-bench-223-confirm-jobs-${{ matrix.jobs }}
           path: mutants.out
