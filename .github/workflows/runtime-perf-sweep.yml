@@ -1,0 +1,53 @@
+name: runtime-perf-sweep
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/runtime-perf-sweep.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: tombstone-history
+            target: runtime_history_independent_catchup
+            env: >-
+              RECONCILE_RUNTIME_HISTORY_N=10000
+              RECONCILE_RUNTIME_HISTORY_D=100
+              RECONCILE_RUNTIME_TOMBSTONES=0,100,1000,10000
+          - name: causal-debt
+            target: membership_causal_debt
+            env: >-
+              RECONCILE_CAUSAL_MEMBERS=10,100,1000
+              RECONCILE_CAUSAL_TOMBSTONES=0,100,1000
+              RECONCILE_CAUSAL_ROUNDS=4
+              RECONCILE_FAILURE_MEMBERS=1000
+              RECONCILE_FAILURE_TOMBSTONES=100
+          - name: authenticated-ingress
+            target: read_replica_fleet
+            env: >-
+              RECONCILE_READ_REPLICA_COUNTS=1,10,100,1000
+              RECONCILE_READ_AUTHORITATIVE_PEERS=3
+              RECONCILE_READ_MODEL_TARGET=100000
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Run ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          env ${{ matrix.env }} cargo bench --bench "${{ matrix.target }}" 2>&1 | tee bench.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-perf-${{ matrix.name }}
+          path: bench.log
