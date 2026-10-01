@@ -37,6 +37,17 @@ jobs:
               RECONCILE_READ_REPLICA_COUNTS=1,10,100,1000
               RECONCILE_READ_AUTHORITATIVE_PEERS=3
               RECONCILE_READ_MODEL_TARGET=100000
+          - name: security-ingress-cpu
+            target: security_ingress
+            env: >-
+              RECONCILE_SECURITY_ITERS=5000
+              RECONCILE_SECURITY_PAYLOADS=64,1024,8192
+              RECONCILE_SECURITY_REPLAY_POPULATIONS=1,128,1024
+          - name: tombstone-gc-skew
+            target: tombstone_gc_skew
+            env: >-
+              RECONCILE_GC_SKEW_N=20000
+              RECONCILE_GC_SKEW_DELETIONS=0,100,1000,10000
 
     steps:
       - uses: actions/checkout@v4
