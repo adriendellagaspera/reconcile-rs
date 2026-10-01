@@ -5,7 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// End-to-end ingress amplification probe for #204.
+// End-to-end ingress amplification probe for authenticated reconciliation traffic.
 //
 // Contrasts rejected authenticated first flights with two accepted mismatch requests against a
 // populated authoritative store:
@@ -168,7 +168,11 @@ struct Central {
     task: tokio::task::JoinHandle<()>,
 }
 
-async fn central_with_config(network: &InMemoryNetwork, n: usize, central_config: Config) -> Central {
+async fn central_with_config(
+    network: &InMemoryNetwork,
+    n: usize,
+    central_config: Config,
+) -> Central {
     let traffic = Traffic::default();
     let store = ReplicatedMap::<u64, u64>::new_with_transport(
         central_config,
@@ -312,7 +316,6 @@ async fn authoritative_case(n: usize) {
     stop(central).await;
 }
 
-
 fn burst_requester_ip(index: usize) -> IpAddr {
     assert!(index < 250);
     IpAddr::V4(Ipv4Addr::new(127, 82, 1, (index + 1) as u8))
@@ -395,7 +398,10 @@ async fn concurrent_authoritative_case(n: usize, requester_count: usize) {
             requesters[index].1.start_reconciliation().await;
         }
         wait_until(
-            || central.traffic.rx_datagrams.load(Ordering::Relaxed) >= rx_before + stalled.len() as u64,
+            || {
+                central.traffic.rx_datagrams.load(Ordering::Relaxed)
+                    >= rx_before + stalled.len() as u64
+            },
             "central to receive stalled-peer retry burst",
         )
         .await;
@@ -456,7 +462,12 @@ fn main() {
         let auth = gossip::auth::Authenticator::new(Some(cluster_key()), false).expect("MAC mode");
         let counter = gossip::replay::SenderCounter::new();
         let malformed = auth.seal(counter.next_seq(), counter.next_stamp(), b"not-a-message");
-        rejected_case("authenticated-malformed", std::slice::from_ref(&malformed), n).await;
+        rejected_case(
+            "authenticated-malformed",
+            std::slice::from_ref(&malformed),
+            n,
+        )
+        .await;
         rejected_case("replayed-malformed", &[malformed.clone(), malformed], n).await;
 
         read_replica_case(n).await;
