@@ -29,35 +29,95 @@ struct Workload {
 }
 
 const HEALTHY_HEAVY: &[Bucket] = &[
-    Bucket { probability: 0.90, d: 0 },
-    Bucket { probability: 0.08, d: 100 },
-    Bucket { probability: 0.019, d: 1_000 },
-    Bucket { probability: 0.001, d: 10_000 },
+    Bucket {
+        probability: 0.90,
+        d: 0,
+    },
+    Bucket {
+        probability: 0.08,
+        d: 100,
+    },
+    Bucket {
+        probability: 0.019,
+        d: 1_000,
+    },
+    Bucket {
+        probability: 0.001,
+        d: 10_000,
+    },
 ];
 const CONTINUOUS_DRIFT: &[Bucket] = &[
-    Bucket { probability: 0.40, d: 0 },
-    Bucket { probability: 0.45, d: 100 },
-    Bucket { probability: 0.14, d: 1_000 },
-    Bucket { probability: 0.01, d: 10_000 },
+    Bucket {
+        probability: 0.40,
+        d: 0,
+    },
+    Bucket {
+        probability: 0.45,
+        d: 100,
+    },
+    Bucket {
+        probability: 0.14,
+        d: 1_000,
+    },
+    Bucket {
+        probability: 0.01,
+        d: 10_000,
+    },
 ];
 const INTERMITTENT_EDGE: &[Bucket] = &[
-    Bucket { probability: 0.60, d: 0 },
-    Bucket { probability: 0.25, d: 100 },
-    Bucket { probability: 0.10, d: 1_000 },
-    Bucket { probability: 0.05, d: 10_000 },
+    Bucket {
+        probability: 0.60,
+        d: 0,
+    },
+    Bucket {
+        probability: 0.25,
+        d: 100,
+    },
+    Bucket {
+        probability: 0.10,
+        d: 1_000,
+    },
+    Bucket {
+        probability: 0.05,
+        d: 10_000,
+    },
 ];
 const STALE_REPLICA: &[Bucket] = &[
-    Bucket { probability: 0.70, d: 0 },
-    Bucket { probability: 0.10, d: 100 },
-    Bucket { probability: 0.10, d: 1_000 },
-    Bucket { probability: 0.10, d: 10_000 },
+    Bucket {
+        probability: 0.70,
+        d: 0,
+    },
+    Bucket {
+        probability: 0.10,
+        d: 100,
+    },
+    Bucket {
+        probability: 0.10,
+        d: 1_000,
+    },
+    Bucket {
+        probability: 0.10,
+        d: 10_000,
+    },
 ];
 
 const WORKLOADS: &[Workload] = &[
-    Workload { name: "healthy-heavy", buckets: HEALTHY_HEAVY },
-    Workload { name: "continuous-small-drift", buckets: CONTINUOUS_DRIFT },
-    Workload { name: "intermittent-edge", buckets: INTERMITTENT_EDGE },
-    Workload { name: "stale-replica", buckets: STALE_REPLICA },
+    Workload {
+        name: "healthy-heavy",
+        buckets: HEALTHY_HEAVY,
+    },
+    Workload {
+        name: "continuous-small-drift",
+        buckets: CONTINUOUS_DRIFT,
+    },
+    Workload {
+        name: "intermittent-edge",
+        buckets: INTERMITTENT_EDGE,
+    },
+    Workload {
+        name: "stale-replica",
+        buckets: STALE_REPLICA,
+    },
 ];
 
 // Initial measured inputs at n=100k from the repository's state-repair benchmark corpus. Keep the
