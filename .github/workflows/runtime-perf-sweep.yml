@@ -6,6 +6,7 @@ on:
       - '.github/workflows/runtime-perf-sweep.yml'
       - 'benches/security_ingress.rs'
       - 'benches/tombstone_gc_skew.rs'
+      - 'benches/security_amplification.rs'
       - 'Cargo.toml'
 
 env:
@@ -31,6 +32,10 @@ jobs:
             env: >-
               RECONCILE_GC_SKEW_N=20000
               RECONCILE_GC_SKEW_DELETIONS=0,100,1000,10000
+          - name: security-amplification
+            target: security_amplification
+            env: >-
+              RECONCILE_SECURITY_DATASET=20000
 
     steps:
       - uses: actions/checkout@v4
