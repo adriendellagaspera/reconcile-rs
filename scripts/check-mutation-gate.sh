@@ -24,7 +24,7 @@ fi
 echo "check-mutation-gate: mutating lines changed against ${BASE_REF}"
 echo "                     PROPTEST_RNG_SEED=${PROPTEST_RNG_SEED}${SHARD:+, shard=$SHARD}"
 
-JOBS=3
+JOBS=2
 
 SHARD_ARGS=()
 if [ -n "$SHARD" ]; then
