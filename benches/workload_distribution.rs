@@ -288,8 +288,9 @@ fn empirical_workload(path: &str) -> Workload {
         let (d, count) = line
             .split_once(',')
             .unwrap_or_else(|| panic!("{}:{}: expected d,count", path, line_no + 1));
-        *counts.entry(d.trim().parse().expect("invalid d")).or_default() +=
-            count.trim().parse::<u64>().expect("invalid count");
+        *counts
+            .entry(d.trim().parse().expect("invalid d"))
+            .or_default() += count.trim().parse::<u64>().expect("invalid count");
     }
     let total: u64 = counts.values().sum();
     assert!(total > 0, "empirical workload is empty");
