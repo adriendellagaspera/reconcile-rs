@@ -45,6 +45,7 @@ const CENTRAL_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 82, 0, 1));
 const REQUESTER_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 82, 0, 2));
 const ATTACKER_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 82, 0, 3));
 const LONG_INTERVAL: Duration = Duration::from_secs(60 * 60);
+const BURST_BULK_SEND_RATE: usize = 1024 * 1024;
 const WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 const QUIET_FOR: Duration = Duration::from_millis(50);
 const KEY: [u8; 32] = [0x5a; 32];
@@ -167,10 +168,10 @@ struct Central {
     task: tokio::task::JoinHandle<()>,
 }
 
-async fn central(network: &InMemoryNetwork, n: usize) -> Central {
+async fn central_with_config(network: &InMemoryNetwork, n: usize, central_config: Config) -> Central {
     let traffic = Traffic::default();
     let store = ReplicatedMap::<u64, u64>::new_with_transport(
-        config(CENTRAL_IP, 1),
+        central_config,
         Arc::new(CountingTransport {
             inner: network.bind(SocketAddr::new(CENTRAL_IP, PORT)),
             traffic: traffic.clone(),
@@ -200,6 +201,10 @@ async fn central(network: &InMemoryNetwork, n: usize) -> Central {
         shutdown,
         task,
     }
+}
+
+async fn central(network: &InMemoryNetwork, n: usize) -> Central {
+    central_with_config(network, n, config(CENTRAL_IP, 1)).await
 }
 
 async fn stop(central: Central) {
@@ -308,12 +313,132 @@ async fn authoritative_case(n: usize) {
     stop(central).await;
 }
 
+
+fn burst_requester_ip(index: usize) -> IpAddr {
+    assert!(index < 250);
+    IpAddr::V4(Ipv4Addr::new(127, 82, 1, (index + 1) as u8))
+}
+
+async fn concurrent_authoritative_case(n: usize, requester_count: usize) {
+    assert!(requester_count > 0 && requester_count <= 8);
+    let network = InMemoryNetwork::new();
+    let central = central_with_config(
+        &network,
+        n,
+        config(CENTRAL_IP, 1)
+            .with_bulk_send_rate(BURST_BULK_SEND_RATE)
+            .with_max_concurrent_bulk_dumps(4),
+    )
+    .await;
+
+    let mut requesters = Vec::with_capacity(requester_count);
+    for index in 0..requester_count {
+        let ip = burst_requester_ip(index);
+        let traffic = Traffic::default();
+        let requester = ReplicatedMap::<u64, u64>::new_with_transport(
+            config(ip, 10 + index as u64),
+            Arc::new(CountingTransport {
+                inner: network.bind(SocketAddr::new(ip, PORT)),
+                traffic: traffic.clone(),
+            }),
+        )
+        .expect("valid burst requester");
+        requester.seed_peer(CENTRAL_IP);
+        requesters.push((ip, requester, traffic));
+    }
+
+    central.traffic.reset();
+    for (_, _, traffic) in &requesters {
+        traffic.reset();
+    }
+
+    let started = Instant::now();
+    for (_, requester, _) in &requesters {
+        requester.start_reconciliation().await;
+    }
+    wait_until(
+        || central.traffic.rx_datagrams.load(Ordering::Relaxed) >= requester_count as u64,
+        "central to receive first burst",
+    )
+    .await;
+    wait_for_quiet(&central.traffic).await;
+
+    let first_input_bytes: u64 = requesters
+        .iter()
+        .map(|(_, _, traffic)| traffic.to_peer(CENTRAL_IP).0)
+        .sum();
+    let first_output_bytes = central.traffic.tx_bytes.load(Ordering::Relaxed);
+    let first_output_datagrams = central.traffic.tx_datagrams.load(Ordering::Relaxed);
+    let stalled: Vec<usize> = requesters
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (ip, _, _))| (central.traffic.to_peer(*ip).0 == 0).then_some(index))
+        .collect();
+
+    println!(
+        "[security-concurrency] phase=first,dataset={n},requesters={requester_count},bulk_send_rate={BURST_BULK_SEND_RATE},input_bytes={first_input_bytes},output_bytes={first_output_bytes},output_dgrams={first_output_datagrams},served={},stalled={},amplification={:.3},elapsed_ms={:.3}",
+        requester_count - stalled.len(),
+        stalled.len(),
+        first_output_bytes as f64 / first_input_bytes.max(1) as f64,
+        started.elapsed().as_secs_f64() * 1_000.0,
+    );
+
+    if !stalled.is_empty() {
+        for &index in &stalled {
+            requesters[index].2.reset();
+        }
+        let tx_before = central.traffic.tx_bytes.load(Ordering::Relaxed);
+        let dgrams_before = central.traffic.tx_datagrams.load(Ordering::Relaxed);
+        let rx_before = central.traffic.rx_datagrams.load(Ordering::Relaxed);
+        let retry_started = Instant::now();
+
+        for &index in &stalled {
+            requesters[index].1.start_reconciliation().await;
+        }
+        wait_until(
+            || central.traffic.rx_datagrams.load(Ordering::Relaxed) >= rx_before + stalled.len() as u64,
+            "central to receive stalled-peer retry burst",
+        )
+        .await;
+        wait_for_quiet(&central.traffic).await;
+
+        let retry_input_bytes: u64 = stalled
+            .iter()
+            .map(|&index| requesters[index].2.to_peer(CENTRAL_IP).0)
+            .sum();
+        let retry_output_bytes = central
+            .traffic
+            .tx_bytes
+            .load(Ordering::Relaxed)
+            .saturating_sub(tx_before);
+        let retry_output_datagrams = central
+            .traffic
+            .tx_datagrams
+            .load(Ordering::Relaxed)
+            .saturating_sub(dgrams_before);
+
+        println!(
+            "[security-concurrency] phase=retry,dataset={n},requesters={},input_bytes={retry_input_bytes},output_bytes={retry_output_bytes},output_dgrams={retry_output_datagrams},amplification={:.3},elapsed_ms={:.3}",
+            stalled.len(),
+            retry_output_bytes as f64 / retry_input_bytes.max(1) as f64,
+            retry_started.elapsed().as_secs_f64() * 1_000.0,
+        );
+    }
+
+    stop(central).await;
+}
+
 fn main() {
     let n = std::env::var("RECONCILE_SECURITY_DATASET")
         .unwrap_or_else(|_| "20000".to_owned())
         .parse::<usize>()
         .expect("RECONCILE_SECURITY_DATASET must be an integer");
     assert!(n > 0);
+
+    let burst_peers = std::env::var("RECONCILE_SECURITY_BURST_PEERS")
+        .unwrap_or_else(|_| "8".to_owned())
+        .parse::<usize>()
+        .expect("RECONCILE_SECURITY_BURST_PEERS must be an integer");
 
     let runtime = Runtime::new().expect("Tokio runtime");
     runtime.block_on(async {
@@ -337,5 +462,6 @@ fn main() {
 
         read_replica_case(n).await;
         authoritative_case(n).await;
+        concurrent_authoritative_case(n, burst_peers).await;
     });
 }
