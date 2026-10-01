@@ -5,7 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Controlled one-sided tombstone-GC skew probe for #258.
+// Controlled one-sided tombstone-GC skew probe for runtime causal-stability behavior.
 //
 // Both authoritative peers have the same application-visible state: the first d keys are deleted.
 // In the aligned control both peers already GC'd those tombstones. In the measured case the left
@@ -208,9 +208,7 @@ fn state(
     let divergence_end = deleted + live_divergence;
     let mut entries = Vec::with_capacity(n);
     if retain_tombstones {
-        entries.extend(
-            (0..deleted as u64).map(|key| (key, tombstone_entry(key, base_ms, n))),
-        );
+        entries.extend((0..deleted as u64).map(|key| (key, tombstone_entry(key, base_ms, n))));
     }
     entries.extend((deleted..n).map(|index| {
         let key = index as u64;
@@ -320,7 +318,11 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
     let left_before = tombstone_count(&left.store);
     let right_before = tombstone_count(&right.store);
     if live_divergence == 0 {
-        assert_eq!(left.store.to_vec(), right.store.to_vec(), "live state must match");
+        assert_eq!(
+            left.store.to_vec(),
+            right.store.to_vec(),
+            "live state must match"
+        );
     } else {
         assert_ne!(
             left.store.fingerprint(..),
@@ -378,7 +380,9 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
         assert_eq!(right_after, 0);
     }
 
-    left.store.snapshot_now().expect("capture left causal state");
+    left.store
+        .snapshot_now()
+        .expect("capture left causal state");
     right
         .store
         .snapshot_now()
@@ -393,7 +397,11 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
         .load()
         .expect("load right state")
         .expect("right state present");
-    let left_ack_pairs: usize = left_persisted.tombstone_acks.values().map(HashMap::len).sum();
+    let left_ack_pairs: usize = left_persisted
+        .tombstone_acks
+        .values()
+        .map(HashMap::len)
+        .sum();
     let right_ack_pairs: usize = right_persisted
         .tombstone_acks
         .values()
