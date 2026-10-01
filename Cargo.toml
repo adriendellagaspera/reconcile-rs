@@ -76,6 +76,10 @@ harness = false
 name = "tombstone_gc_skew"
 harness = false
 
+[[bench]]
+name = "security_amplification"
+harness = false
+
 [features]
 default = ["mac-blake3"]
 mac-blake3 = ["gossip/mac-blake3"]
