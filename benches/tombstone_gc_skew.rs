@@ -32,10 +32,12 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::Utc;
+use rbsr::RangeAggregate;
+use serde::Deserialize;
 use reconcile::{
     replicated_map::Config, Entry, Hlc, InMemoryNetwork, InMemoryPersistence, InMemoryTransport,
-    LogicalCounter, NodeId, PersistedState, Persistence, PhysicalTime, ReplicatedMap, Timestamp,
-    Transport,
+    LogicalCounter, NodeId, PersistedState, Persistence, PhysicalTime, ReplicatedMap, State,
+    Timestamp, Transport,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -48,12 +50,26 @@ const TOMBSTONE_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 const SETTLE: Duration = Duration::from_millis(25);
 
+#[allow(dead_code)]
+#[derive(Deserialize)]
+enum WireMessage {
+    EntryFingerprint(RangeAggregate<u64>),
+    EntryUpdate((u64, Entry<Timestamp, u64>)),
+    TombstoneAck((u64, u64)),
+    StateFingerprint(RangeAggregate<u64>),
+    StateUpdate((u64, State<u64>)),
+    ConvergenceAck,
+    Reserved6(Vec<u8>),
+}
+
 #[derive(Clone, Default)]
 struct Traffic {
     tx_bytes: Arc<AtomicU64>,
     tx_datagrams: Arc<AtomicU64>,
     rx_bytes: Arc<AtomicU64>,
     rx_datagrams: Arc<AtomicU64>,
+    advertised_ranges: Arc<AtomicU64>,
+    enumerated_elements: Arc<AtomicU64>,
 }
 
 impl Traffic {
@@ -63,6 +79,13 @@ impl Traffic {
             self.tx_datagrams.load(Ordering::Relaxed),
             self.rx_bytes.load(Ordering::Relaxed),
             self.rx_datagrams.load(Ordering::Relaxed),
+        )
+    }
+
+    fn protocol_snapshot(&self) -> (u64, u64) {
+        (
+            self.advertised_ranges.load(Ordering::Relaxed),
+            self.enumerated_elements.load(Ordering::Relaxed),
         )
     }
 }
@@ -93,6 +116,24 @@ impl Transport for CountingTransport {
                 .tx_bytes
                 .fetch_add(sent as u64, Ordering::Relaxed);
             self.traffic.tx_datagrams.fetch_add(1, Ordering::Relaxed);
+
+            // This benchmark deliberately runs unauthenticated, whose wire frame is exactly
+            // version(1 B) || protocol_messages. Decode the shipped message stream with a
+            // benchmark-local mirror so #258 can count protocol work without exposing Message.
+            let payload = buf.get(1..).expect("outbound datagram carries wire version");
+            let messages: Vec<WireMessage> =
+                gossip::bincode::decode_stream(payload, 65_536).expect("benchmark wire decodes");
+            for message in messages {
+                match message {
+                    WireMessage::EntryFingerprint(_) => {
+                        self.traffic.advertised_ranges.fetch_add(1, Ordering::Relaxed);
+                    }
+                    WireMessage::EntryUpdate(_) => {
+                        self.traffic.enumerated_elements.fetch_add(1, Ordering::Relaxed);
+                    }
+                    _ => {}
+                }
+            }
         }
         Ok(sent)
     }
@@ -339,6 +380,10 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
 
     let left_wire = left.traffic.snapshot();
     let right_wire = right.traffic.snapshot();
+    let left_protocol = left.traffic.protocol_snapshot();
+    let right_protocol = right.traffic.protocol_snapshot();
+    let advertised_ranges = left_protocol.0 + right_protocol.0;
+    let enumerated_elements = left_protocol.1 + right_protocol.1;
     let tx_bytes = left_wire.0 + right_wire.0;
     let tx_datagrams = left_wire.1 + right_wire.1;
     let rx_bytes = left_wire.2 + right_wire.2;
@@ -380,7 +425,7 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
         .sum();
 
     println!(
-        "[gc-skew] kind={},n={n},deleted={deleted},live_divergence={live_divergence},left_tombstones_before={left_before},right_tombstones_before={right_before},elapsed_ms={:.3},tx_bytes={tx_bytes},tx_dgrams={tx_datagrams},rx_bytes={rx_bytes},rx_dgrams={rx_datagrams},left_tombstones_after={left_after},right_tombstones_after={right_after},left_members={},right_members={},left_ack_keys={},right_ack_keys={},left_ack_pairs={left_ack_pairs},right_ack_pairs={right_ack_pairs}",
+        "[gc-skew] kind={},n={n},deleted={deleted},live_divergence={live_divergence},left_tombstones_before={left_before},right_tombstones_before={right_before},elapsed_ms={:.3},tx_bytes={tx_bytes},tx_dgrams={tx_datagrams},rx_bytes={rx_bytes},rx_dgrams={rx_datagrams},advertised_ranges={advertised_ranges},enumerated_elements={enumerated_elements},left_tombstones_after={left_after},right_tombstones_after={right_after},left_members={},right_members={},left_ack_keys={},right_ack_keys={},left_ack_pairs={left_ack_pairs},right_ack_pairs={right_ack_pairs}",
         match (one_sided, live_divergence > 0) {
             (true, true) => "one-sided+live",
             (true, false) => "one-sided",
