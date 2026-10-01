@@ -163,7 +163,6 @@ async fn wait_for_quiet(traffic: &Traffic) {
 }
 
 struct Central {
-    store: ReplicatedMap<u64, u64>,
     traffic: Traffic,
     shutdown: CancellationToken,
     task: tokio::task::JoinHandle<()>,
@@ -197,7 +196,6 @@ async fn central_with_config(network: &InMemoryNetwork, n: usize, central_config
     .await;
 
     Central {
-        store,
         traffic,
         shutdown,
         task,
@@ -458,7 +456,7 @@ fn main() {
         let auth = gossip::auth::Authenticator::new(Some(cluster_key()), false).expect("MAC mode");
         let counter = gossip::replay::SenderCounter::new();
         let malformed = auth.seal(counter.next_seq(), counter.next_stamp(), b"not-a-message");
-        rejected_case("authenticated-malformed", &[malformed.clone()], n).await;
+        rejected_case("authenticated-malformed", std::slice::from_ref(&malformed), n).await;
         rejected_case("replayed-malformed", &[malformed.clone(), malformed], n).await;
 
         read_replica_case(n).await;
