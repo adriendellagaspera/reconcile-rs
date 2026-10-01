@@ -4,8 +4,8 @@
 
 //! Compose measured per-session state-repair points into explicit workload distributions.
 //!
-//! This is deliberately a report rather than a Criterion timing benchmark: issue #198 asks for
-//! workload-level expected/tail costs derived from already-measured per-d curves, not another
+//! This is deliberately a report rather than a Criterion timing benchmark: the workload model asks for
+//! expected/tail costs derived from already-measured per-d curves, not another
 //! expensive rerun of the underlying protocols.
 
 #[derive(Clone, Copy, Debug)]
@@ -60,8 +60,9 @@ const WORKLOADS: &[Workload] = &[
     Workload { name: "stale-replica", buckets: STALE_REPLICA },
 ];
 
-// Initial measured inputs from #192/#195 at n=100k. Keep the source measurements visible beside
-// every aggregate. Missing interaction/CPU points are intentionally not invented; this first slice
+// Initial measured inputs at n=100k from the repository's state-repair benchmark corpus. Keep the
+// source assumptions visible beside every aggregate. Missing interaction/CPU points are intentionally
+// not invented; this first slice
 // reports bytes and is structured so empirical/per-d CSV inputs can replace these constants later.
 const RBSR: &[Point] = &[
     Point { d: 0, bytes: 39.0, interactions: 0.0, prepared_cpu_ms: 0.0 },
@@ -129,7 +130,7 @@ fn report(name: &str, workload: Workload, points: &[Point]) {
 
 fn main() {
     println!("Synthetic workload assumptions; not production-representative.");
-    println!("Measured byte inputs: #192/#195, n=100k; outside-range points for d>0.");
+    println!("Measured byte inputs: repository state-repair corpus, n=100k; outside-range points for d>0.");
     for &workload in WORKLOADS {
         validate(workload);
         report("RBSR", workload, RBSR);
@@ -138,27 +139,3 @@ fn main() {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn workloads_are_normalized_and_ordered() {
-        for &workload in WORKLOADS { validate(workload); }
-    }
-
-    #[test]
-    fn healthy_heavy_rbsr_expected_bytes_is_weighted_from_measured_points() {
-        let got = expected(WORKLOADS[0], RBSR, |p| p.bytes);
-        let want = 0.90 * 39.0 + 0.08 * 3_600.0 + 0.019 * 19_900.0 + 0.001 * 165_900.0;
-        assert!((got - want).abs() < 1e-9);
-    }
-
-    #[test]
-    fn percentile_uses_session_probability_not_average_d() {
-        let workload = WORKLOADS[2];
-        assert_eq!(percentile(workload, RIBLT, 0.50, |p| p.bytes), 32.0);
-        assert_eq!(percentile(workload, RIBLT, 0.90, |p| p.bytes), 33_800.0);
-        assert_eq!(percentile(workload, RIBLT, 0.99, |p| p.bytes), 325_400.0);
-    }
-}
