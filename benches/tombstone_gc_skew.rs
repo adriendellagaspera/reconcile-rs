@@ -21,6 +21,7 @@
 // Overrides:
 //   RECONCILE_GC_SKEW_N=20000
 //   RECONCILE_GC_SKEW_DELETIONS=0,100,1000,10000
+//   RECONCILE_GC_SKEW_BASE_DIVERGENCE=100
 
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -143,6 +144,24 @@ fn present_entry(key: u64, base_ms: u64) -> Entry<Timestamp, u64> {
     )
 }
 
+fn divergent_present_entry(key: u64, base_ms: u64, n: usize) -> Entry<Timestamp, u64> {
+    Entry::present(
+        Timestamp::new(
+            Hlc::new(
+                PhysicalTime::from_millis(
+                    base_ms
+                        .saturating_add((n as u64).saturating_mul(2))
+                        .saturating_add(key)
+                        .saturating_add(1),
+                ),
+                LogicalCounter::ZERO,
+            ),
+            NodeId::new(2),
+        ),
+        key.wrapping_mul(2_654_435_761).wrapping_add(1),
+    )
+}
+
 fn tombstone_entry(key: u64, base_ms: u64, n: usize) -> Entry<Timestamp, u64> {
     Entry::tombstone(Timestamp::new(
         Hlc::new(
@@ -164,17 +183,27 @@ fn state(
     retain_tombstones: bool,
     member: IpAddr,
     base_ms: u64,
+    live_divergence: usize,
+    divergent_side: bool,
 ) -> PersistedState<u64, u64> {
     assert!(deleted <= n);
+    assert!(live_divergence <= n - deleted);
+    let divergence_end = deleted + live_divergence;
     let mut entries = Vec::with_capacity(n);
     if retain_tombstones {
         entries.extend(
             (0..deleted as u64).map(|key| (key, tombstone_entry(key, base_ms, n))),
         );
     }
-    entries.extend(
-        (deleted as u64..n as u64).map(|key| (key, present_entry(key, base_ms))),
-    );
+    entries.extend((deleted..n).map(|index| {
+        let key = index as u64;
+        let entry = if divergent_side && index < divergence_end {
+            divergent_present_entry(key, base_ms, n)
+        } else {
+            present_entry(key, base_ms)
+        };
+        (key, entry)
+    }));
     PersistedState::new(entries, HashSet::from([member]), HashMap::new())
 }
 
@@ -253,19 +282,35 @@ async fn wait_until(mut predicate: impl FnMut() -> bool, what: &str) {
     .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
 }
 
-async fn scenario(n: usize, deleted: usize, one_sided: bool) {
+async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: usize) {
     let network = InMemoryNetwork::new();
     let now_ms = Utc::now().timestamp_millis().max(0) as u64;
     let base_ms = now_ms.saturating_sub((n as u64).saturating_mul(3).saturating_add(10_000));
 
-    let left_state = state(n, deleted, false, RIGHT_IP, base_ms);
-    let right_state = state(n, deleted, one_sided, LEFT_IP, base_ms);
+    let left_state = state(n, deleted, false, RIGHT_IP, base_ms, live_divergence, false);
+    let right_state = state(
+        n,
+        deleted,
+        one_sided,
+        LEFT_IP,
+        base_ms,
+        live_divergence,
+        true,
+    );
     let left = peer(&network, LEFT_IP, RIGHT_IP, 1, left_state);
     let right = peer(&network, RIGHT_IP, LEFT_IP, 2, right_state);
 
     let left_before = tombstone_count(&left.store);
     let right_before = tombstone_count(&right.store);
-    assert_eq!(left.store.to_vec(), right.store.to_vec(), "live state must match");
+    if live_divergence == 0 {
+        assert_eq!(left.store.to_vec(), right.store.to_vec(), "live state must match");
+    } else {
+        assert_ne!(
+            left.store.fingerprint(..),
+            right.store.fingerprint(..),
+            "control live divergence must be visible before reconciliation"
+        );
+    }
 
     let shutdown = CancellationToken::new();
     let left_run = left.store.clone();
@@ -335,11 +380,12 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool) {
         .sum();
 
     println!(
-        "[gc-skew] kind={},n={n},deleted={deleted},left_tombstones_before={left_before},right_tombstones_before={right_before},elapsed_ms={:.3},tx_bytes={tx_bytes},tx_dgrams={tx_datagrams},rx_bytes={rx_bytes},rx_dgrams={rx_datagrams},left_tombstones_after={left_after},right_tombstones_after={right_after},left_members={},right_members={},left_ack_keys={},right_ack_keys={},left_ack_pairs={left_ack_pairs},right_ack_pairs={right_ack_pairs}",
-        if one_sided {
-            "one-sided"
-        } else {
-            "aligned-control"
+        "[gc-skew] kind={},n={n},deleted={deleted},live_divergence={live_divergence},left_tombstones_before={left_before},right_tombstones_before={right_before},elapsed_ms={:.3},tx_bytes={tx_bytes},tx_dgrams={tx_datagrams},rx_bytes={rx_bytes},rx_dgrams={rx_datagrams},left_tombstones_after={left_after},right_tombstones_after={right_after},left_members={},right_members={},left_ack_keys={},right_ack_keys={},left_ack_pairs={left_ack_pairs},right_ack_pairs={right_ack_pairs}",
+        match (one_sided, live_divergence > 0) {
+            (true, true) => "one-sided+live",
+            (true, false) => "one-sided",
+            (false, true) => "live-control",
+            (false, false) => "aligned-control",
         },
         convergence.as_secs_f64() * 1_000.0,
         left_persisted.members.len(),
@@ -348,7 +394,7 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool) {
         right_persisted.tombstone_acks.len(),
     );
 
-    if one_sided && deleted > 0 {
+    if one_sided && deleted > 0 && live_divergence == 0 {
         let (tx_before, dgrams_before) = pair_tx(&left, &right);
         let ack_started = Instant::now();
         let mut ack_rounds = 0usize;
@@ -385,12 +431,18 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool) {
 async fn main() {
     let n = env_usize("RECONCILE_GC_SKEW_N", 20_000);
     let deletions = env_list("RECONCILE_GC_SKEW_DELETIONS", "0,100,1000,10000");
+    let base_divergence = env_usize("RECONCILE_GC_SKEW_BASE_DIVERGENCE", 100);
     assert!(n > 0);
     for deleted in deletions {
         assert!(deleted <= n);
-        scenario(n, deleted, false).await;
+        scenario(n, deleted, false, 0).await;
         if deleted > 0 {
-            scenario(n, deleted, true).await;
+            scenario(n, deleted, true, 0).await;
+            if base_divergence > 0 {
+                assert!(base_divergence <= n - deleted);
+                scenario(n, deleted, false, base_divergence).await;
+                scenario(n, deleted, true, base_divergence).await;
+            }
         }
     }
 }
