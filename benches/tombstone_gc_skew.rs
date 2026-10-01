@@ -227,6 +227,22 @@ fn tombstone_count(store: &ReplicatedMap<u64, u64>) -> usize {
         .count()
 }
 
+fn persisted_ack_keys(peer: &Peer) -> usize {
+    peer.store.snapshot_now().expect("capture causal state");
+    peer.persistence
+        .load()
+        .expect("load causal state")
+        .expect("causal state present")
+        .tombstone_acks
+        .len()
+}
+
+fn pair_tx(left: &Peer, right: &Peer) -> (u64, u64) {
+    let l = left.traffic.snapshot();
+    let r = right.traffic.snapshot();
+    (l.0 + r.0, l.1 + r.1)
+}
+
 async fn wait_until(mut predicate: impl FnMut() -> bool, what: &str) {
     tokio::time::timeout(WAIT_TIMEOUT, async {
         while !predicate() {
@@ -331,6 +347,34 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool) {
         left_persisted.tombstone_acks.len(),
         right_persisted.tombstone_acks.len(),
     );
+
+    if one_sided && deleted > 0 {
+        let (tx_before, dgrams_before) = pair_tx(&left, &right);
+        let ack_started = Instant::now();
+        let mut ack_rounds = 0usize;
+        let mut covered = persisted_ack_keys(&left);
+        while covered < deleted {
+            let previous = covered;
+            right.store.start_reconciliation().await;
+            ack_rounds += 1;
+            wait_until(
+                || {
+                    covered = persisted_ack_keys(&left);
+                    covered > previous
+                },
+                "new tombstone acknowledgement coverage",
+            )
+            .await;
+        }
+        let ack_elapsed = ack_started.elapsed();
+        let (tx_after, dgrams_after) = pair_tx(&left, &right);
+        println!(
+            "[gc-skew-acks] n={n},deleted={deleted},rounds={ack_rounds},elapsed_ms={:.3},tx_bytes={},tx_dgrams={},covered={covered}",
+            ack_elapsed.as_secs_f64() * 1_000.0,
+            tx_after.saturating_sub(tx_before),
+            dgrams_after.saturating_sub(dgrams_before),
+        );
+    }
 
     shutdown.cancel();
     left_task.await.expect("left run task");
