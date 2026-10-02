@@ -105,6 +105,42 @@ pub mod testing {
             )
     }
 
+    /// Counts dated-channel range advertisements and enumerated entries in one insecurely
+    /// framed `u64 -> u64` benchmark datagram.
+    ///
+    /// This is a benchmark/test seam, not protocol API: it mirrors the runtime's private
+    /// `Message` decoding while keeping direct RBSR types out of runtime benchmark boundaries.
+    pub fn count_u64_dated_protocol_messages(datagram: &[u8]) -> DatedProtocolMessageCounts {
+        assert_eq!(
+            datagram.first().copied(),
+            Some(gossip::auth::WIRE_VERSION),
+            "benchmark datagram must use the current insecure wire frame"
+        );
+        let messages: Vec<
+            crate::replica::Message<u64, crate::Entry<crate::Timestamp, u64>, crate::State<u64>>,
+        > = gossip::bincode::decode_stream(&datagram[1..], 65_536)
+            .expect("benchmark datagram must decode");
+
+        let mut counts = DatedProtocolMessageCounts::default();
+        for message in messages {
+            match message {
+                crate::replica::Message::EntryFingerprint(_) => counts.advertised_ranges += 1,
+                crate::replica::Message::EntryUpdate(_) => counts.enumerated_elements += 1,
+                _ => {}
+            }
+        }
+        counts
+    }
+
+    /// Benchmark-only counts of dated reconciliation work carried by one datagram.
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+    pub struct DatedProtocolMessageCounts {
+        /// Number of dated range fingerprints advertised.
+        pub advertised_ranges: usize,
+        /// Number of dated entries enumerated into update messages.
+        pub enumerated_elements: usize,
+    }
+
     /// The current causal-stability membership set.
     pub fn members_snapshot<K, V>(
         store: &crate::ReplicatedMap<K, V>,
