@@ -265,6 +265,27 @@ mod tests {
     }
 
     #[test]
+    fn expired_value_only_recent_work_is_reclaimed() {
+        let admission = BulkAdmission::new(4);
+        let now = Instant::now();
+        admission
+            .try_admit_at(ip(1), DumpChannel::ValueOnly, fp(1), now)
+            .unwrap();
+
+        admission
+            .try_admit_at(
+                ip(2),
+                DumpChannel::Dated,
+                fp(2),
+                now + Duration::from_secs(61),
+            )
+            .unwrap();
+
+        let state = admission.state.lock();
+        assert!(!state.recent_value.contains_key(&ip(1)));
+    }
+
+    #[test]
     fn same_work_on_other_channel_is_distinct() {
         let admission = BulkAdmission::new(4);
         let now = Instant::now();
