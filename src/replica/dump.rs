@@ -7,6 +7,7 @@
 
 use std::hash::Hash;
 use std::net::SocketAddr;
+use std::time::Instant;
 
 use rbsr::EnumerationRange;
 use tracing::trace;
@@ -30,9 +31,12 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             return;
         };
 
-        if let Err(reason) =
-            self.admit_bulk_work(peer.ip(), DumpChannel::Dated, comparison_fingerprint)
-        {
+        if let Err(reason) = self.bulk_admission.try_admit_at(
+            peer.ip(),
+            DumpChannel::Dated,
+            comparison_fingerprint,
+            Instant::now(),
+        ) {
             trace!("skipped bulk dump to {peer}: admission denied ({reason:?})");
             return;
         }
@@ -66,9 +70,12 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             return;
         };
 
-        if let Err(reason) =
-            self.admit_bulk_work(peer.ip(), DumpChannel::ValueOnly, comparison_fingerprint)
-        {
+        if let Err(reason) = self.bulk_admission.try_admit_at(
+            peer.ip(),
+            DumpChannel::ValueOnly,
+            comparison_fingerprint,
+            Instant::now(),
+        ) {
             trace!("skipped value-only bulk dump to {peer}: admission denied ({reason:?})");
             return;
         }
