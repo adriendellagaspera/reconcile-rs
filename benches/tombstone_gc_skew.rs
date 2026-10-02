@@ -12,8 +12,9 @@
 // peer already GC'd them while the right peer still retains them. The difference between the two
 // cases is therefore runtime tombstone history only, not application divergence.
 //
-// d is the deployment term delete_rate_per_second * gc_window_seconds; callers can sweep it
-// directly without baking one delete-rate/window pair into the harness.
+// d is a direct retained-tombstone debt input. Operationally it is approximately
+// delete_rate_per_second * effective_unacked_membership_lag_seconds: tombstone age timeout is only
+// one collection condition, and an unacknowledged causal member can extend retention beyond it.
 //
 // Run:
 //   cargo bench --bench tombstone_gc_skew
