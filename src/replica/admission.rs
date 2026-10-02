@@ -12,8 +12,6 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
-use super::Replica;
-
 /// Smallest burst that preserves the wide-scattered single-round convergence regression. The
 /// steady per-source rate is one newly selected workset per second after this initial allowance.
 pub(super) const PER_PEER_BULK_BURST: u32 = 3;
@@ -80,7 +78,7 @@ impl BulkAdmission {
         }
     }
 
-    fn try_admit_at(
+    pub(super) fn try_admit_at(
         &self,
         peer: IpAddr,
         channel: super::pacing::DumpChannel,
@@ -143,19 +141,6 @@ impl BulkAdmission {
             },
         );
         Ok(())
-    }
-}
-
-impl<K, V> Replica<K, V> {
-    /// Spend one per-source and global bulk-work token before enumerating a bulk response.
-    pub(super) fn admit_bulk_work(
-        &self,
-        peer: IpAddr,
-        channel: super::pacing::DumpChannel,
-        fingerprint: [u8; 32],
-    ) -> Result<(), BulkAdmissionRejection> {
-        self.bulk_admission
-            .try_admit_at(peer, channel, fingerprint, Instant::now())
     }
 }
 
@@ -240,7 +225,7 @@ mod tests {
                 ip(1),
                 DumpChannel::Dated,
                 fp(1),
-                now + Duration::from_millis(1100)
+                now + Duration::from_secs(1)
             ),
             Ok(())
         );
@@ -262,6 +247,48 @@ mod tests {
             ),
             Ok(())
         );
+    }
+
+    #[test]
+    fn peer_rate_debt_expires_at_the_refill_deadline() {
+        let admission = BulkAdmission::new(4);
+        let now = Instant::now();
+        admission
+            .try_admit_at(ip(1), DumpChannel::Dated, fp(1), now)
+            .unwrap();
+
+        admission
+            .try_admit_at(
+                ip(2),
+                DumpChannel::Dated,
+                fp(2),
+                now + Duration::from_secs(1),
+            )
+            .unwrap();
+
+        let state = admission.state.lock();
+        assert!(!state.peers.contains_key(&ip(1)));
+    }
+
+    #[test]
+    fn dated_recent_work_expires_at_the_retention_deadline() {
+        let admission = BulkAdmission::new(4);
+        let now = Instant::now();
+        admission
+            .try_admit_at(ip(1), DumpChannel::Dated, fp(1), now)
+            .unwrap();
+
+        admission
+            .try_admit_at(
+                ip(2),
+                DumpChannel::ValueOnly,
+                fp(2),
+                now + Duration::from_secs(60),
+            )
+            .unwrap();
+
+        let state = admission.state.lock();
+        assert!(!state.recent_dated.contains_key(&ip(1)));
     }
 
     #[test]
