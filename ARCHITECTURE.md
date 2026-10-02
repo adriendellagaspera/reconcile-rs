@@ -126,6 +126,60 @@ The main ports are:
 Authentication and replay validation happen before wire messages reach reconciliation logic.
 Malformed or unauthenticated network input must not mutate domain state.
 
+### 3.1 Bulk-repair admission
+
+A valid range mismatch may select dataset-scale work: enumerating differing ranges, materializing
+`EntryUpdate` or `StateUpdate` messages, and sending them as a paced bulk dump. Authentication
+authorizes that work but does not make an authenticated peer infallible. Bulk enumeration therefore
+has a separate temporal admission boundary after protocol comparison and before range materialization.
+
+Admission is a pair of **cooldown leases**:
+
+- one per source `IpAddr`, shared by the dated and value-only channels;
+- one from a global pool whose capacity is `max_concurrent_bulk_dumps`.
+
+The source address is an operational key, not a cryptographic identity: the shared cluster key proves
+membership and any key holder can impersonate another holder. The per-address lease contains a
+well-behaved or compromised stable source; the global lease pool is the hard bound when authenticated
+source identities churn or are spoofed.
+
+The first eligible bulk dump acquires both leases without delay. A lease is held for the whole bulk
+task, including any same-channel pending ranges coalesced into that task, and then remains unavailable
+for `bulk_dump_cooldown` after the task finishes. The default cooldown is one second, matching the
+default background reconciliation cadence without reusing `repair_interval`: RTT/loss tuning must
+not silently weaken an admission-security bound. With cooldown `T` and global capacity `C`, one
+source can start at most one new bulk dump per completed-dump-plus-`T` cycle, and the node can start
+at most `C` new dumps per such cooldown window after the initial burst. Long-running dumps are
+stricter because their leases remain occupied while they send.
+
+The existing controls remain orthogonal. `max_concurrent_bulk_dumps` still limits *active* snapshot
+tasks; `bulk_send_rate` still meters bytes inside an admitted task; the admission leases limit how
+quickly completed expensive work may be selected again. Disabling pacing therefore removes the
+byte-rate bound but not the temporal admission bound. Repair retries and background reconciliation
+may retry a denied mismatch later, but they do not bypass admission.
+
+Ordering is:
+
+1. authenticate, check wire version and replay state, then decode;
+2. run the range comparison/refinement step;
+3. if it yields bulk differences, claim the existing active dump slot;
+4. acquire the per-address and global admission leases;
+5. only then enumerate ranges and allocate bulk update messages.
+
+A request that loses the existing active dump-slot race follows the pending-dump path; coalescing that
+pending work is a separate invariant. A request that obtains an active slot but is denied by temporal
+admission must not enumerate ranges or create additional pending bulk work. It receives no synthetic
+convergence acknowledgement: silence leaves the peer's normal repair/background path responsible for
+retrying after the cooldown. Small refinement fingerprints, convergence/tombstone acknowledgements,
+and eager write broadcasts are not bulk work and consume no admission lease.
+
+The adversarial regression for this boundary reuses the authenticated mismatch setup of
+`benches/security_amplification.rs`: hold an authoritative or value-only requester stale, send fresh
+authenticated mismatch datagrams repeatedly, and verify that the first request may trigger one full
+dump, requests during the cooldown trigger no additional full dump, and a request after eligibility
+can make progress again. A multi-peer lane verifies the global burst/cooldown bound. The existing
+bad-MAC, malformed, and replay lanes remain zero-response controls.
+
 ## 4. Global invariants
 
 - A replica is fully replicated, not sharded.
