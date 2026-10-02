@@ -20,7 +20,6 @@ use crate::observability;
 use gossip::auth;
 
 use super::collision;
-use super::pacing::DumpChannel;
 use super::{send_messages_to, version_hash, Message, Replica, MAX_MESSAGES_PER_DATAGRAM};
 
 struct DecodedDatagram<K, V> {
@@ -38,6 +37,12 @@ impl<K, V> DecodedDatagram<K, V> {
             || !self.tombstone_acks.is_empty()
             || self.saw_convergence_ack
     }
+}
+
+fn comparison_fingerprint<K: serde::Serialize>(ranges: &[RangeAggregate<K>]) -> [u8; 32] {
+    let encoded = bincode::serialize(ranges)
+        .expect("serializing already-decoded range aggregates cannot fail");
+    *blake3::hash(&encoded).as_bytes()
 }
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
@@ -157,6 +162,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         }
 
         debug!("received {} segments", in_comparison.len());
+        let comparison_fingerprint = comparison_fingerprint(&in_comparison);
         let mut differences = Vec::new();
         let mut out_comparison = Vec::new();
         {
@@ -183,34 +189,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             send_messages_to(&messages, &self.send_ports(), &peer, send_buf).await;
         }
 
-        // Differing values are bulk payload: claim pacing slots before allocating the snapshot.
         if !differences.is_empty() {
             debug!("returning {} diff_ranges", differences.len());
             trace!("diff_ranges: {differences:?}");
-            if let Some((peer_guard, global_guard)) = self.try_claim_dump_slot(peer) {
-                let updates: Vec<Message<K, Entry<Timestamp, V>, State<V>>> = {
-                    let guard = self.map.load_full();
-                    let mut updates = Vec::new();
-                    for range in differences {
-                        for (k, v) in guard.range(range) {
-                            updates.push(Message::EntryUpdate((k.clone(), v.clone())));
-                        }
-                    }
-                    updates
-                };
-                if !updates.is_empty() {
-                    self.spawn_paced_send(
-                        updates,
-                        peer,
-                        peer_guard,
-                        global_guard,
-                        DumpChannel::Dated,
-                    );
-                }
-                // If updates is empty the guards drop here, releasing both slots.
-            } else {
-                self.stash_pending_dump(DumpChannel::Dated, peer, differences);
-            }
+            self.start_dated_dump(differences, peer, comparison_fingerprint);
         }
 
         if converged_with_nothing_to_send {
@@ -333,6 +315,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // Value-only reconciliation is independent of causal stability: dated stores answer from
         // the timestamp-less projection and never accept StateUpdate as authoritative input.
         debug!("received {} value-only segments", value_in_comparison.len());
+        let comparison_fingerprint = comparison_fingerprint(&value_in_comparison);
         let mut differences = Vec::new();
         let mut out_comparison = Vec::new();
         {
@@ -356,29 +339,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         }
 
         if !differences.is_empty() {
-            if let Some((peer_guard, global_guard)) = self.try_claim_dump_slot(peer) {
-                let updates: Vec<Message<K, Entry<Timestamp, V>, State<V>>> = {
-                    let guard = self.projection.load_full();
-                    let mut updates = Vec::new();
-                    for range in differences {
-                        for (k, p) in guard.range(range) {
-                            updates.push(Message::StateUpdate((k.clone(), p.clone())));
-                        }
-                    }
-                    updates
-                };
-                if !updates.is_empty() {
-                    self.spawn_paced_send(
-                        updates,
-                        peer,
-                        peer_guard,
-                        global_guard,
-                        DumpChannel::ValueOnly,
-                    );
-                }
-            } else {
-                self.stash_pending_dump(DumpChannel::ValueOnly, peer, differences);
-            }
+            self.start_value_dump(differences, peer, comparison_fingerprint);
         }
     }
 }
