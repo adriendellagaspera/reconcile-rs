@@ -152,6 +152,9 @@ pub(crate) struct Inner<K, V> {
     bulk_dumps_in_flight: Arc<AtomicUsize>,
     /// Global cap on the number of concurrently active paced bulk dumps.
     max_concurrent_bulk_dumps: usize,
+    /// Token-bucket admission for dataset-scale bulk work, bounding repeated authenticated
+    /// mismatch work independently of active dump concurrency and byte pacing.
+    bulk_admission: admission::BulkAdmission,
     /// Ceiling on a single value's encoded size, in bytes, checked by
     /// [`ReplicatedMap::try_insert`](crate::replicated_map::ReplicatedMap::try_insert)/`try_update`
     /// before any local state changes. Mirrors
@@ -307,10 +310,12 @@ pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
     Reserved6(Vec<u8>),
 }
 
+mod admission;
 mod coalesce;
 mod collision;
 mod construct;
 mod dispatch;
+mod dump;
 mod gc;
 mod generation;
 mod inbound;
