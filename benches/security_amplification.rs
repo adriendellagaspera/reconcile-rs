@@ -24,6 +24,7 @@
 //
 // Override:
 //   RECONCILE_SECURITY_DATASET=20000
+//   RECONCILE_SECURITY_REPEAT_MISMATCHES=3
 
 use std::collections::HashMap;
 use std::io;
@@ -281,6 +282,51 @@ async fn read_replica_case(n: usize) {
     stop(central).await;
 }
 
+async fn repeated_stale_read_replica_case(n: usize, repeats: usize) {
+    assert!(repeats > 1);
+
+    let network = InMemoryNetwork::new();
+    let central = central(&network, n).await;
+    let requester_traffic = Traffic::default();
+    let requester = ReadReplicaMap::<u64, u64>::new_with_transport(
+        config(REQUESTER_IP, 2),
+        Arc::new(CountingTransport {
+            inner: network.bind(SocketAddr::new(REQUESTER_IP, PORT)),
+            traffic: requester_traffic.clone(),
+        }),
+    )
+    .expect("valid read replica");
+    requester.seed_peer(CENTRAL_IP);
+
+    central.traffic.reset();
+    requester_traffic.reset();
+
+    let mut previous_output = 0u64;
+    for attempt in 1..=repeats {
+        let started = Instant::now();
+        requester.start_reconciliation().await;
+        wait_until(
+            || central.traffic.rx_datagrams.load(Ordering::Relaxed) >= attempt as u64,
+            "central to receive repeated stale read-replica request",
+        )
+        .await;
+        wait_for_quiet(&central.traffic).await;
+
+        let input_bytes = requester_traffic.to_peer(CENTRAL_IP).0;
+        let output_bytes = central.traffic.to_peer(REQUESTER_IP).0;
+        let flight_output = output_bytes.saturating_sub(previous_output);
+        previous_output = output_bytes;
+
+        println!(
+            "[security-repeated-mismatch] kind=read-replica,dataset={n},attempt={attempt},input_bytes={input_bytes},output_bytes={output_bytes},flight_output_bytes={flight_output},amplification={:.3},elapsed_ms={:.3}",
+            output_bytes as f64 / input_bytes.max(1) as f64,
+            started.elapsed().as_secs_f64() * 1_000.0,
+        );
+    }
+
+    stop(central).await;
+}
+
 async fn authoritative_case(n: usize) {
     let network = InMemoryNetwork::new();
     let central = central(&network, n).await;
@@ -313,6 +359,53 @@ async fn authoritative_case(n: usize) {
         output_bytes as f64 / input_bytes.max(1) as f64,
         started.elapsed().as_secs_f64() * 1_000.0,
     );
+    stop(central).await;
+}
+
+async fn repeated_stale_authoritative_case(n: usize, repeats: usize) {
+    assert!(repeats > 1);
+
+    let network = InMemoryNetwork::new();
+    let central = central(&network, n).await;
+    let requester_traffic = Traffic::default();
+    let requester = ReplicatedMap::<u64, u64>::new_with_transport(
+        config(REQUESTER_IP, 2),
+        Arc::new(CountingTransport {
+            inner: network.bind(SocketAddr::new(REQUESTER_IP, PORT)),
+            traffic: requester_traffic.clone(),
+        }),
+    )
+    .expect("valid authoritative requester");
+    requester.seed_peer(CENTRAL_IP);
+
+    // Deliberately do not run the requester receive loop. It remains empty after every response,
+    // so every fresh authenticated request presents the same valid stale mismatch.
+    central.traffic.reset();
+    requester_traffic.reset();
+
+    let mut previous_output = 0u64;
+    for attempt in 1..=repeats {
+        let started = Instant::now();
+        requester.start_reconciliation().await;
+        wait_until(
+            || central.traffic.rx_datagrams.load(Ordering::Relaxed) >= attempt as u64,
+            "central to receive repeated stale authoritative request",
+        )
+        .await;
+        wait_for_quiet(&central.traffic).await;
+
+        let input_bytes = requester_traffic.to_peer(CENTRAL_IP).0;
+        let output_bytes = central.traffic.to_peer(REQUESTER_IP).0;
+        let flight_output = output_bytes.saturating_sub(previous_output);
+        previous_output = output_bytes;
+
+        println!(
+            "[security-repeated-mismatch] kind=authoritative,dataset={n},attempt={attempt},input_bytes={input_bytes},output_bytes={output_bytes},flight_output_bytes={flight_output},amplification={:.3},elapsed_ms={:.3}",
+            output_bytes as f64 / input_bytes.max(1) as f64,
+            started.elapsed().as_secs_f64() * 1_000.0,
+        );
+    }
+
     stop(central).await;
 }
 
@@ -445,6 +538,12 @@ fn main() {
         .parse::<usize>()
         .expect("RECONCILE_SECURITY_BURST_PEERS must be an integer");
 
+    let repeated_mismatches = std::env::var("RECONCILE_SECURITY_REPEAT_MISMATCHES")
+        .unwrap_or_else(|_| "3".to_owned())
+        .parse::<usize>()
+        .expect("RECONCILE_SECURITY_REPEAT_MISMATCHES must be an integer");
+    assert!(repeated_mismatches > 1);
+
     let runtime = Runtime::new().expect("Tokio runtime");
     runtime.block_on(async {
         let wrong = gossip::auth::Authenticator::new(
@@ -472,6 +571,8 @@ fn main() {
 
         read_replica_case(n).await;
         authoritative_case(n).await;
+        repeated_stale_read_replica_case(n, repeated_mismatches).await;
+        repeated_stale_authoritative_case(n, repeated_mismatches).await;
         concurrent_authoritative_case(n, burst_peers).await;
     });
 }
