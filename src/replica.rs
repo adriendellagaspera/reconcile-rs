@@ -143,6 +143,10 @@ pub(crate) struct Inner<K, V> {
     /// `None` to send back-to-back. Mirrors [`Config::bulk_send_rate`](crate::replicated_map::Config::bulk_send_rate)
     /// and is read by [`spawn_paced_send`](Self::spawn_paced_send).
     bulk_send_rate: Option<usize>,
+    /// UDP framing/reassembly policy used by every send and receive path.
+    framing: crate::replicated_map::FramingConfig,
+    /// Bounded incomplete logical-message state, populated only after inbound admission.
+    reassembler: Arc<Mutex<gossip::framing::Reassembler>>,
     /// Peers with a bulk transfer in flight: at most one paced dump per peer, or a re-firing
     /// reconcile timer would re-dump ranges still in transit. Cleared by an RAII guard.
     bulk_in_flight: Arc<RwLock<HashSet<SocketAddr>>>,
