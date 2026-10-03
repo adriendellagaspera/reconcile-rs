@@ -188,6 +188,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // so this can never actually hit `EncryptionFeatureDisabled`.
         let authenticator = auth::Authenticator::with_rotation(config.auth_keys(), config.encrypt)
             .expect("reconcile's encryption feature unifies to gossip/encryption");
+        config.framing.validate(authenticator.overhead())?;
         match &authenticator {
             #[cfg(feature = "encryption")]
             auth::Authenticator::Encrypted(_) => {
@@ -260,6 +261,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 pending_repairs: Arc::new(RwLock::new(HashMap::new())),
                 receiving_bulk_from: Arc::new(RwLock::new(HashMap::new())),
                 bulk_send_rate,
+                framing: config.framing,
+                reassembler: Arc::new(Mutex::new(gossip::framing::Reassembler::new(
+                    config.framing.reassembly_limits(),
+                ))),
                 bulk_in_flight: Arc::new(RwLock::new(HashSet::new())),
                 bulk_dumps_in_flight: Arc::new(AtomicUsize::new(0)),
                 max_concurrent_bulk_dumps: config.max_concurrent_bulk_dumps,
