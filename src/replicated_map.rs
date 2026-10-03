@@ -38,7 +38,7 @@ mod write;
 
 pub use backpressure::{Backpressure, WriteRejected};
 pub(crate) use config::MIN_BULK_SEND_RATE;
-pub use config::{Config, ConfigError, MAX_NETS};
+pub use config::{Config, ConfigError, FramingConfig, DEFAULT_DATAGRAM_PAYLOAD_BUDGET, MAX_NETS};
 pub use construction_error::ConstructionError;
 #[cfg(test)]
 pub(crate) use discovery::MemberPresence;
