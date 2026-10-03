@@ -80,6 +80,10 @@ harness = false
 name = "security_amplification"
 harness = false
 
+[[bench]]
+name = "fragmentation"
+harness = false
+
 [features]
 default = ["mac-blake3"]
 mac-blake3 = ["gossip/mac-blake3"]
