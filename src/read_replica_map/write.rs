@@ -68,6 +68,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             transport: &*self.transport,
             authenticator: &self.authenticator,
             sender_counter: &self.sender_counter,
+            framing: self.framing,
         }
     }
 
@@ -109,6 +110,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                 &*self.transport,
                 &self.authenticator,
                 &self.sender_counter,
+                self.framing,
                 send_buf,
                 SocketAddr::new(peer, self.port),
             )
