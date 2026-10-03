@@ -79,10 +79,14 @@ impl<'a> Payload<'a, Authenticated> {
     }
 }
 
-impl Payload<'_, Verified> {
+impl<'a> Payload<'a, Verified> {
     /// The decoded, authenticated, replay-checked message bytes, ready for [`crate::bincode`].
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
+    }
+
+    pub(crate) fn into_bytes(self) -> Cow<'a, [u8]> {
+        self.bytes
     }
 }
 
