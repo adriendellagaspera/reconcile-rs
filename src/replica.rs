@@ -320,6 +320,7 @@ mod collision;
 mod construct;
 mod dispatch;
 mod dump;
+mod framed_send;
 mod gc;
 mod generation;
 mod inbound;
@@ -337,9 +338,7 @@ pub(crate) use gc::version_hash;
 pub(crate) use inbound::{admit_inbound, InboundRejection};
 pub(crate) use membership::derive_local_net;
 
-#[cfg(test)]
-pub(crate) use pacing::send_messages_paced;
-pub(crate) use pacing::{send_messages_to, send_to_retry, SendPorts};
+pub(crate) use framed_send::{send_messages_paced, send_messages_to, send_to_retry, SendPorts};
 
 // Shared test helpers used by sibling test modules; production code remains in the modules above.
 #[cfg(test)]
