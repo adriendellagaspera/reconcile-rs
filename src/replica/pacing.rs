@@ -11,22 +11,15 @@ use std::hash::Hash;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use parking_lot::RwLock;
-use serde::Serialize;
-use tokio::time::sleep;
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::trace;
 
 use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
-use crate::observability;
 use crate::transport::Transport;
-use gossip::auth;
-use gossip::replay;
-
-use super::{Message, Replica, BUFFER_SIZE, MAX_SENDTO_RETRIES};
+use super::{send_messages_paced, Message, Replica, SendPorts};
 
 /// Which channel a paced bulk dump resolves ranges against: a `differences` batch that
 /// loses the per-peer dump-slot race is stashed by channel, since the dated and value-only
@@ -47,6 +40,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             transport: &*self.transport,
             authenticator: &self.authenticator,
             sender_counter: &self.sender_counter,
+            framing: self.framing,
         }
     }
 
@@ -117,6 +111,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let authenticator = self.authenticator.clone();
         let sender_counter = Arc::clone(&self.sender_counter);
         let rate = self.bulk_send_rate;
+        let framing = self.framing;
         let map = Arc::clone(&self.map);
         let projection = Arc::clone(&self.projection);
         let pending_dumps = Arc::clone(&self.pending_dumps);
@@ -130,6 +125,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 transport: &*transport,
                 authenticator: &authenticator,
                 sender_counter: &sender_counter,
+                framing,
             };
             let mut send_buf = Vec::new();
             let mut messages = messages;
@@ -166,161 +162,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 }
             }
         });
-    }
-}
-
-/// The three things a batched send needs, which always travel together: the [`Transport`], the
-/// authenticator, and the per-sender replay counter.
-pub(crate) struct SendPorts<'a, T: ?Sized> {
-    pub(crate) transport: &'a T,
-    pub(crate) authenticator: &'a auth::Authenticator,
-    pub(crate) sender_counter: &'a replay::SenderCounter,
-}
-
-pub(crate) async fn send_to_retry<T: Transport + ?Sized>(
-    transport: &T,
-    authenticator: &auth::Authenticator,
-    sender_counter: &replay::SenderCounter,
-    buf: &[u8],
-    target: SocketAddr,
-) -> std::io::Result<usize> {
-    // Allocate a sequence number and stamp, then frame the datagram once and reuse it across
-    // retries. `seal` always frames — even disabled adds the wire-version byte.
-    let seq = sender_counter.next_seq();
-    let stamp = sender_counter.next_stamp();
-    let wire = authenticator.seal(seq, stamp, buf);
-    let mut res = Ok(0);
-    for _ in 0..MAX_SENDTO_RETRIES {
-        res = transport.send_to(&wire, &target).await;
-        if res.is_ok() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
-    match &res {
-        Ok(sent) => observability::record_bytes_sent(*sent),
-        Err(err) => {
-            error!("send_to failed after {MAX_SENDTO_RETRIES} retries: {err}");
-            observability::record_send_failure();
-        }
-    }
-    res
-}
-
-/// Send `messages` to `peer` back-to-back: the small latency-sensitive batches. Bulk dumps use
-/// [`send_messages_paced`].
-pub(crate) async fn send_messages_to<K, V, P, T>(
-    messages: &[Message<K, V, P>],
-    ports: &SendPorts<'_, T>,
-    peer: &SocketAddr,
-    send_buf: &mut Vec<u8>,
-) where
-    K: Serialize,
-    V: Serialize,
-    P: Serialize,
-    T: Transport + ?Sized,
-{
-    send_messages_paced(messages, ports, peer, send_buf, None).await
-}
-
-/// Send `messages` to `peer` as ≤64 KiB datagrams, metered to `rate` bytes/sec when set.
-///
-/// Sleeps between datagrams, so it must run **off** the receive loop
-/// ([`Replica::spawn_paced_send`]) — pacing inline would stall reception for every other peer.
-#[instrument(name = "reconcile.send", skip_all, fields(peer = %peer, count = messages.len()))]
-pub(crate) async fn send_messages_paced<K, V, P, T>(
-    messages: &[Message<K, V, P>],
-    ports: &SendPorts<'_, T>,
-    peer: &SocketAddr,
-    send_buf: &mut Vec<u8>,
-    rate: Option<usize>,
-) where
-    K: Serialize,
-    V: Serialize,
-    P: Serialize,
-    T: Transport + ?Sized,
-{
-    debug!("sending {} messages to {peer}", messages.len());
-    // Reserve room for the authentication tag so the sealed datagram still fits a UDP payload.
-    let max_payload = BUFFER_SIZE - ports.authenticator.overhead();
-    send_buf.clear();
-    // Anchor the pacing schedule once, so it self-corrects rather than drifting per datagram.
-    let start = Instant::now();
-    let mut sent_bytes: usize = 0;
-    for message in messages {
-        let last_size = send_buf.len();
-        gossip::bincode::encode(message, send_buf)
-            .expect("serializing a protocol Message into an in-memory buffer cannot fail");
-        let this_message_len = send_buf.len() - last_size;
-        if send_buf.len() > max_payload {
-            // Flush whatever was accumulated *before* this message, if anything — a real,
-            // correctly-sized datagram, unaffected by whether this message itself fits.
-            if last_size > 0 {
-                trace!("sending {} bytes to {peer}", last_size);
-                if let Err(err) = send_to_retry(
-                    ports.transport,
-                    ports.authenticator,
-                    ports.sender_counter,
-                    &send_buf[..last_size],
-                    *peer,
-                )
-                .await
-                {
-                    warn!("failed to send datagram to {peer}: {err}; continuing");
-                } else {
-                    trace!("sent {} bytes to {peer}", last_size);
-                }
-                sent_bytes += last_size;
-                pace(rate, start, sent_bytes).await;
-            }
-            send_buf.drain(..last_size);
-            if this_message_len > max_payload {
-                // This message's own encoding exceeds `max_payload` on its own — no datagram it
-                // could ever be packed into, alone or otherwise. Sending it anyway (either as a
-                // bogus empty datagram when it was first in the batch, or as an oversized one
-                // otherwise) never converges the key and only ever fails with EMSGSIZE. Drop it,
-                // counted and logged distinctly from a transport send failure so it is alertable
-                // rather than silently retried forever.
-                error!(
-                    "dropping oversized message to {peer}: encodes to {this_message_len} bytes, \
-                     exceeding the {max_payload}-byte datagram budget; this key will never \
-                     converge on this peer until a smaller value is written"
-                );
-                observability::record_value_oversized();
-                send_buf.clear();
-            }
-        }
-    }
-    // Empty exactly when the batch was empty, or ended with an oversized message that was just
-    // dropped above — either way, an empty datagram is not a real send.
-    if !send_buf.is_empty() {
-        trace!("sending last {} bytes to {peer}", send_buf.len());
-        if let Err(err) = send_to_retry(
-            ports.transport,
-            ports.authenticator,
-            ports.sender_counter,
-            send_buf,
-            *peer,
-        )
-        .await
-        {
-            warn!("failed to send final datagram to {peer}: {err}; continuing");
-        } else {
-            trace!("sent last {} bytes to {peer}", send_buf.len());
-        }
-    }
-}
-
-/// Sleep, if necessary, so that having sent `sent_bytes` since `start` does not exceed `rate`
-/// bytes/sec. A `None` (or zero) rate is a no-op. The schedule is anchored to `start`, so it
-/// self-corrects and does not drift; the caller does not pace after the final datagram.
-async fn pace(rate: Option<usize>, start: Instant, sent_bytes: usize) {
-    let Some(rate) = rate.filter(|&r| r > 0) else {
-        return;
-    };
-    let expected = Duration::from_secs_f64(sent_bytes as f64 / rate as f64);
-    if let Some(delay) = expected.checked_sub(start.elapsed()) {
-        sleep(delay).await;
     }
 }
 
