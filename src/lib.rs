@@ -58,6 +58,7 @@ pub use tokio_util;
 pub mod prometheus;
 
 // Internal runtime mechanisms; test seams go through [`testing`].
+pub(crate) mod framing;
 pub(crate) mod observability;
 pub(crate) mod replica;
 pub(crate) mod timeout_wheel;
