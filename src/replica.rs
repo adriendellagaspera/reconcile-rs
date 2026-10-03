@@ -321,6 +321,7 @@ mod generation;
 mod inbound;
 mod membership;
 mod pacing;
+mod pending_dump;
 mod read;
 mod reconciliation;
 mod repair;

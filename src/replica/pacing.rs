@@ -14,7 +14,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use parking_lot::RwLock;
-use rbsr::EnumerationRange;
 use serde::Serialize;
 use tokio::time::sleep;
 use tracing::{debug, error, instrument, trace, warn};
@@ -91,23 +90,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 counter: Arc::clone(&self.bulk_dumps_in_flight),
             },
         ))
-    }
-
-    /// Stash a `differences` batch that lost the per-peer dump-slot race instead of
-    /// letting the caller drop it. Drained by whichever task is currently holding `peer`'s slot,
-    /// via [`spawn_paced_send`](Self::spawn_paced_send)'s own loop — never dependent on a new
-    /// incoming datagram or the idle `reconcile_interval` timeout.
-    pub(super) fn stash_pending_dump(
-        &self,
-        channel: DumpChannel,
-        peer: SocketAddr,
-        ranges: Vec<EnumerationRange<K>>,
-    ) {
-        let stash = match channel {
-            DumpChannel::Dated => &self.pending_dumps,
-            DumpChannel::ValueOnly => &self.pending_value_dumps,
-        };
-        stash.write().entry(peer).or_default().extend(ranges);
     }
 
     /// Send a bulk batch of differing values to one peer on a detached, **rate-paced** task —
