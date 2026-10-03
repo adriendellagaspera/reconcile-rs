@@ -18,6 +18,12 @@ pub enum ConfigError {
     TooManyNets,
     /// Neither authenticated mode nor the explicit keyless opt-in was selected.
     MissingSecurityMode,
+    /// The total UDP payload budget cannot hold one byte of fragment data after framing/auth.
+    DatagramPayloadBudgetTooSmall { configured: usize, minimum: usize },
+    /// The total UDP payload budget exceeds the maximum legal IPv4 UDP payload.
+    DatagramPayloadBudgetTooLarge { configured: usize, maximum: usize },
+    /// The logical-message ceiling cannot be represented by the 32-bit fragment length field.
+    LogicalMessageSizeTooLarge { configured: usize, maximum: usize },
 }
 
 impl fmt::Display for ConfigError {
@@ -28,6 +34,18 @@ impl fmt::Display for ConfigError {
                 f,
                 "cluster_key is unset; call Config::with_cluster_key, or explicitly opt into \
                  keyless mode with Config::with_insecure_no_key"
+            ),
+            ConfigError::DatagramPayloadBudgetTooSmall { configured, minimum } => write!(
+                f,
+                "datagram payload budget {configured} is too small; this security/framing mode requires at least {minimum} bytes"
+            ),
+            ConfigError::DatagramPayloadBudgetTooLarge { configured, maximum } => write!(
+                f,
+                "datagram payload budget {configured} exceeds the UDP payload maximum {maximum}"
+            ),
+            ConfigError::LogicalMessageSizeTooLarge { configured, maximum } => write!(
+                f,
+                "logical message ceiling {configured} exceeds the framing maximum {maximum}"
             ),
         }
     }
