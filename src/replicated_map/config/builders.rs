@@ -231,6 +231,13 @@ impl Config {
         self
     }
 
+    /// Replace the UDP framing/reassembly policy.
+    #[must_use]
+    pub fn with_framing(mut self, framing: super::FramingConfig) -> Self {
+        self.framing = framing;
+        self
+    }
+
     /// Set [`snapshot_interval`](Config::snapshot_interval) (default `Some(5 s)`). `None`
     /// disables the periodic background snapshot task entirely — only an explicit
     /// [`ReplicatedMap::snapshot_now`](super::super::ReplicatedMap::snapshot_now) call writes a
