@@ -100,6 +100,31 @@ impl FramingConfig {
         self
     }
 
+    pub(crate) fn validate(self, auth_overhead: usize) -> Result<(), super::ConfigError> {
+        const MAX_UDP_PAYLOAD: usize = 65_507;
+        let minimum = auth_overhead
+            .saturating_add(gossip::framing::FRAGMENT_HEADER_LEN)
+            .saturating_add(1);
+        if self.datagram_payload_budget < minimum {
+            return Err(super::ConfigError::DatagramPayloadBudgetTooSmall {
+                configured: self.datagram_payload_budget,
+                minimum,
+            });
+        }
+        if self.datagram_payload_budget > MAX_UDP_PAYLOAD {
+            return Err(super::ConfigError::DatagramPayloadBudgetTooLarge {
+                configured: self.datagram_payload_budget,
+                maximum: MAX_UDP_PAYLOAD,
+            });
+        }
+        if self.max_logical_message_size > u32::MAX as usize {
+            return Err(super::ConfigError::LogicalMessageSizeTooLarge {
+                configured: self.max_logical_message_size,
+                maximum: u32::MAX as usize,
+            });
+        }
+        Ok(())
+    }
     pub(crate) fn reassembly_limits(self) -> gossip::framing::ReassemblyLimits {
         gossip::framing::ReassemblyLimits {
             max_logical_message_size: self.max_logical_message_size,
