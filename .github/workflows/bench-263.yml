@@ -1,0 +1,21 @@
+name: bench-263-baseline
+
+on:
+  push:
+    branches:
+      - feat/263-fragmented-framing
+
+permissions:
+  contents: read
+
+jobs:
+  fragmentation-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+      - name: Run framing baseline
+        env:
+          RECONCILE_FRAGMENT_VALUE_SIZES: "512,4096,131072"
+          RECONCILE_FRAGMENT_TIMEOUT_MS: "5000"
+        run: cargo bench --bench fragmentation
