@@ -19,11 +19,26 @@ pub enum ConfigError {
     /// Neither authenticated mode nor the explicit keyless opt-in was selected.
     MissingSecurityMode,
     /// The total UDP payload budget cannot hold one byte of fragment data after framing/auth.
-    DatagramPayloadBudgetTooSmall { configured: usize, minimum: usize },
+    DatagramPayloadBudgetTooSmall {
+        /// Requested total UDP payload budget.
+        configured: usize,
+        /// Smallest budget that can carry one fragment byte in the selected auth mode.
+        minimum: usize,
+    },
     /// The total UDP payload budget exceeds the maximum legal IPv4 UDP payload.
-    DatagramPayloadBudgetTooLarge { configured: usize, maximum: usize },
+    DatagramPayloadBudgetTooLarge {
+        /// Requested total UDP payload budget.
+        configured: usize,
+        /// Maximum legal UDP payload.
+        maximum: usize,
+    },
     /// The logical-message ceiling cannot be represented by the 32-bit fragment length field.
-    LogicalMessageSizeTooLarge { configured: usize, maximum: usize },
+    LogicalMessageSizeTooLarge {
+        /// Requested encoded logical-message ceiling.
+        configured: usize,
+        /// Largest length representable by the fragment header.
+        maximum: usize,
+    },
 }
 
 impl fmt::Display for ConfigError {
