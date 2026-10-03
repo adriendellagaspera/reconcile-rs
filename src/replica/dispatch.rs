@@ -17,7 +17,7 @@ use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
 use crate::observability;
-use gossip::auth;
+use gossip::framing::LogicalPayload;
 
 use super::collision;
 use super::{send_messages_to, version_hash, Message, Replica, MAX_MESSAGES_PER_DATAGRAM};
@@ -56,7 +56,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     #[instrument(name = "reconcile.handle", skip_all, fields(peer = %peer))]
     pub(super) async fn handle_messages(
         &self,
-        payload: auth::Payload<'_, auth::Verified>,
+        payload: LogicalPayload<'_>,
         peer: SocketAddr,
         send_buf: &mut Vec<u8>,
     ) -> bool {
@@ -80,7 +80,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     fn decode_datagram(
         &self,
-        payload: auth::Payload<'_, auth::Verified>,
+        payload: LogicalPayload<'_>,
         peer: SocketAddr,
     ) -> Option<DecodedDatagram<K, V>> {
         let payload = payload.as_bytes();
