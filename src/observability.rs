@@ -76,6 +76,48 @@ mod imp {
     }
 
     #[inline]
+    pub(crate) fn record_fragmented_message() {
+        counter!(FRAGMENTED_MESSAGES_TOTAL).increment(1);
+    }
+
+    #[inline]
+    pub(crate) fn record_fragment_sent() {
+        counter!(FRAGMENTS_SENT_TOTAL).increment(1);
+    }
+
+    #[inline]
+    pub(crate) fn record_fragment_received() {
+        counter!(FRAGMENTS_RECEIVED_TOTAL).increment(1);
+    }
+
+    #[inline]
+    pub(crate) fn record_reassembly_completed() {
+        counter!(REASSEMBLIES_COMPLETED_TOTAL).increment(1);
+    }
+
+    #[inline]
+    pub(crate) fn record_reassembly_duplicate() {
+        counter!(REASSEMBLY_DUPLICATES_TOTAL).increment(1);
+    }
+
+    #[inline]
+    pub(crate) fn record_reassembly_evictions(reason: &'static str, count: usize) {
+        if count > 0 {
+            counter!(REASSEMBLY_EVICTIONS_TOTAL, "reason" => reason).increment(count as u64);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn record_reassembly_rejection(reason: &'static str) {
+        counter!(REASSEMBLY_REJECTIONS_TOTAL, "reason" => reason).increment(1);
+    }
+
+    #[inline]
+    pub(crate) fn record_reassembly_bytes(bytes: usize) {
+        gauge!(REASSEMBLY_BYTES_CURRENT).set(bytes as f64);
+    }
+
+    #[inline]
     pub(crate) fn record_datagram_dropped(reason: &'static str) {
         counter!(DATAGRAMS_DROPPED_TOTAL, "reason" => reason).increment(1);
     }
@@ -192,12 +234,48 @@ mod imp {
         describe_counter!(
             VALUES_OVERSIZED_TOTAL,
             Unit::Count,
-            "Single encoded messages exceeding the datagram budget, dropped on the send path"
+            "Encoded logical messages exceeding framing resource limits"
         );
         describe_counter!(
             DATAGRAMS_DROPPED_TOTAL,
             Unit::Count,
             "Datagrams dropped, by reason"
+        );
+        describe_counter!(
+            FRAGMENTED_MESSAGES_TOTAL,
+            Unit::Count,
+            "Logical protocol messages split across fragment frames"
+        );
+        describe_counter!(FRAGMENTS_SENT_TOTAL, Unit::Count, "Fragment datagrams sent");
+        describe_counter!(
+            FRAGMENTS_RECEIVED_TOTAL,
+            Unit::Count,
+            "Authenticated fragment datagrams received"
+        );
+        describe_counter!(
+            REASSEMBLIES_COMPLETED_TOTAL,
+            Unit::Count,
+            "Fragmented logical messages successfully reassembled"
+        );
+        describe_counter!(
+            REASSEMBLY_DUPLICATES_TOTAL,
+            Unit::Count,
+            "Exact duplicate fragments reused"
+        );
+        describe_counter!(
+            REASSEMBLY_EVICTIONS_TOTAL,
+            Unit::Count,
+            "Incomplete transfers removed by ttl or capacity eviction"
+        );
+        describe_counter!(
+            REASSEMBLY_REJECTIONS_TOTAL,
+            Unit::Count,
+            "Authenticated framing/reassembly rejections by reason"
+        );
+        describe_gauge!(
+            REASSEMBLY_BYTES_CURRENT,
+            Unit::Bytes,
+            "Bytes retained for incomplete fragment reassembly"
         );
         describe_counter!(
             BROADCAST_BACKPRESSURE_TOTAL,
@@ -303,6 +381,30 @@ mod imp {
 
     #[inline(always)]
     pub(crate) fn record_value_oversized() {}
+
+    #[inline(always)]
+    pub(crate) fn record_fragmented_message() {}
+
+    #[inline(always)]
+    pub(crate) fn record_fragment_sent() {}
+
+    #[inline(always)]
+    pub(crate) fn record_fragment_received() {}
+
+    #[inline(always)]
+    pub(crate) fn record_reassembly_completed() {}
+
+    #[inline(always)]
+    pub(crate) fn record_reassembly_duplicate() {}
+
+    #[inline(always)]
+    pub(crate) fn record_reassembly_evictions(_reason: &'static str, _count: usize) {}
+
+    #[inline(always)]
+    pub(crate) fn record_reassembly_rejection(_reason: &'static str) {}
+
+    #[inline(always)]
+    pub(crate) fn record_reassembly_bytes(_bytes: usize) {}
 
     #[inline(always)]
     pub(crate) fn record_datagram_dropped(_reason: &'static str) {}
