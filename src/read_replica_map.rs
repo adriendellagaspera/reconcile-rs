@@ -114,6 +114,8 @@ pub struct ReadReplicaMap<K, V> {
     /// re-initiating a round. Sourced from [`Config::reconcile_interval`], live-retunable via
     /// [`set_reconcile_interval`](Self::set_reconcile_interval).
     reconcile_interval: Arc<RwLock<Duration>>,
+    framing: crate::replicated_map::FramingConfig,
+    reassembler: Arc<Mutex<gossip::framing::Reassembler>>,
 }
 
 impl<K, V> Clone for ReadReplicaMap<K, V> {
@@ -136,6 +138,8 @@ impl<K, V> Clone for ReadReplicaMap<K, V> {
             round: self.round.clone(),
             last_round_at: self.last_round_at.clone(),
             reconcile_interval: self.reconcile_interval.clone(),
+            framing: self.framing,
+            reassembler: self.reassembler.clone(),
         }
     }
 }
@@ -261,6 +265,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         // so this can never actually hit `EncryptionFeatureDisabled`.
         let authenticator = auth::Authenticator::with_rotation(config.auth_keys(), config.encrypt)
             .expect("reconcile's encryption feature unifies to gossip/encryption");
+        config.framing.validate(authenticator.overhead())?;
         if matches!(authenticator, auth::Authenticator::Disabled) {
             warn!(
                 "SECURITY: running with Config::with_insecure_no_key() — the lightweight read \
@@ -300,6 +305,10 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             round: Arc::new(AtomicU64::new(0)),
             last_round_at: Arc::new(RwLock::new(None)),
             reconcile_interval: Arc::new(RwLock::new(config.reconcile_interval)),
+            framing: config.framing,
+            reassembler: Arc::new(Mutex::new(gossip::framing::Reassembler::new(
+                config.framing.reassembly_limits(),
+            ))),
         })
     }
 
