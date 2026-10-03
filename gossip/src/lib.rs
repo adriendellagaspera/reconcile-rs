@@ -23,6 +23,8 @@ pub mod auth;
 pub mod bincode;
 pub mod discovery;
 pub mod gen_ip;
+#[doc(hidden)]
+pub mod framing;
 #[cfg(feature = "netem")]
 pub mod netem;
 pub mod replay;
