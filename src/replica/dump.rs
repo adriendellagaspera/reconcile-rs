@@ -41,6 +41,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             return;
         }
 
+        let differences = self.take_pending_dump(DumpChannel::Dated, peer, differences);
         let updates: Vec<Message<K, Entry<Timestamp, V>, State<V>>> = {
             let guard = self.map.load_full();
             let mut updates = Vec::new();
@@ -80,6 +81,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             return;
         }
 
+        let differences = self.take_pending_dump(DumpChannel::ValueOnly, peer, differences);
         let updates: Vec<Message<K, Entry<Timestamp, V>, State<V>>> = {
             let guard = self.projection.load_full();
             let mut updates = Vec::new();
