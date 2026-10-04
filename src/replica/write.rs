@@ -180,6 +180,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let transport = Arc::clone(&self.transport);
         let authenticator = self.authenticator.clone();
         let sender_counter = Arc::clone(&self.sender_counter);
+        let framing = self.framing;
         // A plain `Update` triggers no reply of its own, so this specific write cannot
         // itself cancel the pending retry early -- only unrelated traffic from the same peer, or
         // the bounded timeout in `retry_due_repairs`, resolves it. An accepted, bounded cost (see
@@ -195,6 +196,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 transport: &*transport,
                 authenticator: &authenticator,
                 sender_counter: &sender_counter,
+                framing,
             };
             let mut send_buf = Vec::new();
             for addr in peers {

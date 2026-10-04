@@ -13,6 +13,7 @@ use tokio::time::timeout;
 use tracing::{debug, instrument, trace, warn};
 
 use crate::bounds::{Key, Value};
+use crate::framing::{accept_frame, expire_reassembly};
 use crate::observability;
 
 use super::{admit_inbound, InboundRejection, Replica, BUFFER_SIZE};
@@ -42,6 +43,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             let recv_timeout = *self.reconcile_interval.read();
             match timeout(recv_timeout, self.transport.recv_from(&mut recv_buf)).await {
                 Err(_) => {
+                    expire_reassembly(&self.reassembler);
                     debug!("no recent activity; initiating diff protocol");
                     self.start_reconciliation(&mut send_buf).await;
                 }
@@ -104,9 +106,12 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                                 continue;
                             }
                         };
-                        // Hearing anything from `sender` means the preceding send likely arrived.
-                        // Clear the old retry before dispatch so this datagram can schedule a fresh
-                        // repair without having that new entry immediately removed.
+                        let Some(payload) = accept_frame(&self.reassembler, sender, payload) else {
+                            continue;
+                        };
+                        // Only a complete logical payload proves the preceding exchange made
+                        // protocol progress. Incomplete fragments leave the RTT-scale repair
+                        // pending so a lost fragment is retried with the same content address.
                         self.pending_repairs.write().remove(&sender);
                         let spoke_dated = self.handle_messages(payload, peer, &mut send_buf).await;
                         // Only a sender that spoke the dated channel joins causal-stability

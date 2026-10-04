@@ -11,7 +11,6 @@
 //! same datagram, and reject payload lengths larger than the bytes available.
 
 use bincode::{DefaultOptions, Deserializer, Serializer};
-use gossip::auth;
 use serde::{Deserialize, Serialize};
 
 use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
@@ -45,16 +44,8 @@ fn datagram_bytes(messages: &[Msg]) -> Vec<u8> {
 
 async fn feed_datagram(engine: &Replica<i32, u8>, messages: &[Msg]) -> bool {
     let bytes = datagram_bytes(messages);
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated mode clears any datagram")
-        .check_version()
-        .expect("datagram_bytes stamps the current wire version");
     let peer: SocketAddr = "127.0.0.62:9".parse().unwrap();
-    let payload = payload
-        .verify_replay(&engine.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(engine, peer, &bytes);
     let mut send_buf = Vec::new();
     engine.handle_messages(payload, peer, &mut send_buf).await
 }

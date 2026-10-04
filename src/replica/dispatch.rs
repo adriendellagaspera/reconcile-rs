@@ -17,10 +17,13 @@ use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
 use crate::observability;
-use gossip::auth;
+use gossip::framing::LogicalPayload;
 
 use super::collision;
-use super::{send_messages_to, version_hash, Message, Replica, MAX_MESSAGES_PER_DATAGRAM};
+use super::{
+    send_control_batch_to, send_messages_to, version_hash, Message, Replica,
+    MAX_MESSAGES_PER_DATAGRAM,
+};
 
 struct DecodedDatagram<K, V> {
     dated_ranges: Vec<RangeAggregate<K>>,
@@ -56,7 +59,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     #[instrument(name = "reconcile.handle", skip_all, fields(peer = %peer))]
     pub(super) async fn handle_messages(
         &self,
-        payload: auth::Payload<'_, auth::Verified>,
+        payload: LogicalPayload<'_>,
         peer: SocketAddr,
         send_buf: &mut Vec<u8>,
     ) -> bool {
@@ -80,7 +83,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     fn decode_datagram(
         &self,
-        payload: auth::Payload<'_, auth::Verified>,
+        payload: LogicalPayload<'_>,
         peer: SocketAddr,
     ) -> Option<DecodedDatagram<K, V>> {
         let payload = payload.as_bytes();
@@ -186,7 +189,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 .into_iter()
                 .map(Message::EntryFingerprint::<K, Entry<Timestamp, V>, State<V>>)
                 .collect();
-            send_messages_to(&messages, &self.send_ports(), &peer, send_buf).await;
+            send_control_batch_to(&messages, &self.send_ports(), &peer, send_buf).await;
         }
 
         if !differences.is_empty() {
@@ -335,7 +338,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 .into_iter()
                 .map(Message::StateFingerprint::<K, Entry<Timestamp, V>, State<V>>)
                 .collect();
-            send_messages_to(&messages, &self.send_ports(), &peer, send_buf).await;
+            send_control_batch_to(&messages, &self.send_ports(), &peer, send_buf).await;
         }
 
         if !differences.is_empty() {

@@ -70,9 +70,9 @@ fn install_recorder() -> metrics_util::debugging::Snapshotter {
         .clone()
 }
 
-/// A raw byte, sent directly over UDP with no framing beyond what `Authenticator::Disabled`
-/// requires — i.e. exactly what a peer speaking a different wire version, or an attacker, would
-/// produce. `version` is the byte a real `seal()` would have written; this test controls it
+/// A raw byte sequence sent directly over UDP with only the wire-version envelope. This can
+/// represent either a peer speaking a different version or a current-version datagram with an
+/// invalid application-frame tag. `version` is the byte a real `seal()` would have written; this test controls it
 /// directly instead, since `WIRE_VERSION` is fixed per build and there is no second build to seal
 /// a genuinely different version with.
 fn raw_datagram(version: u8) -> Vec<u8> {
@@ -110,7 +110,7 @@ async fn mixed_wire_versions_are_reported_not_silently_dropped() {
     let target = std::net::SocketAddr::new(target_addr, port);
 
     let before_version = dropped_count(&snapshotter, "version");
-    let before_malformed = dropped_count(&snapshotter, "malformed");
+    let before_framing = dropped_count(&snapshotter, "framing");
 
     // (a) A datagram claiming a version this build does not speak.
     let wrong_version = gossip::auth::WIRE_VERSION.wrapping_add(1);
@@ -126,16 +126,15 @@ async fn mixed_wire_versions_are_reported_not_silently_dropped() {
         "a wire-version mismatch must be counted under its own distinguishable reason"
     );
     assert_eq!(
-        dropped_count(&snapshotter, "malformed"),
-        before_malformed,
-        "a version mismatch must not also (or instead) be counted as merely malformed"
+        dropped_count(&snapshotter, "framing"),
+        before_framing,
+        "a version mismatch must be rejected before application framing"
     );
 
-    // (b) Same junk body, but the *correct* version — proves the rejection above was about the
-    // version byte specifically, not the nonsense that follows it: this one clears the version
-    // check and fails later, at decode, under a different reason.
+    // (b) Same junk body, but the *correct* version. It clears the version gate, then the new
+    // application-framing layer rejects its unknown frame tag before protocol decoding.
     let before_version = dropped_count(&snapshotter, "version");
-    let before_malformed = dropped_count(&snapshotter, "malformed");
+    let before_framing = dropped_count(&snapshotter, "framing");
     sender
         .send_to(&raw_datagram(gossip::auth::WIRE_VERSION), &target)
         .await
@@ -148,9 +147,9 @@ async fn mixed_wire_versions_are_reported_not_silently_dropped() {
         "a correctly-versioned datagram must never be counted as a version mismatch"
     );
     assert_eq!(
-        dropped_count(&snapshotter, "malformed"),
-        before_malformed + 1,
-        "a correctly-versioned but undecodable body must fall through to the malformed reason"
+        dropped_count(&snapshotter, "framing"),
+        before_framing + 1,
+        "a correctly-versioned invalid outer frame must be rejected by framing"
     );
 
     // Never converges: this is the (already-documented) non-convergence symptom, alongside the

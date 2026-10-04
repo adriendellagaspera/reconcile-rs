@@ -21,11 +21,9 @@ fn peer_cap_default_is_1024() {
     assert_eq!(Config::default().max_peers, 1024);
 }
 
-/// A raw payload with one `EntryFingerprint`: a dated message, so the receive path would add
-/// the sender to `members` unless the cap fires first. Starts with the wire-version byte
-/// every datagram carries, unauthenticated included — `Authenticator::Disabled` no
-/// longer passes bytes through unversioned.
-fn dated_comparison_payload() -> Vec<u8> {
+/// One current-version application frame containing an `EntryFingerprint`: a dated message, so
+/// the receive path would add the sender to `members` unless admission rejects it first.
+fn dated_comparison_frame() -> Vec<u8> {
     use crate::replica::Message;
     use crate::FingerprintTreeMap;
     use bincode::{DefaultOptions, Serializer};
@@ -33,17 +31,27 @@ fn dated_comparison_payload() -> Vec<u8> {
 
     let tree = FingerprintTreeMap::<i32, (crate::clock::Timestamp, Option<i32>)>::new();
     let segments = rbsr::initial_ranges(&tree);
-    let mut buf = vec![gossip::auth::WIRE_VERSION];
+    let mut logical = Vec::new();
     for seg in segments {
         Message::<
             i32,
             (crate::clock::Timestamp, Option<i32>),
             (crate::clock::Timestamp, Option<i32>),
         >::EntryFingerprint(seg)
-        .serialize(&mut Serializer::new(&mut buf, DefaultOptions::new()))
+        .serialize(&mut Serializer::new(&mut logical, DefaultOptions::new()))
         .expect("serializing EntryFingerprint into a Vec cannot fail");
     }
-    buf
+    let mut frame = Vec::new();
+    gossip::framing::write_complete(&logical, &mut frame);
+    frame
+}
+
+fn insecure_dated_comparison_datagram() -> Vec<u8> {
+    gossip::auth::Authenticator::new(None, false).unwrap().seal(
+        gossip::replay::Seq::NONE,
+        gossip::replay::Stamp::NONE,
+        &dated_comparison_frame(),
+    )
 }
 
 /// When the membership set is at capacity, datagrams from a completely unknown sender are
@@ -84,7 +92,7 @@ async fn peer_cap_blocks_unknown_sender_at_capacity() {
 
     // Send a valid dated payload from the newcomer's IP several times to ensure at least one
     // reaches the receive loop; all must be dropped by the cap.
-    let payload = dated_comparison_payload();
+    let payload = insecure_dated_comparison_datagram();
     let sender = net.bind(SocketAddr::new(newcomer, port));
     for _ in 0..5 {
         let _ = sender
@@ -141,7 +149,7 @@ async fn peer_cap_allows_known_member_at_capacity() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     // Send a valid dated payload FROM a known member (peer1), retrying until accepted.
-    let payload = dated_comparison_payload();
+    let payload = insecure_dated_comparison_datagram();
     let sender = net.bind(SocketAddr::new(peer1, port));
 
     let mut peers_refreshed = false;
@@ -339,13 +347,13 @@ async fn peer_cap_no_replay_entry_for_capped_sender() {
 
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
 
-    // Craft a sealed (authenticated) dated datagram from the newcomer's IP.
-    let payload = dated_comparison_payload();
+    // Craft a sealed (authenticated), correctly framed dated datagram from the newcomer's IP.
+    let frame = dated_comparison_frame();
     let counter = gossip::replay::SenderCounter::new();
     let sealed =
         gossip::auth::Authenticator::new(Some(gossip::auth::ClusterKey::new(cluster_key)), false)
             .unwrap()
-            .seal(counter.next_seq(), counter.next_stamp(), &payload);
+            .seal(counter.next_seq(), counter.next_stamp(), &frame);
 
     let sender = net.bind(SocketAddr::new(newcomer, port));
     sender
@@ -360,6 +368,73 @@ async fn peer_cap_no_replay_entry_for_capped_sender() {
         store.engine.replay_filter_len(),
         0,
         "no replay-filter entry must be created for a capped-out sender"
+    );
+
+    task.abort();
+}
+
+/// A valid authenticated fragment from a new sender at the topology peer cap must be rejected
+/// before replay or reassembly state is allocated. This pins the admission ordering required by
+/// the fragmented framing trust model.
+#[tokio::test(flavor = "multi_thread")]
+async fn peer_cap_rejects_authenticated_fragment_before_reassembly_allocation() {
+    let port = 9806u16;
+    let target_addr: std::net::IpAddr = "127.0.3.1".parse().unwrap();
+    let known: std::net::IpAddr = "127.0.3.2".parse().unwrap();
+    let newcomer: std::net::IpAddr = "127.0.3.3".parse().unwrap();
+    let key = gossip::auth::ClusterKey::new([0x77; 32]);
+
+    let net = InMemoryNetwork::new();
+    let store = ReplicatedMap::<i32, Vec<u8>>::new_with_transport(
+        Config::new(port)
+            .with_listen_addr(target_addr)
+            .with_net("127.0.3.0/24".parse().unwrap())
+            .unwrap()
+            .with_cluster_key(key.clone())
+            .with_max_peers(1)
+            .with_reconcile_interval(std::time::Duration::from_secs(60)),
+        Arc::new(net.bind(SocketAddr::new(target_addr, port))),
+    )
+    .expect("valid test config");
+    store.engine.members.write().insert(known);
+
+    let task = tokio::spawn(store.clone().run(CancellationToken::new()));
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+
+    let logical = vec![0x5a; 2048];
+    let mut frame = Vec::new();
+    gossip::framing::write_fragment(
+        gossip::framing::transfer_id(&logical),
+        logical.len(),
+        0,
+        &logical[..256],
+        &mut frame,
+    )
+    .unwrap();
+    let auth = gossip::auth::Authenticator::new(Some(key), false).unwrap();
+    let counter = gossip::replay::SenderCounter::new();
+    let wire = auth.seal(counter.next_seq(), counter.next_stamp(), &frame);
+
+    let sender = net.bind(SocketAddr::new(newcomer, port));
+    sender
+        .send_to(&wire, &SocketAddr::new(target_addr, port))
+        .await
+        .expect("send fragment");
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    assert_eq!(
+        store.engine.replay_filter_len(),
+        0,
+        "peer-cap rejection must happen before replay sender state is allocated"
+    );
+    assert_eq!(
+        crate::replica::tests::reassembly_retained_bytes(&store.engine),
+        0,
+        "peer-cap rejection must happen before fragment reassembly allocation"
+    );
+    assert!(
+        !store.engine.members.read().contains(&newcomer),
+        "capped fragment sender must not enter causal membership"
     );
 
     task.abort();

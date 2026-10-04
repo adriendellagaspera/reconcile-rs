@@ -16,7 +16,6 @@ use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
 use crate::entry::{Entry, State};
 use crate::replica::{version_hash, Replica};
 use crate::replicated_map::Config;
-use gossip::auth;
 
 type Tombstoned = Entry<Timestamp, i32>;
 
@@ -39,15 +38,7 @@ fn ack_bytes(key: i32, version: u64) -> Vec<u8> {
 
 async fn dispatch_ack(eng: &Replica<i32, i32>, peer: SocketAddr, key: i32, version: u64) {
     let bytes = ack_bytes(key, version);
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated open")
-        .check_version()
-        .expect("ack_bytes stamps the current wire version");
-    let payload = payload
-        .verify_replay(&eng.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(eng, peer, &bytes);
     let mut send_buf = Vec::new();
     eng.handle_messages(payload, peer, &mut send_buf).await;
 }
@@ -61,15 +52,7 @@ async fn ack_for_unknown_key_does_not_grow_tombstone_acks() {
     let peer: SocketAddr = "127.0.0.94:9000".parse().unwrap();
 
     let bytes = ack_bytes(42, 999);
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated open")
-        .check_version()
-        .expect("ack_bytes stamps the current wire version");
-    let payload = payload
-        .verify_replay(&eng.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(&eng, peer, &bytes);
     let mut send_buf = Vec::new();
     eng.handle_messages(payload, peer, &mut send_buf).await;
 
@@ -99,15 +82,7 @@ async fn ack_for_live_key_does_not_grow_tombstone_acks() {
 
     let peer: SocketAddr = "127.0.0.96:9000".parse().unwrap();
     let bytes = ack_bytes(key, 123);
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated open")
-        .check_version()
-        .expect("ack_bytes stamps the current wire version");
-    let payload = payload
-        .verify_replay(&eng.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(&eng, peer, &bytes);
     let mut send_buf = Vec::new();
     eng.handle_messages(payload, peer, &mut send_buf).await;
 
@@ -133,15 +108,7 @@ async fn ack_for_local_tombstone_is_recorded() {
 
     let peer: SocketAddr = "127.0.0.98:9000".parse().unwrap();
     let bytes = ack_bytes(key, version);
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated open")
-        .check_version()
-        .expect("ack_bytes stamps the current wire version");
-    let payload = payload
-        .verify_replay(&eng.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(&eng, peer, &bytes);
     let mut send_buf = Vec::new();
     eng.handle_messages(payload, peer, &mut send_buf).await;
 

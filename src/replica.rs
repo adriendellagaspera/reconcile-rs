@@ -143,6 +143,10 @@ pub(crate) struct Inner<K, V> {
     /// `None` to send back-to-back. Mirrors [`Config::bulk_send_rate`](crate::replicated_map::Config::bulk_send_rate)
     /// and is read by [`spawn_paced_send`](Self::spawn_paced_send).
     bulk_send_rate: Option<usize>,
+    /// UDP framing/reassembly policy used by every send and receive path.
+    framing: crate::replicated_map::FramingConfig,
+    /// Bounded incomplete logical-message state, populated only after inbound admission.
+    reassembler: Arc<Mutex<gossip::framing::Reassembler>>,
     /// Peers with a bulk transfer in flight: at most one paced dump per peer, or a re-firing
     /// reconcile timer would re-dump ranges still in transit. Cleared by an RAII guard.
     bulk_in_flight: Arc<RwLock<HashSet<SocketAddr>>>,
@@ -316,6 +320,7 @@ mod collision;
 mod construct;
 mod dispatch;
 mod dump;
+mod framed_send;
 mod gc;
 mod generation;
 mod inbound;
@@ -333,9 +338,9 @@ pub(crate) use gc::version_hash;
 pub(crate) use inbound::{admit_inbound, InboundRejection};
 pub(crate) use membership::derive_local_net;
 
-#[cfg(test)]
-pub(crate) use pacing::send_messages_paced;
-pub(crate) use pacing::{send_messages_to, send_to_retry, SendPorts};
+pub(crate) use framed_send::{
+    send_control_batch_to, send_messages_paced, send_messages_to, send_to_retry, SendPorts,
+};
 
 // Shared test helpers used by sibling test modules; production code remains in the modules above.
 #[cfg(test)]

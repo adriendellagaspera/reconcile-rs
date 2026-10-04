@@ -63,17 +63,35 @@ anti-entropy until primaries match.
 The `zeroize` feature wipes cluster-key bytes owned by the library on drop. It cannot wipe copies
 owned by the caller or secret source.
 
+## Fragment reassembly
+
+Fragment state is allocated only after the datagram has passed authentication, wire-version,
+topology-peer admission, and replay checks. A forged or replay-rejected datagram therefore cannot
+consume reassembly memory.
+
+`Config::framing` bounds incomplete state independently of the protocol data structure:
+maximum logical-message size, fragments per message, incomplete transfers per peer, retained bytes
+per peer, total retained bytes, and inactivity TTL. When a capacity must be reclaimed, the oldest
+eligible incomplete transfer is evicted deterministically; the transfer currently being extended is
+never partially evicted to admit its own next fragment. Exact duplicate fragments consume no
+additional retained bytes.
+
+The transfer identifier is a content hash used for resumability, not an authentication primitive.
+Integrity/authority still comes from the authenticated datagram boundary; after completion, the
+reassembled bytes are checked against that content identifier before protocol deserialization.
+
 ## Wire compatibility
 
 Wire versions are strict and are not negotiated. Nodes with different wire versions reject each
-other. A wire-format change therefore requires a coordinated cluster upgrade.
+other. Application framing is part of that wire contract, so a framing-format change requires a
+wire-version bump and coordinated cluster upgrade.
 
 ## Operations
 
 - Restrict the gossip UDP port to intended participants.
 - Use a cluster key unless the underlay is the authentication boundary.
 - Enable `encryption` when payload confidentiality is not supplied elsewhere.
-- Set causal-peer, authenticated replay-sender, and value-size bounds appropriate to the deployment.
+- Set causal-peer, authenticated replay-sender, logical-message, and reassembly bounds appropriate to the deployment.
 - Coordinate key rotation and wire-version changes across the cluster.
 - The optional Prometheus HTTP endpoint is unauthenticated; restrict its bind address or network
   reachability.
