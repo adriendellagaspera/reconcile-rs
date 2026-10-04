@@ -16,12 +16,14 @@ use tracing::{debug, trace, warn};
 use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
+use crate::framing::{accept_frame, expire_reassembly};
 use crate::replica::{
-    admit_inbound, send_messages_to, send_to_retry, InboundRejection, Message, SendPorts,
+    admit_inbound, send_control_batch_to, send_to_retry, InboundRejection, Message, SendPorts,
     MAX_MESSAGES_PER_DATAGRAM,
 };
 use crate::transport::Transport;
 use gossip::auth;
+use gossip::framing::LogicalPayload;
 use gossip::gen_ip::gen_ip;
 
 use super::ReadReplicaMap;
@@ -68,6 +70,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             transport: &*self.transport,
             authenticator: &self.authenticator,
             sender_counter: &self.sender_counter,
+            framing: self.framing,
         }
     }
 
@@ -109,6 +112,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                 &*self.transport,
                 &self.authenticator,
                 &self.sender_counter,
+                self.framing,
                 send_buf,
                 SocketAddr::new(peer, self.port),
             )
@@ -124,7 +128,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
 
     async fn handle_messages(
         &self,
-        payload: auth::Payload<'_, auth::Verified>,
+        payload: LogicalPayload<'_>,
         peer: SocketAddr,
         send_buf: &mut Vec<u8>,
     ) {
@@ -188,7 +192,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                     .into_iter()
                     .map(Message::<K, WireDated<V>, State<V>>::StateFingerprint)
                     .collect();
-                send_messages_to(&messages, &self.send_ports(), &peer, send_buf).await;
+                send_control_batch_to(&messages, &self.send_ports(), &peer, send_buf).await;
             }
         }
     }
@@ -211,6 +215,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             let activity_timeout = *self.reconcile_interval.read();
             match timeout(activity_timeout, self.transport.recv_from(&mut recv_buf)).await {
                 Err(_) => {
+                    expire_reassembly(&self.reassembler);
                     debug!("read replica: no recent activity; initiating value-only diff");
                     self.start_reconciliation_inner(&mut send_buf).await;
                 }
@@ -268,8 +273,13 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                                 continue;
                             }
                         };
+                        let Some(payload) = accept_frame(&self.reassembler, sender, payload) else {
+                            continue;
+                        };
                         self.handle_messages(payload, peer, &mut send_buf).await;
-                        // Record the sender so we keep gossiping value-only diffs to it.
+                        // Record only a sender that completed a logical protocol payload; an
+                        // incomplete fragment transfer is authenticated but has not spoken the
+                        // reconciliation protocol yet.
                         self.peers.write().insert(sender, Instant::now());
                     }
                 }

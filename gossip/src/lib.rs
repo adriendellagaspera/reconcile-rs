@@ -22,6 +22,8 @@ pub mod auth;
 // Named after the external crate it wraps; `::bincode::…` disambiguates from this module.
 pub mod bincode;
 pub mod discovery;
+#[doc(hidden)]
+pub mod framing;
 pub mod gen_ip;
 #[cfg(feature = "netem")]
 pub mod netem;

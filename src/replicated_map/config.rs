@@ -16,8 +16,10 @@ use super::persistence::SNAPSHOT_INTERVAL;
 
 mod builders;
 mod error;
+mod framing;
 
 pub use error::ConfigError;
+pub use framing::{FramingConfig, DEFAULT_DATAGRAM_PAYLOAD_BUDGET};
 
 /// Default metering rate of a single bulk transfer (see [`Config::bulk_send_rate`]). 32 MiB/s
 /// spaces 64 KiB datagrams ~2 ms apart: fast, but under the receiver's socket-buffer overrun
@@ -241,6 +243,11 @@ pub struct Config {
     /// exhausted — neither the write nor the broadcast applies — for a caller that wants to know
     /// egress is falling behind rather than rely on the backstop.
     pub max_concurrent_broadcasts: usize,
+    /// UDP application framing and bounded incomplete-message reassembly policy. The default
+    /// total datagram payload budget is 1200 bytes, including authentication/version overhead.
+    /// Logical protocol messages larger than one datagram are fragmented and reassembled subject
+    /// to the explicit limits in [`FramingConfig`].
+    pub framing: FramingConfig,
     /// How often the background task started by [`ReplicatedMap::run`](super::ReplicatedMap::run)
     /// wakes to consider writing a snapshot to the persistence backend (default `Some(5 s)`).
     /// Only meaningful once [`with_persistence`](super::ReplicatedMap::with_persistence) has been
@@ -289,14 +296,13 @@ pub struct Config {
     /// checked at write time by [`try_insert`](super::ReplicatedMap::try_insert)/
     /// [`try_update`](super::ReplicatedMap::try_update), returning
     /// [`WriteRejected::TooLarge`](super::WriteRejected::TooLarge) before any local state changes.
-    /// An *application-chosen* cap, independent of the wire protocol's own hard ceiling (`65507 -`
-    /// authentication overhead — see [`insert`](super::ReplicatedMap::insert)'s "Value-size
-    /// ceiling"): the infallible `insert`/`update`/`get_mut`/`upsert` never consult this field, so
-    /// setting it changes nothing for a caller that keeps using them. A value already past the
-    /// protocol ceiling that this field does *not* catch (unset, or set above the ceiling) is still
-    /// caught at send time exactly as before — logged and counted
-    /// (`VALUES_OVERSIZED_TOTAL`, behind the `metrics` feature), just not reported back to the
-    /// writer synchronously.
+    /// An *application-chosen* cap, independent of the wire framing ceiling in
+    /// [`FramingConfig::max_logical_message_size`]. The infallible
+    /// `insert`/`update`/`get_mut`/`upsert` paths never consult this field, so setting it changes
+    /// nothing for a caller that keeps using them. A value whose encoded protocol message exceeds
+    /// the framing ceiling is rejected on send and counted by `VALUES_OVERSIZED_TOTAL` (behind the
+    /// `metrics` feature); `try_insert`/`try_update` remain the only way to surface the
+    /// application-level `max_value_size` synchronously to the writer.
     pub max_value_size: Option<usize>,
 }
 
@@ -331,6 +337,7 @@ impl fmt::Debug for Config {
             .field("max_replay_senders", &self.max_replay_senders)
             .field("max_concurrent_bulk_dumps", &self.max_concurrent_bulk_dumps)
             .field("max_concurrent_broadcasts", &self.max_concurrent_broadcasts)
+            .field("framing", &self.framing)
             .field("snapshot_interval", &self.snapshot_interval)
             .field("snapshot_change_threshold", &self.snapshot_change_threshold)
             .field("max_clock_drift", &self.max_clock_drift)
@@ -363,6 +370,7 @@ impl Default for Config {
             max_replay_senders: DEFAULT_MAX_REPLAY_SENDERS,
             max_concurrent_bulk_dumps: DEFAULT_MAX_CONCURRENT_BULK_DUMPS,
             max_concurrent_broadcasts: DEFAULT_MAX_CONCURRENT_BROADCASTS,
+            framing: FramingConfig::default(),
             snapshot_interval: Some(SNAPSHOT_INTERVAL),
             snapshot_change_threshold: DEFAULT_SNAPSHOT_CHANGE_THRESHOLD,
             max_clock_drift: MAX_CLOCK_DRIFT,

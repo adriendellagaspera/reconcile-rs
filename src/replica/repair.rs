@@ -84,6 +84,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             &*self.transport,
             &self.authenticator,
             &self.sender_counter,
+            self.framing,
             send_buf,
             target,
         )

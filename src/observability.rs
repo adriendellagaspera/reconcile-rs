@@ -12,7 +12,13 @@
 //! Metric names are public, stable constants in [`crate::metrics`] — this module only
 //! records against them.
 
+mod framing;
 mod snapshot;
+pub(crate) use framing::{
+    record_fragment_received, record_fragment_sent, record_fragmented_message,
+    record_reassembly_bytes, record_reassembly_completed, record_reassembly_duplicate,
+    record_reassembly_evictions, record_reassembly_rejection,
+};
 pub(crate) use snapshot::{
     record_snapshot_cleanup_failure, record_snapshot_delta, record_snapshot_full,
     record_snapshot_recovery,
@@ -67,9 +73,9 @@ mod imp {
         counter!(SEND_FAILURES_TOTAL).increment(1);
     }
 
-    /// A single message's encoded size exceeds the datagram budget on its own — dropped, never
-    /// sent. Distinct from [`record_send_failure`] (a transport-level failure to send a
-    /// well-formed datagram): this is a structurally undeliverable message, alertable on its own.
+    /// An encoded logical message exceeds the configured logical-size or fragment-count ceiling.
+    /// Distinct from [`record_send_failure`] (a transport-level failure to send a well-formed
+    /// datagram): this is a policy/resource-limit rejection, alertable on its own.
     #[inline]
     pub(crate) fn record_value_oversized() {
         counter!(VALUES_OVERSIZED_TOTAL).increment(1);
@@ -192,13 +198,14 @@ mod imp {
         describe_counter!(
             VALUES_OVERSIZED_TOTAL,
             Unit::Count,
-            "Single encoded messages exceeding the datagram budget, dropped on the send path"
+            "Encoded logical messages exceeding framing resource limits"
         );
         describe_counter!(
             DATAGRAMS_DROPPED_TOTAL,
             Unit::Count,
             "Datagrams dropped, by reason"
         );
+        super::framing::describe();
         describe_counter!(
             BROADCAST_BACKPRESSURE_TOTAL,
             Unit::Count,

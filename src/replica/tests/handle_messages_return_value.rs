@@ -17,7 +17,6 @@ use crate::entry::{Entry, State};
 use crate::replica::Replica;
 use crate::replicated_map::Config;
 use bincode::{DefaultOptions, Serializer};
-use gossip::auth;
 use serde::Serialize;
 use std::net::SocketAddr;
 
@@ -38,16 +37,8 @@ async fn feed(
     message: &Message<i32, Entry<Timestamp, u8>, State<u8>>,
 ) -> bool {
     let bytes = message_bytes(message);
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated mode clears any datagram")
-        .check_version()
-        .expect("message_bytes stamps the current wire version");
     let peer: SocketAddr = "127.0.0.60:9".parse().unwrap();
-    let payload = payload
-        .verify_replay(&engine.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(engine, peer, &bytes);
     let mut send_buf = Vec::new();
     engine.handle_messages(payload, peer, &mut send_buf).await
 }

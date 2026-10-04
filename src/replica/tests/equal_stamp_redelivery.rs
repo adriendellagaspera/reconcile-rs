@@ -10,8 +10,6 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use gossip::auth;
-
 use super::deadlock_regressions::update_message_bytes;
 use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
 use crate::entry::{Entry, State};
@@ -48,16 +46,8 @@ async fn equal_stamp_update_is_not_reapplied() {
     // Same key, same stamp, a different value: only the stamp comparison decides whether this
     // is re-applied, so the value must not matter.
     let bytes = update_message_bytes(key, Entry::present(stamp, 2));
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated mode clears any datagram")
-        .check_version()
-        .expect("update_message_bytes stamps the current wire version");
     let peer: SocketAddr = "127.0.0.151:9".parse().unwrap();
-    let payload = payload
-        .verify_replay(&engine.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(&engine, peer, &bytes);
     let mut send_buf = Vec::new();
     engine.handle_messages(payload, peer, &mut send_buf).await;
 
@@ -101,16 +91,8 @@ async fn newer_remote_tombstone_is_acked() {
     let tombstone = Entry::tombstone(new_stamp);
     let expected_version = version_hash(&tombstone);
     let bytes = update_message_bytes(key, tombstone);
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated mode clears any datagram")
-        .check_version()
-        .expect("update_message_bytes stamps the current wire version");
     let peer: SocketAddr = "127.0.0.153:9".parse().unwrap();
-    let payload = payload
-        .verify_replay(&engine.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(&engine, peer, &bytes);
 
     let mut send_buf = Vec::new();
     engine.handle_messages(payload, peer, &mut send_buf).await;

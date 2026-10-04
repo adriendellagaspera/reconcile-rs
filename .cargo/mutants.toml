@@ -14,10 +14,7 @@ exclude_re = [
     "testing::",
     "impl Mac for HmacSha256Mac",
     "read_replica_map/membership\\.rs:71:53: replace < with <=",
-    "read_replica_map/write\\.rs:219:36: replace != with ==",
     "replay/bitmap\\.rs:75:32: replace \\| with \\^",
-    "replica/construct\\.rs:212:33: replace < with <=",
-    "replica/repair\\.rs:116:36: replace > with >=",
     "persistence\\.rs:.*replace Persistence::try_save_delta -> io::Result<bool> with Ok\\(false\\)",
     # Snapshot-policy survivors below only change metric/descriptor reporting. They do not alter
     # publication, retained files, recovery, or compaction decisions, and this repository has no
@@ -31,6 +28,12 @@ exclude_re = [
     "observability/snapshot\\.rs:40:9: replace imp::record_snapshot_recovery with \\(\\)",
     "observability/snapshot\\.rs:48:9: replace imp::describe with \\(\\)",
     "observability/snapshot\\.rs:117:5: replace describe_snapshot_metrics with \\(\\)",
+    # Descriptor registration is metadata-only; metric value paths are integration-tested.
+    "observability/framing\\.rs:.*replace imp::describe with \\(\\)",
+    # These mutations cannot make progress: eviction loops repeatedly select a transfer that is
+    # never removed (or a fabricated id), so cargo-mutants can only time them out.
+    "gossip/src/framing/reassembly\\.rs:.*replace Reassembler::remove_transfer with \\(\\)",
+    "gossip/src/framing/reassembly\\.rs:.*replace Reassembler::oldest_for_peer -> Option.* with Some",
     "snapshot/incremental/storage\\.rs:216:54: replace != with == in cleanup_after_full_materialization",
     "snapshot/incremental/storage\\.rs:222:21: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with false in cleanup_after_full_materialization",
     "snapshot/incremental/storage\\.rs:222:21: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with true in cleanup_after_full_materialization",

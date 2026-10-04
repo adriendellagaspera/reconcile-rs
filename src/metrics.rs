@@ -21,8 +21,16 @@
 //! | [`MESSAGES_RECEIVED_TOTAL`](crate::metrics::MESSAGES_RECEIVED_TOTAL) | counter | datagrams accepted |
 //! | [`BYTES_RECEIVED_TOTAL`](crate::metrics::BYTES_RECEIVED_TOTAL) | counter | wire bytes received |
 //! | [`SEND_FAILURES_TOTAL`](crate::metrics::SEND_FAILURES_TOTAL) | counter | sends that exhausted all retries |
-//! | [`VALUES_OVERSIZED_TOTAL`](crate::metrics::VALUES_OVERSIZED_TOTAL) | counter | single encoded messages exceeding the datagram budget, dropped on the send path — the key never converges |
+//! | [`VALUES_OVERSIZED_TOTAL`](crate::metrics::VALUES_OVERSIZED_TOTAL) | counter | encoded logical messages rejected by configured logical-size or fragment-count limits |
 //! | [`DATAGRAMS_DROPPED_TOTAL`](crate::metrics::DATAGRAMS_DROPPED_TOTAL) | counter (`reason` label) | dropped datagrams |
+//! | [`FRAGMENTED_MESSAGES_TOTAL`](crate::metrics::FRAGMENTED_MESSAGES_TOTAL) | counter | logical messages split across frames |
+//! | [`FRAGMENTS_SENT_TOTAL`](crate::metrics::FRAGMENTS_SENT_TOTAL) | counter | fragment datagrams sent |
+//! | [`FRAGMENTS_RECEIVED_TOTAL`](crate::metrics::FRAGMENTS_RECEIVED_TOTAL) | counter | authenticated fragment datagrams received |
+//! | [`REASSEMBLIES_COMPLETED_TOTAL`](crate::metrics::REASSEMBLIES_COMPLETED_TOTAL) | counter | fragmented logical messages reassembled |
+//! | [`REASSEMBLY_DUPLICATES_TOTAL`](crate::metrics::REASSEMBLY_DUPLICATES_TOTAL) | counter | exact duplicate fragments reused |
+//! | [`REASSEMBLY_EVICTIONS_TOTAL`](crate::metrics::REASSEMBLY_EVICTIONS_TOTAL) | counter (`reason` label) | incomplete transfers evicted/expired |
+//! | [`REASSEMBLY_REJECTIONS_TOTAL`](crate::metrics::REASSEMBLY_REJECTIONS_TOTAL) | counter (`reason` label) | authenticated fragment frames rejected |
+//! | [`REASSEMBLY_BYTES_CURRENT`](crate::metrics::REASSEMBLY_BYTES_CURRENT) | gauge | retained incomplete fragment bytes |
 //! | [`ROUNDS_TOTAL`](crate::metrics::ROUNDS_TOTAL) | counter | reconciliation rounds initiated |
 //! | [`TOMBSTONE_ACKS_RESENT_TOTAL`](crate::metrics::TOMBSTONE_ACKS_RESENT_TOTAL) | counter | tombstone acks resent on reconciliation rounds |
 //! | [`TOMBSTONE_STAMP_BOUNDED_TOTAL`](crate::metrics::TOMBSTONE_STAMP_BOUNDED_TOTAL) | counter (`outcome` label) | tombstones whose expiry instant had to be bounded because the stored stamp led local time by more than the drift budget |
@@ -63,11 +71,26 @@ pub const MESSAGES_RECEIVED_TOTAL: &str = "reconcile_messages_received_total";
 pub const BYTES_RECEIVED_TOTAL: &str = "reconcile_bytes_received_total";
 /// Sends that exhausted all retries.
 pub const SEND_FAILURES_TOTAL: &str = "reconcile_send_failures_total";
-/// Single encoded messages exceeding the datagram budget, dropped on the send path — the key
-/// never converges.
+/// Encoded logical messages exceeding the configured logical-message/fragment-count ceiling.
 pub const VALUES_OVERSIZED_TOTAL: &str = "reconcile_values_oversized_total";
 /// Dropped datagrams, labeled `reason`.
 pub const DATAGRAMS_DROPPED_TOTAL: &str = "reconcile_datagrams_dropped_total";
+/// Logical protocol messages split across fragment frames.
+pub const FRAGMENTED_MESSAGES_TOTAL: &str = "reconcile_fragmented_messages_total";
+/// Fragment datagrams sent.
+pub const FRAGMENTS_SENT_TOTAL: &str = "reconcile_fragments_sent_total";
+/// Authenticated fragment datagrams received.
+pub const FRAGMENTS_RECEIVED_TOTAL: &str = "reconcile_fragments_received_total";
+/// Fragmented logical messages successfully reassembled.
+pub const REASSEMBLIES_COMPLETED_TOTAL: &str = "reconcile_reassemblies_completed_total";
+/// Exact duplicate fragments reused instead of allocating duplicate state.
+pub const REASSEMBLY_DUPLICATES_TOTAL: &str = "reconcile_reassembly_duplicates_total";
+/// Incomplete transfers removed, labeled by reason (`ttl` or `capacity`).
+pub const REASSEMBLY_EVICTIONS_TOTAL: &str = "reconcile_reassembly_evictions_total";
+/// Authenticated frame/reassembly rejections, labeled by reason.
+pub const REASSEMBLY_REJECTIONS_TOTAL: &str = "reconcile_reassembly_rejections_total";
+/// Bytes retained for incomplete reassembly state.
+pub const REASSEMBLY_BYTES_CURRENT: &str = "reconcile_reassembly_bytes_current";
 /// Reconciliation rounds initiated.
 pub const ROUNDS_TOTAL: &str = "reconcile_rounds_total";
 /// Tombstone acks resent on reconciliation rounds.

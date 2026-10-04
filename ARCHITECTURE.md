@@ -126,6 +126,12 @@ The main ports are:
 Authentication and replay validation happen before wire messages reach reconciliation logic.
 Malformed or unauthenticated network input must not mutate domain state.
 
+### 3.1 UDP application framing
+`gossip` owns one application frame per authenticated datagram: complete logical payload or fragment.
+The default 1200-byte budget includes auth/version overhead, avoiding normal IP fragmentation.
+Receive order is auth → version → topology admission → replay → reassembly → protocol decode; only complete payloads reach reconciliation.
+Content-derived transfer ids permit fragment reuse across retransmission; incomplete state is bounded/TTL-evicted as specified in [`SECURITY.md`](SECURITY.md), and framing semantics are covered by the strict wire version.
+
 ## 4. Global invariants
 
 - A replica is fully replicated, not sharded.

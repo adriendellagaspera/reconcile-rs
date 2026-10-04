@@ -225,6 +225,15 @@ impl<K> !core::panic::unwind_safe::RefUnwindSafe for reconcile::read_replica_set
 impl<K> !core::panic::unwind_safe::UnwindSafe for reconcile::read_replica_set::ReadReplicaSet<K>
 pub mod reconcile::replicated_map
 #[non_exhaustive] pub enum reconcile::replicated_map::ConfigError
+pub reconcile::replicated_map::ConfigError::DatagramPayloadBudgetTooLarge
+pub reconcile::replicated_map::ConfigError::DatagramPayloadBudgetTooLarge::configured: usize
+pub reconcile::replicated_map::ConfigError::DatagramPayloadBudgetTooLarge::maximum: usize
+pub reconcile::replicated_map::ConfigError::DatagramPayloadBudgetTooSmall
+pub reconcile::replicated_map::ConfigError::DatagramPayloadBudgetTooSmall::configured: usize
+pub reconcile::replicated_map::ConfigError::DatagramPayloadBudgetTooSmall::minimum: usize
+pub reconcile::replicated_map::ConfigError::LogicalMessageSizeTooLarge
+pub reconcile::replicated_map::ConfigError::LogicalMessageSizeTooLarge::configured: usize
+pub reconcile::replicated_map::ConfigError::LogicalMessageSizeTooLarge::maximum: usize
 pub reconcile::replicated_map::ConfigError::MissingSecurityMode
 pub reconcile::replicated_map::ConfigError::TooManyNets
 impl core::clone::Clone for reconcile::replicated_map::ConfigError
@@ -336,6 +345,7 @@ pub reconcile::replicated_map::Config::bulk_send_rate: core::option::Option<usiz
 pub reconcile::replicated_map::Config::cluster_key: core::option::Option<reconcile_gossip::auth::ClusterKey>
 pub reconcile::replicated_map::Config::coalesce_window: core::time::Duration
 pub reconcile::replicated_map::Config::encrypt: bool
+pub reconcile::replicated_map::Config::framing: reconcile::replicated_map::FramingConfig
 pub reconcile::replicated_map::Config::freshness_window: core::time::Duration
 pub reconcile::replicated_map::Config::insecure_no_key: bool
 pub reconcile::replicated_map::Config::listen_addr: core::net::ip_addr::IpAddr
@@ -362,6 +372,7 @@ pub fn reconcile::replicated_map::Config::with_bulk_send_rate(self, usize) -> Se
 pub fn reconcile::replicated_map::Config::with_cluster_key(self, reconcile_gossip::auth::ClusterKey) -> Self
 pub fn reconcile::replicated_map::Config::with_cluster_key_rotation(self, reconcile_gossip::auth::ClusterKey, reconcile_gossip::auth::ClusterKey) -> Self
 pub fn reconcile::replicated_map::Config::with_coalesce_window(self, core::time::Duration) -> Self
+pub fn reconcile::replicated_map::Config::with_framing(self, reconcile::replicated_map::FramingConfig) -> Self
 pub fn reconcile::replicated_map::Config::with_freshness_window(self, core::time::Duration) -> Self
 pub fn reconcile::replicated_map::Config::with_insecure_no_key(self) -> Self
 pub fn reconcile::replicated_map::Config::with_listen_addr(self, core::net::ip_addr::IpAddr) -> Self
@@ -396,6 +407,40 @@ impl core::marker::Unpin for reconcile::replicated_map::Config
 impl core::marker::UnsafeUnpin for reconcile::replicated_map::Config
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::Config
 impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::Config
+#[non_exhaustive] pub struct reconcile::replicated_map::FramingConfig
+pub reconcile::replicated_map::FramingConfig::datagram_payload_budget: usize
+pub reconcile::replicated_map::FramingConfig::max_fragments_per_message: usize
+pub reconcile::replicated_map::FramingConfig::max_incomplete_transfers_per_peer: usize
+pub reconcile::replicated_map::FramingConfig::max_logical_message_size: usize
+pub reconcile::replicated_map::FramingConfig::max_reassembly_bytes_per_peer: usize
+pub reconcile::replicated_map::FramingConfig::max_total_reassembly_bytes: usize
+pub reconcile::replicated_map::FramingConfig::reassembly_ttl: core::time::Duration
+impl reconcile::replicated_map::FramingConfig
+pub fn reconcile::replicated_map::FramingConfig::with_datagram_payload_budget(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_fragments_per_message(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_incomplete_transfers_per_peer(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_logical_message_size(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_reassembly_bytes_per_peer(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_total_reassembly_bytes(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_reassembly_ttl(self, core::time::Duration) -> Self
+impl core::clone::Clone for reconcile::replicated_map::FramingConfig
+pub fn reconcile::replicated_map::FramingConfig::clone(&self) -> reconcile::replicated_map::FramingConfig
+impl core::cmp::Eq for reconcile::replicated_map::FramingConfig
+impl core::cmp::PartialEq for reconcile::replicated_map::FramingConfig
+pub fn reconcile::replicated_map::FramingConfig::eq(&self, &reconcile::replicated_map::FramingConfig) -> bool
+impl core::default::Default for reconcile::replicated_map::FramingConfig
+pub fn reconcile::replicated_map::FramingConfig::default() -> Self
+impl core::fmt::Debug for reconcile::replicated_map::FramingConfig
+pub fn reconcile::replicated_map::FramingConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile::replicated_map::FramingConfig
+impl core::marker::StructuralPartialEq for reconcile::replicated_map::FramingConfig
+impl core::marker::Freeze for reconcile::replicated_map::FramingConfig
+impl core::marker::Send for reconcile::replicated_map::FramingConfig
+impl core::marker::Sync for reconcile::replicated_map::FramingConfig
+impl core::marker::Unpin for reconcile::replicated_map::FramingConfig
+impl core::marker::UnsafeUnpin for reconcile::replicated_map::FramingConfig
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::FramingConfig
+impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::FramingConfig
 #[non_exhaustive] pub struct reconcile::replicated_map::NotAuthoritative
 pub reconcile::replicated_map::NotAuthoritative::kind: reconcile_gossip::discovery::DiscoveryKind
 impl core::clone::Clone for reconcile::replicated_map::NotAuthoritative
@@ -551,6 +596,7 @@ impl core::marker::Unpin for reconcile::replicated_map::ValueTooLarge
 impl core::marker::UnsafeUnpin for reconcile::replicated_map::ValueTooLarge
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_map::ValueTooLarge
 impl core::panic::unwind_safe::UnwindSafe for reconcile::replicated_map::ValueTooLarge
+pub const reconcile::replicated_map::DEFAULT_DATAGRAM_PAYLOAD_BUDGET: usize
 pub const reconcile::replicated_map::MAX_NETS: usize
 pub mod reconcile::replicated_set
 pub struct reconcile::replicated_set::ReplicatedSet<K> where K: core::clone::Clone + core::hash::Hash + core::cmp::Eq + core::marker::Send + core::marker::Sync(_)

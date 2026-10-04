@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
 
 use crate::entry::State;
-use crate::replica::{send_messages_paced, Message, SendPorts};
+use crate::replica::{send_control_batch_to, send_messages_paced, Message, SendPorts};
 use crate::transport::UdpTransport;
 use gossip::auth::Authenticator;
 
@@ -41,6 +41,7 @@ async fn time_send(messages: &[Msg], rate: Option<usize>) -> Duration {
         transport: &transport,
         authenticator: &authenticator,
         sender_counter: &sender_counter,
+        framing: crate::replicated_map::FramingConfig::default(),
     };
     let peer: SocketAddr = "127.0.0.1:9".parse().unwrap(); // discard port
     let mut send_buf = Vec::new();
@@ -118,13 +119,11 @@ async fn tiny_bulk_send_rate_is_clamped_to_the_floor() {
     assert_eq!(above_floor.bulk_send_rate, Some(MIN_BULK_SEND_RATE * 2));
 }
 
-/// A single message whose own encoding exceeds the datagram budget must be dropped — never
-/// sent as a bogus empty datagram (when it was first in the batch) and never sent as an
-/// oversized one (otherwise, which a real UDP socket rejects with `EMSGSIZE`). A
-/// normal-sized message in the same batch must still go out untouched, whether it comes
-/// before or after the oversized one.
+/// A single message above the configured logical-message ceiling is rejected even though the
+/// framing layer could otherwise split it. A normal-sized sibling still goes out, before or after
+/// the rejected message, and no empty or oversized datagram is emitted.
 #[tokio::test]
-async fn oversized_message_is_dropped_not_sent_empty_or_oversized() {
+async fn message_above_logical_limit_is_dropped_without_harming_siblings() {
     use crate::transport::{InMemoryNetwork, Transport};
 
     async fn observe_sends(messages: &[Msg]) -> Vec<usize> {
@@ -140,6 +139,8 @@ async fn oversized_message_is_dropped_not_sent_empty_or_oversized() {
             transport: &sender_transport,
             authenticator: &authenticator,
             sender_counter: &sender_counter,
+            framing: crate::replicated_map::FramingConfig::default()
+                .with_max_logical_message_size(1024),
         };
         let mut send_buf = Vec::new();
         send_messages_paced(messages, &ports, &receiver_addr, &mut send_buf, None).await;
@@ -157,7 +158,7 @@ async fn oversized_message_is_dropped_not_sent_empty_or_oversized() {
         sizes
     }
 
-    // One message far bigger than a single 64 KiB datagram, flanked by two ordinary ones.
+    // One message far above the configured 1 KiB logical ceiling, flanked by ordinary ones.
     let oversized = vec![Message::EntryUpdate((
         999u64,
         vec![0u8; super::super::BUFFER_SIZE * 2],
@@ -165,8 +166,7 @@ async fn oversized_message_is_dropped_not_sent_empty_or_oversized() {
     let small_before = bulk_updates(1, 16);
     let small_after = bulk_updates(1, 16);
 
-    // Oversized first in the batch (the `last_size == 0` case pre-fix produced an empty
-    // datagram).
+    // Rejected first in the batch: it must not produce an empty frame.
     let mut messages = oversized.clone();
     messages.extend(small_after.clone());
     let sizes = observe_sends(&messages).await;
@@ -180,8 +180,7 @@ async fn oversized_message_is_dropped_not_sent_empty_or_oversized() {
         "unexpected datagram size {sizes:?}"
     );
 
-    // Oversized in the middle of the batch (pre-fix, this queued the oversized bytes for a
-    // doomed EMSGSIZE send attempt).
+    // Rejected in the middle of the batch: the preceding valid message still flushes normally.
     let mut messages = small_before;
     messages.extend(oversized);
     let sizes = observe_sends(&messages).await;
@@ -196,8 +195,47 @@ async fn oversized_message_is_dropped_not_sent_empty_or_oversized() {
     );
 }
 
-/// A refinement *round* above the UDP payload ceiling is a batch of atomic fingerprints,
-/// not one oversized message. The sender must split it without losing a range.
+#[tokio::test]
+async fn logical_limit_splits_valid_small_messages_instead_of_dropping_the_batch() {
+    use crate::transport::{InMemoryNetwork, Transport};
+
+    let net = InMemoryNetwork::new();
+    let sender_addr: SocketAddr = "127.0.0.1:11".parse().unwrap();
+    let receiver_addr: SocketAddr = "127.0.0.1:12".parse().unwrap();
+    let sender_transport = net.bind(sender_addr);
+    let receiver_transport = net.bind(receiver_addr);
+    let authenticator = Authenticator::new(None, false).unwrap();
+    let sender_counter = gossip::replay::SenderCounter::new();
+    let ports = SendPorts {
+        transport: &sender_transport,
+        authenticator: &authenticator,
+        sender_counter: &sender_counter,
+        framing: crate::replicated_map::FramingConfig::default().with_max_logical_message_size(600),
+    };
+    let messages = bulk_updates(2, 400);
+    let mut send_buf = Vec::new();
+    send_messages_paced(&messages, &ports, &receiver_addr, &mut send_buf, None).await;
+
+    let mut datagrams = 0;
+    let mut buf = [0u8; 2048];
+    while let Ok(Ok((_len, _))) = tokio::time::timeout(
+        Duration::from_millis(50),
+        receiver_transport.recv_from(&mut buf),
+    )
+    .await
+    {
+        datagrams += 1;
+    }
+    assert_eq!(
+        datagrams, 2,
+        "two individually valid messages must be split rather than dropped as one oversized batch"
+    );
+}
+
+/// A refinement *round* above the UDP payload ceiling remains one logical workset.
+///
+/// Physical datagrams may fragment it, but the receiver must expose exactly one complete logical
+/// payload so bulk admission and dump-slot accounting see the same range set as `protocol_round`.
 #[tokio::test]
 async fn oversized_refinement_batch_is_split_without_dropping_ranges() {
     use crate::transport::{InMemoryNetwork, Transport};
@@ -220,37 +258,181 @@ async fn oversized_refinement_batch_is_split_without_dropping_ranges() {
     let receiver_transport = net.bind(receiver_addr);
     let authenticator = Authenticator::new(None, false).unwrap();
     let sender_counter = gossip::replay::SenderCounter::new();
+    let framing = crate::replicated_map::FramingConfig::default();
     let ports = SendPorts {
         transport: &sender_transport,
         authenticator: &authenticator,
         sender_counter: &sender_counter,
+        framing,
     };
     let mut send_buf = Vec::new();
-    send_messages_paced(&messages, &ports, &receiver_addr, &mut send_buf, None).await;
+    send_control_batch_to(&messages, &ports, &receiver_addr, &mut send_buf).await;
 
+    let replay_filter =
+        gossip::replay::ReplayFilter::new(gossip::replay::FRESHNESS_WINDOW_DEFAULT, false);
+    let mut reassembler = gossip::framing::Reassembler::new(framing.reassembly_limits());
     let mut datagrams = 0;
+    let mut completed_payloads = 0;
     let mut received = 0;
     let mut buf = [0u8; 1 << 17];
-    while let Ok(Ok((len, _))) = tokio::time::timeout(
+    while let Ok(Ok((len, from))) = tokio::time::timeout(
         Duration::from_millis(50),
         receiver_transport.recv_from(&mut buf),
     )
     .await
     {
         datagrams += 1;
-        assert!(len <= super::super::BUFFER_SIZE, "datagram length {len}");
-        let decoded: Vec<Msg> =
-            gossip::bincode::decode_stream(&buf[authenticator.overhead()..len], messages.len())
-                .unwrap();
-        assert!(decoded
-            .iter()
-            .all(|msg| matches!(msg, Message::EntryFingerprint(_))));
-        received += decoded.len();
+        assert!(
+            len <= crate::replicated_map::DEFAULT_DATAGRAM_PAYLOAD_BUDGET,
+            "datagram length {len}"
+        );
+        let payload = authenticator
+            .open(&buf[..len])
+            .unwrap()
+            .check_version()
+            .unwrap()
+            .verify_replay(&replay_filter, from.ip())
+            .unwrap();
+        let report = reassembler.accept(from.ip(), payload, Instant::now());
+        match report.outcome.unwrap() {
+            gossip::framing::ReceiveOutcome::Complete(logical) => {
+                completed_payloads += 1;
+                let decoded: Vec<Msg> =
+                    gossip::bincode::decode_stream(logical.as_bytes(), messages.len()).unwrap();
+                assert!(decoded
+                    .iter()
+                    .all(|msg| matches!(msg, Message::EntryFingerprint(_))));
+                received += decoded.len();
+            }
+            gossip::framing::ReceiveOutcome::Pending => {}
+            gossip::framing::ReceiveOutcome::Duplicate => {
+                panic!("fresh control-batch fragments must not duplicate")
+            }
+        }
     }
-    assert!(datagrams >= 2, "batch was not split");
+    assert!(datagrams >= 2, "batch was not physically fragmented");
+    assert_eq!(
+        completed_payloads, 1,
+        "one refinement round must decode as one logical workset"
+    );
     assert_eq!(
         received,
         messages.len(),
-        "lost a fingerprint during packing"
+        "lost a fingerprint during framing"
+    );
+}
+
+fn encoded_len(message: &Msg) -> usize {
+    let mut encoded = Vec::new();
+    gossip::bincode::encode(message, &mut encoded).unwrap();
+    encoded.len()
+}
+
+fn update_reaching_encoded_len(key: u64, target: usize) -> Msg {
+    for value_len in 0..=target {
+        let message = Message::EntryUpdate((key, vec![0u8; value_len]));
+        if encoded_len(&message) >= target {
+            return message;
+        }
+    }
+    panic!("could not construct an encoded update reaching {target} bytes");
+}
+
+async fn count_in_memory_sends(
+    messages: &[Msg],
+    framing: crate::replicated_map::FramingConfig,
+) -> usize {
+    use crate::transport::{InMemoryNetwork, Transport};
+
+    let net = InMemoryNetwork::new();
+    let sender_addr: SocketAddr = "127.0.0.1:31".parse().unwrap();
+    let receiver_addr: SocketAddr = "127.0.0.1:32".parse().unwrap();
+    let sender_transport = net.bind(sender_addr);
+    let receiver_transport = net.bind(receiver_addr);
+    let authenticator = Authenticator::new(None, false).unwrap();
+    let sender_counter = gossip::replay::SenderCounter::new();
+    let ports = SendPorts {
+        transport: &sender_transport,
+        authenticator: &authenticator,
+        sender_counter: &sender_counter,
+        framing,
+    };
+    let mut send_buf = Vec::new();
+    send_messages_paced(messages, &ports, &receiver_addr, &mut send_buf, None).await;
+
+    let mut datagrams = 0;
+    let mut buf = [0u8; 1 << 17];
+    while let Ok(Ok((_len, _))) = tokio::time::timeout(
+        Duration::from_millis(50),
+        receiver_transport.recv_from(&mut buf),
+    )
+    .await
+    {
+        datagrams += 1;
+    }
+    datagrams
+}
+
+#[tokio::test]
+async fn exact_logical_and_fragment_count_limits_are_sendable() {
+    let authenticator = Authenticator::new(None, false).unwrap();
+    let framing = crate::replicated_map::FramingConfig::default();
+    let complete_capacity = gossip::framing::complete_payload_capacity(
+        framing.datagram_payload_budget,
+        authenticator.overhead(),
+    )
+    .unwrap();
+    let fragment_capacity = gossip::framing::fragment_payload_capacity(
+        framing.datagram_payload_budget,
+        authenticator.overhead(),
+    )
+    .unwrap();
+
+    let message = update_reaching_encoded_len(1, complete_capacity + 1);
+    let logical_len = encoded_len(&message);
+    let fragment_count = logical_len.div_ceil(fragment_capacity);
+    assert!(fragment_count >= 2);
+
+    let at_limits = framing
+        .with_max_logical_message_size(logical_len)
+        .with_max_fragments_per_message(fragment_count);
+    assert_eq!(
+        count_in_memory_sends(std::slice::from_ref(&message), at_limits).await,
+        fragment_count
+    );
+
+    let below_fragment_limit = framing
+        .with_max_logical_message_size(logical_len)
+        .with_max_fragments_per_message(fragment_count - 1);
+    assert_eq!(
+        count_in_memory_sends(std::slice::from_ref(&message), below_fragment_limit).await,
+        0
+    );
+}
+
+#[tokio::test]
+async fn batching_uses_each_encoded_message_length_not_accumulated_batch_length() {
+    let authenticator = Authenticator::new(None, false).unwrap();
+    let framing = crate::replicated_map::FramingConfig::default();
+    let capacity = gossip::framing::complete_payload_capacity(
+        framing.datagram_payload_budget,
+        authenticator.overhead(),
+    )
+    .unwrap();
+
+    let first = update_reaching_encoded_len(1, capacity * 7 / 10);
+    let second = update_reaching_encoded_len(2, capacity * 4 / 10);
+    let third = update_reaching_encoded_len(3, capacity * 4 / 10);
+    let first_len = encoded_len(&first);
+    let second_len = encoded_len(&second);
+    let third_len = encoded_len(&third);
+
+    assert!(first_len <= capacity && second_len <= capacity && third_len <= capacity);
+    assert!(first_len + second_len > capacity);
+    assert!(second_len + third_len <= capacity);
+
+    assert_eq!(
+        count_in_memory_sends(&[first, second, third], framing).await,
+        2
     );
 }

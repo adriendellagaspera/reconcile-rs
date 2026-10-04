@@ -14,6 +14,7 @@ Benchmarks measure code that ships in this repository. Comparative algorithm res
 | read_replica_fleet | many read replicas against a small authoritative set, including authenticated ingress state |
 | security_ingress | authenticated MAC/version/replay CPU cost as payload and retained-sender state scale |
 | security_amplification | response amplification and bulk-dump concurrency for rejected and valid authenticated ingress |
+| fragmentation | UDP application framing, large-message convergence, datagram size, loss/reorder, and reassembly overhead |
 | tombstone_gc_skew | one-sided retained tombstone history, reconciliation work, and ACK recovery |
 | membership_churn | sustained authoritative member replacement with ACK coverage rebuilt through real dated traffic |
 | snapshot_write_amplification | paired full-vs-incremental checkpoint writes, retained storage, segment chains, and restart cost |
@@ -34,6 +35,12 @@ The `read_replica_fleet` target measures a topology with many `ReadReplicaMap` i
 The `security_ingress` target isolates the authenticated ingress gate. It measures valid and invalid MAC verification, authenticated wrong-version rejection, replay-filter lookup/update cost as retained sender state grows, and the combined auth/version/replay path. Defaults are 5,000 iterations, payloads of 64/1,024/8,192 bytes, and retained-sender populations of 1/128/1,024; configure with `RECONCILE_SECURITY_ITERS`, `RECONCILE_SECURITY_PAYLOADS`, and `RECONCILE_SECURITY_REPLAY_POPULATIONS`.
 
 The `security_amplification` target measures runtime response/input byte amplification for rejected authenticated traffic and valid empty-replica mismatches against a populated authoritative store. It also exercises the shipped concurrent bulk-dump bound and stalled-peer retries. Configure corpus size with `RECONCILE_SECURITY_DATASET`.
+
+The `fragmentation` target cold-syncs one value through deterministic Netem profiles and reports
+convergence latency, framed bytes, datagrams, maximum datagram size, thresholds above 1200/1472/8972
+bytes, and realized loss. It is revision-pairable: use the same value-size/profile inputs before and
+after framing changes. Configure value sizes with `RECONCILE_FRAGMENT_VALUE_SIZES` and the
+per-case convergence deadline with `RECONCILE_FRAGMENT_TIMEOUT_MS`.
 
 The `tombstone_gc_skew` target compares aligned authoritative peers with a one-sided retained-tombstone history while keeping application-visible state equal, plus a fixed live-divergence control. It reports wire traffic, protocol enumeration, convergence, and bounded tombstone-ACK recovery rounds. The deployment-sized debt term is approximately `delete_rate × effective_unacked_membership_lag`: age timeout alone does not make a tombstone collectible while a causal member has not acknowledged its exact version. Configure with `RECONCILE_GC_SKEW_N`, `RECONCILE_GC_SKEW_DELETIONS`, and `RECONCILE_GC_SKEW_BASE_DIVERGENCE`.
 

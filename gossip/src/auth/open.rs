@@ -86,6 +86,12 @@ impl Payload<'_, Verified> {
     }
 }
 
+impl<'a> Payload<'a, Verified> {
+    pub(crate) fn into_bytes(self) -> Cow<'a, [u8]> {
+        self.bytes
+    }
+}
+
 impl Authenticator {
     /// Authenticate (and in encrypted mode decrypt) an incoming datagram.
     ///

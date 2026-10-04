@@ -58,6 +58,7 @@ pub use tokio_util;
 pub mod prometheus;
 
 // Internal runtime mechanisms; test seams go through [`testing`].
+pub(crate) mod framing;
 pub(crate) mod observability;
 pub(crate) mod replica;
 pub(crate) mod timeout_wheel;
@@ -93,15 +94,19 @@ pub use replicated_set::ReplicatedSet;
 #[doc(hidden)]
 #[cfg(any(test, reconcile_internal_testing))]
 pub mod testing {
-    /// Seal `payload` with MAC authentication: `tag(32) || seq(8 LE) || stamp(8 LE) ||
-    /// version(1) || payload` (the wire-version byte).
+    /// Seal one complete logical protocol payload with the current outer application frame.
+    ///
+    /// This test seam intentionally follows the shipped wire shape: callers provide protocol
+    /// bytes, while the helper adds the complete-frame tag before MAC/version/replay metadata.
     pub fn seal_datagram(key: [u8; 32], seq: u64, stamp: u64, payload: &[u8]) -> Vec<u8> {
+        let mut frame = Vec::new();
+        gossip::framing::write_complete(payload, &mut frame);
         gossip::auth::Authenticator::new(Some(gossip::auth::ClusterKey::new(key)), false)
             .unwrap()
             .seal(
                 gossip::replay::Seq::new(seq),
                 gossip::replay::Stamp::new(stamp),
-                payload,
+                &frame,
             )
     }
 

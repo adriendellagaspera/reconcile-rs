@@ -51,6 +51,7 @@ fn config_on_port(port: u16) -> Config {
         max_replay_senders: super::config::DEFAULT_MAX_REPLAY_SENDERS,
         max_concurrent_bulk_dumps: super::config::DEFAULT_MAX_CONCURRENT_BULK_DUMPS,
         max_concurrent_broadcasts: super::config::DEFAULT_MAX_CONCURRENT_BROADCASTS,
+        framing: crate::replicated_map::FramingConfig::default(),
         snapshot_interval: Some(super::persistence::SNAPSHOT_INTERVAL),
         snapshot_change_threshold: super::config::DEFAULT_SNAPSHOT_CHANGE_THRESHOLD,
         max_clock_drift: crate::clock::MAX_CLOCK_DRIFT,

@@ -113,19 +113,20 @@ async fn a_maximum_size_datagram_is_received_not_discarded_as_too_small() {
     .expect("valid test config");
     let task = tokio::spawn(read_replica.clone().run());
 
-    // Pad a `StateUpdate` so the *sealed* datagram (the version-byte-framed wire form
-    // `Authenticator::seal` produces, matching what the receive loop actually expects) is
-    // exactly `BUFFER_SIZE`. bincode's varint length-prefix grows with the string's own length,
-    // so probe against a same-order-of-magnitude candidate and correct by the exact observed
-    // delta, rather than a single fixed-overhead guess that undercounts the prefix.
+    // Pad a `StateUpdate` so the fully sealed **outer complete frame** is exactly
+    // `BUFFER_SIZE`. The receive loop now expects application framing inside the authenticated
+    // payload, so this regression must exercise the current wire shape rather than the pre-v4
+    // direct protocol stream.
     let seal = |value: &str| -> Vec<u8> {
         let message: crate::replica::Message<i32, Entry<Timestamp, String>, State<String>> =
             crate::replica::Message::StateUpdate((1, State::Present(value.to_string())));
-        let mut buf = Vec::new();
-        gossip::bincode::encode(&message, &mut buf).unwrap();
+        let mut logical = Vec::new();
+        gossip::bincode::encode(&message, &mut logical).unwrap();
+        let mut frame = Vec::new();
+        gossip::framing::write_complete(&logical, &mut frame);
         read_replica
             .authenticator
-            .seal(replay::Seq::NONE, replay::Stamp::NONE, &buf)
+            .seal(replay::Seq::NONE, replay::Stamp::NONE, &frame)
     };
     let padding_len = BUFFER_SIZE - seal("").len();
     let overshoot = seal(&"x".repeat(padding_len)).len() as i64 - BUFFER_SIZE as i64;

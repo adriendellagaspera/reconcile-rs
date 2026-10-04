@@ -10,7 +10,6 @@
 //! unacknowledged retry on `repair_interval`.
 
 use bincode::{DefaultOptions, Deserializer, Serializer};
-use gossip::auth;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
@@ -62,15 +61,7 @@ async fn feed_and_capture_reply(
     peer: SocketAddr,
 ) -> Vec<u8> {
     let bytes = message_bytes(message);
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated mode clears any datagram")
-        .check_version()
-        .expect("message_bytes stamps the current wire version");
-    let payload = payload
-        .verify_replay(&engine.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(engine, peer, &bytes);
     let mut send_buf = Vec::new();
     engine.handle_messages(payload, peer, &mut send_buf).await;
     send_buf
@@ -172,15 +163,7 @@ async fn a_convergence_ack_reports_spoke_dated() {
     let peer: SocketAddr = "127.0.0.66:9".parse().unwrap();
 
     let bytes = message_bytes(&Message::ConvergenceAck);
-    let payload = auth::Authenticator::new(None, false)
-        .unwrap()
-        .open(&bytes)
-        .expect("unauthenticated mode clears any datagram")
-        .check_version()
-        .expect("message_bytes stamps the current wire version");
-    let payload = payload
-        .verify_replay(&engine.replay_filter, peer.ip())
-        .expect("unauthenticated mode is exempt from the replay check");
+    let payload = super::logical_payload(&engine, peer, &bytes);
     let mut send_buf = Vec::new();
     let spoke_dated = engine.handle_messages(payload, peer, &mut send_buf).await;
 
