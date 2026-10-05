@@ -10,7 +10,7 @@ mod model;
 
 use std::time::Duration;
 
-use model::{simulate, Case, RecoveryPolicy};
+use model::{simulate, BurstLoss, Case, RecoveryPolicy};
 
 fn case(fragment_count: usize, loss_percent: f64, seed: u64) -> Case {
     Case {
@@ -18,6 +18,7 @@ fn case(fragment_count: usize, loss_percent: f64, seed: u64) -> Case {
         datagram_payload_budget: 1_200,
         rtt: Duration::from_millis(50),
         loss_percent,
+        burst_loss: None,
         bandwidth_bps: 100_000_000,
         seed,
     }
@@ -128,4 +129,24 @@ fn policy_labels_are_stable_for_benchmark_output() {
     assert_eq!(RecoveryPolicy::WholeRetry.label(), "whole_retry");
     assert_eq!(RecoveryPolicy::MissingOnly.label(), "missing_only");
     assert_eq!(RecoveryPolicy::Xor8Plus1.label(), "xor_8_plus_1");
+}
+
+#[test]
+fn burst_loss_is_applied_only_to_the_first_data_flight() {
+    let mut input = case(64, 0.0, 11);
+    input.burst_loss = Some(BurstLoss {
+        start_fragment: 16,
+        fragment_count: 8,
+    });
+    let whole = simulate(input, RecoveryPolicy::WholeRetry);
+    let selective = simulate(input, RecoveryPolicy::MissingOnly);
+
+    assert!(whole.initial_data_loss_useful_bytes > 0);
+    assert_eq!(
+        whole.initial_data_loss_useful_bytes,
+        selective.initial_data_loss_useful_bytes
+    );
+    assert_eq!(whole.recovery_rounds, 1);
+    assert_eq!(selective.recovery_rounds, 1);
+    assert!(selective.retransmitted_wire_bytes < whole.retransmitted_wire_bytes);
 }
