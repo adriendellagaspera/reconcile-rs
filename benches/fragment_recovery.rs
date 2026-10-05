@@ -5,8 +5,6 @@
 // Research benchmark for #271. This deliberately does not change the production wire protocol:
 // it prices recovery policies over the fragment geometry shipped by #263.
 
-use std::collections::BTreeSet;
-
 use gossip::auth::{TAG_LEN, VERSION_LEN};
 use gossip::framing::{fragment_payload_capacity, FRAGMENT_HEADER_LEN};
 use gossip::replay::REPLAY_HEADER_LEN;
