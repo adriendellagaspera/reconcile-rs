@@ -280,7 +280,7 @@ fn main() {
     let capacity = fragment_capacity(budget);
     let mut sizes: Vec<usize> = fragment_counts
         .iter()
-        .filter(|count| *count > 0)
+        .filter(|count| **count > 0)
         .map(|count| *count * capacity)
         .collect();
     sizes.push(1_048_576);
