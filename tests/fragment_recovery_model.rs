@@ -26,10 +26,7 @@ fn case(fragment_count: usize, loss_percent: f64, seed: u64) -> Case {
 #[test]
 fn clean_flights_use_exactly_the_requested_production_frame_count() {
     for fragment_count in [1, 4, 16, 64, 900] {
-        let metrics = simulate(
-            case(fragment_count, 0.0, 1),
-            RecoveryPolicy::WholeRetry,
-        );
+        let metrics = simulate(case(fragment_count, 0.0, 1), RecoveryPolicy::WholeRetry);
         assert_eq!(metrics.datagrams, fragment_count as u64);
         assert_eq!(metrics.recovery_rounds, 0);
         assert_eq!(metrics.retransmitted_wire_bytes, 0);
