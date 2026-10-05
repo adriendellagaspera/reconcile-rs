@@ -39,63 +39,54 @@ struct Scenario {
 const SCENARIOS: &[Scenario] = &[
     Scenario {
         fragments: 1,
-        logical_bytes: None,
         rtt_ms: 1.0,
         loss_percent: 0.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 4,
-        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 0.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 4,
-        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 16,
-        logical_bytes: None,
         rtt_ms: 1.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 16,
-        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 5.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
-        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 0.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
-        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
-        logical_bytes: None,
         rtt_ms: 600.0,
         loss_percent: 5.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
-        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
@@ -105,7 +96,6 @@ const SCENARIOS: &[Scenario] = &[
     },
     Scenario {
         fragments: 64,
-        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
@@ -115,7 +105,6 @@ const SCENARIOS: &[Scenario] = &[
     },
     Scenario {
         fragments: 64,
-        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
@@ -125,28 +114,24 @@ const SCENARIOS: &[Scenario] = &[
     },
     Scenario {
         fragments: 900,
-        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 900,
-        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 5.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 900,
-        logical_bytes: None,
         rtt_ms: 600.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 900,
-        logical_bytes: None,
         rtt_ms: 600.0,
         loss_percent: 5.0,
         burst_loss: None,
@@ -178,42 +163,36 @@ struct InterruptionScenario {
 const INTERRUPTION_SCENARIOS: &[InterruptionScenario] = &[
     InterruptionScenario {
         fragments: 64,
-        logical_bytes: None,
         rtt_ms: 50.0,
         arrived_fraction: 0.2,
         gap_ms: 1_000,
     },
     InterruptionScenario {
         fragments: 64,
-        logical_bytes: None,
         rtt_ms: 50.0,
         arrived_fraction: 0.5,
         gap_ms: 1_000,
     },
     InterruptionScenario {
         fragments: 64,
-        logical_bytes: None,
         rtt_ms: 50.0,
         arrived_fraction: 0.8,
         gap_ms: 1_000,
     },
     InterruptionScenario {
         fragments: 900,
-        logical_bytes: None,
         rtt_ms: 600.0,
         arrived_fraction: 0.2,
         gap_ms: 1_000,
     },
     InterruptionScenario {
         fragments: 900,
-        logical_bytes: None,
         rtt_ms: 600.0,
         arrived_fraction: 0.5,
         gap_ms: 30_000,
     },
     InterruptionScenario {
         fragments: 900,
-        logical_bytes: None,
         rtt_ms: 600.0,
         arrived_fraction: 0.8,
         gap_ms: 30_000,
@@ -347,7 +326,7 @@ fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
             let metrics = simulate_interruption(
                 Case {
                     fragment_count: scenario.fragments,
-                    logical_bytes: scenario.logical_bytes,
+                    logical_bytes: None,
                     datagram_payload_budget: budget,
                     rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
                     loss_percent: 0.0,
