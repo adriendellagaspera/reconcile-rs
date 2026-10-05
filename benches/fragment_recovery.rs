@@ -271,11 +271,12 @@ fn main() {
     let bursts = env_usizes("RECONCILE_RECOVERY_BURST_FRAGMENTS", "4,8,16");
     let rtts = env_usizes("RECONCILE_RECOVERY_RTT_MS", "1,50,150,600");
     let seeds = env_u64s("RECONCILE_RECOVERY_SEEDS", "0,1,2,3,4");
-    let budget = std::env::var("RECONCILE_RECOVERY_BUDGET")
-        .unwrap_or_else(|_| DEFAULT_DATAGRAM_BUDGET.to_string())
-        .parse()
-        .expect("RECONCILE_RECOVERY_BUDGET must be usize");
+    let budgets = env_usizes(
+        "RECONCILE_RECOVERY_BUDGETS",
+        &format!("{DEFAULT_DATAGRAM_BUDGET},1472"),
+    );
 
+    for budget in budgets {
     let capacity = fragment_capacity(budget);
     let mut sizes: Vec<usize> = fragment_counts
         .into_iter()
@@ -369,5 +370,6 @@ fn main() {
                 }
             }
         }
+    }
     }
 }
