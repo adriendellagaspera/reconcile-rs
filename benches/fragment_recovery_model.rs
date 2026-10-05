@@ -399,6 +399,7 @@ pub fn simulate_interruption(
     policy: RecoveryPolicy,
     arrived_fraction: f64,
     gap: Duration,
+    retain_progress: bool,
 ) -> InterruptionMetrics {
     assert_eq!(
         case.loss_percent, 0.0,
@@ -424,10 +425,14 @@ pub fn simulate_interruption(
 
     let arrived_units =
         ((units.len() as f64 * arrived_fraction).round() as usize).clamp(1, units.len() - 1);
-    let progress_retained_useful_bytes: usize = units[..arrived_units]
-        .iter()
-        .map(|unit| unit.useful_len)
-        .sum();
+    let progress_retained_useful_bytes: usize = if retain_progress {
+        units[..arrived_units]
+            .iter()
+            .map(|unit| unit.useful_len)
+            .sum()
+    } else {
+        0
+    };
     let wire_bytes_before_interruption: u64 = units[..arrived_units]
         .iter()
         .map(|unit| unit.wire_len as u64)
@@ -438,10 +443,11 @@ pub fn simulate_interruption(
         serialization_seconds(wire_bytes_before_interruption as usize, case.bandwidth_bps);
     let resume_receiver_s = pre_serialization_s + one_way_s + gap.as_secs_f64();
 
+    let retained_units = if retain_progress { arrived_units } else { 0 };
     let (data_indices, nack_len, ack_len) = match policy {
         RecoveryPolicy::WholeRetry => ((0..units.len()).collect::<Vec<_>>(), 0, 0),
         RecoveryPolicy::MissingOnly | RecoveryPolicy::Xor8Plus1 => (
-            (arrived_units..units.len()).collect::<Vec<_>>(),
+            (retained_units..units.len()).collect::<Vec<_>>(),
             nack_wire_len(units.len(), auth),
             ack_wire_len(auth),
         ),
@@ -462,7 +468,7 @@ pub fn simulate_interruption(
         let unit = units[index];
         additional_wire_bytes += unit.wire_len as u64;
         send_cursor_s += serialization_seconds(unit.wire_len, case.bandwidth_bps);
-        if index >= arrived_units {
+        if index >= retained_units {
             completion_s = send_cursor_s + one_way_s;
         }
     }
