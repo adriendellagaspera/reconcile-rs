@@ -347,6 +347,7 @@ fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
             let metrics = simulate_interruption(
                 Case {
                     fragment_count: scenario.fragments,
+                    logical_bytes: scenario.logical_bytes,
                     datagram_payload_budget: budget,
                     rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
                     loss_percent: 0.0,
@@ -524,13 +525,8 @@ fn main() {
                     .wrapping_add(trial.wrapping_mul(0x9e37_79b9_7f4a_7c15));
                 summary.push(simulate(
                     Case {
-                        fragment_count: if let Some(bytes) = scenario.logical_bytes {
-                            let capacity = fragment_payload_capacity(budget, authenticated_overhead())
-                                .expect("budget fits fragment overhead");
-                            bytes.div_ceil(capacity)
-                        } else {
-                            scenario.fragments
-                        },
+                        fragment_count: scenario.fragments,
+                        logical_bytes: scenario.logical_bytes,
                         datagram_payload_budget: budget,
                         rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
                         loss_percent: scenario.loss_percent,
