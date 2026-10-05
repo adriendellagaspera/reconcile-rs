@@ -52,6 +52,22 @@ impl RecoveryPolicy {
     }
 }
 
+/// One contiguous first-flight data-fragment loss burst.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BurstLoss {
+    /// First data-fragment index dropped.
+    pub start_fragment: usize,
+    /// Number of consecutive data fragments dropped.
+    pub fragment_count: usize,
+}
+
+impl BurstLoss {
+    fn contains(self, fragment: usize) -> bool {
+        (self.start_fragment..self.start_fragment.saturating_add(self.fragment_count))
+            .contains(&fragment)
+    }
+}
+
 /// One deterministic isolated-transfer experiment.
 #[derive(Clone, Copy, Debug)]
 pub struct Case {
@@ -63,6 +79,8 @@ pub struct Case {
     pub rtt: Duration,
     /// Independent loss probability, applied to data, parity, and benchmark-only control datagrams.
     pub loss_percent: f64,
+    /// Optional contiguous first-flight data-fragment burst, layered on independent loss.
+    pub burst_loss: Option<BurstLoss>,
     /// Symmetric serialization rate.
     pub bandwidth_bps: u64,
     /// Reproducible loss seed.
@@ -469,6 +487,9 @@ fn serialization_seconds(bytes: usize, bandwidth_bps: u64) -> f64 {
 }
 
 fn data_is_lost(case: Case, unit: usize, attempt: u32) -> bool {
+    if attempt == 1 && case.burst_loss.is_some_and(|burst| burst.contains(unit)) {
+        return true;
+    }
     sample_loss(
         case.seed,
         DATA_DOMAIN,
