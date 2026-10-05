@@ -20,6 +20,7 @@ const BASE_SEED: u64 = 0x2710_0001;
 enum Policy {
     WholeRetry,
     MissingOnly,
+    Xor8,
 }
 
 impl Policy {
@@ -27,6 +28,7 @@ impl Policy {
         match self {
             Self::WholeRetry => "whole-retry",
             Self::MissingOnly => "missing-only",
+            Self::Xor8 => "xor-8+1",
         }
     }
 }
@@ -79,6 +81,7 @@ struct ResultRow {
     data_wire_bytes: usize,
     retransmitted_wire_bytes: usize,
     feedback_wire_bytes: usize,
+    parity_wire_bytes: usize,
     duplicate_data_bytes: usize,
 }
 
@@ -119,7 +122,7 @@ fn run_case(policy: Policy, loss: Loss, value_len: usize, budget: usize, seed: u
         result.rounds += 1;
         let send: Vec<usize> = match policy {
             Policy::WholeRetry => (0..fragments.len()).collect(),
-            Policy::MissingOnly => received
+            Policy::MissingOnly | Policy::Xor8 => received
                 .iter()
                 .enumerate()
                 .filter_map(|(index, received)| (!received).then_some(index))
@@ -145,11 +148,29 @@ fn run_case(policy: Policy, loss: Loss, value_len: usize, budget: usize, seed: u
             }
         }
 
+        if matches!(policy, Policy::Xor8) && result.rounds == 1 {
+            for group_start in (0..fragments.len()).step_by(8) {
+                let group_end = (group_start + 8).min(fragments.len());
+                let parity_payload = fragments[group_start..group_end]
+                    .iter()
+                    .copied()
+                    .max()
+                    .unwrap_or(0);
+                result.parity_wire_bytes += data_wire_bytes(parity_payload);
+                let missing: Vec<usize> = (group_start..group_end)
+                    .filter(|index| !received[*index])
+                    .collect();
+                if missing.len() == 1 {
+                    received[missing[0]] = true;
+                }
+            }
+        }
+
         if received.iter().all(|received| *received) {
             break;
         }
 
-        if matches!(policy, Policy::MissingOnly) {
+        if matches!(policy, Policy::MissingOnly | Policy::Xor8) {
             let missing = received.iter().filter(|received| !**received).count();
             result.feedback_datagrams += 1;
             result.feedback_wire_bytes += nack_wire_bytes(missing);
@@ -235,18 +256,20 @@ fn main() {
             for seed_offset in seeds.iter().copied() {
                 let seed = BASE_SEED.wrapping_add(seed_offset);
                 for model in models.iter().copied() {
-                    for policy in [Policy::WholeRetry, Policy::MissingOnly] {
+                    for policy in [Policy::WholeRetry, Policy::MissingOnly, Policy::Xor8] {
                         let row = run_case(policy, model, value_len, budget, seed);
-                        let total_wire_bytes = row.data_wire_bytes + row.feedback_wire_bytes;
+                        let total_wire_bytes =
+                            row.data_wire_bytes + row.feedback_wire_bytes + row.parity_wire_bytes;
                         // Round timing is an idealized recovery lower bound. Runtime validation
                         // remains separate because the shipped whole-retry path is cadence-driven.
                         let receiver_completion_ms = row.rounds * rtt_ms;
-                        let sender_quiescence_ms = match policy {
-                            Policy::WholeRetry => receiver_completion_ms,
-                            Policy::MissingOnly => receiver_completion_ms + rtt_ms / 2,
+                        let sender_quiescence_ms = if row.feedback_datagrams == 0 {
+                            receiver_completion_ms
+                        } else {
+                            receiver_completion_ms + rtt_ms / 2
                         };
                         println!(
-                            "[fragment-recovery] policy={},loss={},seed={:#x},rtt_ms={},budget_bytes={},value_bytes={},fragments={},rounds={},receiver_completion_ms={},sender_quiescence_ms={},data_datagrams={},feedback_datagrams={},data_wire_bytes={},retransmitted_wire_bytes={},feedback_wire_bytes={},wire_bytes={},wire_amplification={:.6},recovery_efficiency={:.6},duplicate_data_bytes={}",
+                            "[fragment-recovery] policy={},loss={},seed={:#x},rtt_ms={},budget_bytes={},value_bytes={},fragments={},rounds={},receiver_completion_ms={},sender_quiescence_ms={},data_datagrams={},feedback_datagrams={},data_wire_bytes={},retransmitted_wire_bytes={},feedback_wire_bytes={},parity_wire_bytes={},wire_bytes={},wire_amplification={:.6},recovery_efficiency={:.6},duplicate_data_bytes={}",
                             policy.label(),
                             model.label(),
                             seed,
@@ -262,9 +285,12 @@ fn main() {
                             row.data_wire_bytes,
                             row.retransmitted_wire_bytes,
                             row.feedback_wire_bytes,
+                            row.parity_wire_bytes,
                             total_wire_bytes,
                             total_wire_bytes as f64 / value_len as f64,
-                            (row.retransmitted_wire_bytes + row.feedback_wire_bytes) as f64
+                            (row.retransmitted_wire_bytes
+                                + row.feedback_wire_bytes
+                                + row.parity_wire_bytes) as f64
                                 / value_len as f64,
                             row.duplicate_data_bytes,
                         );
