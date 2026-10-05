@@ -494,7 +494,11 @@ fn print_cpu_probe(
 
 fn main() {
     let budgets = std::env::var("RECONCILE_FRAGMENT_RECOVERY_BUDGETS")
-        .map(|raw| raw.split(',').map(|v| v.trim().parse().expect("budgets must be usize")).collect::<Vec<usize>>())
+        .map(|raw| {
+            raw.split(',')
+                .map(|v| v.trim().parse().expect("budgets must be usize"))
+                .collect::<Vec<usize>>()
+        })
         .unwrap_or_else(|_| DEFAULT_BUDGETS.to_vec());
     let bandwidth_bps = env_u64(
         "RECONCILE_FRAGMENT_RECOVERY_BANDWIDTH_BPS",
@@ -507,7 +511,7 @@ fn main() {
     );
 
     for budget in budgets {
-    for &scenario in SCENARIOS {
+        for &scenario in SCENARIOS {
         for policy in [
             RecoveryPolicy::WholeRetry,
             RecoveryPolicy::MissingOnly,
@@ -533,9 +537,9 @@ fn main() {
             }
             summary.print(scenario, policy, budget, bandwidth_bps);
         }
-    }
+        }
 
-    run_interruption_cases(budget, bandwidth_bps);
+        run_interruption_cases(budget, bandwidth_bps);
     }
     run_policy_cpu_probes();
 }
