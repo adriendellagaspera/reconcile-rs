@@ -12,7 +12,7 @@ mod fragment_recovery_model;
 
 use std::time::Duration;
 
-use fragment_recovery_model::{simulate, Case, Metrics, RecoveryPolicy};
+use fragment_recovery_model::{simulate, BurstLoss, Case, Metrics, RecoveryPolicy};
 
 const DEFAULT_BUDGET: usize = 1_200;
 const DEFAULT_BANDWIDTH_BPS: u64 = 100_000_000;
@@ -23,6 +23,7 @@ struct Scenario {
     fragments: usize,
     rtt_ms: f64,
     loss_percent: f64,
+    burst_loss: Option<BurstLoss>,
 }
 
 // Sparse by design: all requested dimensions are represented without taking their Cartesian
@@ -32,61 +33,100 @@ const SCENARIOS: &[Scenario] = &[
         fragments: 1,
         rtt_ms: 1.0,
         loss_percent: 0.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 4,
         rtt_ms: 50.0,
         loss_percent: 0.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 4,
         rtt_ms: 50.0,
         loss_percent: 1.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 16,
         rtt_ms: 1.0,
         loss_percent: 1.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 16,
         rtt_ms: 50.0,
         loss_percent: 5.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 64,
         rtt_ms: 50.0,
         loss_percent: 0.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 64,
         rtt_ms: 150.0,
         loss_percent: 1.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 64,
         rtt_ms: 600.0,
         loss_percent: 5.0,
+        burst_loss: None,
+    },
+    Scenario {
+        fragments: 64,
+        rtt_ms: 150.0,
+        loss_percent: 0.0,
+        burst_loss: Some(BurstLoss {
+            start_fragment: 24,
+            fragment_count: 4,
+        }),
+    },
+    Scenario {
+        fragments: 64,
+        rtt_ms: 150.0,
+        loss_percent: 0.0,
+        burst_loss: Some(BurstLoss {
+            start_fragment: 24,
+            fragment_count: 8,
+        }),
+    },
+    Scenario {
+        fragments: 64,
+        rtt_ms: 150.0,
+        loss_percent: 0.0,
+        burst_loss: Some(BurstLoss {
+            start_fragment: 24,
+            fragment_count: 16,
+        }),
     },
     Scenario {
         fragments: 900,
         rtt_ms: 50.0,
         loss_percent: 1.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 900,
         rtt_ms: 150.0,
         loss_percent: 5.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 900,
         rtt_ms: 600.0,
         loss_percent: 1.0,
+        burst_loss: None,
     },
     Scenario {
         fragments: 900,
         rtt_ms: 600.0,
         loss_percent: 5.0,
+        burst_loss: None,
     },
 ];
 
@@ -158,12 +198,14 @@ impl Summary {
         };
         let bdp_bytes = bandwidth_bps as f64 * (scenario.rtt_ms / 1_000.0) / 8.0;
         println!(
-            "[fragment-recovery] policy={},fragments={},budget_bytes={},rtt_ms={:.1},loss_percent={:.1},bandwidth_bps={},bdp_bytes={:.0},trials={},useful_bytes={},mean_wire_bytes={:.1},wire_amplification={:.4},mean_retransmitted_wire_bytes={:.1},mean_parity_wire_bytes={:.1},mean_control_bytes={:.1},mean_datagrams={:.2},mean_recovery_rounds={:.3},mean_initial_data_loss_useful_bytes={:.1},mean_missing_after_initial_recovery_bytes={:.1},mean_fec_recovered_fragments={:.3},mean_fec_recovered_useful_bytes={:.1},recovery_cost_ratio={:.4},mean_receiver_completion_ms={:.3},p95_receiver_completion_ms={:.3},mean_domain_convergence_ms={:.3},mean_sender_quiescence_ms={:.3},mean_peak_sender_recovery_state_bytes={:.1},mean_peak_receiver_reassembly_state_bytes={:.1}",
+            "[fragment-recovery] policy={},fragments={},budget_bytes={},rtt_ms={:.1},loss_percent={:.1},burst_start={},burst_fragments={},bandwidth_bps={},bdp_bytes={:.0},trials={},useful_bytes={},mean_wire_bytes={:.1},wire_amplification={:.4},mean_retransmitted_wire_bytes={:.1},mean_parity_wire_bytes={:.1},mean_control_bytes={:.1},mean_datagrams={:.2},mean_recovery_rounds={:.3},mean_initial_data_loss_useful_bytes={:.1},mean_missing_after_initial_recovery_bytes={:.1},mean_fec_recovered_fragments={:.3},mean_fec_recovered_useful_bytes={:.1},recovery_cost_ratio={:.4},mean_receiver_completion_ms={:.3},p95_receiver_completion_ms={:.3},mean_domain_convergence_ms={:.3},mean_sender_quiescence_ms={:.3},mean_peak_sender_recovery_state_bytes={:.1},mean_peak_receiver_reassembly_state_bytes={:.1}",
             policy.label(),
             scenario.fragments,
             budget,
             scenario.rtt_ms,
             scenario.loss_percent,
+            scenario.burst_loss.map_or(0, |burst| burst.start_fragment),
+            scenario.burst_loss.map_or(0, |burst| burst.fragment_count),
             bandwidth_bps,
             bdp_bytes,
             self.samples,
@@ -233,6 +275,7 @@ fn main() {
                         datagram_payload_budget: budget,
                         rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
                         loss_percent: scenario.loss_percent,
+                        burst_loss: scenario.burst_loss,
                         bandwidth_bps,
                         seed,
                     },
