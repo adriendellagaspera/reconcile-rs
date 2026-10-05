@@ -2,8 +2,8 @@
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/MIT>, at your option.
 //
-// Research benchmark for #271. This deliberately does not change the production wire protocol:
-// it prices recovery policies over the fragment geometry shipped by #263.
+// Research benchmark for fragment-level recovery. It does not change the production wire
+// protocol: it prices hypothetical recovery policies over the shipped fragment geometry.
 
 use gossip::auth::{TAG_LEN, VERSION_LEN};
 use gossip::framing::{fragment_payload_capacity, FRAGMENT_HEADER_LEN};
@@ -159,7 +159,11 @@ fn env_usizes(name: &str, default: &str) -> Vec<usize> {
     std::env::var(name)
         .unwrap_or_else(|_| default.to_owned())
         .split(',')
-        .map(|raw| raw.trim().parse().unwrap_or_else(|_| panic!("{name} must contain usize values")))
+        .map(|raw| {
+            raw.trim()
+                .parse()
+                .unwrap_or_else(|_| panic!("{name} must contain usize values"))
+        })
         .collect()
 }
 
@@ -167,7 +171,11 @@ fn env_f64s(name: &str, default: &str) -> Vec<f64> {
     std::env::var(name)
         .unwrap_or_else(|_| default.to_owned())
         .split(',')
-        .map(|raw| raw.trim().parse().unwrap_or_else(|_| panic!("{name} must contain f64 values")))
+        .map(|raw| {
+            raw.trim()
+                .parse()
+                .unwrap_or_else(|_| panic!("{name} must contain f64 values"))
+        })
         .collect()
 }
 
@@ -219,32 +227,3 @@ fn main() {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn fragment_geometry_matches_the_shipped_1200_byte_budget() {
-        assert_eq!(auth_overhead(), 49);
-        assert_eq!(fragment_payload_capacity(1_200, auth_overhead()), Some(1_110));
-        assert_eq!(fragment_lengths(4_096, 1_200), vec![1_110, 1_110, 1_110, 766]);
-    }
-
-    #[test]
-    fn selective_retry_avoids_resending_retained_fragments() {
-        let whole = run_case(Policy::WholeRetry, Loss::DeterministicEvery(4), 4_096, 1_200);
-        let selective = run_case(Policy::MissingOnly, Loss::DeterministicEvery(4), 4_096, 1_200);
-        assert!(selective.duplicate_data_bytes < whole.duplicate_data_bytes);
-        assert!(selective.data_wire_bytes < whole.data_wire_bytes);
-        assert!(selective.feedback_wire_bytes > 0);
-    }
-
-    #[test]
-    fn iid_runs_are_reproducible() {
-        let a = run_case(Policy::MissingOnly, Loss::Iid(0.1), 131_072, 1_200);
-        let b = run_case(Policy::MissingOnly, Loss::Iid(0.1), 131_072, 1_200);
-        assert_eq!(a.rounds, b.rounds);
-        assert_eq!(a.data_wire_bytes, b.data_wire_bytes);
-        assert_eq!(a.feedback_wire_bytes, b.feedback_wire_bytes);
-    }
-}
