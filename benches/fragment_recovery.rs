@@ -279,21 +279,23 @@ fn main() {
     for budget in budgets {
     let capacity = fragment_capacity(budget);
     let mut sizes: Vec<usize> = fragment_counts
-        .into_iter()
+        .iter()
         .filter(|count| *count > 0)
-        .map(|count| count * capacity)
+        .map(|count| *count * capacity)
         .collect();
     sizes.push(1_048_576);
     sizes.sort_unstable();
     sizes.dedup();
 
     let mut models: Vec<Loss> = losses
-        .into_iter()
+        .iter()
+        .copied()
         .map(|percent| Loss::Iid(percent / 100.0))
         .collect();
     models.extend(
         bursts
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|n| *n > 0)
             .map(Loss::Burst),
     );
