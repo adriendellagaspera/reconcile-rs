@@ -608,13 +608,7 @@ fn data_is_lost(case: Case, unit: usize, attempt: u32) -> bool {
 }
 
 fn parity_is_lost(case: Case, group: usize) -> bool {
-    sample_loss(
-        case.seed,
-        PARITY_DOMAIN,
-        group as u64,
-        1,
-        case.loss_percent,
-    )
+    sample_loss(case.seed, PARITY_DOMAIN, group as u64, 1, case.loss_percent)
 }
 
 fn control_is_lost(case: Case, sequence: u64) -> bool {
