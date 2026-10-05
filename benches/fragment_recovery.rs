@@ -81,6 +81,8 @@ struct ResultRow {
     data_wire_bytes: usize,
     retransmitted_wire_bytes: usize,
     feedback_wire_bytes: usize,
+    parity_datagrams: usize,
+    parity_lost: usize,
     parity_wire_bytes: usize,
     duplicate_data_bytes: usize,
 }
@@ -156,7 +158,15 @@ fn run_case(policy: Policy, loss: Loss, value_len: usize, budget: usize, seed: u
                     .copied()
                     .max()
                     .unwrap_or(0);
+                result.parity_datagrams += 1;
                 result.parity_wire_bytes += data_wire_bytes(parity_payload);
+                // Parity is a real datagram and is subject to the same impairment model.
+                // Its synthetic index is disjoint from data fragment indexes.
+                let parity_index = fragments.len() + group_start / 8;
+                if loss.lost(result.rounds, parity_index, fragments.len() + fragments.len().div_ceil(8)) {
+                    result.parity_lost += 1;
+                    continue;
+                }
                 let missing: Vec<usize> = (group_start..group_end)
                     .filter(|index| !received[*index])
                     .collect();
@@ -269,7 +279,7 @@ fn main() {
                             receiver_completion_ms + rtt_ms / 2
                         };
                         println!(
-                            "[fragment-recovery] policy={},loss={},seed={:#x},rtt_ms={},budget_bytes={},value_bytes={},fragments={},rounds={},receiver_completion_ms={},sender_quiescence_ms={},data_datagrams={},feedback_datagrams={},data_wire_bytes={},retransmitted_wire_bytes={},feedback_wire_bytes={},parity_wire_bytes={},wire_bytes={},wire_amplification={:.6},recovery_efficiency={:.6},duplicate_data_bytes={}",
+                            "[fragment-recovery] policy={},loss={},seed={:#x},rtt_ms={},budget_bytes={},value_bytes={},fragments={},rounds={},receiver_completion_ms={},sender_quiescence_ms={},data_datagrams={},feedback_datagrams={},data_wire_bytes={},retransmitted_wire_bytes={},feedback_wire_bytes={},parity_datagrams={},parity_lost={},parity_wire_bytes={},wire_bytes={},wire_amplification={:.6},recovery_efficiency={:.6},duplicate_data_bytes={}",
                             policy.label(),
                             model.label(),
                             seed,
@@ -285,6 +295,8 @@ fn main() {
                             row.data_wire_bytes,
                             row.retransmitted_wire_bytes,
                             row.feedback_wire_bytes,
+                            row.parity_datagrams,
+                            row.parity_lost,
                             row.parity_wire_bytes,
                             total_wire_bytes,
                             total_wire_bytes as f64 / value_len as f64,
