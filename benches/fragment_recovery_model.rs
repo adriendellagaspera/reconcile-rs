@@ -494,6 +494,9 @@ fn data_units(logical_bytes: usize, datagram_payload_budget: usize, auth: usize)
 }
 
 fn parity_units(data: &[DataUnit], auth: usize) -> Vec<ParityUnit> {
+    if data.len() < 2 {
+        return Vec::new();
+    }
     data.chunks(FEC_DATA_PER_GROUP)
         .enumerate()
         .map(|(group, units)| {
