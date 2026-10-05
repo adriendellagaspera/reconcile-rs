@@ -60,8 +60,12 @@ clean-link interruption rows stop after about 20/50/80% of data frames arrive, p
 progress across 1 s and 30 s gaps, and report the additional bytes needed after resumption. Configure
 the budget, bandwidth, or sample count with `RECONCILE_FRAGMENT_RECOVERY_BUDGET`,
 `RECONCILE_FRAGMENT_RECOVERY_BANDWIDTH_BPS`, and
-`RECONCILE_FRAGMENT_RECOVERY_TRIALS`. The existing `fragmentation` target remains the production
-runtime control and is the validation surface for selected modeled points.
+`RECONCILE_FRAGMENT_RECOVERY_TRIALS`. The target also times policy-specific CPU primitives on a
+900-fragment transfer: missing-bitmap encode/decode and XOR-8 parity encode/single-loss recovery.
+These timings deliberately exclude framing/authentication/reassembly work common to every policy;
+configure their repetitions with `RECONCILE_FRAGMENT_RECOVERY_CPU_ITERS`. The existing
+`fragmentation` target remains the production runtime control and is the validation surface for
+selected modeled points.
 
 The `tombstone_gc_skew` target compares aligned authoritative peers with a one-sided retained-tombstone history while keeping application-visible state equal, plus a fixed live-divergence control. It reports wire traffic, protocol enumeration, convergence, and bounded tombstone-ACK recovery rounds. The deployment-sized debt term is approximately `delete_rate × effective_unacked_membership_lag`: age timeout alone does not make a tombstone collectible while a causal member has not acknowledged its exact version. Configure with `RECONCILE_GC_SKEW_N`, `RECONCILE_GC_SKEW_DELETIONS`, and `RECONCILE_GC_SKEW_BASE_DIVERGENCE`.
 
