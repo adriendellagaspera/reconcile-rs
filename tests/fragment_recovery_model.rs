@@ -15,6 +15,7 @@ use model::{simulate, simulate_interruption, BurstLoss, Case, RecoveryPolicy};
 fn case(fragment_count: usize, loss_percent: f64, seed: u64) -> Case {
     Case {
         fragment_count,
+        logical_bytes: None,
         datagram_payload_budget: 1_200,
         rtt: Duration::from_millis(50),
         loss_percent,
@@ -160,12 +161,14 @@ fn interruption_retains_progress_and_selective_resume_avoids_restart_bytes() {
             RecoveryPolicy::WholeRetry,
             fraction,
             Duration::from_secs(1),
+            true,
         );
         let selective = simulate_interruption(
             input,
             RecoveryPolicy::MissingOnly,
             fraction,
             Duration::from_secs(1),
+            true,
         );
 
         assert!(selective.progress_retained_useful_bytes > 0);
@@ -189,6 +192,7 @@ fn more_pre_interruption_progress_monotonically_reduces_selective_resume_bytes()
                 RecoveryPolicy::MissingOnly,
                 fraction,
                 Duration::from_secs(30),
+            true,
             )
             .additional_wire_bytes
         })
@@ -206,12 +210,14 @@ fn parity_policy_uses_missing_only_fallback_after_contact_resumes() {
         RecoveryPolicy::MissingOnly,
         0.5,
         Duration::from_secs(1),
+            true,
     );
     let fec = simulate_interruption(
         input,
         RecoveryPolicy::Xor8Plus1,
         0.5,
         Duration::from_secs(1),
+            true,
     );
     assert_eq!(fec, selective);
 }
