@@ -359,6 +359,114 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
     }
 }
 
+/// Result of a clean-link contact interruption followed by resumption.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InterruptionMetrics {
+    /// Logical application bytes in the transfer.
+    pub useful_bytes: usize,
+    /// Useful bytes retained at the receiver when contact stops.
+    pub progress_retained_useful_bytes: usize,
+    /// Data wire bytes sent before the interruption.
+    pub wire_bytes_before_interruption: u64,
+    /// Data plus control wire bytes required after contact resumes.
+    pub additional_wire_bytes: u64,
+    /// Control subset of `additional_wire_bytes`.
+    pub additional_control_bytes: u64,
+    /// Time from first send until receiver completion, including the interruption gap.
+    pub receiver_completion: Duration,
+    /// Time from first send until no selective sender state remains.
+    pub sender_quiescence: Duration,
+}
+
+/// Simulate a clean-link contact interruption after a fraction of data frames arrived.
+///
+/// The whole-retry arm restarts the full logical transfer. Missing-only and bounded-parity arms
+/// use the same bitmap-NACK recovery after resumption; parity is not useful once the receiver can
+/// explicitly identify the retained prefix. This isolates retained-progress value from packet loss.
+pub fn simulate_interruption(
+    case: Case,
+    policy: RecoveryPolicy,
+    arrived_fraction: f64,
+    gap: Duration,
+) -> InterruptionMetrics {
+    assert_eq!(case.loss_percent, 0.0, "interruption model isolates contact loss");
+    assert!(case.burst_loss.is_none(), "interruption model isolates contact loss");
+    assert!(
+        (0.0..1.0).contains(&arrived_fraction),
+        "arrived_fraction must be in [0, 1)"
+    );
+
+    let auth = authenticated_overhead();
+    let logical_bytes =
+        logical_bytes_for_fragments(case.fragment_count, case.datagram_payload_budget);
+    let units = data_units(logical_bytes, case.datagram_payload_budget, auth);
+    assert!(
+        units.len() > 1,
+        "interruption requires a multi-frame logical transfer"
+    );
+
+    let arrived_units = ((units.len() as f64 * arrived_fraction).round() as usize)
+        .clamp(1, units.len() - 1);
+    let progress_retained_useful_bytes: usize =
+        units[..arrived_units].iter().map(|unit| unit.useful_len).sum();
+    let wire_bytes_before_interruption: u64 =
+        units[..arrived_units].iter().map(|unit| unit.wire_len as u64).sum();
+
+    let one_way_s = case.rtt.as_secs_f64() / 2.0;
+    let pre_serialization_s = serialization_seconds(
+        wire_bytes_before_interruption as usize,
+        case.bandwidth_bps,
+    );
+    let resume_receiver_s = pre_serialization_s + one_way_s + gap.as_secs_f64();
+
+    let (data_indices, nack_len, ack_len) = match policy {
+        RecoveryPolicy::WholeRetry => ((0..units.len()).collect::<Vec<_>>(), 0, 0),
+        RecoveryPolicy::MissingOnly | RecoveryPolicy::Xor8Plus1 => (
+            (arrived_units..units.len()).collect::<Vec<_>>(),
+            nack_wire_len(units.len(), auth),
+            ack_wire_len(auth),
+        ),
+    };
+
+    let mut additional_wire_bytes = 0_u64;
+    let mut additional_control_bytes = 0_u64;
+    let mut sender_start_s = resume_receiver_s;
+    if nack_len > 0 {
+        additional_wire_bytes += nack_len as u64;
+        additional_control_bytes += nack_len as u64;
+        sender_start_s += serialization_seconds(nack_len, case.bandwidth_bps) + one_way_s;
+    }
+
+    let mut send_cursor_s = sender_start_s;
+    let mut completion_s = sender_start_s;
+    for index in data_indices {
+        let unit = units[index];
+        additional_wire_bytes += unit.wire_len as u64;
+        send_cursor_s += serialization_seconds(unit.wire_len, case.bandwidth_bps);
+        if index >= arrived_units {
+            completion_s = send_cursor_s + one_way_s;
+        }
+    }
+
+    let sender_quiescence_s = if ack_len == 0 {
+        completion_s.max(send_cursor_s)
+    } else {
+        additional_wire_bytes += ack_len as u64;
+        additional_control_bytes += ack_len as u64;
+        completion_s + serialization_seconds(ack_len, case.bandwidth_bps) + one_way_s
+    };
+
+    InterruptionMetrics {
+        useful_bytes: logical_bytes,
+        progress_retained_useful_bytes,
+        wire_bytes_before_interruption,
+        additional_wire_bytes,
+        additional_control_bytes,
+        receiver_completion: Duration::from_secs_f64(completion_s),
+        sender_quiescence: Duration::from_secs_f64(sender_quiescence_s),
+    }
+}
+
 fn data_units(logical_bytes: usize, datagram_payload_budget: usize, auth: usize) -> Vec<DataUnit> {
     let complete = complete_payload_capacity(datagram_payload_budget, auth)
         .expect("datagram budget must fit complete-frame overhead");
