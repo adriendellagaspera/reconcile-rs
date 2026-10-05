@@ -174,20 +174,17 @@ jobs:
     - run: cargo bench --no-run
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-    - name: Research fragment recovery default
+    - name: Research fragment recovery CPU
       run: cargo bench --bench fragment_recovery
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-    - name: Research fragment recovery 1 Mbit/s
-      run: cargo bench --bench fragment_recovery
+    - name: Research shipped fragmentation runtime
+      run: cargo bench --bench fragmentation
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-        RECONCILE_FRAGMENT_RECOVERY_BANDWIDTH_BPS: "1000000"
-    - name: Research fragment recovery 1472 B
-      run: cargo bench --bench fragment_recovery
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-        RECONCILE_FRAGMENT_RECOVERY_BUDGET: "1472"
+        RECONCILE_FRAGMENT_PROFILES: "wan-clean,wan-loss-1,wan-loss-5,wan-reorder-5,sat-600-clean"
+        RECONCILE_FRAGMENT_VALUE_SIZES: "4096,131072"
+        RECONCILE_FRAGMENT_TIMEOUT_MS: "15000"
 
   package:
     needs: changes
