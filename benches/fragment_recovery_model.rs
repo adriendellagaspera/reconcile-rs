@@ -236,7 +236,7 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
         if round == 0 {
             initial_data_loss_useful_bytes = missing_useful_bytes(&units, &received);
 
-            if policy == RecoveryPolicy::Xor8Plus1 && remaining > 0 {
+            if policy == RecoveryPolicy::Xor8Plus1 {
                 let mut parity_arrivals = vec![None; parity.len()];
                 let mut retained_parity_payload = 0_usize;
                 for (group, parity_unit) in parity.iter().copied().enumerate() {
@@ -247,24 +247,28 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
                         serialization_seconds(parity_unit.wire_len, case.bandwidth_bps);
                     if !parity_is_lost(case, group) {
                         parity_arrivals[group] = Some(send_cursor_s + one_way_s);
-                        retained_parity_payload += parity_unit.payload_len;
+                        if remaining > 0 {
+                            retained_parity_payload += parity_unit.payload_len;
+                        }
                     }
                 }
-                peak_receiver =
-                    peak_receiver.max(retained_useful.saturating_add(retained_parity_payload));
-                apply_parity_recovery(
-                    &units,
-                    &parity,
-                    &parity_arrivals,
-                    &mut received,
-                    &mut remaining,
-                    &mut retained_useful,
-                    &mut fec_recovered_fragments,
-                    &mut fec_recovered_useful_bytes,
-                    &mut receiver_completion_s,
-                );
                 if remaining > 0 {
-                    peak_receiver = peak_receiver.max(retained_useful);
+                    peak_receiver =
+                        peak_receiver.max(retained_useful.saturating_add(retained_parity_payload));
+                    apply_parity_recovery(
+                        &units,
+                        &parity,
+                        &parity_arrivals,
+                        &mut received,
+                        &mut remaining,
+                        &mut retained_useful,
+                        &mut fec_recovered_fragments,
+                        &mut fec_recovered_useful_bytes,
+                        &mut receiver_completion_s,
+                    );
+                    if remaining > 0 {
+                        peak_receiver = peak_receiver.max(retained_useful);
+                    }
                 }
             }
 
