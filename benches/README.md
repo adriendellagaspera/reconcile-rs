@@ -54,8 +54,11 @@ recovery does not win merely because the production anti-entropy timer is slower
 equals receiver completion by construction in this isolated-transfer model; the separate
 `sender_quiescence` metric prices the selective completion ACK. Defaults use a sparse set of
 1/4/16/64/~900-frame cases spanning 1/50/150/600 ms RTT and 0/1/5% loss, 1200 B datagrams,
-100 Mbit/s symmetric serialization, and 64 deterministic seeds. Configure the budget, bandwidth,
-or sample count with `RECONCILE_FRAGMENT_RECOVERY_BUDGET`,
+100 Mbit/s symmetric serialization, and 64 deterministic seeds. Targeted first-flight bursts of
+4/8/16 consecutive data fragments exercise the failure mode one-XOR-per-eight cannot mask. Separate
+clean-link interruption rows stop after about 20/50/80% of data frames arrive, preserve receiver
+progress across 1 s and 30 s gaps, and report the additional bytes needed after resumption. Configure
+the budget, bandwidth, or sample count with `RECONCILE_FRAGMENT_RECOVERY_BUDGET`,
 `RECONCILE_FRAGMENT_RECOVERY_BANDWIDTH_BPS`, and
 `RECONCILE_FRAGMENT_RECOVERY_TRIALS`. The existing `fragmentation` target remains the production
 runtime control and is the validation surface for selected modeled points.
