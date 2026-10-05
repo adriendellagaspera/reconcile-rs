@@ -73,6 +73,8 @@ impl BurstLoss {
 pub struct Case {
     /// Desired number of production data frames: one complete frame, or N fragmented frames.
     pub fragment_count: usize,
+    /// Exact logical payload size when the scenario targets bytes rather than frame count.
+    pub logical_bytes: Option<usize>,
     /// Maximum authenticated UDP payload.
     pub datagram_payload_budget: usize,
     /// Round-trip propagation time.
@@ -176,14 +178,16 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
     );
 
     let auth = authenticated_overhead();
-    let logical_bytes =
-        logical_bytes_for_fragments(case.fragment_count, case.datagram_payload_budget);
+    let logical_bytes = case.logical_bytes.unwrap_or_else(||
+        logical_bytes_for_fragments(case.fragment_count, case.datagram_payload_budget));
     let units = data_units(logical_bytes, case.datagram_payload_budget, auth);
-    assert_eq!(
-        units.len(),
-        case.fragment_count,
-        "logical-size helper must produce the requested frame count"
-    );
+    if case.logical_bytes.is_none() {
+        assert_eq!(
+            units.len(),
+            case.fragment_count,
+            "logical-size helper must produce the requested frame count"
+        );
+    }
     let parity = parity_units(&units, auth);
 
     let one_way_s = case.rtt.as_secs_f64() / 2.0;
@@ -415,8 +419,8 @@ pub fn simulate_interruption(
     );
 
     let auth = authenticated_overhead();
-    let logical_bytes =
-        logical_bytes_for_fragments(case.fragment_count, case.datagram_payload_budget);
+    let logical_bytes = case.logical_bytes.unwrap_or_else(||
+        logical_bytes_for_fragments(case.fragment_count, case.datagram_payload_budget));
     let units = data_units(logical_bytes, case.datagram_payload_budget, auth);
     assert!(
         units.len() > 1,
