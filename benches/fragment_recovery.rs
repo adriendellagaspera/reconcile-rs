@@ -39,54 +39,63 @@ struct Scenario {
 const SCENARIOS: &[Scenario] = &[
     Scenario {
         fragments: 1,
+        logical_bytes: None,
         rtt_ms: 1.0,
         loss_percent: 0.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 4,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 0.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 4,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 16,
+        logical_bytes: None,
         rtt_ms: 1.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 16,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 5.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 0.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 600.0,
         loss_percent: 5.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
@@ -96,6 +105,7 @@ const SCENARIOS: &[Scenario] = &[
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
@@ -105,6 +115,7 @@ const SCENARIOS: &[Scenario] = &[
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
@@ -114,24 +125,28 @@ const SCENARIOS: &[Scenario] = &[
     },
     Scenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 5.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 600.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 600.0,
         loss_percent: 5.0,
         burst_loss: None,
