@@ -332,14 +332,17 @@ fn main() {
                             row.data_wire_bytes + row.feedback_wire_bytes + row.parity_wire_bytes;
                         // Round timing is an idealized recovery lower bound. Runtime validation
                         // remains separate because the shipped whole-retry path is cadence-driven.
+                        let serialization_ms = total_wire_bytes.saturating_mul(8).div_ceil(1_000);
                         let receiver_completion_ms = row.rounds * rtt_ms;
+                        let receiver_completion_1mbit_ms =
+                            receiver_completion_ms + serialization_ms;
                         let sender_quiescence_ms = if row.feedback_datagrams == 0 {
                             receiver_completion_ms
                         } else {
                             receiver_completion_ms + rtt_ms / 2
                         };
                         println!(
-                            "[fragment-recovery] policy={},loss={},seed={:#x},rtt_ms={},budget_bytes={},value_bytes={},fragments={},rounds={},receiver_completion_ms={},sender_quiescence_ms={},data_datagrams={},feedback_datagrams={},data_wire_bytes={},retransmitted_wire_bytes={},feedback_wire_bytes={},parity_datagrams={},parity_lost={},parity_wire_bytes={},wire_bytes={},wire_amplification={:.6},recovery_efficiency={:.6},duplicate_data_bytes={}",
+                            "[fragment-recovery] policy={},loss={},seed={:#x},rtt_ms={},budget_bytes={},value_bytes={},fragments={},rounds={},receiver_completion_ms={},receiver_completion_1mbit_ms={},sender_quiescence_ms={},data_datagrams={},feedback_datagrams={},data_wire_bytes={},retransmitted_wire_bytes={},feedback_wire_bytes={},parity_datagrams={},parity_lost={},parity_wire_bytes={},wire_bytes={},wire_amplification={:.6},recovery_efficiency={:.6},duplicate_data_bytes={}",
                             policy.label(),
                             model.label(),
                             seed,
@@ -349,6 +352,7 @@ fn main() {
                             fragments.len(),
                             row.rounds,
                             receiver_completion_ms,
+                            receiver_completion_1mbit_ms,
                             sender_quiescence_ms,
                             row.data_datagrams,
                             row.feedback_datagrams,
