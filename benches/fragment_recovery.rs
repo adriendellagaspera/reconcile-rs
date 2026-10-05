@@ -173,7 +173,7 @@ fn env_f64s(name: &str, default: &str) -> Vec<f64> {
 
 fn main() {
     let sizes = env_usizes("RECONCILE_RECOVERY_VALUE_SIZES", "4096,131072,1048576");
-    let losses = env_f64s("RECONCILE_RECOVERY_LOSS_PERCENT", "0.1,1,5,10");
+    let losses = env_f64s("RECONCILE_RECOVERY_LOSS_PERCENT", "0,0.1,1,5,10");
     let deterministic_every = env_usizes("RECONCILE_RECOVERY_DETERMINISTIC_EVERY", "8,32");
     let budget = std::env::var("RECONCILE_RECOVERY_BUDGET")
         .unwrap_or_else(|_| DEFAULT_DATAGRAM_BUDGET.to_string())
