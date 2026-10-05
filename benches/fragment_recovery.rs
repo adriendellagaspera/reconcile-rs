@@ -12,9 +12,9 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 const DEFAULT_DATAGRAM_BUDGET: usize = 1_200;
-const SELECTIVE_NACK_HEADER: usize = 32 + 2; // transfer id + missing-count
-const SELECTIVE_NACK_INDEX: usize = 4; // fragment index
-const SEED: u64 = 0x2710_0001;
+const SELECTIVE_NACK_HEADER: usize = 32 + 2;
+const SELECTIVE_NACK_INDEX: usize = 4;
+const BASE_SEED: u64 = 0x2710_0001;
 
 #[derive(Clone, Copy, Debug)]
 enum Policy {
@@ -25,8 +25,8 @@ enum Policy {
 impl Policy {
     fn label(self) -> &'static str {
         match self {
-            Policy::WholeRetry => "whole-retry",
-            Policy::MissingOnly => "missing-only",
+            Self::WholeRetry => "whole-retry",
+            Self::MissingOnly => "missing-only",
         }
     }
 }
@@ -34,14 +34,14 @@ impl Policy {
 #[derive(Clone, Copy, Debug)]
 enum Loss {
     Iid(f64),
-    DeterministicEvery(usize),
+    Burst(usize),
 }
 
 impl Loss {
     fn label(self) -> String {
         match self {
-            Loss::Iid(p) => format!("iid-{:.1}%", p * 100.0),
-            Loss::DeterministicEvery(n) => format!("every-{n}"),
+            Self::Iid(p) => format!("iid-{:.1}%", p * 100.0),
+            Self::Burst(n) => format!("burst-{n}"),
         }
     }
 }
@@ -49,27 +49,23 @@ impl Loss {
 struct LossState {
     model: Loss,
     rng: StdRng,
-    offered: usize,
 }
 
 impl LossState {
-    fn new(model: Loss) -> Self {
+    fn new(model: Loss, seed: u64) -> Self {
         Self {
             model,
-            rng: StdRng::seed_from_u64(SEED),
-            offered: 0,
+            rng: StdRng::seed_from_u64(seed),
         }
     }
 
-    fn lost(&mut self, round: usize, fragment_index: usize) -> bool {
-        self.offered += 1;
+    fn lost(&mut self, round: usize, fragment_index: usize, fragment_count: usize) -> bool {
         match self.model {
             Loss::Iid(p) => self.rng.gen_bool(p.clamp(0.0, 1.0)),
-            // A controlled first-flight loss mask: unlike "every Nth send", this cannot
-            // accidentally pin the same fragment forever when a whole-message retry has N
-            // fragments. Recovery traffic itself is delivered in this deterministic lane.
-            Loss::DeterministicEvery(n) => {
-                round == 1 && n != 0 && (fragment_index + 1) % n == 0
+            Loss::Burst(n) => {
+                let burst = n.min(fragment_count);
+                let start = fragment_count.saturating_sub(burst) / 2;
+                round == 1 && fragment_index >= start && fragment_index < start + burst
             }
         }
     }
@@ -81,6 +77,7 @@ struct ResultRow {
     data_datagrams: usize,
     feedback_datagrams: usize,
     data_wire_bytes: usize,
+    retransmitted_wire_bytes: usize,
     feedback_wire_bytes: usize,
     duplicate_data_bytes: usize,
 }
@@ -89,9 +86,13 @@ fn auth_overhead() -> usize {
     TAG_LEN + REPLAY_HEADER_LEN + VERSION_LEN
 }
 
+fn fragment_capacity(budget: usize) -> usize {
+    fragment_payload_capacity(budget, auth_overhead())
+        .expect("datagram budget must fit auth and fragment headers")
+}
+
 fn fragment_lengths(value_len: usize, budget: usize) -> Vec<usize> {
-    let capacity = fragment_payload_capacity(budget, auth_overhead())
-        .expect("datagram budget must fit auth and fragment headers");
+    let capacity = fragment_capacity(budget);
     assert!(capacity > 0, "datagram budget leaves no fragment payload");
     (0..value_len)
         .step_by(capacity)
@@ -107,10 +108,11 @@ fn nack_wire_bytes(missing: usize) -> usize {
     auth_overhead() + SELECTIVE_NACK_HEADER + SELECTIVE_NACK_INDEX * missing
 }
 
-fn run_case(policy: Policy, loss: Loss, value_len: usize, budget: usize) -> ResultRow {
+fn run_case(policy: Policy, loss: Loss, value_len: usize, budget: usize, seed: u64) -> ResultRow {
     let fragments = fragment_lengths(value_len, budget);
     let mut received = vec![false; fragments.len()];
-    let mut loss = LossState::new(loss);
+    let mut attempts = vec![0_usize; fragments.len()];
+    let mut loss = LossState::new(loss, seed);
     let mut result = ResultRow::default();
 
     while received.iter().any(|received| !received) {
@@ -126,9 +128,14 @@ fn run_case(policy: Policy, loss: Loss, value_len: usize, budget: usize) -> Resu
 
         for index in send {
             let payload_len = fragments[index];
+            let wire_bytes = data_wire_bytes(payload_len);
+            if attempts[index] > 0 {
+                result.retransmitted_wire_bytes += wire_bytes;
+            }
+            attempts[index] += 1;
             result.data_datagrams += 1;
-            result.data_wire_bytes += data_wire_bytes(payload_len);
-            if loss.lost(result.rounds, index) {
+            result.data_wire_bytes += wire_bytes;
+            if loss.lost(result.rounds, index, fragments.len()) {
                 continue;
             }
             if received[index] {
@@ -148,7 +155,6 @@ fn run_case(policy: Policy, loss: Loss, value_len: usize, budget: usize) -> Resu
             result.feedback_wire_bytes += nack_wire_bytes(missing);
         }
 
-        // A pathological deterministic schedule can otherwise make no progress forever.
         assert!(result.rounds < 10_000, "recovery did not converge");
     }
 
@@ -167,6 +173,18 @@ fn env_usizes(name: &str, default: &str) -> Vec<usize> {
         .collect()
 }
 
+fn env_u64s(name: &str, default: &str) -> Vec<u64> {
+    std::env::var(name)
+        .unwrap_or_else(|_| default.to_owned())
+        .split(',')
+        .map(|raw| {
+            raw.trim()
+                .parse()
+                .unwrap_or_else(|_| panic!("{name} must contain u64 values"))
+        })
+        .collect()
+}
+
 fn env_f64s(name: &str, default: &str) -> Vec<f64> {
     std::env::var(name)
         .unwrap_or_else(|_| default.to_owned())
@@ -180,50 +198,79 @@ fn env_f64s(name: &str, default: &str) -> Vec<f64> {
 }
 
 fn main() {
-    let sizes = env_usizes("RECONCILE_RECOVERY_VALUE_SIZES", "4096,131072,1048576");
-    let losses = env_f64s("RECONCILE_RECOVERY_LOSS_PERCENT", "0,0.1,1,5,10");
-    let deterministic_every = env_usizes("RECONCILE_RECOVERY_DETERMINISTIC_EVERY", "8,32");
+    let fragment_counts = env_usizes("RECONCILE_RECOVERY_FRAGMENT_COUNTS", "1,4,16,64");
+    let losses = env_f64s("RECONCILE_RECOVERY_LOSS_PERCENT", "0,1,5");
+    let bursts = env_usizes("RECONCILE_RECOVERY_BURST_FRAGMENTS", "4,8,16");
+    let rtts = env_usizes("RECONCILE_RECOVERY_RTT_MS", "1,50,150,600");
+    let seeds = env_u64s("RECONCILE_RECOVERY_SEEDS", "0,1,2,3,4");
     let budget = std::env::var("RECONCILE_RECOVERY_BUDGET")
         .unwrap_or_else(|_| DEFAULT_DATAGRAM_BUDGET.to_string())
         .parse()
         .expect("RECONCILE_RECOVERY_BUDGET must be usize");
+
+    let capacity = fragment_capacity(budget);
+    let mut sizes: Vec<usize> = fragment_counts
+        .into_iter()
+        .filter(|count| *count > 0)
+        .map(|count| count * capacity)
+        .collect();
+    sizes.push(1_048_576);
+    sizes.sort_unstable();
+    sizes.dedup();
 
     let mut models: Vec<Loss> = losses
         .into_iter()
         .map(|percent| Loss::Iid(percent / 100.0))
         .collect();
     models.extend(
-        deterministic_every
+        bursts
             .into_iter()
             .filter(|n| *n > 0)
-            .map(Loss::DeterministicEvery),
+            .map(Loss::Burst),
     );
 
     for value_len in sizes {
         let fragments = fragment_lengths(value_len, budget);
-        for model in models.iter().copied() {
-            for policy in [Policy::WholeRetry, Policy::MissingOnly] {
-                let row = run_case(policy, model, value_len, budget);
-                let total_wire_bytes = row.data_wire_bytes + row.feedback_wire_bytes;
-                println!(
-                    "[fragment-recovery] policy={},loss={},seed={:#x},budget_bytes={},value_bytes={},fragments={},rounds={},data_datagrams={},feedback_datagrams={},data_wire_bytes={},feedback_wire_bytes={},wire_bytes={},wire_amplification={:.6},duplicate_data_bytes={}",
-                    policy.label(),
-                    model.label(),
-                    SEED,
-                    budget,
-                    value_len,
-                    fragments.len(),
-                    row.rounds,
-                    row.data_datagrams,
-                    row.feedback_datagrams,
-                    row.data_wire_bytes,
-                    row.feedback_wire_bytes,
-                    total_wire_bytes,
-                    total_wire_bytes as f64 / value_len as f64,
-                    row.duplicate_data_bytes,
-                );
+        for rtt_ms in rtts.iter().copied() {
+            for seed_offset in seeds.iter().copied() {
+                let seed = BASE_SEED.wrapping_add(seed_offset);
+                for model in models.iter().copied() {
+                    for policy in [Policy::WholeRetry, Policy::MissingOnly] {
+                        let row = run_case(policy, model, value_len, budget, seed);
+                        let total_wire_bytes = row.data_wire_bytes + row.feedback_wire_bytes;
+                        // Round timing is an idealized recovery lower bound. Runtime validation
+                        // remains separate because the shipped whole-retry path is cadence-driven.
+                        let receiver_completion_ms = row.rounds * rtt_ms;
+                        let sender_quiescence_ms = match policy {
+                            Policy::WholeRetry => receiver_completion_ms,
+                            Policy::MissingOnly => receiver_completion_ms + rtt_ms / 2,
+                        };
+                        println!(
+                            "[fragment-recovery] policy={},loss={},seed={:#x},rtt_ms={},budget_bytes={},value_bytes={},fragments={},rounds={},receiver_completion_ms={},sender_quiescence_ms={},data_datagrams={},feedback_datagrams={},data_wire_bytes={},retransmitted_wire_bytes={},feedback_wire_bytes={},wire_bytes={},wire_amplification={:.6},recovery_efficiency={:.6},duplicate_data_bytes={}",
+                            policy.label(),
+                            model.label(),
+                            seed,
+                            rtt_ms,
+                            budget,
+                            value_len,
+                            fragments.len(),
+                            row.rounds,
+                            receiver_completion_ms,
+                            sender_quiescence_ms,
+                            row.data_datagrams,
+                            row.feedback_datagrams,
+                            row.data_wire_bytes,
+                            row.retransmitted_wire_bytes,
+                            row.feedback_wire_bytes,
+                            total_wire_bytes,
+                            total_wire_bytes as f64 / value_len as f64,
+                            (row.retransmitted_wire_bytes + row.feedback_wire_bytes) as f64
+                                / value_len as f64,
+                            row.duplicate_data_bytes,
+                        );
+                    }
+                }
             }
         }
     }
 }
-
