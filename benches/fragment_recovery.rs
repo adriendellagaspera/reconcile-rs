@@ -10,10 +10,14 @@
 
 mod fragment_recovery_model;
 
-use std::time::Duration;
+use std::hint::black_box;
+use std::time::{Duration, Instant};
+
+use gossip::framing::fragment_payload_capacity;
 
 use fragment_recovery_model::{
-    simulate, simulate_interruption, BurstLoss, Case, Metrics, RecoveryPolicy,
+    authenticated_overhead, simulate, simulate_interruption, BurstLoss, Case, Metrics,
+    RecoveryPolicy,
 };
 
 const DEFAULT_BUDGET: usize = 1_200;
@@ -337,6 +341,121 @@ fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
     }
 }
 
+fn run_policy_cpu_probes() {
+    const FRAGMENTS: usize = 900;
+    const FEC_WIDTH: usize = 8;
+    let iterations = env_usize("RECONCILE_FRAGMENT_RECOVERY_CPU_ITERS", 128);
+    assert!(
+        iterations > 0,
+        "RECONCILE_FRAGMENT_RECOVERY_CPU_ITERS must be non-zero"
+    );
+    let payload_bytes = fragment_payload_capacity(DEFAULT_BUDGET, authenticated_overhead())
+        .expect("default budget fits fragment overhead");
+    let missing: Vec<bool> = (0..FRAGMENTS).map(|index| index % 20 == 0).collect();
+    let mut bitmap = vec![0_u8; FRAGMENTS.div_ceil(8)];
+
+    let started = Instant::now();
+    for _ in 0..iterations {
+        bitmap.fill(0);
+        for (index, is_missing) in missing.iter().copied().enumerate() {
+            if is_missing {
+                bitmap[index / 8] |= 1 << (index % 8);
+            }
+        }
+        black_box(&bitmap);
+    }
+    print_cpu_probe(
+        "missing_bitmap_encode",
+        "receiver",
+        FRAGMENTS,
+        payload_bytes,
+        iterations,
+        started.elapsed(),
+    );
+
+    let started = Instant::now();
+    for _ in 0..iterations {
+        let mut selected = 0_usize;
+        for index in 0..FRAGMENTS {
+            if bitmap[index / 8] & (1 << (index % 8)) != 0 {
+                selected = selected.wrapping_add(index);
+            }
+        }
+        black_box(selected);
+    }
+    print_cpu_probe(
+        "missing_bitmap_decode",
+        "sender",
+        FRAGMENTS,
+        payload_bytes,
+        iterations,
+        started.elapsed(),
+    );
+
+    let data: Vec<Vec<u8>> = (0..FEC_WIDTH)
+        .map(|lane| vec![(lane as u8).wrapping_mul(31); payload_bytes])
+        .collect();
+    let groups = FRAGMENTS.div_ceil(FEC_WIDTH);
+    let mut parity = vec![0_u8; payload_bytes];
+
+    let started = Instant::now();
+    for _ in 0..iterations {
+        for _ in 0..groups {
+            parity.fill(0);
+            for fragment in &data {
+                for (out, byte) in parity.iter_mut().zip(fragment) {
+                    *out ^= *byte;
+                }
+            }
+            black_box(&parity);
+        }
+    }
+    print_cpu_probe(
+        "xor8_encode",
+        "sender",
+        FRAGMENTS,
+        payload_bytes,
+        iterations,
+        started.elapsed(),
+    );
+
+    let mut recovered = vec![0_u8; payload_bytes];
+    let started = Instant::now();
+    for _ in 0..iterations {
+        for _ in 0..groups {
+            recovered.copy_from_slice(&parity);
+            for fragment in data.iter().skip(1) {
+                for (out, byte) in recovered.iter_mut().zip(fragment) {
+                    *out ^= *byte;
+                }
+            }
+            black_box(&recovered);
+        }
+    }
+    print_cpu_probe(
+        "xor8_recover_one",
+        "receiver",
+        FRAGMENTS,
+        payload_bytes,
+        iterations,
+        started.elapsed(),
+    );
+}
+
+fn print_cpu_probe(
+    primitive: &str,
+    side: &str,
+    fragments: usize,
+    payload_bytes: usize,
+    iterations: usize,
+    elapsed: Duration,
+) {
+    println!(
+        "[fragment-recovery-cpu] primitive={primitive},side={side},fragments={fragments},fragment_payload_bytes={payload_bytes},iterations={iterations},us_per_transfer={:.3}",
+        elapsed.as_secs_f64() * 1_000_000.0 / iterations as f64,
+    );
+}
+
 fn main() {
     let budget = env_usize("RECONCILE_FRAGMENT_RECOVERY_BUDGET", DEFAULT_BUDGET);
     let bandwidth_bps = env_u64(
@@ -377,4 +496,5 @@ fn main() {
     }
 
     run_interruption_cases(budget, bandwidth_bps);
+    run_policy_cpu_probes();
 }
