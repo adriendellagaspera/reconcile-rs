@@ -5,7 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Deterministic fragment-recovery model shared by the #271 benchmark and its integration tests.
+//! Deterministic fragment-recovery model shared by the benchmark and its integration tests.
 //!
 //! This is deliberately benchmark-only. The selective-control frames below are accounting shapes,
 //! not a production wire format.
@@ -117,9 +117,11 @@ pub fn logical_bytes_for_fragments(fragment_count: usize, datagram_payload_budge
     let fragment = fragment_payload_capacity(datagram_payload_budget, auth)
         .expect("datagram budget must fit fragment overhead");
     assert!(fragment > 0, "datagram budget leaves no fragment payload");
-    complete
-        .saturating_add(1)
-        .max(fragment.saturating_mul(fragment_count - 1).saturating_add(1))
+    complete.saturating_add(1).max(
+        fragment
+            .saturating_mul(fragment_count - 1)
+            .saturating_add(1),
+    )
 }
 
 /// Simulate one isolated transfer under one recovery policy.
@@ -341,13 +343,7 @@ fn data_is_lost(case: Case, unit: usize, attempt: u32) -> bool {
 }
 
 fn control_is_lost(case: Case, sequence: u64) -> bool {
-    sample_loss(
-        case.seed,
-        CONTROL_DOMAIN,
-        sequence,
-        0,
-        case.loss_percent,
-    )
+    sample_loss(case.seed, CONTROL_DOMAIN, sequence, 0, case.loss_percent)
 }
 
 fn sample_loss(seed: u64, domain: u64, unit: u64, attempt: u64, loss_percent: f64) -> bool {
