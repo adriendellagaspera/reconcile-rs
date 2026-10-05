@@ -63,7 +63,9 @@ fn matched_loss_draws_give_selective_recovery_a_real_wire_win() {
 
     assert!(selective.retransmitted_wire_bytes < whole.retransmitted_wire_bytes);
     assert!(selective.control_bytes > whole.control_bytes);
-    assert!(selective.recovery_cost_ratio() < whole.recovery_cost_ratio());
+    let whole_cost = whole.retransmitted_wire_bytes + whole.control_bytes;
+    let selective_cost = selective.retransmitted_wire_bytes + selective.control_bytes;
+    assert!(selective_cost < whole_cost);
 }
 
 #[test]
@@ -84,4 +86,10 @@ fn selective_sender_state_is_explicit_and_domain_completion_is_not_hidden() {
     assert!(selective.peak_sender_recovery_state_bytes > selective.useful_bytes);
     assert_eq!(whole.domain_convergence, whole.receiver_completion);
     assert_eq!(selective.domain_convergence, selective.receiver_completion);
+}
+
+#[test]
+fn policy_labels_are_stable_for_benchmark_output() {
+    assert_eq!(RecoveryPolicy::WholeRetry.label(), "whole_retry");
+    assert_eq!(RecoveryPolicy::MissingOnly.label(), "missing_only");
 }
