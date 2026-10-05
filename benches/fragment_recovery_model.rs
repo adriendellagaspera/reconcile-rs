@@ -257,6 +257,7 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
             if policy == RecoveryPolicy::Xor8Plus1 {
                 let mut parity_arrivals = vec![None; parity.len()];
                 let mut retained_parity_payload = 0_usize;
+                let mut parity_scratch_payload = 0_usize;
                 for (group, parity_unit) in parity.iter().copied().enumerate() {
                     wire_bytes += parity_unit.wire_len as u64;
                     parity_wire_bytes += parity_unit.wire_len as u64;
@@ -265,14 +266,24 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
                         serialization_seconds(parity_unit.wire_len, case.bandwidth_bps);
                     if !parity_is_lost(case, group) {
                         parity_arrivals[group] = Some(send_cursor_s + one_way_s);
-                        if remaining > 0 {
+                        let missing_in_group = (parity_unit.first_data
+                            ..parity_unit.first_data + parity_unit.data_count)
+                            .filter(|&index| !received[index])
+                            .count();
+                        if missing_in_group > 1 {
                             retained_parity_payload += parity_unit.payload_len;
+                        } else if missing_in_group == 1 {
+                            parity_scratch_payload =
+                                parity_scratch_payload.max(parity_unit.payload_len);
                         }
                     }
                 }
                 if remaining > 0 {
-                    peak_receiver =
-                        peak_receiver.max(retained_useful.saturating_add(retained_parity_payload));
+                    peak_receiver = peak_receiver.max(
+                        retained_useful
+                            .saturating_add(retained_parity_payload)
+                            .saturating_add(parity_scratch_payload),
+                    );
                     apply_parity_recovery(
                         &units,
                         &parity,
