@@ -389,8 +389,14 @@ pub fn simulate_interruption(
     arrived_fraction: f64,
     gap: Duration,
 ) -> InterruptionMetrics {
-    assert_eq!(case.loss_percent, 0.0, "interruption model isolates contact loss");
-    assert!(case.burst_loss.is_none(), "interruption model isolates contact loss");
+    assert_eq!(
+        case.loss_percent, 0.0,
+        "interruption model isolates contact loss"
+    );
+    assert!(
+        case.burst_loss.is_none(),
+        "interruption model isolates contact loss"
+    );
     assert!(
         (0.0..1.0).contains(&arrived_fraction),
         "arrived_fraction must be in [0, 1)"
@@ -405,18 +411,20 @@ pub fn simulate_interruption(
         "interruption requires a multi-frame logical transfer"
     );
 
-    let arrived_units = ((units.len() as f64 * arrived_fraction).round() as usize)
-        .clamp(1, units.len() - 1);
-    let progress_retained_useful_bytes: usize =
-        units[..arrived_units].iter().map(|unit| unit.useful_len).sum();
-    let wire_bytes_before_interruption: u64 =
-        units[..arrived_units].iter().map(|unit| unit.wire_len as u64).sum();
+    let arrived_units =
+        ((units.len() as f64 * arrived_fraction).round() as usize).clamp(1, units.len() - 1);
+    let progress_retained_useful_bytes: usize = units[..arrived_units]
+        .iter()
+        .map(|unit| unit.useful_len)
+        .sum();
+    let wire_bytes_before_interruption: u64 = units[..arrived_units]
+        .iter()
+        .map(|unit| unit.wire_len as u64)
+        .sum();
 
     let one_way_s = case.rtt.as_secs_f64() / 2.0;
-    let pre_serialization_s = serialization_seconds(
-        wire_bytes_before_interruption as usize,
-        case.bandwidth_bps,
-    );
+    let pre_serialization_s =
+        serialization_seconds(wire_bytes_before_interruption as usize, case.bandwidth_bps);
     let resume_receiver_s = pre_serialization_s + one_way_s + gap.as_secs_f64();
 
     let (data_indices, nack_len, ack_len) = match policy {
