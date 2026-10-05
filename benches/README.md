@@ -15,6 +15,7 @@ Benchmarks measure code that ships in this repository. Comparative algorithm res
 | security_ingress | authenticated MAC/version/replay CPU cost as payload and retained-sender state scale |
 | security_amplification | response amplification and bulk-dump concurrency for rejected and valid authenticated ingress |
 | fragmentation | UDP application framing, large-message convergence, datagram size, loss/reorder, and reassembly overhead |
+| fragment_recovery | Research-only whole-message vs missing-only fragment recovery cost under matched deterministic loss |
 | tombstone_gc_skew | one-sided retained tombstone history, reconciliation work, and ACK recovery |
 | membership_churn | sustained authoritative member replacement with ACK coverage rebuilt through real dated traffic |
 | snapshot_write_amplification | paired full-vs-incremental checkpoint writes, retained storage, segment chains, and restart cost |
@@ -41,6 +42,22 @@ convergence latency, framed bytes, datagrams, maximum datagram size, thresholds 
 bytes, and realized loss. It is revision-pairable: use the same value-size/profile inputs before and
 after framing changes. Configure value sizes with `RECONCILE_FRAGMENT_VALUE_SIZES` and the
 per-case convergence deadline with `RECONCILE_FRAGMENT_TIMEOUT_MS`.
+
+The `fragment_recovery` target is a research-only isolated-transfer model layered on the shipped
+framing sizes; it does not define an ACK/NACK wire format. It compares the #263 whole-message retry
+control (receiver keeps already-arrived fragments) with a benchmark-only missing-fragment bitmap
+NACK plus completion ACK. Both policies see matched deterministic independent-loss draws for each
+data fragment/attempt; the same loss probability also applies to selective-control datagrams. The
+whole-retry arm is deliberately given an optimistic one-RTT recovery opportunity, so selective
+recovery does not win merely because the production anti-entropy timer is slower. Domain convergence
+equals receiver completion by construction in this isolated-transfer model; the separate
+`sender_quiescence` metric prices the selective completion ACK. Defaults use a sparse set of
+1/4/16/64/~900-frame cases spanning 1/50/150/600 ms RTT and 0/1/5% loss, 1200 B datagrams,
+100 Mbit/s symmetric serialization, and 64 deterministic seeds. Configure the budget, bandwidth,
+or sample count with `RECONCILE_FRAGMENT_RECOVERY_BUDGET`,
+`RECONCILE_FRAGMENT_RECOVERY_BANDWIDTH_BPS`, and
+`RECONCILE_FRAGMENT_RECOVERY_TRIALS`. The existing `fragmentation` target remains the production
+runtime control and is the validation surface for selected modeled points.
 
 The `tombstone_gc_skew` target compares aligned authoritative peers with a one-sided retained-tombstone history while keeping application-visible state equal, plus a fixed live-divergence control. It reports wire traffic, protocol enumeration, convergence, and bounded tombstone-ACK recovery rounds. The deployment-sized debt term is approximately `delete_rate × effective_unacked_membership_lag`: age timeout alone does not make a tombstone collectible while a causal member has not acknowledged its exact version. Configure with `RECONCILE_GC_SKEW_N`, `RECONCILE_GC_SKEW_DELETIONS`, and `RECONCILE_GC_SKEW_BASE_DIVERGENCE`.
 
