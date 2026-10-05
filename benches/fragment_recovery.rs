@@ -61,11 +61,16 @@ impl LossState {
         }
     }
 
-    fn lost(&mut self) -> bool {
+    fn lost(&mut self, round: usize, fragment_index: usize) -> bool {
         self.offered += 1;
         match self.model {
             Loss::Iid(p) => self.rng.gen_bool(p.clamp(0.0, 1.0)),
-            Loss::DeterministicEvery(n) => n != 0 && self.offered % n == 0,
+            // A controlled first-flight loss mask: unlike "every Nth send", this cannot
+            // accidentally pin the same fragment forever when a whole-message retry has N
+            // fragments. Recovery traffic itself is delivered in this deterministic lane.
+            Loss::DeterministicEvery(n) => {
+                round == 1 && n != 0 && (fragment_index + 1) % n == 0
+            }
         }
     }
 }
@@ -123,7 +128,7 @@ fn run_case(policy: Policy, loss: Loss, value_len: usize, budget: usize) -> Resu
             let payload_len = fragments[index];
             result.data_datagrams += 1;
             result.data_wire_bytes += data_wire_bytes(payload_len);
-            if loss.lost() {
+            if loss.lost(result.rounds, index) {
                 continue;
             }
             if received[index] {
