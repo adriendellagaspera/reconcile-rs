@@ -89,25 +89,6 @@ pub struct Metrics {
     pub peak_receiver_reassembly_state_bytes: usize,
 }
 
-impl Metrics {
-    /// Total wire bytes divided by useful application bytes.
-    pub fn wire_amplification(&self) -> f64 {
-        self.wire_bytes as f64 / self.useful_bytes as f64
-    }
-
-    /// Recovery wire cost per useful byte missing after the first flight.
-    ///
-    /// Includes retransmitted data and selective-control bytes. Clean flights return zero.
-    pub fn recovery_cost_ratio(&self) -> f64 {
-        if self.initial_missing_useful_bytes == 0 {
-            0.0
-        } else {
-            (self.retransmitted_wire_bytes + self.control_bytes) as f64
-                / self.initial_missing_useful_bytes as f64
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 struct DataUnit {
     useful_len: usize,
@@ -373,11 +354,11 @@ fn sample_loss(seed: u64, domain: u64, unit: u64, attempt: u64, loss_percent: f6
     if loss_percent <= 0.0 {
         return false;
     }
-    let mut state = seed
-        ^ domain
-        ^ unit.wrapping_mul(0x9e37_79b9_7f4a_7c15)
-        ^ attempt.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    state = splitmix64(state);
+    let state = splitmix64(
+        seed ^ domain
+            ^ unit.wrapping_mul(0x9e37_79b9_7f4a_7c15)
+            ^ attempt.wrapping_mul(0xbf58_476d_1ce4_e5b9),
+    );
     let sample = state as f64 / u64::MAX as f64;
     sample < loss_percent / 100.0
 }
