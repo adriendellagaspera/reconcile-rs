@@ -99,7 +99,11 @@ struct Summary {
     control_bytes: f64,
     datagrams: f64,
     recovery_rounds: f64,
-    initial_missing_useful_bytes: f64,
+    initial_data_loss_useful_bytes: f64,
+    missing_after_initial_recovery_bytes: f64,
+    parity_wire_bytes: f64,
+    fec_recovered_fragments: f64,
+    fec_recovered_useful_bytes: f64,
     receiver_completion_ms: Vec<f64>,
     domain_convergence_ms: f64,
     sender_quiescence_ms: f64,
@@ -116,7 +120,12 @@ impl Summary {
         self.control_bytes += metrics.control_bytes as f64;
         self.datagrams += metrics.datagrams as f64;
         self.recovery_rounds += metrics.recovery_rounds as f64;
-        self.initial_missing_useful_bytes += metrics.initial_missing_useful_bytes as f64;
+        self.initial_data_loss_useful_bytes += metrics.initial_data_loss_useful_bytes as f64;
+        self.missing_after_initial_recovery_bytes +=
+            metrics.missing_after_initial_recovery_bytes as f64;
+        self.parity_wire_bytes += metrics.parity_wire_bytes as f64;
+        self.fec_recovered_fragments += metrics.fec_recovered_fragments as f64;
+        self.fec_recovered_useful_bytes += metrics.fec_recovered_useful_bytes as f64;
         self.receiver_completion_ms
             .push(metrics.receiver_completion.as_secs_f64() * 1_000.0);
         self.domain_convergence_ms += metrics.domain_convergence.as_secs_f64() * 1_000.0;
@@ -138,7 +147,7 @@ impl Summary {
 
     fn print(&self, scenario: Scenario, policy: RecoveryPolicy, budget: usize, bandwidth_bps: u64) {
         let mean_wire = self.mean(self.wire_bytes);
-        let mean_missing = self.mean(self.initial_missing_useful_bytes);
+        let mean_missing = self.mean(self.initial_data_loss_useful_bytes);
         let mean_recovery_cost = self.mean(self.retransmitted_wire_bytes + self.control_bytes);
         let recovery_cost_ratio = if mean_missing == 0.0 {
             0.0
@@ -147,7 +156,7 @@ impl Summary {
         };
         let bdp_bytes = bandwidth_bps as f64 * (scenario.rtt_ms / 1_000.0) / 8.0;
         println!(
-            "[fragment-recovery] policy={},fragments={},budget_bytes={},rtt_ms={:.1},loss_percent={:.1},bandwidth_bps={},bdp_bytes={:.0},trials={},useful_bytes={},mean_wire_bytes={:.1},wire_amplification={:.4},mean_retransmitted_wire_bytes={:.1},parity_bytes=0,mean_control_bytes={:.1},mean_datagrams={:.2},mean_recovery_rounds={:.3},mean_initial_missing_useful_bytes={:.1},recovery_cost_ratio={:.4},mean_receiver_completion_ms={:.3},p95_receiver_completion_ms={:.3},mean_domain_convergence_ms={:.3},mean_sender_quiescence_ms={:.3},mean_peak_sender_recovery_state_bytes={:.1},mean_peak_receiver_reassembly_state_bytes={:.1}",
+            "[fragment-recovery] policy={},fragments={},budget_bytes={},rtt_ms={:.1},loss_percent={:.1},bandwidth_bps={},bdp_bytes={:.0},trials={},useful_bytes={},mean_wire_bytes={:.1},wire_amplification={:.4},mean_retransmitted_wire_bytes={:.1},mean_parity_wire_bytes={:.1},mean_control_bytes={:.1},mean_datagrams={:.2},mean_recovery_rounds={:.3},mean_initial_data_loss_useful_bytes={:.1},mean_missing_after_initial_recovery_bytes={:.1},mean_fec_recovered_fragments={:.3},mean_fec_recovered_useful_bytes={:.1},recovery_cost_ratio={:.4},mean_receiver_completion_ms={:.3},p95_receiver_completion_ms={:.3},mean_domain_convergence_ms={:.3},mean_sender_quiescence_ms={:.3},mean_peak_sender_recovery_state_bytes={:.1},mean_peak_receiver_reassembly_state_bytes={:.1}",
             policy.label(),
             scenario.fragments,
             budget,
@@ -160,10 +169,14 @@ impl Summary {
             mean_wire,
             mean_wire / self.useful_bytes as f64,
             self.mean(self.retransmitted_wire_bytes),
+            self.mean(self.parity_wire_bytes),
             self.mean(self.control_bytes),
             self.mean(self.datagrams),
             self.mean(self.recovery_rounds),
             mean_missing,
+            self.mean(self.missing_after_initial_recovery_bytes),
+            self.mean(self.fec_recovered_fragments),
+            self.mean(self.fec_recovered_useful_bytes),
             recovery_cost_ratio,
             self.mean(self.receiver_completion_ms.iter().sum()),
             self.percentile_completion_ms(0.95),
@@ -203,7 +216,11 @@ fn main() {
     );
 
     for &scenario in SCENARIOS {
-        for policy in [RecoveryPolicy::WholeRetry, RecoveryPolicy::MissingOnly] {
+        for policy in [
+            RecoveryPolicy::WholeRetry,
+            RecoveryPolicy::MissingOnly,
+            RecoveryPolicy::Xor8Plus1,
+        ] {
             let mut summary = Summary::default();
             for trial in 0..trials {
                 let seed = 0x2710_0000_0000_0000_u64
