@@ -192,6 +192,43 @@ fn run_case(policy: Policy, loss: Loss, value_len: usize, budget: usize, seed: u
     result
 }
 
+fn run_interruption_case(
+    policy: Policy,
+    value_len: usize,
+    budget: usize,
+    fraction_percent: usize,
+    retain_progress: bool,
+) -> ResultRow {
+    let fragments = fragment_lengths(value_len, budget);
+    let sent_before_interrupt = (fragments.len() * fraction_percent).div_ceil(100).min(fragments.len());
+    let mut received = vec![false; fragments.len()];
+    received[..sent_before_interrupt].fill(true);
+
+    let mut result = ResultRow::default();
+    if !retain_progress {
+        received.fill(false);
+    }
+
+    let send: Vec<usize> = match policy {
+        Policy::WholeRetry => (0..fragments.len()).collect(),
+        Policy::MissingOnly | Policy::Xor8 => received
+            .iter()
+            .enumerate()
+            .filter_map(|(index, received)| (!received).then_some(index))
+            .collect(),
+    };
+
+    result.rounds = 1;
+    for index in send {
+        result.data_datagrams += 1;
+        result.data_wire_bytes += data_wire_bytes(fragments[index]);
+    }
+
+    // Parity is useful only for loss recovery; an interruption with known retained progress
+    // resumes missing data directly, so do not charge speculative parity on the resume flight.
+    result
+}
+
 fn env_usizes(name: &str, default: &str) -> Vec<usize> {
     std::env::var(name)
         .unwrap_or_else(|_| default.to_owned())
@@ -259,6 +296,28 @@ fn main() {
             .filter(|n| *n > 0)
             .map(Loss::Burst),
     );
+
+    for fraction_percent in [20_usize, 50, 80] {
+        for retain_progress in [true, false] {
+            for policy in [Policy::WholeRetry, Policy::MissingOnly, Policy::Xor8] {
+                let row = run_interruption_case(
+                    policy,
+                    1_048_576,
+                    budget,
+                    fraction_percent,
+                    retain_progress,
+                );
+                println!(
+                    "[fragment-interruption] policy={},fraction_percent={},retained={},additional_wire_bytes={},additional_datagrams={}",
+                    policy.label(),
+                    fraction_percent,
+                    retain_progress,
+                    row.data_wire_bytes,
+                    row.data_datagrams,
+                );
+            }
+        }
+    }
 
     for value_len in sizes {
         let fragments = fragment_lengths(value_len, budget);
