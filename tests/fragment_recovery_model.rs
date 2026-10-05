@@ -10,7 +10,7 @@ mod model;
 
 use std::time::Duration;
 
-use model::{simulate, BurstLoss, Case, RecoveryPolicy};
+use model::{simulate, simulate_interruption, BurstLoss, Case, RecoveryPolicy};
 
 fn case(fragment_count: usize, loss_percent: f64, seed: u64) -> Case {
     Case {
@@ -149,4 +149,69 @@ fn burst_loss_is_applied_only_to_the_first_data_flight() {
     assert_eq!(whole.recovery_rounds, 1);
     assert_eq!(selective.recovery_rounds, 1);
     assert!(selective.retransmitted_wire_bytes < whole.retransmitted_wire_bytes);
+}
+
+#[test]
+fn interruption_retains_progress_and_selective_resume_avoids_restart_bytes() {
+    for fraction in [0.2, 0.5, 0.8] {
+        let input = case(64, 0.0, 17);
+        let whole = simulate_interruption(
+            input,
+            RecoveryPolicy::WholeRetry,
+            fraction,
+            Duration::from_secs(1),
+        );
+        let selective = simulate_interruption(
+            input,
+            RecoveryPolicy::MissingOnly,
+            fraction,
+            Duration::from_secs(1),
+        );
+
+        assert!(selective.progress_retained_useful_bytes > 0);
+        assert_eq!(
+            selective.progress_retained_useful_bytes,
+            whole.progress_retained_useful_bytes
+        );
+        assert!(selective.additional_wire_bytes < whole.additional_wire_bytes);
+        assert!(selective.additional_control_bytes > 0);
+    }
+}
+
+#[test]
+fn more_pre_interruption_progress_monotonically_reduces_selective_resume_bytes() {
+    let input = case(900, 0.0, 19);
+    let resume_bytes: Vec<u64> = [0.2, 0.5, 0.8]
+        .into_iter()
+        .map(|fraction| {
+            simulate_interruption(
+                input,
+                RecoveryPolicy::MissingOnly,
+                fraction,
+                Duration::from_secs(30),
+            )
+            .additional_wire_bytes
+        })
+        .collect();
+
+    assert!(resume_bytes[0] > resume_bytes[1]);
+    assert!(resume_bytes[1] > resume_bytes[2]);
+}
+
+#[test]
+fn parity_policy_uses_missing_only_fallback_after_contact_resumes() {
+    let input = case(64, 0.0, 23);
+    let selective = simulate_interruption(
+        input,
+        RecoveryPolicy::MissingOnly,
+        0.5,
+        Duration::from_secs(1),
+    );
+    let fec = simulate_interruption(
+        input,
+        RecoveryPolicy::Xor8Plus1,
+        0.5,
+        Duration::from_secs(1),
+    );
+    assert_eq!(fec, selective);
 }
