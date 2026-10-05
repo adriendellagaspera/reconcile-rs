@@ -6,7 +6,7 @@
 // except according to those terms.
 
 // Research benchmark for selective fragment recovery. It models no production ACK/NACK wire:
-// the shipped #263 runtime control remains benches/fragmentation.rs.
+// the shipped runtime control remains benches/fragmentation.rs.
 
 mod fragment_recovery_model;
 
@@ -139,8 +139,7 @@ impl Summary {
     fn print(&self, scenario: Scenario, policy: RecoveryPolicy, budget: usize, bandwidth_bps: u64) {
         let mean_wire = self.mean(self.wire_bytes);
         let mean_missing = self.mean(self.initial_missing_useful_bytes);
-        let mean_recovery_cost =
-            self.mean(self.retransmitted_wire_bytes + self.control_bytes);
+        let mean_recovery_cost = self.mean(self.retransmitted_wire_bytes + self.control_bytes);
         let recovery_cost_ratio = if mean_missing == 0.0 {
             0.0
         } else {
@@ -184,7 +183,10 @@ fn env_u64(name: &str, default: u64) -> u64 {
 
 fn env_usize(name: &str, default: usize) -> usize {
     std::env::var(name)
-        .map(|raw| raw.parse().unwrap_or_else(|_| panic!("{name} must be usize")))
+        .map(|raw| {
+            raw.parse()
+                .unwrap_or_else(|_| panic!("{name} must be usize"))
+        })
         .unwrap_or(default)
 }
 
@@ -195,7 +197,10 @@ fn main() {
         DEFAULT_BANDWIDTH_BPS,
     );
     let trials = env_u64("RECONCILE_FRAGMENT_RECOVERY_TRIALS", DEFAULT_TRIALS);
-    assert!(trials > 0, "RECONCILE_FRAGMENT_RECOVERY_TRIALS must be non-zero");
+    assert!(
+        trials > 0,
+        "RECONCILE_FRAGMENT_RECOVERY_TRIALS must be non-zero"
+    );
 
     for &scenario in SCENARIOS {
         for policy in [RecoveryPolicy::WholeRetry, RecoveryPolicy::MissingOnly] {
