@@ -215,3 +215,13 @@ fn parity_policy_uses_missing_only_fallback_after_contact_resumes() {
     );
     assert_eq!(fec, selective);
 }
+
+#[test]
+fn bounded_parity_does_not_tax_an_unfragmented_transfer() {
+    let whole = simulate(case(1, 0.0, 29), RecoveryPolicy::WholeRetry);
+    let fec = simulate(case(1, 0.0, 29), RecoveryPolicy::Xor8Plus1);
+
+    assert_eq!(fec.parity_wire_bytes, 0);
+    assert_eq!(fec.fec_recovered_fragments, 0);
+    assert_eq!(fec.wire_bytes, whole.wire_bytes + fec.control_bytes);
+}
