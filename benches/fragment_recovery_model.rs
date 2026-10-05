@@ -178,8 +178,9 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
     );
 
     let auth = authenticated_overhead();
-    let logical_bytes = case.logical_bytes.unwrap_or_else(||
-        logical_bytes_for_fragments(case.fragment_count, case.datagram_payload_budget));
+    let logical_bytes = case.logical_bytes.unwrap_or_else(|| {
+        logical_bytes_for_fragments(case.fragment_count, case.datagram_payload_budget)
+    });
     let units = data_units(logical_bytes, case.datagram_payload_budget, auth);
     if case.logical_bytes.is_none() {
         assert_eq!(
@@ -419,8 +420,9 @@ pub fn simulate_interruption(
     );
 
     let auth = authenticated_overhead();
-    let logical_bytes = case.logical_bytes.unwrap_or_else(||
-        logical_bytes_for_fragments(case.fragment_count, case.datagram_payload_budget));
+    let logical_bytes = case.logical_bytes.unwrap_or_else(|| {
+        logical_bytes_for_fragments(case.fragment_count, case.datagram_payload_budget)
+    });
     let units = data_units(logical_bytes, case.datagram_payload_budget, auth);
     assert!(
         units.len() > 1,
