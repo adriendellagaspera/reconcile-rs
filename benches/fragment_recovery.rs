@@ -237,9 +237,8 @@ impl Summary {
     fn print(&self, scenario: Scenario, policy: RecoveryPolicy, budget: usize, bandwidth_bps: u64) {
         let mean_wire = self.mean(self.wire_bytes);
         let mean_missing = self.mean(self.initial_data_loss_useful_bytes);
-        let mean_recovery_cost = self.mean(
-            self.retransmitted_wire_bytes + self.parity_wire_bytes + self.control_bytes,
-        );
+        let mean_recovery_cost =
+            self.mean(self.retransmitted_wire_bytes + self.parity_wire_bytes + self.control_bytes);
         let recovery_cost_ratio = if mean_missing == 0.0 {
             0.0
         } else {
