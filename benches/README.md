@@ -44,7 +44,7 @@ after framing changes. Configure value sizes with `RECONCILE_FRAGMENT_VALUE_SIZE
 per-case convergence deadline with `RECONCILE_FRAGMENT_TIMEOUT_MS`.
 
 The `fragment_recovery` target is a research-only isolated-transfer model layered on the shipped
-framing sizes; it does not define an ACK/NACK wire format. It compares the #263 whole-message retry
+framing sizes; it does not define an ACK/NACK wire format. It compares the shipped whole-message retry
 control (receiver keeps already-arrived fragments) with a benchmark-only missing-fragment bitmap
 NACK plus completion ACK. Both policies see matched deterministic independent-loss draws for each
 data fragment/attempt; the same loss probability also applies to selective-control datagrams. The
