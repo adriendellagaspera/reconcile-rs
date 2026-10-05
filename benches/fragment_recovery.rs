@@ -12,7 +12,9 @@ mod fragment_recovery_model;
 
 use std::time::Duration;
 
-use fragment_recovery_model::{simulate, BurstLoss, Case, Metrics, RecoveryPolicy};
+use fragment_recovery_model::{
+    simulate, simulate_interruption, BurstLoss, Case, Metrics, RecoveryPolicy,
+};
 
 const DEFAULT_BUDGET: usize = 1_200;
 const DEFAULT_BANDWIDTH_BPS: u64 = 100_000_000;
@@ -127,6 +129,53 @@ const SCENARIOS: &[Scenario] = &[
         rtt_ms: 600.0,
         loss_percent: 5.0,
         burst_loss: None,
+    },
+];
+
+#[derive(Clone, Copy)]
+struct InterruptionScenario {
+    fragments: usize,
+    rtt_ms: f64,
+    arrived_fraction: f64,
+    gap_ms: u64,
+}
+
+const INTERRUPTION_SCENARIOS: &[InterruptionScenario] = &[
+    InterruptionScenario {
+        fragments: 64,
+        rtt_ms: 50.0,
+        arrived_fraction: 0.2,
+        gap_ms: 1_000,
+    },
+    InterruptionScenario {
+        fragments: 64,
+        rtt_ms: 50.0,
+        arrived_fraction: 0.5,
+        gap_ms: 1_000,
+    },
+    InterruptionScenario {
+        fragments: 64,
+        rtt_ms: 50.0,
+        arrived_fraction: 0.8,
+        gap_ms: 1_000,
+    },
+    InterruptionScenario {
+        fragments: 900,
+        rtt_ms: 600.0,
+        arrived_fraction: 0.2,
+        gap_ms: 1_000,
+    },
+    InterruptionScenario {
+        fragments: 900,
+        rtt_ms: 600.0,
+        arrived_fraction: 0.5,
+        gap_ms: 30_000,
+    },
+    InterruptionScenario {
+        fragments: 900,
+        rtt_ms: 600.0,
+        arrived_fraction: 0.8,
+        gap_ms: 30_000,
     },
 ];
 
@@ -247,6 +296,48 @@ fn env_usize(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
+    for &scenario in INTERRUPTION_SCENARIOS {
+        for policy in [
+            RecoveryPolicy::WholeRetry,
+            RecoveryPolicy::MissingOnly,
+            RecoveryPolicy::Xor8Plus1,
+        ] {
+            let metrics = simulate_interruption(
+                Case {
+                    fragment_count: scenario.fragments,
+                    datagram_payload_budget: budget,
+                    rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
+                    loss_percent: 0.0,
+                    burst_loss: None,
+                    bandwidth_bps,
+                    seed: 0x2710_1a2b,
+                },
+                policy,
+                scenario.arrived_fraction,
+                Duration::from_millis(scenario.gap_ms),
+            );
+            println!(
+                "[fragment-interruption] policy={},fragments={},budget_bytes={},rtt_ms={:.1},arrived_fraction={:.1},gap_ms={},useful_bytes={},progress_retained_useful_bytes={},wire_bytes_before_interruption={},additional_wire_bytes={},additional_control_bytes={},additional_wire_over_useful={:.4},receiver_completion_ms={:.3},sender_quiescence_ms={:.3}",
+                policy.label(),
+                scenario.fragments,
+                budget,
+                scenario.rtt_ms,
+                scenario.arrived_fraction,
+                scenario.gap_ms,
+                metrics.useful_bytes,
+                metrics.progress_retained_useful_bytes,
+                metrics.wire_bytes_before_interruption,
+                metrics.additional_wire_bytes,
+                metrics.additional_control_bytes,
+                metrics.additional_wire_bytes as f64 / metrics.useful_bytes as f64,
+                metrics.receiver_completion.as_secs_f64() * 1_000.0,
+                metrics.sender_quiescence.as_secs_f64() * 1_000.0,
+            );
+        }
+    }
+}
+
 fn main() {
     let budget = env_usize("RECONCILE_FRAGMENT_RECOVERY_BUDGET", DEFAULT_BUDGET);
     let bandwidth_bps = env_u64(
@@ -285,4 +376,6 @@ fn main() {
             summary.print(scenario, policy, budget, bandwidth_bps);
         }
     }
+
+    run_interruption_cases(budget, bandwidth_bps);
 }
