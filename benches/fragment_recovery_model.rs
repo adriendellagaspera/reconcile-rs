@@ -7,8 +7,8 @@
 
 //! Deterministic fragment-recovery model shared by the benchmark and its integration tests.
 //!
-//! This is deliberately benchmark-only. The selective-control frames below are accounting shapes,
-//! not a production wire format.
+//! This is deliberately benchmark-only. The selective-control and parity frames below are
+//! accounting shapes, not a production wire format.
 
 use std::time::Duration;
 
@@ -20,8 +20,14 @@ use gossip::framing::{
 const CONTROL_TAG_LEN: usize = 1;
 const TRANSFER_ID_LEN: usize = 32;
 const FRAGMENT_COUNT_LEN: usize = 4;
+const PARITY_GROUP_INDEX_LEN: usize = 4;
+const PARITY_GROUP_COUNT_LEN: usize = 1;
+const PARITY_HEADER_LEN: usize =
+    CONTROL_TAG_LEN + TRANSFER_ID_LEN + PARITY_GROUP_INDEX_LEN + PARITY_GROUP_COUNT_LEN;
+const FEC_DATA_PER_GROUP: usize = 8;
 const DATA_DOMAIN: u64 = 0x6461_7461_2710_0001;
 const CONTROL_DOMAIN: u64 = 0x6374_726c_2710_0001;
+const PARITY_DOMAIN: u64 = 0x6665_635f_2710_0001;
 const MAX_RECOVERY_ROUNDS: usize = 10_000;
 
 /// Recovery strategy compared by the benchmark.
@@ -31,6 +37,8 @@ pub enum RecoveryPolicy {
     WholeRetry,
     /// Send a bitmap NACK and re-send only data units still missing.
     MissingOnly,
+    /// Send one XOR parity unit per group of at most eight data units, then fall back to NACKs.
+    Xor8Plus1,
 }
 
 impl RecoveryPolicy {
@@ -39,6 +47,7 @@ impl RecoveryPolicy {
         match self {
             Self::WholeRetry => "whole_retry",
             Self::MissingOnly => "missing_only",
+            Self::Xor8Plus1 => "xor_8_plus_1",
         }
     }
 }
@@ -52,7 +61,7 @@ pub struct Case {
     pub datagram_payload_budget: usize,
     /// Round-trip propagation time.
     pub rtt: Duration,
-    /// Independent loss probability, applied to data and benchmark-only control datagrams.
+    /// Independent loss probability, applied to data, parity, and benchmark-only control datagrams.
     pub loss_percent: f64,
     /// Symmetric serialization rate.
     pub bandwidth_bps: u64,
@@ -65,18 +74,26 @@ pub struct Case {
 pub struct Metrics {
     /// Logical application bytes delivered.
     pub useful_bytes: usize,
-    /// Total data plus control bytes put on the wire, including framing/auth overhead.
+    /// Total data, parity, and control bytes put on the wire, including framing/auth overhead.
     pub wire_bytes: u64,
     /// Data wire bytes sent after the first flight.
     pub retransmitted_wire_bytes: u64,
+    /// Redundant parity wire bytes.
+    pub parity_wire_bytes: u64,
     /// Benchmark-only NACK/ACK wire bytes.
     pub control_bytes: u64,
-    /// Number of data plus control datagrams offered.
+    /// Number of data, parity, and control datagrams offered.
     pub datagrams: u64,
     /// Incomplete data flights before the completing flight.
     pub recovery_rounds: usize,
-    /// Useful bytes absent after the initial data flight.
-    pub initial_missing_useful_bytes: usize,
+    /// Useful bytes lost from the initial data transmission, before any parity recovery.
+    pub initial_data_loss_useful_bytes: usize,
+    /// Useful bytes still absent after the initial parity opportunity, if any.
+    pub missing_after_initial_recovery_bytes: usize,
+    /// Data fragments reconstructed from parity without retransmission.
+    pub fec_recovered_fragments: usize,
+    /// Useful bytes reconstructed from parity without retransmission.
+    pub fec_recovered_useful_bytes: usize,
     /// Time until the receiver owns the complete logical payload.
     pub receiver_completion: Duration,
     /// Equal to receiver completion in this isolated-transfer model.
@@ -85,13 +102,21 @@ pub struct Metrics {
     pub sender_quiescence: Duration,
     /// Peak extra sender state retained specifically for recovery.
     pub peak_sender_recovery_state_bytes: usize,
-    /// Peak unique useful bytes retained in incomplete receiver reassembly state.
+    /// Peak useful/parity bytes retained in incomplete receiver recovery state.
     pub peak_receiver_reassembly_state_bytes: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct DataUnit {
     useful_len: usize,
+    wire_len: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ParityUnit {
+    first_data: usize,
+    data_count: usize,
+    payload_len: usize,
     wire_len: usize,
 }
 
@@ -141,6 +166,7 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
         case.fragment_count,
         "logical-size helper must produce the requested frame count"
     );
+    let parity = parity_units(&units, auth);
 
     let one_way_s = case.rtt.as_secs_f64() / 2.0;
     let rtt_s = case.rtt.as_secs_f64();
@@ -151,24 +177,31 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
     let mut peak_receiver = 0_usize;
     let mut wire_bytes = 0_u64;
     let mut retransmitted_wire_bytes = 0_u64;
+    let mut parity_wire_bytes = 0_u64;
     let mut control_bytes = 0_u64;
     let mut datagrams = 0_u64;
-    let mut initial_missing_useful_bytes = 0_usize;
+    let mut initial_data_loss_useful_bytes = 0_usize;
+    let mut missing_after_initial_recovery_bytes = 0_usize;
+    let mut fec_recovered_fragments = 0_usize;
+    let mut fec_recovered_useful_bytes = 0_usize;
     let mut receiver_completion_s = None;
     let mut round_start_s = 0.0_f64;
     let mut final_send_end_s = 0.0_f64;
     let mut control_seq = 0_u64;
 
+    let retained_data_wire: usize = units.iter().map(|unit| unit.wire_len).sum();
+    let retained_parity_wire: usize = parity.iter().map(|unit| unit.wire_len).sum();
     let peak_sender_recovery_state_bytes = match policy {
         RecoveryPolicy::WholeRetry => 0,
-        RecoveryPolicy::MissingOnly => units.iter().map(|unit| unit.wire_len).sum(),
+        RecoveryPolicy::MissingOnly => retained_data_wire,
+        RecoveryPolicy::Xor8Plus1 => retained_data_wire + retained_parity_wire,
     };
 
     let mut completing_round = 0_usize;
     for round in 0..MAX_RECOVERY_ROUNDS {
         let selected: Vec<usize> = match policy {
             RecoveryPolicy::WholeRetry => (0..units.len()).collect(),
-            RecoveryPolicy::MissingOnly => received
+            RecoveryPolicy::MissingOnly | RecoveryPolicy::Xor8Plus1 => received
                 .iter()
                 .enumerate()
                 .filter_map(|(index, present)| (!present).then_some(index))
@@ -199,16 +232,46 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
                 peak_receiver = peak_receiver.max(retained_useful);
             }
         }
-        final_send_end_s = send_cursor_s;
 
         if round == 0 {
-            initial_missing_useful_bytes = units
-                .iter()
-                .zip(&received)
-                .filter_map(|(unit, present)| (!present).then_some(unit.useful_len))
-                .sum();
+            initial_data_loss_useful_bytes = missing_useful_bytes(&units, &received);
+
+            if policy == RecoveryPolicy::Xor8Plus1 && remaining > 0 {
+                let mut parity_arrivals = vec![None; parity.len()];
+                let mut retained_parity_payload = 0_usize;
+                for (group, parity_unit) in parity.iter().copied().enumerate() {
+                    wire_bytes += parity_unit.wire_len as u64;
+                    parity_wire_bytes += parity_unit.wire_len as u64;
+                    datagrams += 1;
+                    send_cursor_s +=
+                        serialization_seconds(parity_unit.wire_len, case.bandwidth_bps);
+                    if !parity_is_lost(case, group) {
+                        parity_arrivals[group] = Some(send_cursor_s + one_way_s);
+                        retained_parity_payload += parity_unit.payload_len;
+                    }
+                }
+                peak_receiver =
+                    peak_receiver.max(retained_useful.saturating_add(retained_parity_payload));
+                apply_parity_recovery(
+                    &units,
+                    &parity,
+                    &parity_arrivals,
+                    &mut received,
+                    &mut remaining,
+                    &mut retained_useful,
+                    &mut fec_recovered_fragments,
+                    &mut fec_recovered_useful_bytes,
+                    &mut receiver_completion_s,
+                );
+                if remaining > 0 {
+                    peak_receiver = peak_receiver.max(retained_useful);
+                }
+            }
+
+            missing_after_initial_recovery_bytes = missing_useful_bytes(&units, &received);
         }
 
+        final_send_end_s = send_cursor_s;
         if remaining == 0 {
             completing_round = round;
             break;
@@ -217,7 +280,7 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
         let receiver_round_boundary_s = send_cursor_s + one_way_s;
         round_start_s = match policy {
             RecoveryPolicy::WholeRetry => send_cursor_s + rtt_s,
-            RecoveryPolicy::MissingOnly => {
+            RecoveryPolicy::MissingOnly | RecoveryPolicy::Xor8Plus1 => {
                 let nack_len = nack_wire_len(units.len(), auth);
                 deliver_control(
                     case,
@@ -238,27 +301,34 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
         receiver_completion_s.expect("transfer did not complete within recovery-round bound");
     let sender_quiescence_s = match policy {
         RecoveryPolicy::WholeRetry => receiver_completion_s.max(final_send_end_s),
-        RecoveryPolicy::MissingOnly => deliver_control(
-            case,
-            ack_wire_len(auth),
-            receiver_completion_s,
-            one_way_s,
-            rtt_s,
-            &mut control_seq,
-            &mut wire_bytes,
-            &mut control_bytes,
-            &mut datagrams,
-        ),
+        RecoveryPolicy::MissingOnly | RecoveryPolicy::Xor8Plus1 => {
+            let ack_arrival = deliver_control(
+                case,
+                ack_wire_len(auth),
+                receiver_completion_s,
+                one_way_s,
+                rtt_s,
+                &mut control_seq,
+                &mut wire_bytes,
+                &mut control_bytes,
+                &mut datagrams,
+            );
+            ack_arrival.max(final_send_end_s)
+        }
     };
 
     Metrics {
         useful_bytes: logical_bytes,
         wire_bytes,
         retransmitted_wire_bytes,
+        parity_wire_bytes,
         control_bytes,
         datagrams,
         recovery_rounds: completing_round,
-        initial_missing_useful_bytes,
+        initial_data_loss_useful_bytes,
+        missing_after_initial_recovery_bytes,
+        fec_recovered_fragments,
+        fec_recovered_useful_bytes,
         receiver_completion: Duration::from_secs_f64(receiver_completion_s),
         domain_convergence: Duration::from_secs_f64(receiver_completion_s),
         sender_quiescence: Duration::from_secs_f64(sender_quiescence_s),
@@ -291,6 +361,68 @@ fn data_units(logical_bytes: usize, datagram_payload_budget: usize, auth: usize)
         remaining -= useful_len;
     }
     units
+}
+
+fn parity_units(data: &[DataUnit], auth: usize) -> Vec<ParityUnit> {
+    data.chunks(FEC_DATA_PER_GROUP)
+        .enumerate()
+        .map(|(group, units)| {
+            let payload_len = units
+                .iter()
+                .map(|unit| unit.useful_len)
+                .max()
+                .expect("a parity group is non-empty");
+            ParityUnit {
+                first_data: group * FEC_DATA_PER_GROUP,
+                data_count: units.len(),
+                payload_len,
+                wire_len: auth + PARITY_HEADER_LEN + payload_len,
+            }
+        })
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_parity_recovery(
+    data: &[DataUnit],
+    parity: &[ParityUnit],
+    parity_arrivals: &[Option<f64>],
+    received: &mut [bool],
+    remaining: &mut usize,
+    retained_useful: &mut usize,
+    recovered_fragments: &mut usize,
+    recovered_useful: &mut usize,
+    completion_s: &mut Option<f64>,
+) {
+    for (group, parity_unit) in parity.iter().enumerate() {
+        let range = parity_unit.first_data..parity_unit.first_data + parity_unit.data_count;
+        let mut missing = range.clone().filter(|&index| !received[index]);
+        let Some(index) = missing.next() else {
+            continue;
+        };
+        if missing.next().is_some() {
+            continue;
+        }
+        let Some(arrival_s) = parity_arrivals[group] else {
+            continue;
+        };
+
+        received[index] = true;
+        *remaining -= 1;
+        *retained_useful += data[index].useful_len;
+        *recovered_fragments += 1;
+        *recovered_useful += data[index].useful_len;
+        if *remaining == 0 {
+            *completion_s = Some(arrival_s);
+        }
+    }
+}
+
+fn missing_useful_bytes(data: &[DataUnit], received: &[bool]) -> usize {
+    data.iter()
+        .zip(received)
+        .filter_map(|(unit, present)| (!present).then_some(unit.useful_len))
+        .sum()
 }
 
 fn nack_wire_len(fragment_count: usize, auth: usize) -> usize {
@@ -338,6 +470,16 @@ fn data_is_lost(case: Case, unit: usize, attempt: u32) -> bool {
         DATA_DOMAIN,
         unit as u64,
         attempt as u64,
+        case.loss_percent,
+    )
+}
+
+fn parity_is_lost(case: Case, group: usize) -> bool {
+    sample_loss(
+        case.seed,
+        PARITY_DOMAIN,
+        group as u64,
+        1,
         case.loss_percent,
     )
 }
