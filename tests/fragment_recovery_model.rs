@@ -31,6 +31,7 @@ fn clean_flights_use_exactly_the_requested_production_frame_count() {
         assert_eq!(metrics.recovery_rounds, 0);
         assert_eq!(metrics.retransmitted_wire_bytes, 0);
         assert_eq!(metrics.control_bytes, 0);
+        assert_eq!(metrics.parity_wire_bytes, 0);
     }
 }
 
@@ -51,8 +52,8 @@ fn matched_loss_draws_give_selective_recovery_a_real_wire_win() {
     let pair = (0..20_000_u64).find_map(|seed| {
         let whole = simulate(case(64, 5.0, seed), RecoveryPolicy::WholeRetry);
         let selective = simulate(case(64, 5.0, seed), RecoveryPolicy::MissingOnly);
-        (whole.initial_missing_useful_bytes > 0
-            && whole.initial_missing_useful_bytes == selective.initial_missing_useful_bytes
+        (whole.initial_data_loss_useful_bytes > 0
+            && whole.initial_data_loss_useful_bytes == selective.initial_data_loss_useful_bytes
             && selective.wire_bytes < whole.wire_bytes)
             .then_some((whole, selective))
     });
@@ -66,27 +67,65 @@ fn matched_loss_draws_give_selective_recovery_a_real_wire_win() {
 }
 
 #[test]
+fn one_loss_per_xor_group_can_complete_without_a_recovery_round() {
+    let sample = (0..100_000_u64).find_map(|seed| {
+        let fec = simulate(case(16, 5.0, seed), RecoveryPolicy::Xor8Plus1);
+        let selective = simulate(case(16, 5.0, seed), RecoveryPolicy::MissingOnly);
+        (fec.fec_recovered_fragments > 0
+            && fec.recovery_rounds == 0
+            && selective.recovery_rounds > 0)
+            .then_some((fec, selective))
+    });
+    let (fec, selective) = sample.expect("fixed seed range must contain a parity-only recovery");
+
+    assert!(fec.parity_wire_bytes > 0);
+    assert!(fec.fec_recovered_useful_bytes > 0);
+    assert_eq!(fec.missing_after_initial_recovery_bytes, 0);
+    assert!(fec.receiver_completion < selective.receiver_completion);
+}
+
+#[test]
+fn bounded_parity_falls_back_to_missing_only_when_loss_exceeds_its_budget() {
+    let fec = (0..100_000_u64)
+        .map(|seed| simulate(case(16, 15.0, seed), RecoveryPolicy::Xor8Plus1))
+        .find(|metrics| {
+            metrics.fec_recovered_fragments > 0
+                && metrics.missing_after_initial_recovery_bytes > 0
+                && metrics.recovery_rounds > 0
+        })
+        .expect("fixed seed range must contain a parity-plus-NACK recovery");
+
+    assert!(fec.retransmitted_wire_bytes > 0);
+    assert!(fec.control_bytes > 0);
+    assert!(fec.sender_quiescence > fec.receiver_completion);
+}
+
+#[test]
 fn simulation_is_reproducible_for_the_same_seed() {
     let input = case(64, 5.0, 0x5eed_2710);
     assert_eq!(
-        simulate(input, RecoveryPolicy::MissingOnly),
-        simulate(input, RecoveryPolicy::MissingOnly)
+        simulate(input, RecoveryPolicy::Xor8Plus1),
+        simulate(input, RecoveryPolicy::Xor8Plus1)
     );
 }
 
 #[test]
-fn selective_sender_state_is_explicit_and_domain_completion_is_not_hidden() {
+fn recovery_state_and_completion_semantics_are_explicit() {
     let whole = simulate(case(64, 1.0, 9), RecoveryPolicy::WholeRetry);
     let selective = simulate(case(64, 1.0, 9), RecoveryPolicy::MissingOnly);
+    let fec = simulate(case(64, 1.0, 9), RecoveryPolicy::Xor8Plus1);
 
     assert_eq!(whole.peak_sender_recovery_state_bytes, 0);
     assert!(selective.peak_sender_recovery_state_bytes > selective.useful_bytes);
-    assert_eq!(whole.domain_convergence, whole.receiver_completion);
-    assert_eq!(selective.domain_convergence, selective.receiver_completion);
+    assert!(fec.peak_sender_recovery_state_bytes > selective.peak_sender_recovery_state_bytes);
+    for metrics in [whole, selective, fec] {
+        assert_eq!(metrics.domain_convergence, metrics.receiver_completion);
+    }
 }
 
 #[test]
 fn policy_labels_are_stable_for_benchmark_output() {
     assert_eq!(RecoveryPolicy::WholeRetry.label(), "whole_retry");
     assert_eq!(RecoveryPolicy::MissingOnly.label(), "missing_only");
+    assert_eq!(RecoveryPolicy::Xor8Plus1.label(), "xor_8_plus_1");
 }
