@@ -20,13 +20,15 @@ use fragment_recovery_model::{
     RecoveryPolicy,
 };
 
-const DEFAULT_BUDGET: usize = 1_200;
+const DEFAULT_BUDGETS: &[usize] = &[1_200, 1_472];
 const DEFAULT_BANDWIDTH_BPS: u64 = 100_000_000;
 const DEFAULT_TRIALS: u64 = 64;
+const ONE_MIB: usize = 1_048_576;
 
 #[derive(Clone, Copy)]
 struct Scenario {
     fragments: usize,
+    logical_bytes: Option<usize>,
     rtt_ms: f64,
     loss_percent: f64,
     burst_loss: Option<BurstLoss>,
@@ -37,54 +39,63 @@ struct Scenario {
 const SCENARIOS: &[Scenario] = &[
     Scenario {
         fragments: 1,
+        logical_bytes: None,
         rtt_ms: 1.0,
         loss_percent: 0.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 4,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 0.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 4,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 16,
+        logical_bytes: None,
         rtt_ms: 1.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 16,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 5.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 0.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 600.0,
         loss_percent: 5.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
@@ -94,6 +105,7 @@ const SCENARIOS: &[Scenario] = &[
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
@@ -103,6 +115,7 @@ const SCENARIOS: &[Scenario] = &[
     },
     Scenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
@@ -112,24 +125,42 @@ const SCENARIOS: &[Scenario] = &[
     },
     Scenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 50.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 150.0,
         loss_percent: 5.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 600.0,
         loss_percent: 1.0,
         burst_loss: None,
     },
     Scenario {
         fragments: 900,
+        logical_bytes: None,
+        rtt_ms: 600.0,
+        loss_percent: 5.0,
+        burst_loss: None,
+    },
+    Scenario {
+        fragments: 0,
+        logical_bytes: Some(ONE_MIB),
+        rtt_ms: 150.0,
+        loss_percent: 5.0,
+        burst_loss: None,
+    },
+    Scenario {
+        fragments: 0,
+        logical_bytes: Some(ONE_MIB),
         rtt_ms: 600.0,
         loss_percent: 5.0,
         burst_loss: None,
@@ -147,36 +178,42 @@ struct InterruptionScenario {
 const INTERRUPTION_SCENARIOS: &[InterruptionScenario] = &[
     InterruptionScenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 50.0,
         arrived_fraction: 0.2,
         gap_ms: 1_000,
     },
     InterruptionScenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 50.0,
         arrived_fraction: 0.5,
         gap_ms: 1_000,
     },
     InterruptionScenario {
         fragments: 64,
+        logical_bytes: None,
         rtt_ms: 50.0,
         arrived_fraction: 0.8,
         gap_ms: 1_000,
     },
     InterruptionScenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 600.0,
         arrived_fraction: 0.2,
         gap_ms: 1_000,
     },
     InterruptionScenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 600.0,
         arrived_fraction: 0.5,
         gap_ms: 30_000,
     },
     InterruptionScenario {
         fragments: 900,
+        logical_bytes: None,
         rtt_ms: 600.0,
         arrived_fraction: 0.8,
         gap_ms: 30_000,
@@ -301,6 +338,7 @@ fn env_usize(name: &str, default: usize) -> usize {
 
 fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
     for &scenario in INTERRUPTION_SCENARIOS {
+        for retain_progress in [true, false] {
         for policy in [
             RecoveryPolicy::WholeRetry,
             RecoveryPolicy::MissingOnly,
@@ -319,15 +357,17 @@ fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
                 policy,
                 scenario.arrived_fraction,
                 Duration::from_millis(scenario.gap_ms),
+                retain_progress,
             );
             println!(
-                "[fragment-interruption] policy={},fragments={},budget_bytes={},rtt_ms={:.1},arrived_fraction={:.1},gap_ms={},useful_bytes={},progress_retained_useful_bytes={},wire_bytes_before_interruption={},additional_wire_bytes={},additional_control_bytes={},additional_wire_over_useful={:.4},receiver_completion_ms={:.3},sender_quiescence_ms={:.3}",
+                "[fragment-interruption] policy={},fragments={},budget_bytes={},rtt_ms={:.1},arrived_fraction={:.1},gap_ms={},retained={},useful_bytes={},progress_retained_useful_bytes={},wire_bytes_before_interruption={},additional_wire_bytes={},additional_control_bytes={},additional_wire_over_useful={:.4},receiver_completion_ms={:.3},sender_quiescence_ms={:.3}",
                 policy.label(),
                 scenario.fragments,
                 budget,
                 scenario.rtt_ms,
                 scenario.arrived_fraction,
                 scenario.gap_ms,
+                retain_progress,
                 metrics.useful_bytes,
                 metrics.progress_retained_useful_bytes,
                 metrics.wire_bytes_before_interruption,
@@ -337,6 +377,7 @@ fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
                 metrics.receiver_completion.as_secs_f64() * 1_000.0,
                 metrics.sender_quiescence.as_secs_f64() * 1_000.0,
             );
+        }
         }
     }
 }
@@ -349,7 +390,7 @@ fn run_policy_cpu_probes() {
         iterations > 0,
         "RECONCILE_FRAGMENT_RECOVERY_CPU_ITERS must be non-zero"
     );
-    let payload_bytes = fragment_payload_capacity(DEFAULT_BUDGET, authenticated_overhead())
+    let payload_bytes = fragment_payload_capacity(DEFAULT_BUDGETS[0], authenticated_overhead())
         .expect("default budget fits fragment overhead");
     let missing: Vec<bool> = (0..FRAGMENTS).map(|index| index % 20 == 0).collect();
     let mut bitmap = vec![0_u8; FRAGMENTS.div_ceil(8)];
@@ -457,7 +498,9 @@ fn print_cpu_probe(
 }
 
 fn main() {
-    let budget = env_usize("RECONCILE_FRAGMENT_RECOVERY_BUDGET", DEFAULT_BUDGET);
+    let budgets = std::env::var("RECONCILE_FRAGMENT_RECOVERY_BUDGETS")
+        .map(|raw| raw.split(',').map(|v| v.trim().parse().expect("budgets must be usize")).collect::<Vec<usize>>())
+        .unwrap_or_else(|_| DEFAULT_BUDGETS.to_vec());
     let bandwidth_bps = env_u64(
         "RECONCILE_FRAGMENT_RECOVERY_BANDWIDTH_BPS",
         DEFAULT_BANDWIDTH_BPS,
@@ -468,6 +511,7 @@ fn main() {
         "RECONCILE_FRAGMENT_RECOVERY_TRIALS must be non-zero"
     );
 
+    for budget in budgets {
     for &scenario in SCENARIOS {
         for policy in [
             RecoveryPolicy::WholeRetry,
@@ -480,7 +524,13 @@ fn main() {
                     .wrapping_add(trial.wrapping_mul(0x9e37_79b9_7f4a_7c15));
                 summary.push(simulate(
                     Case {
-                        fragment_count: scenario.fragments,
+                        fragment_count: if let Some(bytes) = scenario.logical_bytes {
+                            let capacity = fragment_payload_capacity(budget, authenticated_overhead())
+                                .expect("budget fits fragment overhead");
+                            bytes.div_ceil(capacity)
+                        } else {
+                            scenario.fragments
+                        },
                         datagram_payload_budget: budget,
                         rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
                         loss_percent: scenario.loss_percent,
@@ -496,5 +546,6 @@ fn main() {
     }
 
     run_interruption_cases(budget, bandwidth_bps);
+    }
     run_policy_cpu_probes();
 }
