@@ -84,6 +84,10 @@ harness = false
 name = "fragmentation"
 harness = false
 
+[[bench]]
+name = "fragment_recovery"
+harness = false
+
 [features]
 default = ["mac-blake3"]
 mac-blake3 = ["gossip/mac-blake3"]

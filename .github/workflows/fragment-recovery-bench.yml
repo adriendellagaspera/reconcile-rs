@@ -1,0 +1,50 @@
+name: temporary fragment recovery benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'benches/fragment_recovery.rs'
+      - 'benches/fragment_recovery_model.rs'
+      - 'gossip/src/auth/**'
+      - 'gossip/src/auth.rs'
+      - 'gossip/src/framing.rs'
+      - 'gossip/src/replay.rs'
+      - 'Cargo.toml'
+      - '.github/workflows/fragment-recovery-bench.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fragment-recovery-bench-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fragment-recovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+      - name: Run fragment recovery experiment
+        run: |
+          set -o pipefail
+          cargo bench --bench fragment_recovery 2>&1 | tee fragment-recovery.txt
+        env:
+          RUSTFLAGS: -Dwarnings --cfg reconcile_internal_testing
+      - name: Publish results in job summary
+        if: always()
+        run: |
+          {
+            echo '## Fragment recovery benchmark'
+            echo
+            echo '~~~text'
+            grep -E '^\[fragment-(recovery|interruption|recovery-cpu)\]' fragment-recovery.txt || true
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fragment-recovery-results
+          path: fragment-recovery.txt
