@@ -334,44 +334,44 @@ fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
     for &scenario in INTERRUPTION_SCENARIOS {
         for retain_progress in [true, false] {
             for policy in [
-            RecoveryPolicy::WholeRetry,
-            RecoveryPolicy::MissingOnly,
-            RecoveryPolicy::Xor8Plus1,
+                RecoveryPolicy::WholeRetry,
+                RecoveryPolicy::MissingOnly,
+                RecoveryPolicy::Xor8Plus1,
             ] {
                 let metrics = simulate_interruption(
-                Case {
-                    fragment_count: scenario.fragments,
-                    logical_bytes: None,
-                    datagram_payload_budget: budget,
-                    rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
-                    loss_percent: 0.0,
-                    burst_loss: None,
-                    bandwidth_bps,
-                    seed: 0x2710_1a2b,
-                },
-                policy,
-                scenario.arrived_fraction,
-                Duration::from_millis(scenario.gap_ms),
-                retain_progress,
-            );
-            println!(
-                "[fragment-interruption] policy={},fragments={},budget_bytes={},rtt_ms={:.1},arrived_fraction={:.1},gap_ms={},retained={},useful_bytes={},progress_retained_useful_bytes={},wire_bytes_before_interruption={},additional_wire_bytes={},additional_control_bytes={},additional_wire_over_useful={:.4},receiver_completion_ms={:.3},sender_quiescence_ms={:.3}",
-                policy.label(),
-                scenario.fragments,
-                budget,
-                scenario.rtt_ms,
-                scenario.arrived_fraction,
-                scenario.gap_ms,
-                retain_progress,
-                metrics.useful_bytes,
-                metrics.progress_retained_useful_bytes,
-                metrics.wire_bytes_before_interruption,
-                metrics.additional_wire_bytes,
-                metrics.additional_control_bytes,
-                metrics.additional_wire_bytes as f64 / metrics.useful_bytes as f64,
-                metrics.receiver_completion.as_secs_f64() * 1_000.0,
-                metrics.sender_quiescence.as_secs_f64() * 1_000.0,
-            );
+                    Case {
+                        fragment_count: scenario.fragments,
+                        logical_bytes: None,
+                        datagram_payload_budget: budget,
+                        rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
+                        loss_percent: 0.0,
+                        burst_loss: None,
+                        bandwidth_bps,
+                        seed: 0x2710_1a2b,
+                    },
+                    policy,
+                    scenario.arrived_fraction,
+                    Duration::from_millis(scenario.gap_ms),
+                    retain_progress,
+                );
+                println!(
+                    "[fragment-interruption] policy={},fragments={},budget_bytes={},rtt_ms={:.1},arrived_fraction={:.1},gap_ms={},retained={},useful_bytes={},progress_retained_useful_bytes={},wire_bytes_before_interruption={},additional_wire_bytes={},additional_control_bytes={},additional_wire_over_useful={:.4},receiver_completion_ms={:.3},sender_quiescence_ms={:.3}",
+                    policy.label(),
+                    scenario.fragments,
+                    budget,
+                    scenario.rtt_ms,
+                    scenario.arrived_fraction,
+                    scenario.gap_ms,
+                    retain_progress,
+                    metrics.useful_bytes,
+                    metrics.progress_retained_useful_bytes,
+                    metrics.wire_bytes_before_interruption,
+                    metrics.additional_wire_bytes,
+                    metrics.additional_control_bytes,
+                    metrics.additional_wire_bytes as f64 / metrics.useful_bytes as f64,
+                    metrics.receiver_completion.as_secs_f64() * 1_000.0,
+                    metrics.sender_quiescence.as_secs_f64() * 1_000.0,
+                );
             }
         }
     }
@@ -513,28 +513,28 @@ fn main() {
     for budget in budgets {
         for &scenario in SCENARIOS {
             for policy in [
-            RecoveryPolicy::WholeRetry,
-            RecoveryPolicy::MissingOnly,
-            RecoveryPolicy::Xor8Plus1,
+                RecoveryPolicy::WholeRetry,
+                RecoveryPolicy::MissingOnly,
+                RecoveryPolicy::Xor8Plus1,
             ] {
                 let mut summary = Summary::default();
                 for trial in 0..trials {
-                let seed = 0x2710_0000_0000_0000_u64
-                    .wrapping_add(trial.wrapping_mul(0x9e37_79b9_7f4a_7c15));
-                summary.push(simulate(
-                    Case {
-                        fragment_count: scenario.fragments,
-                        logical_bytes: scenario.logical_bytes,
-                        datagram_payload_budget: budget,
-                        rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
-                        loss_percent: scenario.loss_percent,
-                        burst_loss: scenario.burst_loss,
-                        bandwidth_bps,
-                        seed,
-                    },
-                    policy,
-                ));
-            }
+                    let seed = 0x2710_0000_0000_0000_u64
+                        .wrapping_add(trial.wrapping_mul(0x9e37_79b9_7f4a_7c15));
+                    summary.push(simulate(
+                        Case {
+                            fragment_count: scenario.fragments,
+                            logical_bytes: scenario.logical_bytes,
+                            datagram_payload_budget: budget,
+                            rtt: Duration::from_secs_f64(scenario.rtt_ms / 1_000.0),
+                            loss_percent: scenario.loss_percent,
+                            burst_loss: scenario.burst_loss,
+                            bandwidth_bps,
+                            seed,
+                        },
+                        policy,
+                    ));
+                }
                 summary.print(scenario, policy, budget, bandwidth_bps);
             }
         }
