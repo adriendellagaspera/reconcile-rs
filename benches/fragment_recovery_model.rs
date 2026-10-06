@@ -52,19 +52,19 @@ impl RecoveryPolicy {
     }
 }
 
-/// One contiguous first-flight data-fragment loss burst.
+/// One contiguous first-flight physical-datagram loss burst.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BurstLoss {
-    /// First data-fragment index dropped.
-    pub start_fragment: usize,
-    /// Number of consecutive data fragments dropped.
-    pub fragment_count: usize,
+    /// First physical datagram ordinal dropped.
+    pub start_datagram: usize,
+    /// Number of consecutive physical datagrams dropped.
+    pub datagram_count: usize,
 }
 
 impl BurstLoss {
-    fn contains(self, fragment: usize) -> bool {
-        (self.start_fragment..self.start_fragment.saturating_add(self.fragment_count))
-            .contains(&fragment)
+    fn contains(self, datagram: usize) -> bool {
+        (self.start_datagram..self.start_datagram.saturating_add(self.datagram_count))
+            .contains(&datagram)
     }
 }
 
@@ -241,7 +241,7 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
                 retransmitted_wire_bytes += unit.wire_len as u64;
             }
             send_cursor_s += serialization_seconds(unit.wire_len, case.bandwidth_bps);
-            if data_is_lost(case, index, attempts[index]) || received[index] {
+            if data_is_lost(case, policy, index, attempts[index]) || received[index] {
                 continue;
             }
 
@@ -269,7 +269,7 @@ pub fn simulate(case: Case, policy: RecoveryPolicy) -> Metrics {
                     datagrams += 1;
                     send_cursor_s +=
                         serialization_seconds(parity_unit.wire_len, case.bandwidth_bps);
-                    if !parity_is_lost(case, group) {
+                    if !parity_is_lost(case, group, parity_unit) {
                         parity_arrivals[group] = Some(send_cursor_s + one_way_s);
                         let missing_in_group = (parity_unit.first_data
                             ..parity_unit.first_data + parity_unit.data_count)
@@ -628,8 +628,16 @@ fn serialization_seconds(bytes: usize, bandwidth_bps: u64) -> f64 {
     bytes as f64 * 8.0 / bandwidth_bps as f64
 }
 
-fn data_is_lost(case: Case, unit: usize, attempt: u32) -> bool {
-    if attempt == 1 && case.burst_loss.is_some_and(|burst| burst.contains(unit)) {
+fn data_is_lost(case: Case, policy: RecoveryPolicy, unit: usize, attempt: u32) -> bool {
+    let physical_datagram = match policy {
+        RecoveryPolicy::Xor8Plus1 => unit + unit / FEC_DATA_PER_GROUP,
+        RecoveryPolicy::WholeRetry | RecoveryPolicy::MissingOnly => unit,
+    };
+    if attempt == 1
+        && case
+            .burst_loss
+            .is_some_and(|burst| burst.contains(physical_datagram))
+    {
         return true;
     }
     sample_loss(
@@ -641,7 +649,14 @@ fn data_is_lost(case: Case, unit: usize, attempt: u32) -> bool {
     )
 }
 
-fn parity_is_lost(case: Case, group: usize) -> bool {
+fn parity_is_lost(case: Case, group: usize, parity: ParityUnit) -> bool {
+    let physical_datagram = parity.first_data + parity.data_count + group;
+    if case
+        .burst_loss
+        .is_some_and(|burst| burst.contains(physical_datagram))
+    {
+        return true;
+    }
     sample_loss(case.seed, PARITY_DOMAIN, group as u64, 1, case.loss_percent)
 }
 

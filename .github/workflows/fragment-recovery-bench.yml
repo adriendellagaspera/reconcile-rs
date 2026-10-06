@@ -5,6 +5,7 @@ on:
     paths:
       - 'benches/fragment_recovery.rs'
       - 'benches/fragment_recovery_model.rs'
+      - 'benches/fragmentation.rs'
       - 'gossip/src/auth/**'
       - 'gossip/src/auth.rs'
       - 'gossip/src/framing.rs'
@@ -32,6 +33,24 @@ jobs:
           cargo bench --bench fragment_recovery 2>&1 | tee fragment-recovery.txt
         env:
           RUSTFLAGS: -Dwarnings --cfg reconcile_internal_testing
+      - name: Run constrained-bandwidth recovery experiment
+        run: |
+          set -o pipefail
+          RECONCILE_FRAGMENT_RECOVERY_BANDWIDTH_BPS=1000000 \
+          RECONCILE_FRAGMENT_RECOVERY_BUDGETS=1200 \
+          cargo bench --bench fragment_recovery 2>&1 | tee fragment-recovery-1mbit.txt
+        env:
+          RUSTFLAGS: -Dwarnings --cfg reconcile_internal_testing
+      - name: Validate production framing under 5% reorder
+        run: |
+          set -o pipefail
+          RECONCILE_FRAGMENT_PROFILES=wan-reorder-5 \
+          RECONCILE_FRAGMENT_BUDGETS=1200,1472 \
+          RECONCILE_FRAGMENT_VALUE_SIZES=131072,1048576 \
+          RECONCILE_FRAGMENT_TIMEOUT_MS=10000 \
+          cargo bench --bench fragmentation 2>&1 | tee fragmentation-reorder.txt
+        env:
+          RUSTFLAGS: -Dwarnings --cfg reconcile_internal_testing
       - name: Publish results in job summary
         if: always()
         run: |
@@ -40,6 +59,12 @@ jobs:
             echo
             echo '~~~text'
             grep -E '^\[fragment-(recovery|interruption|recovery-cpu)\]' fragment-recovery.txt || true
+            echo
+            echo '## 1 Mbit/s sensitivity'
+            grep -E '^\[fragment-(recovery|interruption|recovery-cpu)\]' fragment-recovery-1mbit.txt || true
+            echo
+            echo '## Production 5% reorder validation'
+            grep -E '^\[fragmentation-runtime\]' fragmentation-reorder.txt || true
             echo '~~~'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload raw results
@@ -47,4 +72,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fragment-recovery-results
-          path: fragment-recovery.txt
+          path: |
+            fragment-recovery.txt
+            fragment-recovery-1mbit.txt
+            fragmentation-reorder.txt
