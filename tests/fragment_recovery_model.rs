@@ -192,7 +192,7 @@ fn more_pre_interruption_progress_monotonically_reduces_selective_resume_bytes()
                 RecoveryPolicy::MissingOnly,
                 fraction,
                 Duration::from_secs(30),
-            true,
+                true,
             )
             .additional_wire_bytes
         })
@@ -210,14 +210,14 @@ fn parity_policy_uses_missing_only_fallback_after_contact_resumes() {
         RecoveryPolicy::MissingOnly,
         0.5,
         Duration::from_secs(1),
-            true,
+        true,
     );
     let fec = simulate_interruption(
         input,
         RecoveryPolicy::Xor8Plus1,
         0.5,
         Duration::from_secs(1),
-            true,
+        true,
     );
     assert_eq!(fec, selective);
 }
