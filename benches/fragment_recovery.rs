@@ -333,12 +333,12 @@ fn env_usize(name: &str, default: usize) -> usize {
 fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
     for &scenario in INTERRUPTION_SCENARIOS {
         for retain_progress in [true, false] {
-        for policy in [
+            for policy in [
             RecoveryPolicy::WholeRetry,
             RecoveryPolicy::MissingOnly,
             RecoveryPolicy::Xor8Plus1,
-        ] {
-            let metrics = simulate_interruption(
+            ] {
+                let metrics = simulate_interruption(
                 Case {
                     fragment_count: scenario.fragments,
                     logical_bytes: None,
@@ -372,7 +372,7 @@ fn run_interruption_cases(budget: usize, bandwidth_bps: u64) {
                 metrics.receiver_completion.as_secs_f64() * 1_000.0,
                 metrics.sender_quiescence.as_secs_f64() * 1_000.0,
             );
-        }
+            }
         }
     }
 }
@@ -512,13 +512,13 @@ fn main() {
 
     for budget in budgets {
         for &scenario in SCENARIOS {
-        for policy in [
+            for policy in [
             RecoveryPolicy::WholeRetry,
             RecoveryPolicy::MissingOnly,
             RecoveryPolicy::Xor8Plus1,
-        ] {
-            let mut summary = Summary::default();
-            for trial in 0..trials {
+            ] {
+                let mut summary = Summary::default();
+                for trial in 0..trials {
                 let seed = 0x2710_0000_0000_0000_u64
                     .wrapping_add(trial.wrapping_mul(0x9e37_79b9_7f4a_7c15));
                 summary.push(simulate(
@@ -535,8 +535,8 @@ fn main() {
                     policy,
                 ));
             }
-            summary.print(scenario, policy, budget, bandwidth_bps);
-        }
+                summary.print(scenario, policy, budget, bandwidth_bps);
+            }
         }
 
         run_interruption_cases(budget, bandwidth_bps);
