@@ -133,11 +133,11 @@ fn policy_labels_are_stable_for_benchmark_output() {
 }
 
 #[test]
-fn burst_loss_is_applied_only_to_the_first_data_flight() {
+fn burst_loss_is_applied_to_first_flight_physical_datagrams() {
     let mut input = case(64, 0.0, 11);
     input.burst_loss = Some(BurstLoss {
-        start_fragment: 16,
-        fragment_count: 8,
+        start_datagram: 16,
+        datagram_count: 8,
     });
     let whole = simulate(input, RecoveryPolicy::WholeRetry);
     let selective = simulate(input, RecoveryPolicy::MissingOnly);
