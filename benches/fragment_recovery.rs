@@ -99,8 +99,8 @@ const SCENARIOS: &[Scenario] = &[
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
-            start_fragment: 24,
-            fragment_count: 4,
+            start_datagram: 24,
+            datagram_count: 4,
         }),
     },
     Scenario {
@@ -109,8 +109,8 @@ const SCENARIOS: &[Scenario] = &[
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
-            start_fragment: 24,
-            fragment_count: 8,
+            start_datagram: 24,
+            datagram_count: 8,
         }),
     },
     Scenario {
@@ -119,8 +119,8 @@ const SCENARIOS: &[Scenario] = &[
         rtt_ms: 150.0,
         loss_percent: 0.0,
         burst_loss: Some(BurstLoss {
-            start_fragment: 24,
-            fragment_count: 16,
+            start_datagram: 24,
+            datagram_count: 16,
         }),
     },
     Scenario {
@@ -287,8 +287,8 @@ impl Summary {
             budget,
             scenario.rtt_ms,
             scenario.loss_percent,
-            scenario.burst_loss.map_or(0, |burst| burst.start_fragment),
-            scenario.burst_loss.map_or(0, |burst| burst.fragment_count),
+            scenario.burst_loss.map_or(0, |burst| burst.start_datagram),
+            scenario.burst_loss.map_or(0, |burst| burst.datagram_count),
             bandwidth_bps,
             bdp_bytes,
             self.samples,
