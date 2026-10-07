@@ -22,6 +22,9 @@ use tracing::{debug, warn};
 /// `#[async_trait]` macro itself — is either `std` or re-exported from this crate (or
 /// `reconcile`), so an external implementation never has to independently depend on
 /// `async-trait` and match its version to this crate's:
+// async-trait lowers these async methods to boxed Future return types that are already
+// must-use; current Clippy otherwise reports double_must_use on the macro expansion.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Transport: Send + Sync + 'static {
     /// Receive one datagram into `buf`, returning the number of bytes read and the sender address.

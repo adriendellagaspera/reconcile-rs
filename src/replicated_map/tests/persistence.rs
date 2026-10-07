@@ -55,6 +55,8 @@ struct FlakyLoad {
     failures_remaining: std::sync::atomic::AtomicU32,
 }
 
+// Rust 1.99 deprecates fetch_update, but try_update is unavailable on the Rust 1.85 MSRV.
+#[allow(deprecated)]
 impl<K: Send + Sync + 'static, V: Send + Sync + 'static> Persistence<K, V> for FlakyLoad {
     fn load(&self) -> std::io::Result<Option<PersistedState<K, V>>> {
         use std::sync::atomic::Ordering;

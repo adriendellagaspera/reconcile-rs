@@ -114,6 +114,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// a slot before deciding whether the key is even live, matching [`try_insert`](Self::try_insert)'s
     /// all-or-nothing ordering there too, and then hands the claimed guard to
     /// [`broadcast_update_with_claimed_slot`](Self::broadcast_update_with_claimed_slot).
+    // Rust 1.99 deprecates fetch_update in favor of try_update, but try_update
+    // is unavailable on the supported Rust 1.85 MSRV. Keep the older name until
+    // the MSRV reaches Rust 1.95.
+    #[allow(deprecated)]
     pub(crate) fn try_claim_broadcast_slot(&self) -> Option<BroadcastCountGuard> {
         let budget = self.max_concurrent_broadcasts;
         self.broadcasts_in_flight
@@ -308,6 +312,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Retire only changes counted before a successful snapshot started collecting.
     /// A writer that committed during collection or save remains pending.
+    // See try_claim_broadcast_slot: fetch_update is retained for Rust 1.85 compatibility.
+    #[allow(deprecated)]
     pub(crate) fn retire_change_count(&self, counted: usize) {
         let _ =
             self.changes_since_snapshot
