@@ -16,6 +16,7 @@ Benchmarks measure code that ships in this repository. Comparative algorithm res
 | security_amplification | response amplification and bulk-dump concurrency for rejected and valid authenticated ingress |
 | fragmentation | UDP application framing, large-message convergence, datagram size, loss/reorder, and reassembly overhead |
 | fragment_recovery | Research-only whole-message vs missing-only fragment recovery cost under matched deterministic loss |
+| ordered_stream | Research-only ordered-stream vs multiplexed reliable-stream transport semantics under matched deterministic impairments |
 | tombstone_gc_skew | one-sided retained tombstone history, reconciliation work, and ACK recovery |
 | membership_churn | sustained authoritative member replacement with ACK coverage rebuilt through real dated traffic |
 | snapshot_write_amplification | paired full-vs-incremental checkpoint writes, retained storage, segment chains, and restart cost |
@@ -66,6 +67,19 @@ These timings deliberately exclude framing/authentication/reassembly work common
 configure their repetitions with `RECONCILE_FRAGMENT_RECOVERY_CPU_ITERS`. The existing
 `fragmentation` target remains the production runtime control and is the validation surface for
 selected modeled points.
+
+The `ordered_stream` target is a research-only transport-semantics model layered on the shipped
+framing sizes. It compares whole-message UDP, missing-only UDP, one reliable ordered
+stream, independent reliable streams, and hybrid datagram-control + reliable-bulk semantics under
+matched deterministic loss/reorder draws and a shared physical serialization timeline. It reports
+wire/retransmission/setup/control bytes, receiver/domain/sender completion, per-transfer completion,
+small-control latency, explicit arrival-to-delivery HOL delay, peak recovery/reassembly/HOL state,
+and interruption/resumption cost. Cold, resumed, and established sessions are separated; stream
+setup/overhead constants are analytical assumptions rather than measured QUIC/TCP behavior. The
+default sparse campaign covers 1/50/150/600 ms RTT, 0/1/5% loss, a targeted 5% reorder case,
+1200-byte primary budget, 1472-byte sensitivity, 100 Mbit/s default bandwidth, 1 Mbit/s constrained
+bandwidth, single/concurrent/mixed workloads, and 20/50/80% interruption points. Configure trial
+count with `RECONCILE_ORDERED_STREAM_TRIALS`.
 
 The `tombstone_gc_skew` target compares aligned authoritative peers with a one-sided retained-tombstone history while keeping application-visible state equal, plus a fixed live-divergence control. It reports wire traffic, protocol enumeration, convergence, and bounded tombstone-ACK recovery rounds. The deployment-sized debt term is approximately `delete_rate × effective_unacked_membership_lag`: age timeout alone does not make a tombstone collectible while a causal member has not acknowledged its exact version. Configure with `RECONCILE_GC_SKEW_N`, `RECONCILE_GC_SKEW_DELETIONS`, and `RECONCILE_GC_SKEW_BASE_DIVERGENCE`.
 
