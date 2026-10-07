@@ -88,6 +88,10 @@ harness = false
 name = "fragment_recovery"
 harness = false
 
+[[bench]]
+name = "ordered_stream"
+harness = false
+
 [features]
 default = ["mac-blake3"]
 mac-blake3 = ["gossip/mac-blake3"]
