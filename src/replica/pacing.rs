@@ -48,6 +48,10 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     ///
     /// Called **before** snapshotting the range, so a skipped dump allocates nothing; the guards
     /// release on drop, panic included.
+    // Rust 1.99 deprecates fetch_update in favor of try_update, but try_update
+    // is unavailable on the supported Rust 1.85 MSRV. Keep the older name until
+    // the MSRV reaches Rust 1.95.
+    #[allow(deprecated)]
     pub(super) fn try_claim_dump_slot(
         &self,
         peer: SocketAddr,

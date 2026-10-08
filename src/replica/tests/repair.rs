@@ -34,6 +34,8 @@ struct DropTo<T> {
     remaining: AtomicUsize,
 }
 
+// Keep fetch_update for the Rust 1.85 MSRV; current stable deprecates its name only.
+#[allow(deprecated)]
 #[async_trait::async_trait]
 impl<T: Transport> Transport for DropTo<T> {
     async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
