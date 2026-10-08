@@ -489,7 +489,6 @@ dependencies = [
  "typenum",
 ]
 
-
 [[package]]
 name = "digest"
 version = "0.10.7"
@@ -499,15 +498,6 @@ dependencies = [
  "block-buffer",
  "crypto-common",
  "subtle",
-]
-
-[[package]]
-name = "do-riblt"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27586ed7c90452857c1378f349d0cea1b3d7c9e65176c1b8d2af35a9e87bf7da"
-dependencies = [
- "rapidhash",
 ]
 
 [[package]]
@@ -1315,7 +1305,7 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01bff1076c7ca6947a3b7390374721b90b5c3447c85a1bfecf8761483f0078d3"
 dependencies = [
- "rand 0.8.8",
+ "rand 0.8.7",
  "rsos",
  "serde",
  "tracing",
@@ -1332,7 +1322,6 @@ dependencies = [
  "chrono",
  "clap",
  "criterion",
- "do-riblt",
  "ipnet",
  "lww-register",
  "metrics",
@@ -1345,6 +1334,7 @@ dependencies = [
  "reconcile-gossip",
  "rsos",
  "serde",
+ "serde_json",
  "socket2",
  "tempfile",
  "tokio",
