@@ -80,18 +80,30 @@ The transfer identifier is a content hash used for resumability, not an authenti
 Integrity/authority still comes from the authenticated datagram boundary; after completion, the
 reassembled bytes are checked against that content identifier before protocol deserialization.
 
+Selective recovery adds independently bounded sender state only after an authenticated peer has
+advertised support. `Config::framing` bounds retained outbound transfers/bytes per peer and globally,
+missing ranges per report, recovery rounds per transfer, recovery-state TTL, and capability TTL.
+Missing reports and completion acknowledgements pass authentication, version, topology admission and
+replay checks before they are parsed; malformed/out-of-range reports cause no retransmission. A lost,
+stale, rejected, or exhausted control exchange merely falls back to ordinary anti-entropy.
+An idle transfer cannot extend its own retention through recovery requests: the default receiver TTL is 90 seconds and the sender's recoverable-payload TTL is 120 seconds, covering a 30-second contact loss. Periodic NACKs are globally capped at 32 per tick and limited to one per transfer every 3 seconds (after 1 second idle); reports are bounded by the authenticated datagram budget. State expiration and capacity eviction remain authoritative even if retransmission control repeatedly fails.
+For capability-advertising peers with a retained outbound transfer, identical full-message retries are suppressed for 12 seconds after the last full send; the next regular anti-entropy attempt beyond that interval may retry the whole message. This is a retry floor, not a guaranteed 12-second resynchronization deadline.
+
 ## Wire compatibility
 
 Wire versions are strict and are not negotiated. Nodes with different wire versions reject each
-other. Application framing is part of that wire contract, so a framing-format change requires a
-wire-version bump and coordinated cluster upgrade.
+other. Incompatible framing changes require a wire-version bump and coordinated cluster upgrade.
+Selective recovery is additive instead: support is advertised inside the pre-existing reserved,
+length-prefixed protocol tag that older same-version peers already ignore, and its new outer control
+tags are emitted only after that advertisement. An older peer therefore continues using the existing
+complete/fragment frames and whole-message retry behavior.
 
 ## Operations
 
 - Restrict the gossip UDP port to intended participants.
 - Use a cluster key unless the underlay is the authentication boundary.
 - Enable `encryption` when payload confidentiality is not supplied elsewhere.
-- Set causal-peer, authenticated replay-sender, logical-message, and reassembly bounds appropriate to the deployment.
+- Set causal-peer, authenticated replay-sender, logical-message, reassembly, and outbound-recovery bounds appropriate to the deployment.
 - Coordinate key rotation and wire-version changes across the cluster.
 - The optional Prometheus HTTP endpoint is unauthenticated; restrict its bind address or network
   reachability.

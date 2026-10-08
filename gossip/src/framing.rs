@@ -162,6 +162,8 @@ struct Transfer {
     fragments: BTreeMap<usize, Vec<u8>>,
     retained_bytes: usize,
     last_activity: Instant,
+    // Rate limit missing reports without changing the inactivity/eviction TTL.
+    last_missing_request: Option<Instant>,
 }
 
 #[derive(Default, Debug)]
@@ -181,6 +183,14 @@ pub struct Reassembler {
 }
 
 mod reassembly;
+mod recovery;
+
+pub use recovery::{
+    fragment_metadata, max_missing_ranges_for_budget, parse_recovery_control, write_completion_ack,
+    write_missing_report, FragmentMetadata, MissingRequest, RecoveryControl, RecoveryControlError,
+    COMPLETION_ACK_LEN, COMPLETION_ACK_TAG, MISSING_RANGE_LEN, MISSING_REPORT_HEADER_LEN,
+    MISSING_REPORT_TAG,
+};
 
 /// Maximum complete-frame payload for a total UDP datagram payload budget and auth overhead.
 pub fn complete_payload_capacity(

@@ -34,6 +34,24 @@ pub struct FramingConfig {
     pub max_total_reassembly_bytes: usize,
     /// Inactivity timeout for incomplete transfers.
     pub reassembly_ttl: Duration,
+    /// Enable capability-gated missing-only fragment recovery (default true).
+    pub selective_recovery: bool,
+    /// Maximum missing byte ranges carried by one recovery report.
+    pub max_missing_ranges_per_report: usize,
+    /// Maximum retained outbound recoverable transfers for one peer.
+    pub max_outbound_recovery_transfers_per_peer: usize,
+    /// Maximum retained outbound recoverable transfers across all peers.
+    pub max_total_outbound_recovery_transfers: usize,
+    /// Maximum retained outbound recovery payload bytes for one peer.
+    pub max_outbound_recovery_bytes_per_peer: usize,
+    /// Maximum retained outbound recovery payload bytes across all peers.
+    pub max_total_outbound_recovery_bytes: usize,
+    /// Maximum selective retransmission rounds triggered by reports for one retained transfer.
+    pub max_selective_recovery_rounds: u32,
+    /// Inactivity timeout for retained outbound recovery payloads.
+    pub recovery_ttl: Duration,
+    /// How long an authenticated peer capability advertisement remains valid.
+    pub recovery_capability_ttl: Duration,
 }
 
 impl Default for FramingConfig {
@@ -45,7 +63,18 @@ impl Default for FramingConfig {
             max_incomplete_transfers_per_peer: 8,
             max_reassembly_bytes_per_peer: 16 * 1024 * 1024,
             max_total_reassembly_bytes: 64 * 1024 * 1024,
-            reassembly_ttl: Duration::from_secs(30),
+            // Preserve partial fragments across a 30-second contact gap, with bounded storage.
+            reassembly_ttl: Duration::from_secs(90),
+            selective_recovery: true,
+            max_missing_ranges_per_report: 128,
+            max_outbound_recovery_transfers_per_peer: 8,
+            max_total_outbound_recovery_transfers: 64,
+            max_outbound_recovery_bytes_per_peer: 16 * 1024 * 1024,
+            max_total_outbound_recovery_bytes: 64 * 1024 * 1024,
+            max_selective_recovery_rounds: 4,
+            // Sender data must outlive the receiver's recovery request after reconnection.
+            recovery_ttl: Duration::from_secs(120),
+            recovery_capability_ttl: Duration::from_secs(300),
         }
     }
 }
@@ -97,6 +126,69 @@ impl FramingConfig {
     #[must_use]
     pub fn with_reassembly_ttl(mut self, ttl: Duration) -> Self {
         self.reassembly_ttl = ttl;
+        self
+    }
+
+    /// Enable or disable capability-gated missing-only recovery.
+    #[must_use]
+    pub fn with_selective_recovery(mut self, enabled: bool) -> Self {
+        self.selective_recovery = enabled;
+        self
+    }
+
+    /// Set the maximum missing byte ranges carried by one recovery report.
+    #[must_use]
+    pub fn with_max_missing_ranges_per_report(mut self, max: usize) -> Self {
+        self.max_missing_ranges_per_report = max;
+        self
+    }
+
+    /// Set the per-peer retained outbound transfer count bound.
+    #[must_use]
+    pub fn with_max_outbound_recovery_transfers_per_peer(mut self, max: usize) -> Self {
+        self.max_outbound_recovery_transfers_per_peer = max;
+        self
+    }
+
+    /// Set the global retained outbound transfer count bound.
+    #[must_use]
+    pub fn with_max_total_outbound_recovery_transfers(mut self, max: usize) -> Self {
+        self.max_total_outbound_recovery_transfers = max;
+        self
+    }
+
+    /// Set the per-peer retained outbound payload-byte bound.
+    #[must_use]
+    pub fn with_max_outbound_recovery_bytes_per_peer(mut self, bytes: usize) -> Self {
+        self.max_outbound_recovery_bytes_per_peer = bytes;
+        self
+    }
+
+    /// Set the global retained outbound payload-byte bound.
+    #[must_use]
+    pub fn with_max_total_outbound_recovery_bytes(mut self, bytes: usize) -> Self {
+        self.max_total_outbound_recovery_bytes = bytes;
+        self
+    }
+
+    /// Set the maximum report-triggered retransmission rounds for one retained transfer.
+    #[must_use]
+    pub fn with_max_selective_recovery_rounds(mut self, max: u32) -> Self {
+        self.max_selective_recovery_rounds = max;
+        self
+    }
+
+    /// Set the outbound recovery-state inactivity timeout.
+    #[must_use]
+    pub fn with_recovery_ttl(mut self, ttl: Duration) -> Self {
+        self.recovery_ttl = ttl;
+        self
+    }
+
+    /// Set the peer selective-recovery capability lifetime.
+    #[must_use]
+    pub fn with_recovery_capability_ttl(mut self, ttl: Duration) -> Self {
+        self.recovery_capability_ttl = ttl;
         self
     }
 

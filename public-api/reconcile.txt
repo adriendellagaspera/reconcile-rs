@@ -412,17 +412,35 @@ pub reconcile::replicated_map::FramingConfig::datagram_payload_budget: usize
 pub reconcile::replicated_map::FramingConfig::max_fragments_per_message: usize
 pub reconcile::replicated_map::FramingConfig::max_incomplete_transfers_per_peer: usize
 pub reconcile::replicated_map::FramingConfig::max_logical_message_size: usize
+pub reconcile::replicated_map::FramingConfig::max_missing_ranges_per_report: usize
+pub reconcile::replicated_map::FramingConfig::max_outbound_recovery_bytes_per_peer: usize
+pub reconcile::replicated_map::FramingConfig::max_outbound_recovery_transfers_per_peer: usize
 pub reconcile::replicated_map::FramingConfig::max_reassembly_bytes_per_peer: usize
+pub reconcile::replicated_map::FramingConfig::max_selective_recovery_rounds: u32
+pub reconcile::replicated_map::FramingConfig::max_total_outbound_recovery_bytes: usize
+pub reconcile::replicated_map::FramingConfig::max_total_outbound_recovery_transfers: usize
 pub reconcile::replicated_map::FramingConfig::max_total_reassembly_bytes: usize
 pub reconcile::replicated_map::FramingConfig::reassembly_ttl: core::time::Duration
+pub reconcile::replicated_map::FramingConfig::recovery_capability_ttl: core::time::Duration
+pub reconcile::replicated_map::FramingConfig::recovery_ttl: core::time::Duration
+pub reconcile::replicated_map::FramingConfig::selective_recovery: bool
 impl reconcile::replicated_map::FramingConfig
 pub fn reconcile::replicated_map::FramingConfig::with_datagram_payload_budget(self, usize) -> Self
 pub fn reconcile::replicated_map::FramingConfig::with_max_fragments_per_message(self, usize) -> Self
 pub fn reconcile::replicated_map::FramingConfig::with_max_incomplete_transfers_per_peer(self, usize) -> Self
 pub fn reconcile::replicated_map::FramingConfig::with_max_logical_message_size(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_missing_ranges_per_report(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_outbound_recovery_bytes_per_peer(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_outbound_recovery_transfers_per_peer(self, usize) -> Self
 pub fn reconcile::replicated_map::FramingConfig::with_max_reassembly_bytes_per_peer(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_selective_recovery_rounds(self, u32) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_total_outbound_recovery_bytes(self, usize) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_max_total_outbound_recovery_transfers(self, usize) -> Self
 pub fn reconcile::replicated_map::FramingConfig::with_max_total_reassembly_bytes(self, usize) -> Self
 pub fn reconcile::replicated_map::FramingConfig::with_reassembly_ttl(self, core::time::Duration) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_recovery_capability_ttl(self, core::time::Duration) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_recovery_ttl(self, core::time::Duration) -> Self
+pub fn reconcile::replicated_map::FramingConfig::with_selective_recovery(self, bool) -> Self
 impl core::clone::Clone for reconcile::replicated_map::FramingConfig
 pub fn reconcile::replicated_map::FramingConfig::clone(&self) -> reconcile::replicated_map::FramingConfig
 impl core::cmp::Eq for reconcile::replicated_map::FramingConfig

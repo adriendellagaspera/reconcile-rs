@@ -31,6 +31,16 @@
 //! | [`REASSEMBLY_EVICTIONS_TOTAL`](crate::metrics::REASSEMBLY_EVICTIONS_TOTAL) | counter (`reason` label) | incomplete transfers evicted/expired |
 //! | [`REASSEMBLY_REJECTIONS_TOTAL`](crate::metrics::REASSEMBLY_REJECTIONS_TOTAL) | counter (`reason` label) | authenticated fragment frames rejected |
 //! | [`REASSEMBLY_BYTES_CURRENT`](crate::metrics::REASSEMBLY_BYTES_CURRENT) | gauge | retained incomplete fragment bytes |
+//! | [`SELECTIVE_RECOVERY_REQUESTS_TOTAL`](crate::metrics::SELECTIVE_RECOVERY_REQUESTS_TOTAL) | counter | authenticated missing-range reports sent |
+//! | [`SELECTIVE_RECOVERY_MISSING_RANGES_TOTAL`](crate::metrics::SELECTIVE_RECOVERY_MISSING_RANGES_TOTAL) | counter | missing ranges requested |
+//! | [`SELECTIVE_RECOVERY_RETRANSMITTED_FRAGMENTS_TOTAL`](crate::metrics::SELECTIVE_RECOVERY_RETRANSMITTED_FRAGMENTS_TOTAL) | counter | selectively retransmitted fragment datagrams |
+//! | [`SELECTIVE_RECOVERY_RETRANSMITTED_BYTES_TOTAL`](crate::metrics::SELECTIVE_RECOVERY_RETRANSMITTED_BYTES_TOTAL) | counter | selectively retransmitted payload bytes |
+//! | [`SELECTIVE_RECOVERY_CONTROL_BYTES_TOTAL`](crate::metrics::SELECTIVE_RECOVERY_CONTROL_BYTES_TOTAL) | counter | selective-recovery control wire bytes |
+//! | [`SELECTIVE_RECOVERY_COMPLETION_ACKS_TOTAL`](crate::metrics::SELECTIVE_RECOVERY_COMPLETION_ACKS_TOTAL) | counter | completion acknowledgements sent |
+//! | [`SELECTIVE_RECOVERY_FALLBACKS_TOTAL`](crate::metrics::SELECTIVE_RECOVERY_FALLBACKS_TOTAL) | counter (`reason` label) | selective recovery unavailable; anti-entropy fallback remains authoritative |
+//! | [`OUTBOUND_RECOVERY_TRANSFERS_CURRENT`](crate::metrics::OUTBOUND_RECOVERY_TRANSFERS_CURRENT) | gauge | retained outbound recoverable transfers |
+//! | [`OUTBOUND_RECOVERY_BYTES_CURRENT`](crate::metrics::OUTBOUND_RECOVERY_BYTES_CURRENT) | gauge | retained outbound recovery payload bytes |
+//! | [`OUTBOUND_RECOVERY_EVICTIONS_TOTAL`](crate::metrics::OUTBOUND_RECOVERY_EVICTIONS_TOTAL) | counter (`reason` label) | sender recovery state expired/evicted |
 //! | [`ROUNDS_TOTAL`](crate::metrics::ROUNDS_TOTAL) | counter | reconciliation rounds initiated |
 //! | [`TOMBSTONE_ACKS_RESENT_TOTAL`](crate::metrics::TOMBSTONE_ACKS_RESENT_TOTAL) | counter | tombstone acks resent on reconciliation rounds |
 //! | [`TOMBSTONE_STAMP_BOUNDED_TOTAL`](crate::metrics::TOMBSTONE_STAMP_BOUNDED_TOTAL) | counter (`outcome` label) | tombstones whose expiry instant had to be bounded because the stored stamp led local time by more than the drift budget |
@@ -91,6 +101,32 @@ pub const REASSEMBLY_EVICTIONS_TOTAL: &str = "reconcile_reassembly_evictions_tot
 pub const REASSEMBLY_REJECTIONS_TOTAL: &str = "reconcile_reassembly_rejections_total";
 /// Bytes retained for incomplete reassembly state.
 pub const REASSEMBLY_BYTES_CURRENT: &str = "reconcile_reassembly_bytes_current";
+/// Missing-range reports sent.
+pub const SELECTIVE_RECOVERY_REQUESTS_TOTAL: &str = "reconcile_selective_recovery_requests_total";
+/// Missing byte ranges requested.
+pub const SELECTIVE_RECOVERY_MISSING_RANGES_TOTAL: &str =
+    "reconcile_selective_recovery_missing_ranges_total";
+/// Selectively retransmitted fragment datagrams.
+pub const SELECTIVE_RECOVERY_RETRANSMITTED_FRAGMENTS_TOTAL: &str =
+    "reconcile_selective_recovery_retransmitted_fragments_total";
+/// Selectively retransmitted logical payload bytes.
+pub const SELECTIVE_RECOVERY_RETRANSMITTED_BYTES_TOTAL: &str =
+    "reconcile_selective_recovery_retransmitted_bytes_total";
+/// Wire bytes spent on selective-recovery control frames.
+pub const SELECTIVE_RECOVERY_CONTROL_BYTES_TOTAL: &str =
+    "reconcile_selective_recovery_control_bytes_total";
+/// Completion acknowledgements sent after fragmented reassembly.
+pub const SELECTIVE_RECOVERY_COMPLETION_ACKS_TOTAL: &str =
+    "reconcile_selective_recovery_completion_acks_total";
+/// Selective recovery unavailable or rejected, labeled by reason.
+pub const SELECTIVE_RECOVERY_FALLBACKS_TOTAL: &str = "reconcile_selective_recovery_fallbacks_total";
+/// Retained outbound recoverable transfers.
+pub const OUTBOUND_RECOVERY_TRANSFERS_CURRENT: &str =
+    "reconcile_outbound_recovery_transfers_current";
+/// Retained outbound recovery payload bytes.
+pub const OUTBOUND_RECOVERY_BYTES_CURRENT: &str = "reconcile_outbound_recovery_bytes_current";
+/// Retained outbound recovery transfers removed, labeled by reason.
+pub const OUTBOUND_RECOVERY_EVICTIONS_TOTAL: &str = "reconcile_outbound_recovery_evictions_total";
 /// Reconciliation rounds initiated.
 pub const ROUNDS_TOTAL: &str = "reconcile_rounds_total";
 /// Tombstone acks resent on reconciliation rounds.

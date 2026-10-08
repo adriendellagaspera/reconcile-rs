@@ -201,6 +201,7 @@ impl Reassembler {
                     fragments: BTreeMap::new(),
                     retained_bytes: 0,
                     last_activity: now,
+                    last_missing_request: None,
                 },
             );
         }
