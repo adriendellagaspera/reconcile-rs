@@ -11,8 +11,14 @@ mod imp {
 
     use crate::metrics::{
         FRAGMENTED_MESSAGES_TOTAL, FRAGMENTS_RECEIVED_TOTAL, FRAGMENTS_SENT_TOTAL,
-        REASSEMBLIES_COMPLETED_TOTAL, REASSEMBLY_BYTES_CURRENT, REASSEMBLY_DUPLICATES_TOTAL,
-        REASSEMBLY_EVICTIONS_TOTAL, REASSEMBLY_REJECTIONS_TOTAL,
+        OUTBOUND_RECOVERY_BYTES_CURRENT, OUTBOUND_RECOVERY_EVICTIONS_TOTAL,
+        OUTBOUND_RECOVERY_TRANSFERS_CURRENT, REASSEMBLIES_COMPLETED_TOTAL,
+        REASSEMBLY_BYTES_CURRENT, REASSEMBLY_DUPLICATES_TOTAL, REASSEMBLY_EVICTIONS_TOTAL,
+        REASSEMBLY_REJECTIONS_TOTAL, SELECTIVE_RECOVERY_COMPLETION_ACKS_TOTAL,
+        SELECTIVE_RECOVERY_CONTROL_BYTES_TOTAL, SELECTIVE_RECOVERY_FALLBACKS_TOTAL,
+        SELECTIVE_RECOVERY_MISSING_RANGES_TOTAL, SELECTIVE_RECOVERY_REQUESTS_TOTAL,
+        SELECTIVE_RECOVERY_RETRANSMITTED_BYTES_TOTAL,
+        SELECTIVE_RECOVERY_RETRANSMITTED_FRAGMENTS_TOTAL,
     };
 
     #[inline]
@@ -57,6 +63,43 @@ mod imp {
         gauge!(REASSEMBLY_BYTES_CURRENT).set(bytes as f64);
     }
 
+    #[inline]
+    pub(crate) fn record_selective_recovery_request(ranges: usize, wire_bytes: usize) {
+        counter!(SELECTIVE_RECOVERY_REQUESTS_TOTAL).increment(1);
+        counter!(SELECTIVE_RECOVERY_MISSING_RANGES_TOTAL).increment(ranges as u64);
+        counter!(SELECTIVE_RECOVERY_CONTROL_BYTES_TOTAL).increment(wire_bytes as u64);
+    }
+
+    #[inline]
+    pub(crate) fn record_selective_retransmit(payload_bytes: usize) {
+        counter!(SELECTIVE_RECOVERY_RETRANSMITTED_FRAGMENTS_TOTAL).increment(1);
+        counter!(SELECTIVE_RECOVERY_RETRANSMITTED_BYTES_TOTAL).increment(payload_bytes as u64);
+    }
+
+    #[inline]
+    pub(crate) fn record_completion_ack(wire_bytes: usize) {
+        counter!(SELECTIVE_RECOVERY_COMPLETION_ACKS_TOTAL).increment(1);
+        counter!(SELECTIVE_RECOVERY_CONTROL_BYTES_TOTAL).increment(wire_bytes as u64);
+    }
+
+    #[inline]
+    pub(crate) fn record_selective_recovery_fallback(reason: &'static str) {
+        counter!(SELECTIVE_RECOVERY_FALLBACKS_TOTAL, "reason" => reason).increment(1);
+    }
+
+    #[inline]
+    pub(crate) fn record_outbound_recovery_evictions(reason: &'static str, count: usize) {
+        if count > 0 {
+            counter!(OUTBOUND_RECOVERY_EVICTIONS_TOTAL, "reason" => reason).increment(count as u64);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn record_outbound_recovery_state(transfers: usize, bytes: usize) {
+        gauge!(OUTBOUND_RECOVERY_TRANSFERS_CURRENT).set(transfers as f64);
+        gauge!(OUTBOUND_RECOVERY_BYTES_CURRENT).set(bytes as f64);
+    }
+
     #[cfg(feature = "metrics-prometheus")]
     pub(crate) fn describe() {
         use ::metrics::{describe_counter, describe_gauge, Unit};
@@ -97,6 +140,56 @@ mod imp {
             Unit::Bytes,
             "Bytes retained for incomplete fragment reassembly"
         );
+        describe_counter!(
+            SELECTIVE_RECOVERY_REQUESTS_TOTAL,
+            Unit::Count,
+            "Authenticated missing-range recovery reports sent"
+        );
+        describe_counter!(
+            SELECTIVE_RECOVERY_MISSING_RANGES_TOTAL,
+            Unit::Count,
+            "Missing byte ranges requested"
+        );
+        describe_counter!(
+            SELECTIVE_RECOVERY_RETRANSMITTED_FRAGMENTS_TOTAL,
+            Unit::Count,
+            "Selectively retransmitted fragment datagrams"
+        );
+        describe_counter!(
+            SELECTIVE_RECOVERY_RETRANSMITTED_BYTES_TOTAL,
+            Unit::Bytes,
+            "Selectively retransmitted logical payload bytes"
+        );
+        describe_counter!(
+            SELECTIVE_RECOVERY_CONTROL_BYTES_TOTAL,
+            Unit::Bytes,
+            "Wire bytes spent on selective-recovery control frames"
+        );
+        describe_counter!(
+            SELECTIVE_RECOVERY_COMPLETION_ACKS_TOTAL,
+            Unit::Count,
+            "Completion acknowledgements sent after fragmented reassembly"
+        );
+        describe_counter!(
+            SELECTIVE_RECOVERY_FALLBACKS_TOTAL,
+            Unit::Count,
+            "Selective recovery fallbacks by reason"
+        );
+        describe_gauge!(
+            OUTBOUND_RECOVERY_TRANSFERS_CURRENT,
+            Unit::Count,
+            "Retained outbound recoverable transfers"
+        );
+        describe_gauge!(
+            OUTBOUND_RECOVERY_BYTES_CURRENT,
+            Unit::Bytes,
+            "Retained outbound recovery payload bytes"
+        );
+        describe_counter!(
+            OUTBOUND_RECOVERY_EVICTIONS_TOTAL,
+            Unit::Count,
+            "Outbound recovery state removed by ttl or capacity"
+        );
     }
 }
 
@@ -125,6 +218,24 @@ mod imp {
 
     #[inline(always)]
     pub(crate) fn record_reassembly_bytes(_bytes: usize) {}
+
+    #[inline(always)]
+    pub(crate) fn record_selective_recovery_request(_ranges: usize, _wire_bytes: usize) {}
+
+    #[inline(always)]
+    pub(crate) fn record_selective_retransmit(_payload_bytes: usize) {}
+
+    #[inline(always)]
+    pub(crate) fn record_completion_ack(_wire_bytes: usize) {}
+
+    #[inline(always)]
+    pub(crate) fn record_selective_recovery_fallback(_reason: &'static str) {}
+
+    #[inline(always)]
+    pub(crate) fn record_outbound_recovery_evictions(_reason: &'static str, _count: usize) {}
+
+    #[inline(always)]
+    pub(crate) fn record_outbound_recovery_state(_transfers: usize, _bytes: usize) {}
 }
 
 pub(crate) use imp::*;

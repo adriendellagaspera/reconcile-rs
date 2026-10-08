@@ -265,6 +265,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 reassembler: Arc::new(Mutex::new(gossip::framing::Reassembler::new(
                     config.framing.reassembly_limits(),
                 ))),
+                recovery: Arc::new(Mutex::new(super::recovery::RecoveryBook::default())),
                 bulk_in_flight: Arc::new(RwLock::new(HashSet::new())),
                 bulk_dumps_in_flight: Arc::new(AtomicUsize::new(0)),
                 max_concurrent_bulk_dumps: config.max_concurrent_bulk_dumps,

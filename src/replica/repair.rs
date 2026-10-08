@@ -30,7 +30,7 @@ use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
 
-use super::{send_to_retry, Message, Replica};
+use super::{append_capability, send_to_retry, Message, Replica};
 
 /// Bound on how many times one outstanding comparison round is retried before this node gives up
 /// on it and leaves the peer to the next full background round instead — a dead or partitioned
@@ -79,6 +79,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             )
             .expect("serializing an EntryFingerprint into an in-memory buffer cannot fail");
         }
+        append_capability::<K, Entry<Timestamp, V>, State<V>>(self.framing, send_buf);
         let target = SocketAddr::new(peer, self.port);
         if let Err(err) = send_to_retry(
             &*self.transport,

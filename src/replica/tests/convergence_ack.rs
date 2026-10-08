@@ -93,15 +93,21 @@ async fn a_converged_comparison_round_is_acked() {
     let reply = feed_and_capture_reply(&engine, &message, peer).await;
     let decoded: Vec<Msg> = gossip::bincode::decode_stream(&reply, 8)
         .expect("a converged round's reply must decode as valid Message bytes");
+    // The optional transport-capability advertisement is independent of the dated
+    // reconciliation reply. It must not count as an extra convergence response.
+    let dated: Vec<_> = decoded
+        .iter()
+        .filter(|message| !matches!(message, Message::Reserved6(payload) if payload == b"sr\x01"))
+        .collect();
     assert_eq!(
-        decoded.len(),
+        dated.len(),
         1,
-        "a converged round must reply with exactly one message, not silence or a burst: {decoded:?}"
+        "a converged round must reply with exactly one dated message: {decoded:?}"
     );
     assert!(
-        matches!(decoded[0], Message::ConvergenceAck),
+        matches!(dated[0], Message::ConvergenceAck),
         "a converged comparison round must ack with Message::ConvergenceAck, got {:?}",
-        decoded[0]
+        dated[0]
     );
 }
 

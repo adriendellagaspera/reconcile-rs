@@ -16,9 +16,11 @@ use tracing::{debug, trace, warn};
 use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
-use crate::framing::{accept_frame, expire_reassembly};
+use crate::framing::{accept_frame, expire_reassembly, FrameEvent};
 use crate::replica::{
-    admit_inbound, send_control_batch_to, send_to_retry, InboundRejection, Message, SendPorts,
+    admit_inbound, append_capability, complete_recovery, expire_recovery_state,
+    is_selective_recovery_capability, retransmit_missing_to, send_control_batch_to,
+    send_recovery_control_to, send_to_retry, InboundRejection, Message, SendPorts,
     MAX_MESSAGES_PER_DATAGRAM,
 };
 use crate::transport::Transport;
@@ -71,6 +73,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             authenticator: &self.authenticator,
             sender_counter: &self.sender_counter,
             framing: self.framing,
+            recovery: &self.recovery,
         }
     }
 
@@ -97,6 +100,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             )
             .expect("serializing a StateFingerprint into an in-memory buffer cannot fail");
         }
+        append_capability::<K, WireDated<V>, State<V>>(self.framing, send_buf);
         let mut peers = self.peers();
         // A random address out of the peer network, for discovery — like the dated store, we do not
         // add it to the known peers; a real peer there will answer and be recorded then.
@@ -159,8 +163,16 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                 | Message::EntryUpdate(_)
                 | Message::TombstoneAck(_)
                 | Message::ConvergenceAck => {}
-                // reserved, never sent by this version.
-                Message::Reserved6(_) => {}
+                Message::Reserved6(payload) => {
+                    if is_selective_recovery_capability(&payload) {
+                        self.recovery.lock().record_capability(
+                            peer.ip(),
+                            Instant::now(),
+                            self.framing,
+                            self.max_peers.max(),
+                        );
+                    }
+                }
             }
         }
 
@@ -202,7 +214,21 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// Alongside it, drives the discovery task ([`with_discovery`](Self::with_discovery)) when one
     /// is configured — a no-op otherwise.
     pub async fn run(self) {
-        tokio::join!(self.run_reconciliation_loop(), self.discover_periodically());
+        tokio::join!(
+            self.run_reconciliation_loop(),
+            self.discover_periodically(),
+            self.retry_incomplete_periodically(),
+        );
+    }
+
+    async fn retry_incomplete_periodically(&self) {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(3));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tick.tick().await;
+            crate::replica::retry_idle_incomplete(&self.send_ports(), &self.reassembler, self.port)
+                .await;
+        }
     }
 
     /// The reconciliation half of [`run`](Self::run), split out so it can run concurrently with
@@ -216,6 +242,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             match timeout(activity_timeout, self.transport.recv_from(&mut recv_buf)).await {
                 Err(_) => {
                     expire_reassembly(&self.reassembler);
+                    expire_recovery_state(&self.send_ports());
                     debug!("read replica: no recent activity; initiating value-only diff");
                     self.start_reconciliation_inner(&mut send_buf).await;
                 }
@@ -273,8 +300,91 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
                                 continue;
                             }
                         };
-                        let Some(payload) = accept_frame(&self.reassembler, sender, payload) else {
-                            continue;
+                        let max_missing_ranges = gossip::framing::max_missing_ranges_for_budget(
+                            self.framing.datagram_payload_budget,
+                            self.authenticator.overhead(),
+                            self.framing.max_missing_ranges_per_report,
+                        );
+                        let payload = match accept_frame(
+                            &self.reassembler,
+                            sender,
+                            payload,
+                            max_missing_ranges,
+                        ) {
+                            FrameEvent::Logical {
+                                payload,
+                                completed_transfer,
+                            } => {
+                                if let Some(transfer_id) = completed_transfer {
+                                    let supported = self.recovery.lock().supports(
+                                        sender,
+                                        Instant::now(),
+                                        self.framing,
+                                    );
+                                    if supported {
+                                        let mut frame = Vec::new();
+                                        gossip::framing::write_completion_ack(
+                                            transfer_id,
+                                            &mut frame,
+                                        );
+                                        let _ = send_recovery_control_to(
+                                            &self.send_ports(),
+                                            peer,
+                                            &frame,
+                                            None,
+                                        )
+                                        .await;
+                                    }
+                                }
+                                payload
+                            }
+                            FrameEvent::RequestMissing {
+                                transfer_id,
+                                ranges,
+                            } => {
+                                let supported = self.recovery.lock().supports(
+                                    sender,
+                                    Instant::now(),
+                                    self.framing,
+                                );
+                                if supported {
+                                    let mut frame = Vec::new();
+                                    if gossip::framing::write_missing_report(
+                                        transfer_id,
+                                        &ranges,
+                                        &mut frame,
+                                    )
+                                    .is_ok()
+                                    {
+                                        let _ = send_recovery_control_to(
+                                            &self.send_ports(),
+                                            peer,
+                                            &frame,
+                                            Some(ranges.len()),
+                                        )
+                                        .await;
+                                    }
+                                }
+                                continue;
+                            }
+                            FrameEvent::Missing {
+                                transfer_id,
+                                ranges,
+                            } => {
+                                retransmit_missing_to(
+                                    &self.send_ports(),
+                                    peer,
+                                    transfer_id,
+                                    &ranges,
+                                )
+                                .await;
+                                continue;
+                            }
+                            FrameEvent::CompleteAck { transfer_id } => {
+                                complete_recovery(&self.send_ports(), peer, transfer_id);
+                                continue;
+                            }
+                            FrameEvent::Pending => continue,
                         };
                         self.handle_messages(payload, peer, &mut send_buf).await;
                         // Record only a sender that completed a logical protocol payload; an

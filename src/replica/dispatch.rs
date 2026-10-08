@@ -9,6 +9,7 @@
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use std::time::Instant;
 
 use rbsr::RangeAggregate;
 use tracing::{debug, instrument, trace, warn};
@@ -30,6 +31,7 @@ struct DecodedDatagram<K, V> {
     dated_updates: Vec<(K, Entry<Timestamp, V>)>,
     tombstone_acks: Vec<(K, u64)>,
     saw_convergence_ack: bool,
+    selective_recovery_capability: bool,
     value_ranges: Vec<RangeAggregate<K>>,
 }
 
@@ -68,6 +70,14 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             return false;
         };
         let spoke_dated = batch.spoke_dated();
+        if batch.selective_recovery_capability {
+            self.recovery.lock().record_capability(
+                peer.ip(),
+                Instant::now(),
+                self.framing,
+                self.max_peers.max(),
+            );
+        }
 
         self.record_tombstone_acks(batch.tombstone_acks, peer.ip());
         self.handle_dated_comparison(batch.dated_ranges, peer, send_buf)
@@ -104,6 +114,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             dated_updates: Vec::new(),
             tombstone_acks: Vec::new(),
             saw_convergence_ack: false,
+            selective_recovery_capability: false,
             value_ranges: Vec::new(),
         };
         for message in messages {
@@ -117,9 +128,14 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 // The receive loop already clears a pending repair on any datagram from this peer;
                 // the ack still counts as proof that the sender speaks the dated channel.
                 Message::ConvergenceAck => batch.saw_convergence_ack = true,
-                // This version owns no semantics for tag 6. Ignore it explicitly rather than via
-                // a wildcard, so adding another real variant still forces this dispatch to change.
-                Message::Reserved6(_) => {}
+                // Reserved tag 6 remains opaque to older peers. The exact short payload below is
+                // the additive v1 selective-recovery capability; every other reserved payload is
+                // still ignored.
+                Message::Reserved6(payload) => {
+                    if super::is_selective_recovery_capability(&payload) {
+                        batch.selective_recovery_capability = true;
+                    }
+                }
             }
         }
         Some(batch)

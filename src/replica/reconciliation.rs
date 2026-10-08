@@ -21,7 +21,10 @@ use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
 use crate::observability;
 
-use super::{send_to_retry, version_hash, Message, Replica, TOMBSTONE_ACK_RESEND_BYTE_BUDGET};
+use super::{
+    append_capability, send_to_retry, version_hash, Message, Replica,
+    TOMBSTONE_ACK_RESEND_BYTE_BUDGET,
+};
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
     #[instrument(name = "reconcile.round", skip_all)]
@@ -40,6 +43,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             )
             .expect("serializing an EntryFingerprint into an in-memory buffer cannot fail");
         }
+        append_capability::<K, Entry<Timestamp, V>, State<V>>(self.framing, send_buf);
+
         // Snapshot the runtime-tunable topology once per round: no torn round, no lock held
         // across the sends below.
         let nets = self.nets.read().clone();
