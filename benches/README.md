@@ -17,6 +17,7 @@ Benchmarks measure code that ships in this repository. Comparative algorithm res
 | fragmentation | UDP application framing, large-message convergence, datagram size, loss/reorder, and reassembly overhead |
 | fragment_recovery | Research-only whole-message vs missing-only fragment recovery cost under matched deterministic loss |
 | ordered_stream | Research-only ordered-stream vs multiplexed reliable-stream transport semantics under matched deterministic impairments |
+| transport_validation | Final matched validation of selective recovery and independent reliable-stream candidates |
 | tombstone_gc_skew | one-sided retained tombstone history, reconciliation work, and ACK recovery |
 | membership_churn | sustained authoritative member replacement with ACK coverage rebuilt through real dated traffic |
 | snapshot_write_amplification | paired full-vs-incremental checkpoint writes, retained storage, segment chains, and restart cost |
@@ -80,6 +81,14 @@ default sparse campaign covers 1/50/150/600 ms RTT, 0/1/5% loss, a targeted 5% r
 1200-byte primary budget, 1472-byte sensitivity, 100 Mbit/s default bandwidth, 1 Mbit/s constrained
 bandwidth, single/concurrent/mixed workloads, and 20/50/80% interruption points. Configure trial
 count with `RECONCILE_ORDERED_STREAM_TRIALS`.
+
+The `transport_validation` target is the final matched decision benchmark for transport recovery
+semantics. It carries forward missing-only selective datagram recovery and independent reliable
+streams against whole-message UDP and one ordered-stream control. Its fixed nine-point set covers
+clean links, 5% loss at 150/600 ms RTT, mixed/concurrent traffic, and an 80%-complete reconnect after
+30 s. Candidate/control pairs share workloads, a 1200-byte budget, 100 Mbit/s bandwidth, and
+deterministic seeds; outputs include wire/control/setup cost, completion, HOL/state, and retained
+progress. Results model transport semantics, not kernel/TCP/QUIC implementations; configure trials with `RECONCILE_TRANSPORT_VALIDATION_TRIALS`.
 
 The `tombstone_gc_skew` target compares aligned authoritative peers with a one-sided retained-tombstone history while keeping application-visible state equal, plus a fixed live-divergence control. It reports wire traffic, protocol enumeration, convergence, and bounded tombstone-ACK recovery rounds. The deployment-sized debt term is approximately `delete_rate × effective_unacked_membership_lag`: age timeout alone does not make a tombstone collectible while a causal member has not acknowledged its exact version. Configure with `RECONCILE_GC_SKEW_N`, `RECONCILE_GC_SKEW_DELETIONS`, and `RECONCILE_GC_SKEW_BASE_DIVERGENCE`.
 

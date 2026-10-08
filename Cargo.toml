@@ -92,6 +92,10 @@ harness = false
 name = "ordered_stream"
 harness = false
 
+[[bench]]
+name = "transport_validation"
+harness = false
+
 [features]
 default = ["mac-blake3"]
 mac-blake3 = ["gossip/mac-blake3"]

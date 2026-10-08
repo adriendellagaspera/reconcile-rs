@@ -1,219 +1,242 @@
 use std::collections::BTreeSet;
 use std::io;
-use std::net::SocketAddr;
-use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc,
-};
+use std::sync::{atomic::Ordering, Arc};
 use std::time::Duration;
 
 use gossip::netem::{Impairments, Link, Netem, NetemTransport, Probability, Rtt, Seed};
+use reconcile::clock::NodeId;
 use reconcile::{
-    async_trait, replicated_map::Config, ClusterKey, InMemoryNetwork, InMemoryTransport,
-    ReplicatedMap, Transport,
+    replicated_map::{Config, FramingConfig},
+    ClusterKey, InMemoryNetwork, ReplicatedMap,
 };
-use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-pub const WIDTH: usize = 32;
-pub const HEIGHT: usize = 20;
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Observation {
-    Terrain {
-        x: usize,
-        y: usize,
-        land: bool,
-    },
-    Contact {
-        x: usize,
-        y: usize,
-        seen: u64,
-        source: usize,
-    },
-    Sector {
-        id: usize,
-        scanned: u64,
-    },
-}
-
-pub fn terrain(x: usize, y: usize) -> bool {
-    let x = x as f64;
-    let y = y as f64;
-    x < 3.0 + (y * 0.5).sin() * 1.8
-        || ((x - 15.0) / 4.0).powi(2) + ((y - 8.0) / 3.0).powi(2) < 1.0
-        || ((x - 26.0) / 3.0).powi(2) + ((y - 15.0) / 2.0).powi(2) < 1.0
-}
-
-#[derive(Default)]
-struct Traffic {
-    partition_drops: AtomicU64,
-    delivered_bytes: AtomicU64,
-    delivered_datagrams: AtomicU64,
-}
-
-// Inside Netem: a delayed packet is checked against topology at delivery time.
-struct PartitionGate {
-    inner: InMemoryTransport,
-    partitioned: Arc<AtomicBool>,
-    traffic: Arc<Traffic>,
-}
-
-#[async_trait]
-impl Transport for PartitionGate {
-    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.inner.recv_from(buf).await
-    }
-
-    async fn send_to(&self, buf: &[u8], dst: &SocketAddr) -> io::Result<usize> {
-        if self.partitioned.load(Ordering::Relaxed) {
-            self.traffic.partition_drops.fetch_add(1, Ordering::Relaxed);
-            return Ok(buf.len());
-        }
-        // Count only traffic routed to an actual endpoint, excluding discovery probes.
-        if ["127.0.0.1", "127.0.0.2"]
-            .iter()
-            .any(|ip| dst.ip().to_string() == *ip)
-        {
-            self.traffic
-                .delivered_bytes
-                .fetch_add(buf.len() as u64, Ordering::Relaxed);
-            self.traffic
-                .delivered_datagrams
-                .fetch_add(1, Ordering::Relaxed);
-        }
-        self.inner.send_to(buf, dst).await
-    }
-
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.inner.local_addr()
-    }
-}
+use super::transport::{address, Network, PartitionGate};
+use super::world::{terrain, Observation, World, HEIGHT, WIDTH};
 
 pub struct Cluster {
     pub nodes: Vec<ReplicatedMap<String, Observation>>,
-    partitioned: Arc<AtomicBool>,
-    traffic: Arc<Traffic>,
+    network: Arc<Network>,
     losses: Vec<Impairments>,
     cancel: CancellationToken,
     tasks: Vec<JoinHandle<()>>,
     pub loss: f64,
-    observations: u64,
+    pub datagram_budget: usize,
+    pub world: World,
 }
 
 impl Cluster {
-    pub fn new(loss: f64) -> io::Result<Self> {
-        let network = InMemoryNetwork::new();
-        let partitioned = Arc::new(AtomicBool::new(true));
-        let traffic = Arc::new(Traffic::default());
+    #[cfg(test)]
+    pub fn new(loss: f64, size: usize) -> io::Result<Self> {
+        Self::with_datagram_budget(loss, size, 16 * 1024)
+    }
+
+    pub fn with_datagram_budget(
+        loss: f64,
+        size: usize,
+        datagram_budget: usize,
+    ) -> io::Result<Self> {
+        if !(2..=20).contains(&size) {
+            return Err(io::Error::other("node count must be between 2 and 20"));
+        }
+        let fabric = InMemoryNetwork::new();
+        let network = Arc::new(Network::new(size));
         let cancel = CancellationToken::new();
         let mut nodes = Vec::new();
         let mut losses = Vec::new();
         let mut tasks = Vec::new();
-        for id in 0..2 {
-            let addr: SocketAddr = format!("127.0.0.{}:9000", id + 1).parse().unwrap();
+        for id in 0..size {
+            let addr = address(id);
             let gate = PartitionGate {
-                inner: network.bind(addr),
-                partitioned: partitioned.clone(),
-                traffic: traffic.clone(),
+                inner: fabric.bind(addr),
+                source: id,
+                network: network.clone(),
             };
             let transport = NetemTransport::new(
                 Arc::new(gate),
                 Netem::uniform(
                     Link::at(Rtt::from_millis(160.0)).with_loss(Probability::percent(loss)),
-                    Seed::new(42 + id),
+                    Seed::new(42 + id as u64),
                 ),
             );
             losses.push(transport.impairments());
             let config = Config::default()
                 .with_port(addr.port())
                 .with_listen_addr(addr.ip())
-                .with_net("127.0.0.0/30".parse().unwrap())
+                .with_net("127.0.0.0/27".parse().unwrap())
                 .map_err(io::Error::other)?
                 .with_cluster_key(ClusterKey::new([0x42; 32]))
-                .with_reconcile_interval(Duration::from_millis(250));
+                .with_framing(
+                    FramingConfig::default().with_datagram_payload_budget(datagram_budget),
+                )
+                .with_node_id(NodeId::new(id as u64 + 1))
+                .with_repair_interval(Duration::from_millis(350))
+                .with_reconcile_interval(Duration::from_secs(2));
             let node = ReplicatedMap::new_with_transport(config, Arc::new(transport))
                 .map_err(io::Error::other)?;
-            node.seed_peer(format!("127.0.0.{}", 2 - id).parse().unwrap());
+            for peer in 0..size {
+                if network.route(id, peer) {
+                    node.seed_peer(address(peer).ip());
+                }
+            }
             let running_node = node.clone();
             let token = cancel.clone();
             tasks.push(tokio::spawn(async move {
                 running_node.run(token).await;
             }));
+            // The built-in sweep is idle-driven. Sustained multi-peer traffic must not starve
+            // anti-entropy, so the application also schedules the public round API.
+            let round_node = node.clone();
+            let token = cancel.clone();
+            tasks.push(tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(id as u64 * 80)).await;
+                let mut rounds = tokio::time::interval(Duration::from_secs(2));
+                rounds.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    tokio::select! {
+                        _ = token.cancelled() => break,
+                        _ = rounds.tick() => round_node.start_reconciliation().await,
+                    }
+                }
+            }));
             nodes.push(node);
         }
         let mut cluster = Self {
             nodes,
-            partitioned,
-            traffic,
+            network,
             losses,
             cancel,
             tasks,
             loss,
-            observations: 0,
+            datagram_budget,
+            world: World::new(size),
         };
         cluster.observe();
         Ok(cluster)
     }
 
     pub fn partition(&self, enabled: bool) {
-        self.partitioned.store(enabled, Ordering::Relaxed);
+        self.network.partitioned.store(enabled, Ordering::Relaxed);
+        // Re-seed on healing if routing peers were aged out during isolation.
         if !enabled {
-            for id in 0..2 {
-                self.nodes[id].seed_peer(format!("127.0.0.{}", 2 - id).parse().unwrap());
+            for (id, node) in self.nodes.iter().enumerate() {
+                for peer in 0..self.nodes.len() {
+                    if self.network.route(id, peer) {
+                        node.seed_peer(address(peer).ip());
+                    }
+                }
             }
         }
     }
 
+    pub fn start_demo(&mut self) {
+        self.world.scripted = true;
+        self.world.playing = true;
+        self.partition(false);
+    }
+
+    pub fn advance(&mut self) {
+        if !self.world.playing {
+            return;
+        }
+        self.world.ticks += 1;
+        if self.world.scripted {
+            match self.world.ticks {
+                60 => self.partition(true),
+                120 => self.world.reveal_contact(),
+                240 => self.partition(false),
+                _ => (),
+            }
+        }
+        // Stop new writes while repairing; exact convergence needs a quiescent interval.
+        if !self.world.scripted || self.world.ticks < 240 {
+            self.world.move_vehicles();
+            self.observe();
+        }
+        if self.world.scripted
+            && self.world.ticks >= 300
+            && (self.world.ticks >= 480 || self.divergent_keys() == 0)
+        {
+            self.world.playing = false;
+        }
+    }
+
     pub fn observe(&mut self) {
-        self.observations += 1;
-        for id in 0..2 {
-            let cx = if id == 0 { 7 } else { 24 };
-            let cy = if id == 0 { 6 } else { 12 };
-            let radius = (self.observations + 1).min(6) as usize;
-            for y in cy - radius..=(cy + radius).min(HEIGHT - 1) {
-                for x in cx - radius..=(cx + radius).min(WIDTH - 1) {
-                    if (x as isize - cx as isize).pow(2) + (y as isize - cy as isize).pow(2)
-                        > (radius * radius) as isize
+        for (id, position) in self.world.positions.iter().enumerate() {
+            let cx = position.x as usize;
+            let cy = position.y as usize;
+            let radius = 3;
+            let mut updates = Vec::new();
+            for y in cy.saturating_sub(radius)..=(cy + radius).min(HEIGHT - 1) {
+                for x in cx.saturating_sub(radius)..=(cx + radius).min(WIDTH - 1) {
+                    if (x as f64 + 0.5 - position.x).hypot(y as f64 + 0.5 - position.y)
+                        > radius as f64
                     {
                         continue;
                     }
                     let key = format!("map/{x:02}/{y:02}");
                     if !self.nodes[id].contains_key(&key) {
-                        self.nodes[id].insert(
+                        updates.push((
                             key,
                             Observation::Terrain {
                                 x,
                                 y,
                                 land: terrain(x, y),
                             },
-                        );
+                        ));
                     }
                 }
             }
-            self.nodes[id].insert(
-                format!("sector/{id}"),
-                Observation::Sector {
-                    id,
-                    scanned: self.observations,
-                },
-            );
+            let sector = (cy / 5) * (WIDTH / 4) + cx / 4;
+            let key = format!("sector/{sector:02}");
+            if !self.nodes[id].contains_key(&key) {
+                updates.push((
+                    key,
+                    Observation::Sector {
+                        id: sector,
+                        scanned: self.world.ticks,
+                    },
+                ));
+            }
+            if let Some(contact) = self
+                .world
+                .contact()
+                .filter(|p| p.distance(*position) <= 4.0)
+            {
+                // One update per simulated second; observations are not fusion estimates.
+                if self.world.ticks % 2 == 0 {
+                    updates.push((
+                        "contact/01".into(),
+                        Observation::Contact {
+                            position: contact,
+                            seen: self.world.ticks,
+                            source: id,
+                        },
+                    ));
+                }
+            }
+            self.nodes[id].insert_bulk(&updates);
         }
-        // A contact is observed only by A. B must learn it through the protocol.
-        self.nodes[0].insert(
-            "contact/01".into(),
-            Observation::Contact {
-                x: 10,
-                y: 7,
-                seen: self.observations,
-                source: 0,
-            },
-        );
+    }
+
+    pub fn divergent_keys(&self) -> usize {
+        let snapshots: Vec<_> = self.nodes.iter().map(|n| n.snapshot()).collect();
+        let keys: BTreeSet<_> = snapshots
+            .iter()
+            .flat_map(|s| s.iter().map(|(k, _)| k.clone()))
+            .collect();
+        keys.iter()
+            .filter(|k| {
+                snapshots[1..]
+                    .iter()
+                    .any(|s| s.get(*k) != snapshots[0].get(*k))
+            })
+            .count()
     }
 
     pub fn state(&self) -> serde_json::Value {
-        // One immutable dated snapshot per node; comparisons include LWW timestamps.
+        // Capture each replica once: the UI and dated-entry comparisons share this cut.
         let snapshots: Vec<_> = self.nodes.iter().map(|n| n.snapshot()).collect();
         let keys: BTreeSet<_> = snapshots
             .iter()
@@ -221,7 +244,11 @@ impl Cluster {
             .collect();
         let divergent = keys
             .iter()
-            .filter(|k| snapshots[0].get(*k) != snapshots[1].get(*k))
+            .filter(|k| {
+                snapshots[1..]
+                    .iter()
+                    .any(|s| s.get(*k) != snapshots[0].get(*k))
+            })
             .count();
         let entries: Vec<Vec<_>> = snapshots
             .iter()
@@ -231,15 +258,42 @@ impl Cluster {
                     .collect()
             })
             .collect();
+        let group_agreement: Vec<_> = (0..2)
+            .map(|group| {
+                let members: Vec<_> = (0..self.nodes.len())
+                    .filter(|&n| self.network.group(n) == group)
+                    .collect();
+                let union: BTreeSet<_> = members
+                    .iter()
+                    .flat_map(|&n| snapshots[n].iter().map(|(k, _)| k.clone()))
+                    .collect();
+                let same = union
+                    .iter()
+                    .filter(|k| {
+                        members[1..]
+                            .iter()
+                            .all(|&n| snapshots[n].get(*k) == snapshots[members[0]].get(*k))
+                    })
+                    .count();
+                serde_json::json!({"group": group, "keys": union.len(), "same": same})
+            })
+            .collect();
         serde_json::json!({
-            "partitioned": self.partitioned.load(Ordering::Relaxed), "loss": self.loss,
+            "partitioned": self.network.partitioned.load(Ordering::Relaxed), "loss": self.loss,
+            "datagram_budget": self.datagram_budget,
             "nodes": entries, "union_keys": keys.len(), "divergent_keys": divergent,
             "loss_offered": self.losses.iter().map(Impairments::offered).sum::<u64>(),
             "loss_dropped": self.losses.iter().map(Impairments::dropped).sum::<u64>(),
-            "partition_dropped": self.traffic.partition_drops.load(Ordering::Relaxed),
-            "delivered_bytes": self.traffic.delivered_bytes.load(Ordering::Relaxed),
-            "delivered_datagrams": self.traffic.delivered_datagrams.load(Ordering::Relaxed),
-            "observation_step": self.observations,
+            "partition_dropped": self.network.partition_drops.load(Ordering::Relaxed),
+            "delivered_bytes": self.network.bytes.iter().map(|b| b.load(Ordering::Relaxed)).sum::<u64>(),
+            "delivered_datagrams": self.network.datagrams.load(Ordering::Relaxed),
+            "links": self.network.links(), "groups": group_agreement,
+            "positions": self.world.positions, "truth_contact": self.world.contact(),
+            "truth_map": (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| terrain(x, y))).collect::<Vec<_>>(),
+            "ticks": self.world.ticks, "seconds": self.world.seconds(), "playing": self.world.playing,
+            "scripted": self.world.scripted, "phase": self.world.phase(divergent == 0),
+            "library_metrics": super::telemetry::snapshot(),
+            "rounds_total": self.nodes.iter().map(|n| n.sync_state().rounds).sum::<u64>(),
         })
     }
 }
