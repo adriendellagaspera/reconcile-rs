@@ -98,13 +98,13 @@ pub(crate) async fn retransmit_missing_to<T: Transport + ?Sized>(
     }
 
     let mut previous_end = 0usize;
-    for (index, &(offset, len)) in ranges.iter().enumerate() {
+    for &(offset, len) in ranges {
         let start = offset as usize;
         let Some(end) = start.checked_add(len as usize) else {
             observability::record_selective_recovery_fallback("invalid_report");
             return false;
         };
-        if len == 0 || end > payload.len() || (index > 0 && start < previous_end) {
+        if len == 0 || end > payload.len() || start < previous_end {
             observability::record_selective_recovery_fallback("invalid_report");
             return false;
         }
@@ -219,3 +219,6 @@ pub(crate) async fn retry_idle_incomplete<T: Transport + ?Sized>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

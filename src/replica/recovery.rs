@@ -131,14 +131,20 @@ impl RecoveryBook {
             let Some(oldest) = self.oldest(Some(peer)) else {
                 return self.retain_report(false, expired, evicted, false, false);
             };
-            self.remove(oldest);
+            // Eviction must make progress; do not spin on inconsistent state.
+            if self.remove(oldest).is_none() {
+                return self.retain_report(false, expired, evicted, false, false);
+            }
             evicted += 1;
         }
         while self.outbound.len() >= cfg.max_total_outbound_recovery_transfers {
             let Some(oldest) = self.oldest(None) else {
                 return self.retain_report(false, expired, evicted, false, false);
             };
-            self.remove(oldest);
+            // Eviction must make progress; do not spin on inconsistent state.
+            if self.remove(oldest).is_none() {
+                return self.retain_report(false, expired, evicted, false, false);
+            }
             evicted += 1;
         }
         while self.peer_bytes(peer).saturating_add(payload.len())
@@ -147,7 +153,10 @@ impl RecoveryBook {
             let Some(oldest) = self.oldest(Some(peer)) else {
                 return self.retain_report(false, expired, evicted, false, false);
             };
-            self.remove(oldest);
+            // Eviction must make progress; do not spin on inconsistent state.
+            if self.remove(oldest).is_none() {
+                return self.retain_report(false, expired, evicted, false, false);
+            }
             evicted += 1;
         }
         while self.total_bytes.saturating_add(payload.len()) > cfg.max_total_outbound_recovery_bytes
@@ -155,7 +164,10 @@ impl RecoveryBook {
             let Some(oldest) = self.oldest(None) else {
                 return self.retain_report(false, expired, evicted, false, false);
             };
-            self.remove(oldest);
+            // Eviction must make progress; do not spin on inconsistent state.
+            if self.remove(oldest).is_none() {
+                return self.retain_report(false, expired, evicted, false, false);
+            }
             evicted += 1;
         }
 
@@ -289,108 +301,4 @@ pub(crate) fn is_selective_recovery_capability(payload: &[u8]) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn cfg() -> FramingConfig {
-        FramingConfig::default()
-            .with_max_outbound_recovery_transfers_per_peer(1)
-            .with_max_total_outbound_recovery_transfers(2)
-            .with_max_outbound_recovery_bytes_per_peer(8)
-            .with_max_total_outbound_recovery_bytes(12)
-            .with_max_selective_recovery_rounds(2)
-            .with_recovery_ttl(Duration::from_millis(10))
-            .with_recovery_capability_ttl(Duration::from_millis(10))
-    }
-
-    #[test]
-    fn capability_is_bounded_and_expires() {
-        let now = Instant::now();
-        let mut book = RecoveryBook::default();
-        book.record_capability("127.0.0.1".parse().unwrap(), now, cfg(), 1);
-        book.record_capability("127.0.0.2".parse().unwrap(), now, cfg(), 1);
-        assert!(book.supports("127.0.0.1".parse().unwrap(), now, cfg()));
-        assert!(!book.supports("127.0.0.2".parse().unwrap(), now, cfg()));
-        assert!(!book.supports(
-            "127.0.0.1".parse().unwrap(),
-            now + Duration::from_millis(10),
-            cfg()
-        ));
-    }
-
-    #[test]
-    fn per_peer_bound_evicts_oldest_deterministically() {
-        let now = Instant::now();
-        let peer = "127.0.0.1".parse().unwrap();
-        let mut book = RecoveryBook::default();
-        assert!(book.retain(peer, [1; 32], &[1u8; 4], now, cfg()).retained);
-        let report = book.retain(
-            peer,
-            [2; 32],
-            &[2u8; 4],
-            now + Duration::from_millis(1),
-            cfg(),
-        );
-        assert_eq!(report.evicted, 1);
-        assert!(book
-            .payload_for_report(peer, [1; 32], now + Duration::from_millis(2), cfg())
-            .is_none());
-        assert!(book
-            .payload_for_report(peer, [2; 32], now + Duration::from_millis(2), cfg())
-            .is_some());
-    }
-
-    #[test]
-    fn recovery_rounds_are_bounded() {
-        let now = Instant::now();
-        let peer = "127.0.0.1".parse().unwrap();
-        let mut book = RecoveryBook::default();
-        book.retain(peer, [3; 32], &[3u8; 4], now, cfg());
-        assert!(book.payload_for_report(peer, [3; 32], now, cfg()).is_some());
-        assert!(book.payload_for_report(peer, [3; 32], now, cfg()).is_some());
-        assert!(book.payload_for_report(peer, [3; 32], now, cfg()).is_none());
-    }
-
-    #[test]
-    fn retained_transfer_defers_identical_full_send_but_preserves_timeout_fallback() {
-        let now = Instant::now();
-        let peer = "127.0.0.1".parse().unwrap();
-        let config = cfg().with_recovery_ttl(Duration::from_secs(40));
-        let mut book = RecoveryBook::default();
-        let first = book.retain(peer, [9; 32], &[2; 4], now, config);
-        assert!(first.retained);
-        assert!(!first.skip_full_send);
-        let immediate = book.retain(peer, [9; 32], &[2; 4], now + Duration::from_secs(1), config);
-        assert!(immediate.skip_full_send);
-        assert!(!immediate.fallback_full_retry);
-        let retry = book.retain(
-            peer,
-            [9; 32],
-            &[2; 4],
-            now + Duration::from_secs(12),
-            config,
-        );
-        assert!(!retry.skip_full_send);
-        assert!(retry.fallback_full_retry);
-        let next = book.retain(
-            peer,
-            [9; 32],
-            &[2; 4],
-            now + Duration::from_secs(13),
-            config,
-        );
-        assert!(next.skip_full_send);
-    }
-
-    #[test]
-    fn ttl_releases_retained_bytes() {
-        let now = Instant::now();
-        let peer = "127.0.0.1".parse().unwrap();
-        let mut book = RecoveryBook::default();
-        book.retain(peer, [4; 32], &[4u8; 4], now, cfg());
-        let report = book.expire(now + Duration::from_millis(10), cfg());
-        assert_eq!(report.transfers, 1);
-        assert_eq!(report.bytes, 4);
-        assert_eq!(report.remaining_bytes, 0);
-    }
-}
+mod tests;

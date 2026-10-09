@@ -239,3 +239,6 @@ mod imp {
 }
 
 pub(crate) use imp::*;
+
+#[cfg(all(test, feature = "metrics"))]
+mod tests;
