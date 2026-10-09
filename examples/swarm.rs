@@ -24,7 +24,7 @@ struct Args {
     /// Loopback HTTP port; 0 selects an available port.
     #[arg(long, default_value_t = 8088)]
     port: u16,
-    /// Number of independent replicas (2–20).
+    /// Number of drones (2–20), plus one command-center replica.
     #[arg(long, default_value_t = 12)]
     nodes: usize,
     /// Accelerate application time only (1–20); protocol timers stay real.

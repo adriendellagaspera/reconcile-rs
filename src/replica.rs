@@ -147,6 +147,8 @@ pub(crate) struct Inner<K, V> {
     framing: crate::replicated_map::FramingConfig,
     /// Bounded incomplete logical-message state, populated only after inbound admission.
     reassembler: Arc<Mutex<gossip::framing::Reassembler>>,
+    /// Capability cache and bounded sender-side payloads for selective fragment recovery.
+    recovery: Arc<Mutex<recovery::RecoveryBook>>,
     /// Peers with a bulk transfer in flight: at most one paced dump per peer, or a re-firing
     /// reconcile timer would re-dump ranges still in transit. Cleared by an RAII guard.
     bulk_in_flight: Arc<RwLock<HashSet<SocketAddr>>>,
@@ -306,11 +308,11 @@ pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
     /// repair is ever pending per peer ([`pending_repairs`](Inner::pending_repairs)), so "an ack
     /// arrived at all" is everything its clearing needs to know.
     ConvergenceAck,
-    /// The one remaining reserved wire tag: never sent by this version, opaque
-    /// length-prefixed bytes on decode so a *future* version's real message at this tag still
-    /// decodes on *this* one — [`handle_messages`](Replica::handle_messages) ignores it rather
-    /// than failing the whole datagram, which is exactly what a tag past 6 does today. Consumes
-    /// the reservation the moment a real message shape is assigned to it.
+    /// Reserved extension envelope. Unknown payloads remain ignored; this version uses one
+    /// short opaque payload to advertise selective-fragment-recovery support without changing
+    /// the enum tag or strict outer wire version. Older peers already decode this length-prefixed
+    /// variant and ignore its bytes, so mixed-version convergence falls back to whole-message
+    /// anti-entropy retries.
     Reserved6(Vec<u8>),
 }
 
@@ -329,6 +331,8 @@ mod pacing;
 mod pending_dump;
 mod read;
 mod reconciliation;
+mod recovery;
+mod recovery_send;
 mod repair;
 mod run;
 mod write;
@@ -337,9 +341,16 @@ pub(crate) use construct::check_port_is_nonzero;
 pub(crate) use gc::version_hash;
 pub(crate) use inbound::{admit_inbound, InboundRejection};
 pub(crate) use membership::derive_local_net;
+pub(crate) use recovery::{
+    is_selective_recovery_capability, RecoveryBook, SELECTIVE_RECOVERY_CAPABILITY,
+};
 
 pub(crate) use framed_send::{
     send_control_batch_to, send_messages_paced, send_messages_to, send_to_retry, SendPorts,
+};
+pub(crate) use recovery_send::{
+    append_capability, complete_recovery, expire_recovery_state, retransmit_missing_to,
+    retry_idle_incomplete, send_recovery_control_to,
 };
 
 // Shared test helpers used by sibling test modules; production code remains in the modules above.

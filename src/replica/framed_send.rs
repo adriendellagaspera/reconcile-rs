@@ -8,6 +8,8 @@
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
+use parking_lot::Mutex;
+
 use serde::Serialize;
 use tracing::{debug, error, instrument, trace, warn};
 
@@ -16,14 +18,17 @@ use crate::replicated_map::FramingConfig;
 use crate::transport::Transport;
 use gossip::{auth, framing, replay};
 
+use super::recovery::RecoveryBook;
+use super::recovery_send::append_capability;
 use super::{Message, MAX_SENDTO_RETRIES};
 
-/// The four things every framed send needs.
+/// The outbound ports and bounded recovery state every framed send needs.
 pub(crate) struct SendPorts<'a, T: ?Sized> {
     pub(crate) transport: &'a T,
     pub(crate) authenticator: &'a auth::Authenticator,
     pub(crate) sender_counter: &'a replay::SenderCounter,
     pub(crate) framing: FramingConfig,
+    pub(crate) recovery: &'a Mutex<RecoveryBook>,
 }
 
 struct Pacer {
@@ -59,7 +64,7 @@ impl Pacer {
     }
 }
 
-async fn send_frame_to_retry<T: Transport + ?Sized>(
+pub(super) async fn send_frame_to_retry<T: Transport + ?Sized>(
     transport: &T,
     authenticator: &auth::Authenticator,
     sender_counter: &replay::SenderCounter,
@@ -163,8 +168,36 @@ async fn send_logical_payload<T: Transport + ?Sized>(
         return Ok(0);
     }
 
-    observability::record_fragmented_message();
     let id = framing::transfer_id(payload);
+    let retain_report = {
+        let now = Instant::now();
+        let mut recovery = ports.recovery.lock();
+        if recovery.supports(peer.ip(), now, ports.framing) {
+            Some(recovery.retain(peer.ip(), id, payload, now, ports.framing))
+        } else {
+            None
+        }
+    };
+    match retain_report {
+        Some(report) => {
+            observability::record_outbound_recovery_evictions("ttl", report.expired);
+            observability::record_outbound_recovery_evictions("capacity", report.evicted);
+            observability::record_outbound_recovery_state(report.transfers, report.bytes);
+            if !report.retained {
+                observability::record_selective_recovery_fallback("state_limit");
+            } else if report.skip_full_send {
+                trace!(
+                    "deferring duplicate full transfer to {peer}; selective recovery can fill gaps"
+                );
+                return Ok(0);
+            } else if report.fallback_full_retry {
+                observability::record_selective_recovery_fallback("timed_full_retry");
+            }
+        }
+        None => observability::record_selective_recovery_fallback("unsupported_peer"),
+    }
+
+    observability::record_fragmented_message();
     let mut total_sent = 0usize;
     for (index, chunk) in payload.chunks(fragment_capacity).enumerate() {
         let offset = index * fragment_capacity;
@@ -202,11 +235,13 @@ pub(crate) async fn send_to_retry<T: Transport + ?Sized>(
     payload: &[u8],
     target: SocketAddr,
 ) -> std::io::Result<usize> {
+    let recovery = Mutex::new(RecoveryBook::default());
     let ports = SendPorts {
         transport,
         authenticator,
         sender_counter,
         framing,
+        recovery: &recovery,
     };
     let mut frame_buf = Vec::new();
     let mut pacer = Pacer::new(None);
@@ -247,6 +282,7 @@ pub(crate) async fn send_control_batch_to<K, V, P, T>(
     T: Transport + ?Sized,
 {
     send_buf.clear();
+    append_capability::<K, V, P>(ports.framing, send_buf);
     for message in messages {
         gossip::bincode::encode(message, send_buf)
             .expect("serializing a protocol Message into an in-memory buffer cannot fail");
@@ -288,6 +324,7 @@ pub(crate) async fn send_messages_paced<K, V, P, T>(
     let mut frame_buf = Vec::new();
     let mut pacer = Pacer::new(rate);
     send_buf.clear();
+    append_capability::<K, V, P>(ports.framing, send_buf);
 
     for message in messages {
         let batch_len = send_buf.len();

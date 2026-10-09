@@ -15,9 +15,11 @@
 mod framing;
 mod snapshot;
 pub(crate) use framing::{
-    record_fragment_received, record_fragment_sent, record_fragmented_message,
+    record_completion_ack, record_fragment_received, record_fragment_sent,
+    record_fragmented_message, record_outbound_recovery_evictions, record_outbound_recovery_state,
     record_reassembly_bytes, record_reassembly_completed, record_reassembly_duplicate,
-    record_reassembly_evictions, record_reassembly_rejection,
+    record_reassembly_evictions, record_reassembly_rejection, record_selective_recovery_fallback,
+    record_selective_recovery_request, record_selective_retransmit,
 };
 pub(crate) use snapshot::{
     record_snapshot_cleanup_failure, record_snapshot_delta, record_snapshot_full,

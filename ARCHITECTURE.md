@@ -127,10 +127,10 @@ Authentication and replay validation happen before wire messages reach reconcili
 Malformed or unauthenticated network input must not mutate domain state.
 
 ### 3.1 UDP application framing
-`gossip` owns one application frame per authenticated datagram: complete logical payload or fragment.
-The default 1200-byte budget includes auth/version overhead, avoiding normal IP fragmentation.
-Receive order is auth → version → topology admission → replay → reassembly → protocol decode; only complete payloads reach reconciliation.
-Content-derived transfer ids permit fragment reuse across retransmission; incomplete state is bounded/TTL-evicted as specified in [`SECURITY.md`](SECURITY.md), and framing semantics are covered by the strict wire version.
+`gossip` owns one application frame per authenticated datagram: complete logical payload, fragment, or capability-gated selective-recovery control. The default 1200-byte budget includes auth/version overhead, avoiding normal IP fragmentation.
+Receive order is auth → version → topology admission → replay → recovery/reassembly → protocol decode; only complete logical payloads reach reconciliation. Missing-range reports therefore cannot allocate or trigger retransmission before the common ingress gate.
+Content-derived transfer ids permit fragment reuse across retransmission. New peers advertise selective recovery through the already-reserved opaque protocol tag; older same-version peers ignore that advertisement, and recovery controls are never sent to a peer that has not advertised support. Mixed deployments therefore retain whole-message anti-entropy fallback without weakening the strict outer wire version.
+Receiver and sender state are independently count/byte/TTL bounded ([`SECURITY.md`](SECURITY.md)). An idle incomplete transfer can also request missing byte ranges without seeing the terminal fragment: a periodic task scans bounded reassembly state, schedules at most 32 authenticated NACKs per tick, and rate-limits each transfer to one request per 3 seconds after 1 second idle. This task runs for authoritative and read replicas; full anti-entropy remains the fallback. For an identical retained content-addressed transfer, the sender defers redundant whole-message retransmission; the next anti-entropy attempt may send the complete transfer again after a 12-second minimum interval. This guarantees fallback without repeatedly racing the selective-control path.
 
 ## 4. Global invariants
 

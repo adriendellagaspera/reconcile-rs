@@ -1,73 +1,145 @@
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Arc,
 };
 
+use parking_lot::RwLock;
 use reconcile::{async_trait, InMemoryTransport, Transport};
+use serde::Serialize;
+
+use super::world::{PeerState, Point};
 
 pub fn address(id: usize) -> SocketAddr {
     SocketAddr::from((Ipv4Addr::new(127, 0, 0, (id + 1) as u8), 9000))
 }
 
+pub const DEFAULT_RANGE: f64 = 13.0;
+
+pub struct Topology {
+    pub positions: Vec<Point>,
+    pub peers: Vec<PeerState>,
+    pub blocked: Vec<bool>,
+    pub range: f64,
+    pub storm: bool,
+}
+
+impl Topology {
+    fn reason(&self, a: usize, b: usize) -> Option<&'static str> {
+        if a == b {
+            return Some("self");
+        }
+        if self.peers[a] == PeerState::Stopped || self.peers[b] == PeerState::Stopped {
+            return Some("stopped");
+        }
+        if self.peers[a] == PeerState::Offline || self.peers[b] == PeerState::Offline {
+            return Some("modem offline");
+        }
+        if self.blocked[a * self.peers.len() + b] {
+            return Some("manual cut");
+        }
+        if self.positions[a].distance(self.positions[b]) > self.range {
+            return Some("out of range");
+        }
+        // A synthetic weather front obstructs paths crossing the central channel.
+        // It models pairwise link outages, not an acoustic propagation model.
+        if self.storm && ((self.positions[a].x < 16.0) != (self.positions[b].x < 16.0)) {
+            return Some("weather front");
+        }
+        None
+    }
+}
+
+#[derive(Serialize)]
+pub struct PairLink {
+    pub a: usize,
+    pub b: usize,
+    pub enabled: bool,
+    pub manual_cut: bool,
+    pub reason: Option<&'static str>,
+    pub distance: f64,
+    pub bytes: u64,
+}
+
 pub struct Network {
-    pub partitioned: AtomicBool,
-    pub partition_drops: AtomicU64,
+    pub topology: RwLock<Topology>,
+    pub blocked_drops: AtomicU64,
     pub bytes: Vec<AtomicU64>,
     pub datagrams: AtomicU64,
     pub size: usize,
 }
 
 impl Network {
-    pub fn new(size: usize) -> Self {
+    pub fn new(positions: Vec<Point>) -> Self {
+        let size = positions.len();
         Self {
-            partitioned: AtomicBool::new(true),
-            partition_drops: AtomicU64::new(0),
+            topology: RwLock::new(Topology {
+                positions,
+                peers: vec![PeerState::Active; size],
+                blocked: vec![false; size * size],
+                range: DEFAULT_RANGE,
+                storm: false,
+            }),
+            blocked_drops: AtomicU64::new(0),
             bytes: (0..size * size).map(|_| AtomicU64::new(0)).collect(),
             datagrams: AtomicU64::new(0),
             size,
         }
     }
 
-    pub fn group(&self, id: usize) -> usize {
-        usize::from(id >= self.size / 2)
+    pub fn allowed(&self, a: usize, b: usize) -> bool {
+        self.topology.read().reason(a, b).is_none()
     }
 
-    pub fn allowed(&self, source: usize, destination: usize) -> bool {
-        self.route(source, destination)
-            && (!self.partitioned.load(Ordering::Relaxed)
-                || self.group(source) == self.group(destination))
-    }
-
-    pub fn route(&self, a: usize, b: usize) -> bool {
-        if a == b {
-            return false;
-        }
-        let (a, b) = (a.min(b), a.max(b));
-        let split = self.size / 2;
-        if self.group(a) == self.group(b) {
-            a == if a < split { 0 } else { split }
-        } else {
-            a == 0 && b == split
-        }
-    }
-
-    pub fn links(&self) -> Vec<serde_json::Value> {
+    pub fn links(&self) -> Vec<PairLink> {
+        let topology = self.topology.read();
         (0..self.size)
-            .flat_map(|a| {
-                ((a + 1)..self.size).map(move |b| {
-                    serde_json::json!({"a": a, "b": b, "enabled": self.allowed(a, b),
-                "bytes": self.bytes[a * self.size + b].load(Ordering::Relaxed)
-                    + self.bytes[b * self.size + a].load(Ordering::Relaxed)})
-                })
+            .flat_map(|a| ((a + 1)..self.size).map(move |b| (a, b)))
+            .map(|(a, b)| {
+                let reason = topology.reason(a, b);
+                PairLink {
+                    a,
+                    b,
+                    enabled: reason.is_none(),
+                    manual_cut: topology.blocked[a * self.size + b],
+                    reason,
+                    distance: topology.positions[a].distance(topology.positions[b]),
+                    bytes: self.bytes[a * self.size + b].load(Ordering::Relaxed)
+                        + self.bytes[b * self.size + a].load(Ordering::Relaxed),
+                }
             })
             .collect()
     }
+
+    pub fn components(&self) -> Vec<Vec<usize>> {
+        let topology = self.topology.read();
+        let mut seen = vec![false; self.size];
+        let mut components = Vec::new();
+        for root in 0..self.size {
+            if seen[root] {
+                continue;
+            }
+            let mut members = vec![root];
+            seen[root] = true;
+            let mut cursor = 0;
+            while cursor < members.len() {
+                for (peer, visited) in seen.iter_mut().enumerate() {
+                    if !*visited && topology.reason(members[cursor], peer).is_none() {
+                        *visited = true;
+                        members.push(peer);
+                    }
+                }
+                cursor += 1;
+            }
+            components.push(members);
+        }
+        components
+    }
 }
 
-// Inside Netem: topology is checked when a delayed packet reaches the fabric.
-// Datagrams already admitted before a partition may still be consumed afterward.
+// Inside Netem: availability is checked when a delayed packet reaches the fabric.
+// Already queued ingress is rechecked before a restarted node can consume it.
 pub struct PartitionGate {
     pub inner: InMemoryTransport,
     pub source: usize,
@@ -77,18 +149,23 @@ pub struct PartitionGate {
 #[async_trait]
 impl Transport for PartitionGate {
     async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.inner.recv_from(buf).await
+        loop {
+            let (size, source) = self.inner.recv_from(buf).await?;
+            if let Some(id) = (0..self.network.size).find(|&id| address(id) == source) {
+                if self.network.allowed(id, self.source) {
+                    return Ok((size, source));
+                }
+                self.network.blocked_drops.fetch_add(1, Ordering::Relaxed);
+            }
+        }
     }
 
     async fn send_to(&self, buf: &[u8], destination: &SocketAddr) -> io::Result<usize> {
         let Some(id) = (0..self.network.size).find(|&id| address(id) == *destination) else {
             return Ok(buf.len()); // Discovery probes to unbound addresses, like UDP.
         };
-        if !self.network.route(self.source, id) {
-            return Ok(buf.len());
-        }
         if !self.network.allowed(self.source, id) {
-            self.network.partition_drops.fetch_add(1, Ordering::Relaxed);
+            self.network.blocked_drops.fetch_add(1, Ordering::Relaxed);
             return Ok(buf.len());
         }
         self.inner.send_to(buf, destination).await?;

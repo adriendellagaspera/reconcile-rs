@@ -13,17 +13,31 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use super::transport::{address, Network, PartitionGate};
-use super::world::{terrain, Observation, World, HEIGHT, WIDTH};
+use super::world::{terrain, Observation, PeerState, World, COMMAND_POSITION, HEIGHT, WIDTH};
 
 pub struct Cluster {
     pub nodes: Vec<ReplicatedMap<String, Observation>>,
     network: Arc<Network>,
     losses: Vec<Impairments>,
     cancel: CancellationToken,
-    tasks: Vec<JoinHandle<()>>,
+    runtimes: Vec<Runtime>,
     pub loss: f64,
     pub datagram_budget: usize,
     pub world: World,
+}
+
+struct Runtime {
+    cancel: CancellationToken,
+    tasks: Vec<JoinHandle<()>>,
+}
+
+impl Runtime {
+    fn stop(&self) {
+        self.cancel.cancel();
+        for task in &self.tasks {
+            task.abort();
+        }
+    }
 }
 
 impl Cluster {
@@ -41,12 +55,15 @@ impl Cluster {
             return Err(io::Error::other("node count must be between 2 and 20"));
         }
         let fabric = InMemoryNetwork::new();
-        let network = Arc::new(Network::new(size));
+        let world = World::new(size);
+        let mut positions = world.positions.clone();
+        positions.push(COMMAND_POSITION);
+        let network = Arc::new(Network::new(positions));
         let cancel = CancellationToken::new();
         let mut nodes = Vec::new();
         let mut losses = Vec::new();
-        let mut tasks = Vec::new();
-        for id in 0..size {
+        let mut runtimes = Vec::new();
+        for id in 0..=size {
             let addr = address(id);
             let gate = PartitionGate {
                 inner: fabric.bind(addr),
@@ -75,31 +92,7 @@ impl Cluster {
                 .with_reconcile_interval(Duration::from_secs(2));
             let node = ReplicatedMap::new_with_transport(config, Arc::new(transport))
                 .map_err(io::Error::other)?;
-            for peer in 0..size {
-                if network.route(id, peer) {
-                    node.seed_peer(address(peer).ip());
-                }
-            }
-            let running_node = node.clone();
-            let token = cancel.clone();
-            tasks.push(tokio::spawn(async move {
-                running_node.run(token).await;
-            }));
-            // The built-in sweep is idle-driven. Sustained multi-peer traffic must not starve
-            // anti-entropy, so the application also schedules the public round API.
-            let round_node = node.clone();
-            let token = cancel.clone();
-            tasks.push(tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(id as u64 * 80)).await;
-                let mut rounds = tokio::time::interval(Duration::from_secs(2));
-                rounds.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                loop {
-                    tokio::select! {
-                        _ = token.cancelled() => break,
-                        _ = rounds.tick() => round_node.start_reconciliation().await,
-                    }
-                }
-            }));
+            runtimes.push(Self::spawn_runtime(&node, id, cancel.child_token()));
             nodes.push(node);
         }
         let mut cluster = Self {
@@ -107,27 +100,117 @@ impl Cluster {
             network,
             losses,
             cancel,
-            tasks,
+            runtimes,
             loss,
             datagram_budget,
-            world: World::new(size),
+            world,
         };
+        cluster.refresh_network();
         cluster.observe();
         Ok(cluster)
     }
 
-    pub fn partition(&self, enabled: bool) {
-        self.network.partitioned.store(enabled, Ordering::Relaxed);
-        // Re-seed on healing if routing peers were aged out during isolation.
-        if !enabled {
-            for (id, node) in self.nodes.iter().enumerate() {
-                for peer in 0..self.nodes.len() {
-                    if self.network.route(id, peer) {
-                        node.seed_peer(address(peer).ip());
-                    }
+    fn spawn_runtime(
+        node: &ReplicatedMap<String, Observation>,
+        id: usize,
+        cancel: CancellationToken,
+    ) -> Runtime {
+        let running = node.clone();
+        let token = cancel.clone();
+        let run = tokio::spawn(async move {
+            running.run(token).await;
+        });
+        let rounds = node.clone();
+        let token = cancel.clone();
+        let sweep = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(id as u64 * 80)).await;
+            let mut timer = tokio::time::interval(Duration::from_secs(2));
+            timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    _ = token.cancelled() => break,
+                    _ = timer.tick() => rounds.start_reconciliation().await,
+                }
+            }
+        });
+        Runtime {
+            cancel,
+            tasks: vec![run, sweep],
+        }
+    }
+
+    pub fn center(&self) -> usize {
+        self.world.positions.len()
+    }
+
+    fn refresh_network(&self) {
+        {
+            let mut topology = self.network.topology.write();
+            topology.positions[..self.center()].copy_from_slice(&self.world.positions);
+        }
+        // Newly reachable pairs may have aged out of gossip discovery during isolation.
+        for (id, node) in self.nodes.iter().enumerate() {
+            for peer in 0..self.nodes.len() {
+                if self.network.allowed(id, peer) {
+                    node.seed_peer(address(peer).ip());
                 }
             }
         }
+    }
+
+    pub fn partition(&self, enabled: bool) {
+        self.network.topology.write().storm = enabled;
+        self.refresh_network();
+    }
+
+    pub fn set_range(&self, range: f64) -> io::Result<()> {
+        if !range.is_finite() || !(1.0..=40.0).contains(&range) {
+            return Err(io::Error::other("range must be between 1 and 40 map units"));
+        }
+        self.network.topology.write().range = range;
+        self.refresh_network();
+        Ok(())
+    }
+
+    pub fn toggle_link(&self, a: usize, b: usize) -> io::Result<()> {
+        if a >= self.nodes.len() || b >= self.nodes.len() || a == b {
+            return Err(io::Error::other("invalid peer pair"));
+        }
+        let mut topology = self.network.topology.write();
+        let blocked = !topology.blocked[a * self.nodes.len() + b];
+        topology.blocked[a * self.nodes.len() + b] = blocked;
+        topology.blocked[b * self.nodes.len() + a] = blocked;
+        drop(topology);
+        self.refresh_network();
+        Ok(())
+    }
+
+    pub fn set_peer(&mut self, id: usize, state: PeerState) -> io::Result<()> {
+        if id >= self.nodes.len() {
+            return Err(io::Error::other("invalid peer"));
+        }
+        let previous = self.network.topology.read().peers[id];
+        self.network.topology.write().peers[id] = state;
+        if state == PeerState::Stopped {
+            self.runtimes[id].stop();
+        } else if previous == PeerState::Stopped {
+            self.runtimes[id] = Self::spawn_runtime(&self.nodes[id], id, self.cancel.child_token());
+        }
+        self.refresh_network();
+        Ok(())
+    }
+
+    pub fn heal(&mut self) {
+        for id in 0..self.nodes.len() {
+            self.set_peer(id, PeerState::Active).unwrap();
+        }
+        {
+            let mut topology = self.network.topology.write();
+            topology.storm = false;
+            topology.blocked.fill(false);
+            topology.range = 40.0;
+        }
+        self.refresh_network();
     }
 
     pub fn start_demo(&mut self) {
@@ -143,15 +226,28 @@ impl Cluster {
         self.world.ticks += 1;
         if self.world.scripted {
             match self.world.ticks {
-                60 => self.partition(true),
-                120 => self.world.reveal_contact(),
-                240 => self.partition(false),
+                60 => {
+                    self.partition(true);
+                    self.set_peer(self.center(), PeerState::Offline).unwrap();
+                }
+                120 => {
+                    self.set_peer(0, PeerState::Offline).unwrap();
+                    self.world.reveal_contact();
+                }
+                180 => {
+                    self.set_peer(0, PeerState::Active).unwrap();
+                    self.set_peer(self.center() / 2, PeerState::Stopped)
+                        .unwrap();
+                }
+                240 => self.heal(),
                 _ => (),
             }
         }
         // Stop new writes while repairing; exact convergence needs a quiescent interval.
         if !self.world.scripted || self.world.ticks < 240 {
-            self.world.move_vehicles();
+            let peers = self.network.topology.read().peers.clone();
+            self.world.move_active(&peers);
+            self.refresh_network();
             self.observe();
         }
         if self.world.scripted
@@ -163,7 +259,11 @@ impl Cluster {
     }
 
     pub fn observe(&mut self) {
+        let peers = self.network.topology.read().peers.clone();
         for (id, position) in self.world.positions.iter().enumerate() {
+            if peers[id] == PeerState::Stopped {
+                continue;
+            }
             let cx = position.x as usize;
             let cy = position.y as usize;
             let radius = 3;
@@ -189,13 +289,24 @@ impl Cluster {
                 }
             }
             let sector = (cy / 5) * (WIDTH / 4) + cx / 4;
-            let key = format!("sector/{sector:02}");
+            let key = format!("sector/{sector:02}/{id:02}");
             if !self.nodes[id].contains_key(&key) {
                 updates.push((
                     key,
                     Observation::Sector {
                         id: sector,
                         scanned: self.world.ticks,
+                    },
+                ));
+            }
+            if self.world.ticks % 4 == 0 {
+                updates.push((
+                    format!("vehicle/{id:02}"),
+                    Observation::Vehicle {
+                        position: *position,
+                        seen: self.world.ticks,
+                        source: id,
+                        battery: 100 - (self.world.ticks / 30).min(70) as u8,
                     },
                 ));
             }
@@ -207,7 +318,7 @@ impl Cluster {
                 // One update per simulated second; observations are not fusion estimates.
                 if self.world.ticks % 2 == 0 {
                     updates.push((
-                        "contact/01".into(),
+                        format!("contact/01/{id:02}"),
                         Observation::Contact {
                             position: contact,
                             seen: self.world.ticks,
@@ -258,11 +369,10 @@ impl Cluster {
                     .collect()
             })
             .collect();
-        let group_agreement: Vec<_> = (0..2)
-            .map(|group| {
-                let members: Vec<_> = (0..self.nodes.len())
-                    .filter(|&n| self.network.group(n) == group)
-                    .collect();
+        let components = self.network.components();
+        let group_agreement: Vec<_> = components
+            .iter()
+            .map(|members| {
                 let union: BTreeSet<_> = members
                     .iter()
                     .flat_map(|&n| snapshots[n].iter().map(|(k, _)| k.clone()))
@@ -275,20 +385,27 @@ impl Cluster {
                             .all(|&n| snapshots[n].get(*k) == snapshots[members[0]].get(*k))
                     })
                     .count();
-                serde_json::json!({"group": group, "keys": union.len(), "same": same})
+                serde_json::json!({ "members": members, "keys": union.len(), "same": same })
             })
             .collect();
+        let topology = self.network.topology.read();
+        let positions = topology.positions.clone();
+        let peer_states = topology.peers.clone();
+        let storm = topology.storm;
+        let range = topology.range;
+        drop(topology);
         serde_json::json!({
-            "partitioned": self.network.partitioned.load(Ordering::Relaxed), "loss": self.loss,
+            "partitioned": components.len() > 1, "loss": self.loss,
+            "center": self.center(), "peer_states": peer_states, "storm": storm, "range": range,
             "datagram_budget": self.datagram_budget,
             "nodes": entries, "union_keys": keys.len(), "divergent_keys": divergent,
             "loss_offered": self.losses.iter().map(Impairments::offered).sum::<u64>(),
             "loss_dropped": self.losses.iter().map(Impairments::dropped).sum::<u64>(),
-            "partition_dropped": self.network.partition_drops.load(Ordering::Relaxed),
+            "partition_dropped": self.network.blocked_drops.load(Ordering::Relaxed),
             "delivered_bytes": self.network.bytes.iter().map(|b| b.load(Ordering::Relaxed)).sum::<u64>(),
             "delivered_datagrams": self.network.datagrams.load(Ordering::Relaxed),
             "links": self.network.links(), "groups": group_agreement,
-            "positions": self.world.positions, "truth_contact": self.world.contact(),
+            "positions": positions, "truth_contact": self.world.contact(),
             "truth_map": (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| terrain(x, y))).collect::<Vec<_>>(),
             "ticks": self.world.ticks, "seconds": self.world.seconds(), "playing": self.world.playing,
             "scripted": self.world.scripted, "phase": self.world.phase(divergent == 0),
@@ -301,8 +418,8 @@ impl Cluster {
 impl Drop for Cluster {
     fn drop(&mut self) {
         self.cancel.cancel();
-        for task in &self.tasks {
-            task.abort();
+        for runtime in &self.runtimes {
+            runtime.stop();
         }
     }
 }

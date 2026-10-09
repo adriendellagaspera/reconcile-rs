@@ -8,7 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
 
 use super::cluster::Cluster;
-use super::world::STEP_SECONDS;
+use super::world::{PeerState, STEP_SECONDS};
 
 pub async fn serve(cluster: Cluster, port: u16, speed: f64) -> io::Result<()> {
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
@@ -52,6 +52,11 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
             "text/javascript; charset=utf-8",
             include_str!("app.js").to_string(),
         ),
+        ("GET", "/knowledge.js") => (
+            "200 OK",
+            "text/javascript; charset=utf-8",
+            include_str!("knowledge.js").to_string(),
+        ),
         ("GET", "/state") => (
             "200 OK",
             "application/json",
@@ -60,17 +65,22 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
         (
             "POST",
             action @ ("/heal" | "/partition" | "/observe" | "/reset" | "/play" | "/pause" | "/demo"
-            | "/contact"),
+            | "/contact" | "/weather"),
         ) => {
             let mut cluster = shared.lock();
             match action {
                 "/heal" => {
                     cluster.world.scripted = false;
-                    cluster.partition(false);
+                    cluster.heal();
                 }
                 "/partition" => {
                     cluster.world.scripted = false;
                     cluster.partition(true);
+                }
+                "/weather" => {
+                    cluster.world.scripted = false;
+                    let storm = cluster.state()["storm"].as_bool().unwrap();
+                    cluster.partition(!storm);
                 }
                 "/observe" => {
                     cluster.world.scripted = false;
@@ -86,7 +96,7 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
                 "/reset" | "/demo" => {
                     *cluster = Cluster::with_datagram_budget(
                         cluster.loss,
-                        cluster.nodes.len(),
+                        cluster.center(),
                         cluster.datagram_budget,
                     )?;
                     if action == "/demo" {
@@ -97,10 +107,44 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
             }
             ("200 OK", "application/json", cluster.state().to_string())
         }
+        ("POST", action)
+            if action.starts_with("/peer/")
+                || action.starts_with("/link/")
+                || action.starts_with("/range/") =>
+        {
+            let mut cluster = shared.lock();
+            let result = control(&mut cluster, action);
+            match result {
+                Ok(()) => {
+                    cluster.world.scripted = false;
+                    ("200 OK", "application/json", cluster.state().to_string())
+                }
+                Err(error) => ("400 Bad Request", "text/plain", error.to_string()),
+            }
+        }
         _ => ("404 Not Found", "text/plain", "Not found".into()),
     };
     let response = format!("HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{body}", body.len());
     socket.write_all(response.as_bytes()).await
+}
+
+fn control(cluster: &mut Cluster, path: &str) -> io::Result<()> {
+    let parts: Vec<_> = path.trim_start_matches('/').split('/').collect();
+    let index = |value: &str| value.parse::<usize>().map_err(io::Error::other);
+    match parts.as_slice() {
+        ["peer", id, action] => {
+            let state = match *action {
+                "online" => PeerState::Active,
+                "offline" => PeerState::Offline,
+                "stop" => PeerState::Stopped,
+                _ => return Err(io::Error::other("unknown peer action")),
+            };
+            cluster.set_peer(index(id)?, state)
+        }
+        ["link", a, b, "toggle"] => cluster.toggle_link(index(a)?, index(b)?),
+        ["range", value] => cluster.set_range(value.parse().map_err(io::Error::other)?),
+        _ => Err(io::Error::other("invalid control")),
+    }
 }
 
 async fn request(socket: &mut TcpStream) -> io::Result<(String, String)> {

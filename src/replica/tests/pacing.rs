@@ -37,10 +37,12 @@ async fn time_send(messages: &[Msg], rate: Option<usize>) -> Duration {
     let transport = UdpTransport::new(socket);
     let authenticator = Authenticator::new(None, false).unwrap();
     let sender_counter = gossip::replay::SenderCounter::new();
+    let recovery = parking_lot::Mutex::new(crate::replica::RecoveryBook::default());
     let ports = SendPorts {
         transport: &transport,
         authenticator: &authenticator,
         sender_counter: &sender_counter,
+        recovery: &recovery,
         framing: crate::replicated_map::FramingConfig::default(),
     };
     let peer: SocketAddr = "127.0.0.1:9".parse().unwrap(); // discard port
@@ -135,11 +137,14 @@ async fn message_above_logical_limit_is_dropped_without_harming_siblings() {
 
         let authenticator = Authenticator::new(None, false).unwrap();
         let sender_counter = gossip::replay::SenderCounter::new();
+        let recovery = parking_lot::Mutex::new(crate::replica::RecoveryBook::default());
         let ports = SendPorts {
             transport: &sender_transport,
             authenticator: &authenticator,
             sender_counter: &sender_counter,
+            recovery: &recovery,
             framing: crate::replicated_map::FramingConfig::default()
+                .with_selective_recovery(false)
                 .with_max_logical_message_size(1024),
         };
         let mut send_buf = Vec::new();
@@ -206,10 +211,12 @@ async fn logical_limit_splits_valid_small_messages_instead_of_dropping_the_batch
     let receiver_transport = net.bind(receiver_addr);
     let authenticator = Authenticator::new(None, false).unwrap();
     let sender_counter = gossip::replay::SenderCounter::new();
+    let recovery = parking_lot::Mutex::new(crate::replica::RecoveryBook::default());
     let ports = SendPorts {
         transport: &sender_transport,
         authenticator: &authenticator,
         sender_counter: &sender_counter,
+        recovery: &recovery,
         framing: crate::replicated_map::FramingConfig::default().with_max_logical_message_size(600),
     };
     let messages = bulk_updates(2, 400);
@@ -258,11 +265,13 @@ async fn oversized_refinement_batch_is_split_without_dropping_ranges() {
     let receiver_transport = net.bind(receiver_addr);
     let authenticator = Authenticator::new(None, false).unwrap();
     let sender_counter = gossip::replay::SenderCounter::new();
-    let framing = crate::replicated_map::FramingConfig::default();
+    let recovery = parking_lot::Mutex::new(crate::replica::RecoveryBook::default());
+    let framing = crate::replicated_map::FramingConfig::default().with_selective_recovery(false);
     let ports = SendPorts {
         transport: &sender_transport,
         authenticator: &authenticator,
         sender_counter: &sender_counter,
+        recovery: &recovery,
         framing,
     };
     let mut send_buf = Vec::new();
@@ -351,10 +360,12 @@ async fn count_in_memory_sends(
     let receiver_transport = net.bind(receiver_addr);
     let authenticator = Authenticator::new(None, false).unwrap();
     let sender_counter = gossip::replay::SenderCounter::new();
+    let recovery = parking_lot::Mutex::new(crate::replica::RecoveryBook::default());
     let ports = SendPorts {
         transport: &sender_transport,
         authenticator: &authenticator,
         sender_counter: &sender_counter,
+        recovery: &recovery,
         framing,
     };
     let mut send_buf = Vec::new();
@@ -376,7 +387,7 @@ async fn count_in_memory_sends(
 #[tokio::test]
 async fn exact_logical_and_fragment_count_limits_are_sendable() {
     let authenticator = Authenticator::new(None, false).unwrap();
-    let framing = crate::replicated_map::FramingConfig::default();
+    let framing = crate::replicated_map::FramingConfig::default().with_selective_recovery(false);
     let complete_capacity = gossip::framing::complete_payload_capacity(
         framing.datagram_payload_budget,
         authenticator.overhead(),

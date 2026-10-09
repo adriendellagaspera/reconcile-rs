@@ -116,6 +116,7 @@ pub struct ReadReplicaMap<K, V> {
     reconcile_interval: Arc<RwLock<Duration>>,
     framing: crate::replicated_map::FramingConfig,
     reassembler: Arc<Mutex<gossip::framing::Reassembler>>,
+    recovery: Arc<Mutex<crate::replica::RecoveryBook>>,
 }
 
 impl<K, V> Clone for ReadReplicaMap<K, V> {
@@ -140,6 +141,7 @@ impl<K, V> Clone for ReadReplicaMap<K, V> {
             reconcile_interval: self.reconcile_interval.clone(),
             framing: self.framing,
             reassembler: self.reassembler.clone(),
+            recovery: self.recovery.clone(),
         }
     }
 }
@@ -309,6 +311,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
             reassembler: Arc::new(Mutex::new(gossip::framing::Reassembler::new(
                 config.framing.reassembly_limits(),
             ))),
+            recovery: Arc::new(Mutex::new(crate::replica::RecoveryBook::default())),
         })
     }
 

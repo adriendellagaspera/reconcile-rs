@@ -41,6 +41,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             authenticator: &self.authenticator,
             sender_counter: &self.sender_counter,
             framing: self.framing,
+            recovery: &self.recovery,
         }
     }
 
@@ -116,6 +117,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         let sender_counter = Arc::clone(&self.sender_counter);
         let rate = self.bulk_send_rate;
         let framing = self.framing;
+        let recovery = Arc::clone(&self.recovery);
         let map = Arc::clone(&self.map);
         let projection = Arc::clone(&self.projection);
         let pending_dumps = Arc::clone(&self.pending_dumps);
@@ -130,6 +132,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 authenticator: &authenticator,
                 sender_counter: &sender_counter,
                 framing,
+                recovery: &recovery,
             };
             let mut send_buf = Vec::new();
             let mut messages = messages;

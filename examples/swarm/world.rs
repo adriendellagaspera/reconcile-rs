@@ -3,6 +3,15 @@ use serde::{Deserialize, Serialize};
 pub const WIDTH: usize = 32;
 pub const HEIGHT: usize = 20;
 pub const STEP_SECONDS: f64 = 0.5;
+pub const COMMAND_POSITION: Point = Point { x: 16.0, y: 1.0 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PeerState {
+    Active,
+    Offline,
+    Stopped,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Point {
@@ -27,6 +36,12 @@ pub enum Observation {
         position: Point,
         seen: u64,
         source: usize,
+    },
+    Vehicle {
+        position: Point,
+        seen: u64,
+        source: usize,
+        battery: u8,
     },
     Sector {
         id: usize,
@@ -73,11 +88,18 @@ impl World {
     }
 
     pub fn move_vehicles(&mut self) {
+        self.move_active(&vec![PeerState::Active; self.positions.len()]);
+    }
+
+    pub fn move_active(&mut self, peers: &[PeerState]) {
         let half = self.positions.len() / 2;
         let count = self.positions.len();
         let seconds = self.seconds();
         let exploration = ((seconds - 30.0) / 30.0).clamp(0.0, 1.0);
         for (id, position) in self.positions.iter_mut().enumerate() {
+            if peers[id] == PeerState::Stopped {
+                continue;
+            }
             let group = usize::from(id >= half);
             let group_size = if group == 0 { half } else { count - half };
             let slot = if group == 0 { id } else { id - half };
@@ -136,10 +158,11 @@ impl World {
             return "Manual exploration";
         }
         match self.ticks {
-            0..60 => "1 / Connected exploration",
-            60..120 => "2 / Partition — two independent groups",
-            120..240 => "3 / Contact discovered in the western group",
-            240..300 => "4 / Network healed — observations frozen for repair",
+            0..60 => "1 / Explore — distance-based peer links",
+            60..120 => "2 / Weather front — command center disconnected",
+            120..180 => "3 / G1 modem offline — local discoveries continue",
+            180..240 => "3 / G1 reconnects — G7 halted with state retained",
+            240..300 => "4 / All peers restored — observations frozen for repair",
             _ if converged => "5 / Converged — every dated entry agrees",
             _ => "4 / Waiting for actual convergence",
         }
