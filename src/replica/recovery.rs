@@ -131,14 +131,20 @@ impl RecoveryBook {
             let Some(oldest) = self.oldest(Some(peer)) else {
                 return self.retain_report(false, expired, evicted, false, false);
             };
-            self.remove(oldest);
+            // Eviction must make progress; do not spin on inconsistent state.
+            if self.remove(oldest).is_none() {
+                return self.retain_report(false, expired, evicted, false, false);
+            }
             evicted += 1;
         }
         while self.outbound.len() >= cfg.max_total_outbound_recovery_transfers {
             let Some(oldest) = self.oldest(None) else {
                 return self.retain_report(false, expired, evicted, false, false);
             };
-            self.remove(oldest);
+            // Eviction must make progress; do not spin on inconsistent state.
+            if self.remove(oldest).is_none() {
+                return self.retain_report(false, expired, evicted, false, false);
+            }
             evicted += 1;
         }
         while self.peer_bytes(peer).saturating_add(payload.len())
@@ -147,7 +153,10 @@ impl RecoveryBook {
             let Some(oldest) = self.oldest(Some(peer)) else {
                 return self.retain_report(false, expired, evicted, false, false);
             };
-            self.remove(oldest);
+            // Eviction must make progress; do not spin on inconsistent state.
+            if self.remove(oldest).is_none() {
+                return self.retain_report(false, expired, evicted, false, false);
+            }
             evicted += 1;
         }
         while self.total_bytes.saturating_add(payload.len()) > cfg.max_total_outbound_recovery_bytes
@@ -155,7 +164,10 @@ impl RecoveryBook {
             let Some(oldest) = self.oldest(None) else {
                 return self.retain_report(false, expired, evicted, false, false);
             };
-            self.remove(oldest);
+            // Eviction must make progress; do not spin on inconsistent state.
+            if self.remove(oldest).is_none() {
+                return self.retain_report(false, expired, evicted, false, false);
+            }
             evicted += 1;
         }
 

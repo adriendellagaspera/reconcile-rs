@@ -320,7 +320,11 @@ impl Reassembler {
         max_ranges: usize,
         max_reports: usize,
     ) -> Vec<MissingRequest> {
-        if max_ranges == 0 || max_reports == 0 {
+        // Each independent zero budget is a cheap exit and a separate invariant.
+        if max_ranges == 0 {
+            return Vec::new();
+        }
+        if max_reports == 0 {
             return Vec::new();
         }
         // Caller expires state through the metrics-aware reassembly gate.

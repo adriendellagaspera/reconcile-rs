@@ -40,6 +40,12 @@ fn fragmented_send_reports_state_limit_only_if_retention_actually_fails() {
     let recorder = DebuggingRecorder::new();
     let snapshot = recorder.snapshotter();
     ::metrics::with_local_recorder(&recorder, || {
+        // Wrong metric with matching reason and right metric with wrong reason
+        // must never contribute to the state_limit fallback count.
+        ::metrics::counter!("issue286_unrelated_fallback_metric", "reason" => "state_limit")
+            .increment(11);
+        ::metrics::counter!(names::SELECTIVE_RECOVERY_FALLBACKS_TOTAL, "reason" => "unrelated")
+            .increment(7);
         runtime.block_on(async {
             let network = InMemoryNetwork::new();
             let source: SocketAddr = "127.20.11.1:9286".parse().unwrap();

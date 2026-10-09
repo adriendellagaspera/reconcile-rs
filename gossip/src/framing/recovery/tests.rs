@@ -122,6 +122,25 @@ fn incomplete_transfer_without_terminal_reports_missing_after_idle_and_survives_
 }
 
 #[test]
+fn empty_missing_report_is_valid_at_exact_header_length() {
+    let id = [0x68; 32];
+    let mut frame = Vec::new();
+    write_missing_report(id, &[], &mut frame).unwrap();
+    assert_eq!(frame.len(), MISSING_REPORT_HEADER_LEN);
+    assert_eq!(
+        parse_recovery_control(&frame, 0).unwrap(),
+        Some(RecoveryControl::Missing {
+            transfer_id: id,
+            ranges: vec![],
+        })
+    );
+    assert_eq!(
+        parse_recovery_control(&frame[..MISSING_REPORT_HEADER_LEN - 1], 0),
+        Err(RecoveryControlError::Truncated)
+    );
+}
+
+#[test]
 fn completion_ack_round_trips() {
     let id = [9u8; 32];
     let mut frame = Vec::new();
