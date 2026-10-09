@@ -203,14 +203,14 @@ pub fn parse_recovery_control(
 
 fn validate_ranges(ranges: &[(u32, u32)]) -> Result<(), RecoveryControlError> {
     let mut previous_end = 0u32;
-    for (index, &(offset, len)) in ranges.iter().enumerate() {
+    for &(offset, len) in ranges {
         if len == 0 {
             return Err(RecoveryControlError::InvalidRange);
         }
         let end = offset
             .checked_add(len)
             .ok_or(RecoveryControlError::InvalidRange)?;
-        if index > 0 && offset < previous_end {
+        if offset < previous_end {
             return Err(RecoveryControlError::InvalidRange);
         }
         previous_end = end;
@@ -229,6 +229,9 @@ pub struct MissingRequest {
 }
 
 fn missing_ranges_for_transfer(transfer: &super::Transfer, max_ranges: usize) -> Vec<(u32, u32)> {
+    if max_ranges == 0 {
+        return Vec::new();
+    }
     let mut ranges = Vec::new();
     let mut cursor = 0usize;
     for (&offset, bytes) in &transfer.fragments {
@@ -240,7 +243,8 @@ fn missing_ranges_for_transfer(transfer: &super::Transfer, max_ranges: usize) ->
         }
         cursor = offset + bytes.len();
     }
-    if cursor < transfer.total_len && ranges.len() < max_ranges {
+    // An inner gap already returns at the exact limit; the remaining budget is positive.
+    if cursor < transfer.total_len {
         ranges.push((cursor as u32, (transfer.total_len - cursor) as u32));
     }
     ranges

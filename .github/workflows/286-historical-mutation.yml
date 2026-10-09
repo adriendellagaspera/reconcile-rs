@@ -1,0 +1,65 @@
+name: issue 286 historical mutation audit
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/286-historical-mutation.yml'
+      - 'src/replica/recovery.rs'
+      - 'src/replica/recovery/**'
+      - 'src/replica/recovery_send.rs'
+      - 'src/replica/recovery_send/**'
+      - 'src/observability/framing.rs'
+      - 'src/observability/framing/**'
+      - 'src/read_replica_map/**'
+      - 'gossip/src/framing/recovery.rs'
+      - 'gossip/src/framing/recovery/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-286-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      PROPTEST_RNG_SEED: '20260817'
+      RUSTFLAGS: '--cfg reconcile_internal_testing'
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants@27.1.0
+      - name: Reconstruct original pre-285 production diff
+        run: |
+          git diff f6addf452b59e58841e1a14d10c96336641005ff -- '*.rs' > /tmp/issue286-historical.diff
+          test -s /tmp/issue286-historical.diff
+      - name: Re-run historical mutants with metrics active
+        run: |
+          set +e
+          cargo mutants --workspace --features metrics \
+            --no-shuffle --in-diff /tmp/issue286-historical.diff \
+            --timeout 300 --jobs 2 --copy-target=false \
+            --shard ${{ matrix.shard }}/4 --sharding round-robin
+          status=$?
+          set -e
+          test -f mutants.out/outcomes.json
+          missed=$(jq -r '.missed' mutants.out/outcomes.json)
+          echo "Original #285 mutation candidates: shard ${{ matrix.shard }}/4, missed=$missed, exit=$status"
+          test "$missed" -eq 0
+          test "$status" -eq 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue286-historical-mutation-${{ matrix.shard }}
+          path: mutants.out

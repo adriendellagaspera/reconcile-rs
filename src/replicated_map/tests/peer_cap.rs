@@ -289,15 +289,14 @@ async fn replay_sender_cap_bounds_value_only_senders_outside_membership() {
     let task = tokio::spawn(store.clone().run(CancellationToken::new()));
     tokio::time::sleep(std::time::Duration::from_millis(25)).await;
 
-    for replica in &replicas {
-        replica.start_reconciliation().await;
-    }
-
-    for _ in 0..100 {
-        if store.engine.replay_filter_len() == 2 {
-            break;
+    // Retry authenticated probes until the independent replay cap is saturated.
+    // A single burst can be delayed under highly parallel mutation test baselines.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while store.engine.replay_filter_len() < 2 && std::time::Instant::now() < deadline {
+        for replica in &replicas {
+            replica.start_reconciliation().await;
         }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 

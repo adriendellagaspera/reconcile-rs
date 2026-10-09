@@ -374,3 +374,6 @@ pub(crate) async fn send_messages_paced<K, V, P, T>(
         }
     }
 }
+
+#[cfg(all(test, feature = "metrics"))]
+mod tests;
