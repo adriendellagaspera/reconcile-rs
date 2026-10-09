@@ -77,6 +77,8 @@ async fn concurrent_contact_updates_use_the_real_lww_order() {
         cluster.nodes[id].insert(
             key.clone(),
             Observation::Contact {
+                id: 1,
+                kind: super::super::world::ContactKind::Hostile,
                 position: Point {
                     x: 10.0 + id as f64,
                     y: 7.0,
@@ -194,7 +196,7 @@ fn scenario_geometry_is_repeatable_and_patrols_stay_in_water() {
         for point in &a.positions {
             assert!(point.x >= 0.0 && point.x < WIDTH as f64);
             assert!(point.y >= 0.0 && point.y < HEIGHT as f64);
-            assert!(!terrain(point.x as usize, point.y as usize));
+            assert!(!super::super::world::terrain_at(*point));
         }
     }
 }
@@ -227,7 +229,13 @@ async fn isolated_drone_keeps_working_and_exchanges_both_ways_on_return() {
     converged(&cluster).await;
     assert!(cluster.nodes[0].contains_key(&remote_key));
     for node in &cluster.nodes {
-        let Some(Observation::Contact { seen, .. }) = node.get_cloned(&isolated_contact) else {
+        let Some(Observation::Contact {
+            id: 1,
+            kind: super::super::world::ContactKind::Hostile,
+            seen,
+            ..
+        }) = node.get_cloned(&isolated_contact)
+        else {
             panic!("missing report")
         };
         assert_eq!(seen, 100, "reception must not refresh observation time");
@@ -308,6 +316,8 @@ async fn source_reports_coexist_and_center_has_no_omniscient_shortcut() {
         cluster.nodes[id].insert(
             format!("contact/01/{id:02}"),
             Observation::Contact {
+                id: 1,
+                kind: super::super::world::ContactKind::Hostile,
                 position: Point {
                     x: 10.0 + id as f64,
                     y: 7.0,
@@ -353,4 +363,106 @@ fn topology_is_pairwise_distance_based_and_cuts_are_symmetric() {
     assert!(network.allowed(0, 2));
     assert!(network.allowed(1, 2));
     assert_eq!(network.components().len(), 1);
+}
+
+#[tokio::test]
+async fn orders_wait_for_replication_and_acknowledgements_wait_for_return_path() {
+    let mut cluster = Cluster::new(0.0, 2).unwrap();
+    cluster.heal();
+    converged(&cluster).await;
+    cluster.set_peer(0, PeerState::Offline).unwrap();
+    cluster.issue_order(0, OrderAction::Hold).unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    cluster.advance();
+    assert!(!cluster.world.held[0]);
+    assert!(!cluster.nodes[0].contains_key(&"order/00".into()));
+    cluster.set_peer(0, PeerState::Active).unwrap();
+    converged(&cluster).await;
+    cluster.set_peer(0, PeerState::Offline).unwrap();
+    cluster.advance();
+    assert!(cluster.world.held[0]);
+    assert!(cluster.nodes[0].contains_key(&"order-ack/00".into()));
+    assert!(!cluster.nodes[cluster.center()].contains_key(&"order-ack/00".into()));
+    let ack = cluster.nodes[0].get_cloned(&"order-ack/00".into());
+    cluster.world.ticks += 1;
+    cluster.advance();
+    assert_eq!(ack, cluster.nodes[0].get_cloned(&"order-ack/00".into()));
+    cluster.heal();
+    converged(&cluster).await;
+    cluster.issue_order(0, OrderAction::Patrol).unwrap();
+    converged(&cluster).await;
+    cluster.advance();
+    assert!(!cluster.world.held[0]);
+    let position = cluster.world.positions[0];
+    cluster.world.playing = true;
+    cluster.advance();
+    assert_ne!(position, cluster.world.positions[0]);
+}
+
+#[tokio::test]
+async fn halted_drone_rejects_expired_orders_and_halted_center_cannot_issue() {
+    let mut cluster = Cluster::new(0.0, 2).unwrap();
+    cluster.heal();
+    cluster.set_peer(0, PeerState::Stopped).unwrap();
+    cluster.issue_order(0, OrderAction::Hold).unwrap();
+    cluster.world.ticks = 241;
+    cluster.advance();
+    assert!(!cluster.world.held[0]);
+    cluster.set_peer(0, PeerState::Active).unwrap();
+    converged(&cluster).await;
+    cluster.advance();
+    assert!(!cluster.world.held[0]);
+    assert!(matches!(
+        cluster.nodes[0].get_cloned(&"order-ack/00".into()),
+        Some(Observation::Acknowledgement { applied: false, .. })
+    ));
+    cluster
+        .set_peer(cluster.center(), PeerState::Stopped)
+        .unwrap();
+    assert!(cluster.issue_order(0, OrderAction::Scan).is_err());
+    assert!(cluster
+        .issue_order(cluster.center(), OrderAction::Scan)
+        .is_err());
+}
+
+#[tokio::test]
+async fn relayed_knowledge_does_not_mark_its_source_as_a_direct_neighbor() {
+    let mut cluster = Cluster::new(0.0, 3).unwrap();
+    cluster.heal();
+    cluster
+        .set_peer(cluster.center(), PeerState::Stopped)
+        .unwrap();
+    cluster.toggle_link(0, 2).unwrap();
+    cluster.nodes[2].insert("relayed".into(), Observation::Sector { id: 99, scanned: 0 });
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while !cluster.nodes[0].contains_key(&"relayed".into()) {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let direct = cluster.network.direct_peers(0);
+    assert!(direct.iter().any(|p| p.peer == 1));
+    assert!(!direct.iter().any(|p| p.peer == 2));
+}
+
+#[test]
+fn typed_contacts_and_fine_coast_are_repeatable_and_stay_in_water() {
+    let mut world = World::new(12);
+    let other = World::new(12);
+    assert_eq!(
+        serde_json::to_value(world.contacts()).unwrap(),
+        serde_json::to_value(other.contacts()).unwrap()
+    );
+    assert_eq!(world.contacts().len(), 5);
+    for ticks in 0..1000 {
+        world.ticks = ticks;
+        for contact in world.contacts() {
+            assert!(!super::super::world::terrain_at(contact.position));
+        }
+    }
+    assert!((0..HEIGHT).any(|y| (0..WIDTH).any(|x| {
+        let detail = terrain_detail(x, y);
+        detail.iter().any(|row| *row != 0) && detail.iter().any(|row| *row != 255)
+    })));
 }

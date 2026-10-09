@@ -11,13 +11,31 @@ export function knowledge(entries, ticks) {
   const terrain = new Map();
   const vehicles = [];
   const reports = [];
+  const orders = [];
+  const acknowledgements = [];
   const sectors = new Set();
   for (const [key, value] of entries) {
     if (value.Terrain) terrain.set(value.Terrain.x + ',' + value.Terrain.y, value.Terrain);
     if (value.Vehicle) vehicles.push({ ...value.Vehicle, ...freshness(value.Vehicle.seen, ticks, 30) });
     if (value.Contact) reports.push({ ...value.Contact, ...freshness(value.Contact.seen, ticks) });
+    if (value.Order) orders.push(value.Order);
+    if (value.Acknowledgement) acknowledgements.push(value.Acknowledgement);
     if (value.Sector) sectors.add(value.Sector.id);
   }
   reports.sort((a, b) => b.seen - a.seen || a.source - b.source);
-  return { terrain, vehicles, reports, contact: reports[0] || null, sectors: sectors.size };
+  const contacts = [...new Map(reports.map(r => r.id || 1).map(id => [id, reports.find(r => (r.id || 1) === id)])).values()];
+  const commands = orders.map(order => ({ ...order, acknowledgement: acknowledgements.find(ack => ack.recipient === order.recipient && ack.sequence === order.sequence) || null, expired: ticks > order.expires }));
+  return { terrain, vehicles, reports, contacts, commands, contact: reports[0] || null, sectors: sectors.size };
+}
+
+// Connectivity is inferred only from this observer's direct ingress. Relayed reports
+// do not make their sensor source a neighbor, or expose other peers' network edges.
+export function directConnections(known, observer, receipts, center, commandPosition) {
+  const positions = new Map(known.vehicles.map(vehicle => [vehicle.source, vehicle.position]));
+  positions.set(center, commandPosition); // Fixed station location is mission configuration.
+  return receipts.filter(receipt => receipt.peer !== observer).map(receipt => ({
+    ...receipt,
+    position: positions.get(receipt.peer) || null,
+    active: receipt.age_ms < 5000,
+  }));
 }

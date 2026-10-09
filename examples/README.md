@@ -38,13 +38,15 @@ requires actual dated-entry equality; the simulation never copies snapshots betw
 
 - **Onboard knowledge**: only the selected drone's snapshot, plus its own navigation position.
 - **Command center / local synthesis**: only the center's snapshot, plus its fixed own location.
-- **Simulator / ground truth**: actual terrain, positions, contact and failure states.
-- **Simulator / pair connectivity**: actual allowed links; flashes are delivered datagrams.
+- **Simulator / ground truth**: actual terrain, positions, typed contacts and failure states.
+Ground truth includes actual allowed links, with a **Show connections** toggle. Local views
+show only direct ingress seen by that observer; silence after five real seconds makes links dashed.
+Endpoints use last known reports; unknown endpoints remain listed. CC position is fixed mission configuration.
 
 The application stores static terrain, per-drone coverage reports, each drone's latest vehicle
-report, and the latest contact observation per sensor. Separate contact keys preserve reports from
+report, and the latest observation per contact and sensor. Separate contact keys preserve reports from
 different sensors; this is a bounded latest-report model, not an unbounded observation history.
-All observers use the same local projection: contact synthesis selects the latest observation by
+All observers use the same local projection: contact synthesis selects the latest observation for each contact by
 application observation time, breaks ties by source id, and exposes other source reports. It is
 not a sensor-fusion estimate and does not average asynchronous positions.
 
@@ -54,6 +56,25 @@ receipt time or HLC ordering. Vehicle reports are stale after 30 simulated secon
 covariance or confidence. Terrain does not age. Visual expiry never deletes replicated data.
 A silent vehicle is shown as stale/unknown, not diagnosed as failed. Failure states and global
 metrics are explicitly simulator information, separate from local knowledge.
+
+### Orders, contacts and coastline
+
+The CC writes a latest desired order per drone: **Scan now**, **Hold position**, or **Resume patrol**.
+A drone processes only orders in its own replica, writes an acknowledgement once per sequence,
+and rejects orders older than 120 simulated seconds. Acknowledgements become visible to the CC
+only through replication. A modem-offline drone can execute an already received order; a halted
+drone waits for resume. Indirect paths can deliver orders even when the direct CC link is cut.
+Hold freezes navigation while sensing and protocol traffic continue. New orders supersede older
+ones: this is desired-state control, not a durable queue or a safety-critical command protocol.
+Pausing also pauses order deadlines, while allowing delivered orders to execute.
+
+Five seeded mobile contacts represent a civil vessel, hostile vessel, whale, sperm whale and
+an ocean front; the scripted discovery adds another hostile contact. Reset repeats their initial
+layout. Nature is synthetic sensor ground truth, not a classifier or threat assessment. The ocean
+front contact is separate from the topology's synthetic weather barrier. Each sensor retains its
+latest report per contact, and each local view synthesizes each identity separately.
+Terrain tiles include an 8×8 land mask for a finer irregular coastline and islands. Local views
+render only masks present in their replica; ground truth renders every tile.
 
 ### Connectivity and failures
 
@@ -88,7 +109,7 @@ The script runs for at least 150 simulated seconds, with a repair deadline at 24
    repair remains pending; the restored network and anti-entropy continue running.
 
 Manual topology/observation controls leave the script. Play/pause freezes application motion,
-observations and scenario time; reconciliation continues. Reset recreates every peer, transport
+observations and scenario time; reconciliation and order processing continue. Reset recreates every peer, transport
 pump and traffic counter. Clicking a drone/center in a simulator view opens its local perspective.
 
 ### Implementation and measurements

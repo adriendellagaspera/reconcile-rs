@@ -13,7 +13,10 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use super::transport::{address, Network, PartitionGate};
-use super::world::{terrain, Observation, PeerState, World, COMMAND_POSITION, HEIGHT, WIDTH};
+use super::world::{
+    terrain, terrain_detail, Observation, OrderAction, PeerState, World, COMMAND_POSITION, HEIGHT,
+    WIDTH,
+};
 
 pub struct Cluster {
     pub nodes: Vec<ReplicatedMap<String, Observation>>,
@@ -24,6 +27,8 @@ pub struct Cluster {
     pub loss: f64,
     pub datagram_budget: usize,
     pub world: World,
+    next_order: u64,
+    handled_orders: Vec<u64>,
 }
 
 struct Runtime {
@@ -104,6 +109,8 @@ impl Cluster {
             loss,
             datagram_budget,
             world,
+            next_order: 0,
+            handled_orders: vec![0; size],
         };
         cluster.refresh_network();
         cluster.observe();
@@ -219,7 +226,71 @@ impl Cluster {
         self.partition(false);
     }
 
+    pub fn issue_order(&mut self, recipient: usize, action: OrderAction) -> io::Result<()> {
+        if recipient >= self.center() {
+            return Err(io::Error::other("orders require a drone recipient"));
+        }
+        if self.network.topology.read().peers[self.center()] == PeerState::Stopped {
+            return Err(io::Error::other("command center is halted"));
+        }
+        self.next_order += 1;
+        self.nodes[self.center()].insert(
+            format!("order/{recipient:02}"),
+            Observation::Order {
+                recipient,
+                sequence: self.next_order,
+                issued: self.world.ticks,
+                expires: self.world.ticks + 240,
+                action,
+            },
+        );
+        Ok(())
+    }
+
+    fn process_orders(&mut self) {
+        for id in 0..self.center() {
+            if self.network.topology.read().peers[id] == PeerState::Stopped {
+                continue;
+            }
+            let snapshot = self.nodes[id].snapshot();
+            let Some(Observation::Order {
+                sequence,
+                expires,
+                action,
+                ..
+            }) = snapshot
+                .get(&format!("order/{id:02}"))
+                .and_then(|entry| entry.value())
+                .cloned()
+            else {
+                continue;
+            };
+            if sequence <= self.handled_orders[id] {
+                continue;
+            }
+            self.handled_orders[id] = sequence;
+            let applied = self.world.ticks <= expires;
+            if applied {
+                match action {
+                    OrderAction::Hold => self.world.held[id] = true,
+                    OrderAction::Patrol => self.world.held[id] = false,
+                    OrderAction::Scan => self.observe_peer(id, true),
+                }
+            }
+            self.nodes[id].insert(
+                format!("order-ack/{id:02}"),
+                Observation::Acknowledgement {
+                    recipient: id,
+                    sequence,
+                    received: self.world.ticks,
+                    applied,
+                },
+            );
+        }
+    }
+
     pub fn advance(&mut self) {
+        self.process_orders();
         if !self.world.playing {
             return;
         }
@@ -259,76 +330,82 @@ impl Cluster {
     }
 
     pub fn observe(&mut self) {
-        let peers = self.network.topology.read().peers.clone();
-        for (id, position) in self.world.positions.iter().enumerate() {
-            if peers[id] == PeerState::Stopped {
-                continue;
-            }
-            let cx = position.x as usize;
-            let cy = position.y as usize;
-            let radius = 3;
-            let mut updates = Vec::new();
-            for y in cy.saturating_sub(radius)..=(cy + radius).min(HEIGHT - 1) {
-                for x in cx.saturating_sub(radius)..=(cx + radius).min(WIDTH - 1) {
-                    if (x as f64 + 0.5 - position.x).hypot(y as f64 + 0.5 - position.y)
-                        > radius as f64
-                    {
-                        continue;
-                    }
-                    let key = format!("map/{x:02}/{y:02}");
-                    if !self.nodes[id].contains_key(&key) {
-                        updates.push((
-                            key,
-                            Observation::Terrain {
-                                x,
-                                y,
-                                land: terrain(x, y),
-                            },
-                        ));
-                    }
+        for id in 0..self.center() {
+            self.observe_peer(id, false);
+        }
+    }
+
+    fn observe_peer(&mut self, id: usize, force: bool) {
+        if self.network.topology.read().peers[id] == PeerState::Stopped {
+            return;
+        }
+        let position = &self.world.positions[id];
+        let cx = position.x as usize;
+        let cy = position.y as usize;
+        let radius = 3;
+        let mut updates = Vec::new();
+        for y in cy.saturating_sub(radius)..=(cy + radius).min(HEIGHT - 1) {
+            for x in cx.saturating_sub(radius)..=(cx + radius).min(WIDTH - 1) {
+                if (x as f64 + 0.5 - position.x).hypot(y as f64 + 0.5 - position.y) > radius as f64
+                {
+                    continue;
                 }
-            }
-            let sector = (cy / 5) * (WIDTH / 4) + cx / 4;
-            let key = format!("sector/{sector:02}/{id:02}");
-            if !self.nodes[id].contains_key(&key) {
-                updates.push((
-                    key,
-                    Observation::Sector {
-                        id: sector,
-                        scanned: self.world.ticks,
-                    },
-                ));
-            }
-            if self.world.ticks % 4 == 0 {
-                updates.push((
-                    format!("vehicle/{id:02}"),
-                    Observation::Vehicle {
-                        position: *position,
-                        seen: self.world.ticks,
-                        source: id,
-                        battery: 100 - (self.world.ticks / 30).min(70) as u8,
-                    },
-                ));
-            }
-            if let Some(contact) = self
-                .world
-                .contact()
-                .filter(|p| p.distance(*position) <= 4.0)
-            {
-                // One update per simulated second; observations are not fusion estimates.
-                if self.world.ticks % 2 == 0 {
+                let key = format!("map/{x:02}/{y:02}");
+                if !self.nodes[id].contains_key(&key) {
                     updates.push((
-                        format!("contact/01/{id:02}"),
-                        Observation::Contact {
-                            position: contact,
-                            seen: self.world.ticks,
-                            source: id,
+                        key,
+                        Observation::Terrain {
+                            x,
+                            y,
+                            land: terrain(x, y),
+                            detail: terrain_detail(x, y),
                         },
                     ));
                 }
             }
-            self.nodes[id].insert_bulk(&updates);
         }
+        let sector = (cy / 5) * (WIDTH / 4) + cx / 4;
+        let key = format!("sector/{sector:02}/{id:02}");
+        if !self.nodes[id].contains_key(&key) {
+            updates.push((
+                key,
+                Observation::Sector {
+                    id: sector,
+                    scanned: self.world.ticks,
+                },
+            ));
+        }
+        if force || self.world.ticks % 4 == 0 {
+            updates.push((
+                format!("vehicle/{id:02}"),
+                Observation::Vehicle {
+                    position: *position,
+                    seen: self.world.ticks,
+                    source: id,
+                    battery: 100 - (self.world.ticks / 30).min(70) as u8,
+                },
+            ));
+        }
+        for contact in self
+            .world
+            .contacts()
+            .into_iter()
+            .filter(|c| c.position.distance(*position) <= 4.0)
+        {
+            if force || self.world.ticks % 2 == 0 {
+                updates.push((
+                    format!("contact/{:02}/{id:02}", contact.id),
+                    Observation::Contact {
+                        id: contact.id,
+                        kind: contact.kind,
+                        position: contact.position,
+                        seen: self.world.ticks,
+                        source: id,
+                    },
+                ));
+            }
+        }
+        self.nodes[id].insert_bulk(&updates);
     }
 
     pub fn divergent_keys(&self) -> usize {
@@ -405,6 +482,10 @@ impl Cluster {
             "delivered_bytes": self.network.bytes.iter().map(|b| b.load(Ordering::Relaxed)).sum::<u64>(),
             "delivered_datagrams": self.network.datagrams.load(Ordering::Relaxed),
             "links": self.network.links(), "groups": group_agreement,
+            "direct_peers": (0..self.nodes.len()).map(|id| self.network.direct_peers(id)).collect::<Vec<_>>(),
+            "command_position": COMMAND_POSITION,
+            "truth_contacts": self.world.contacts(),
+            "truth_detail": (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| terrain_detail(x,y))).collect::<Vec<_>>(),
             "positions": positions, "truth_contact": self.world.contact(),
             "truth_map": (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| terrain(x, y))).collect::<Vec<_>>(),
             "ticks": self.world.ticks, "seconds": self.world.seconds(), "playing": self.world.playing,

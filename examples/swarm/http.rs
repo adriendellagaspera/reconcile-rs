@@ -8,7 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
 
 use super::cluster::Cluster;
-use super::world::{PeerState, STEP_SECONDS};
+use super::world::{OrderAction, PeerState, STEP_SECONDS};
 
 pub async fn serve(cluster: Cluster, port: u16, speed: f64) -> io::Result<()> {
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
@@ -110,7 +110,8 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
         ("POST", action)
             if action.starts_with("/peer/")
                 || action.starts_with("/link/")
-                || action.starts_with("/range/") =>
+                || action.starts_with("/range/")
+                || action.starts_with("/order/") =>
         {
             let mut cluster = shared.lock();
             let result = control(&mut cluster, action);
@@ -142,6 +143,15 @@ fn control(cluster: &mut Cluster, path: &str) -> io::Result<()> {
             cluster.set_peer(index(id)?, state)
         }
         ["link", a, b, "toggle"] => cluster.toggle_link(index(a)?, index(b)?),
+        ["order", id, action] => cluster.issue_order(
+            index(id)?,
+            match *action {
+                "scan" => OrderAction::Scan,
+                "hold" => OrderAction::Hold,
+                "patrol" => OrderAction::Patrol,
+                _ => return Err(io::Error::other("unknown order")),
+            },
+        ),
         ["range", value] => cluster.set_range(value.parse().map_err(io::Error::other)?),
         _ => Err(io::Error::other("invalid control")),
     }

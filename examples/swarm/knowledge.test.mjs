@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const source = await readFile(new URL('./knowledge.js', import.meta.url), 'utf8');
-const { freshness, knowledge } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+const { freshness, knowledge, directConnections } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 
 test('late delivery preserves observation age; fading is bounded and monotonic', () => {
   let previous = -1;
@@ -49,4 +49,48 @@ test('fleet reports have their own freshness horizon and coverage deduplicates s
   assert.equal(result.vehicles[0].stale, true);
   assert.equal(result.vehicles[0].age, 30);
   assert.equal(result.sectors, 1);
+});
+
+test('direct neighbors require ingress, never relayed reports or simulator positions', () => {
+  const known = knowledge([
+    ['vehicle/01', { Vehicle: { source: 1, position: { x: 3, y: 4 }, seen: 10 } }],
+    ['vehicle/02', { Vehicle: { source: 2, position: { x: 8, y: 9 }, seen: 10 } }],
+  ], 10);
+  const links = directConnections(known, 0, [{ peer: 1, age_ms: 100, datagrams: 2 }], 3, { x: 16, y: 1 });
+  assert.equal(links.length, 1);
+  assert.equal(links[0].peer, 1);
+  assert.deepEqual(links[0].position, { x: 3, y: 4 });
+  assert.equal(links[0].active, true);
+  assert.equal(links.some(link => link.peer === 2), false);
+});
+
+test('silent links expire on real transport time and unknown locations stay unknown', () => {
+  const links = directConnections(knowledge([], 1000), 0, [
+    { peer: 1, age_ms: 5000, datagrams: 1 },
+    { peer: 2, age_ms: 10, datagrams: 1 },
+  ], 2, { x: 16, y: 1 });
+  assert.equal(links[0].active, false);
+  assert.equal(links[0].position, null);
+  assert.equal(links[1].active, true);
+  assert.deepEqual(links[1].position, { x: 16, y: 1 });
+});
+
+test('distinct contact identities are synthesized independently', () => {
+  const result = knowledge([
+    ['a', {Contact:{id:1,kind:'civil',source:0,seen:5}}],
+    ['b', {Contact:{id:2,kind:'whale',source:0,seen:10}}],
+    ['c', {Contact:{id:1,kind:'civil',source:1,seen:20}}],
+  ],30);
+  assert.equal(result.contacts.length,2);
+  assert.equal(result.contacts.find(r=>r.id===1).source,1);
+  assert.equal(result.contacts.find(r=>r.id===2).kind,'whale');
+});
+
+test('order status requires a matching acknowledgement in the same replica', () => {
+  const order=['order/00',{Order:{recipient:0,sequence:2,expires:240,action:'hold'}}];
+  const old=['order-ack/00',{Acknowledgement:{recipient:0,sequence:1,applied:true}}];
+  assert.equal(knowledge([order,old],250).commands[0].acknowledgement,null);
+  assert.equal(knowledge([order],250).commands[0].expired,true);
+  const ack=['order-ack/00',{Acknowledgement:{recipient:0,sequence:2,applied:true}}];
+  assert.equal(knowledge([order,ack],100).commands[0].acknowledgement.applied,true);
 });

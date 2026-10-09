@@ -4,6 +4,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
+use std::time::Instant;
 
 use parking_lot::RwLock;
 use reconcile::{async_trait, InMemoryTransport, Transport};
@@ -62,12 +63,26 @@ pub struct PairLink {
     pub bytes: u64,
 }
 
+#[derive(Clone, Copy)]
+struct Receipt {
+    datagrams: u64,
+    last: Instant,
+}
+
+#[derive(Serialize)]
+pub struct DirectPeer {
+    pub peer: usize,
+    pub datagrams: u64,
+    pub age_ms: u128,
+}
+
 pub struct Network {
     pub topology: RwLock<Topology>,
     pub blocked_drops: AtomicU64,
     pub bytes: Vec<AtomicU64>,
     pub datagrams: AtomicU64,
     pub size: usize,
+    receipts: RwLock<Vec<Option<Receipt>>>,
 }
 
 impl Network {
@@ -85,6 +100,7 @@ impl Network {
             bytes: (0..size * size).map(|_| AtomicU64::new(0)).collect(),
             datagrams: AtomicU64::new(0),
             size,
+            receipts: RwLock::new(vec![None; size * size]),
         }
     }
 
@@ -108,6 +124,28 @@ impl Network {
                     bytes: self.bytes[a * self.size + b].load(Ordering::Relaxed)
                         + self.bytes[b * self.size + a].load(Ordering::Relaxed),
                 }
+            })
+            .collect()
+    }
+
+    fn received(&self, source: usize, observer: usize) {
+        let mut receipts = self.receipts.write();
+        let previous = receipts[source * self.size + observer];
+        receipts[source * self.size + observer] = Some(Receipt {
+            datagrams: previous.map_or(1, |receipt| receipt.datagrams + 1),
+            last: Instant::now(),
+        });
+    }
+
+    pub fn direct_peers(&self, observer: usize) -> Vec<DirectPeer> {
+        let receipts = self.receipts.read();
+        (0..self.size)
+            .filter_map(|peer| {
+                receipts[peer * self.size + observer].map(|receipt| DirectPeer {
+                    peer,
+                    datagrams: receipt.datagrams,
+                    age_ms: receipt.last.elapsed().as_millis(),
+                })
             })
             .collect()
     }
@@ -153,6 +191,7 @@ impl Transport for PartitionGate {
             let (size, source) = self.inner.recv_from(buf).await?;
             if let Some(id) = (0..self.network.size).find(|&id| address(id) == source) {
                 if self.network.allowed(id, self.source) {
+                    self.network.received(id, self.source);
                     return Ok((size, source));
                 }
                 self.network.blocked_drops.fetch_add(1, Ordering::Relaxed);

@@ -248,7 +248,8 @@ mod tests {
             .with_max_incomplete_transfers_per_peer(2)
             .with_max_reassembly_bytes_per_peer(2048)
             .with_max_total_reassembly_bytes(4096)
-            .with_reassembly_ttl(Duration::from_secs(5));
+            .with_reassembly_ttl(Duration::from_secs(5))
+            .with_max_missing_ranges_per_report(7);
         assert_eq!(configured.datagram_payload_budget, 900);
         assert_eq!(configured.max_logical_message_size, 1024);
         assert_eq!(configured.max_fragments_per_message, 4);
@@ -256,6 +257,7 @@ mod tests {
         assert_eq!(configured.max_reassembly_bytes_per_peer, 2048);
         assert_eq!(configured.max_total_reassembly_bytes, 4096);
         assert_eq!(configured.reassembly_ttl, Duration::from_secs(5));
+        assert_eq!(configured.max_missing_ranges_per_report, 7);
     }
 
     #[test]

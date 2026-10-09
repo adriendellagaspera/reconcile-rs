@@ -13,6 +13,7 @@ mod keyed_fingerprint;
 mod lifecycle;
 mod membership;
 mod read;
+mod recovery;
 mod value_ref;
 mod write;
 
