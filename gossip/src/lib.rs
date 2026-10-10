@@ -10,7 +10,7 @@
 //!
 //! This crate owns datagram transport, wire encoding, authentication, replay protection, peer
 //! discovery, and optional network emulation. It does not depend on the replicated-value domain:
-//! payloads are bytes and peers are addresses.
+//! payloads are bytes. The current runtime still addresses peers by IP.
 //!
 //! Applications should normally depend on
 //! [`reconcile`](https://crates.io/crates/reconcile), which re-exports the supported API.
@@ -28,6 +28,7 @@ pub mod gen_ip;
 #[cfg(feature = "netem")]
 pub mod netem;
 pub mod replay;
+pub mod peer;
 mod substrate;
 pub mod transport;
 
@@ -35,6 +36,7 @@ pub use discovery::{
     DiscoverFuture, Discovery, DiscoveryError, DiscoveryKind, DnsDiscovery, DnsDiscoveryError,
     RandomProbe,
 };
+pub use peer::PeerId;
 pub use transport::{InMemoryNetwork, InMemoryTransport, Transport, UdpTransport};
 
 // Re-export dependencies whose types appear in public signatures.

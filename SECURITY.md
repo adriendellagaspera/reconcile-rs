@@ -19,6 +19,10 @@ Construction requires an explicit mode:
 A shared cluster key proves membership, not peer identity. Any holder can impersonate another
 holder. The protocol provides no forward secrecy.
 
+`PeerId` is an opaque logical label, **not** an authentication credential. Its introduction does
+not alter the shipped wire protocol: ingress, anti-replay and durable causal membership still use
+source IP addresses. No current trust mode provides distinct cryptographic node identities.
+
 With the `encryption` feature, `with_encryption()` uses XChaCha20-Poly1305 for payload
 confidentiality. Encryption does not change the shared-secret trust model.
 

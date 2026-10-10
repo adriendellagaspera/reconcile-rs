@@ -117,6 +117,7 @@ impl<A: Clone + Eq + Hash> DatagramPort<A> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::peer::PeerId;
 
     /// These coordinates represent optical switching fabric slots, not disguised IP addresses.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -185,9 +186,11 @@ mod tests {
 
         // A higher-level peer directory can change its route independently of the logical
         // peer identifier, without translating either route into a fake SocketAddr.
-        let logical_peer_id: u128 = 0xfeed;
+        let logical_peer_id = PeerId::from_bytes([0x42; 32]);
+        let other_peer_id = PeerId::from_bytes([0x43; 32]);
         let mut directory = HashMap::from([(logical_peer_id, old_route)]);
         directory.insert(logical_peer_id, new_route);
+        assert!(!directory.contains_key(&other_peer_id));
         sender.send_to(b"ok", &directory[&logical_peer_id]).unwrap();
 
         let mut buffer = [0; 4];
