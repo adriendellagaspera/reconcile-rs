@@ -44,6 +44,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return request('order/0/hold', 'POST');
     });
     const values = snapshot => snapshot.map(([, value]) => value);
+    assert.equal(before.reference_map.version, 'synthetic-coast-v1');
+    assert.equal(before.reference_map.detail.length, 32 * 20);
+    assert.ok(before.command_position.x < before.coastal_position.x);
+    assert.ok(before.nodes.every(snapshot => snapshot.every(([key]) => !key.startsWith('map/'))));
+    const coastalLinks = before.links.filter(link => link.enabled && link.b === before.center);
+    assert.ok(coastalLinks.length > 0 && coastalLinks.length < before.center);
     assert.equal(before.peer_states[0], 'offline');
     assert.equal(values(before.nodes[0]).some(value => Boolean(value.Order)), false);
     assert.equal(values(before.nodes[before.center]).some(value => Boolean(value.Order)), true);
@@ -55,12 +61,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(values(independent.nodes[independent.center]).some(value => Boolean(value.Order)), false);
     await other.close();
     await page.evaluate(async () => (await import('./api.js')).request('heal', 'POST'));
-    await page.waitForFunction(async () => {
-      const state = await (await import('./api.js')).request('state');
-      const drone = state.nodes[0].map(([, value]) => value);
-      const cc = state.nodes[state.center].map(([, value]) => value);
-      return drone.some(value => Boolean(value.Order)) && cc.some(value => value.Acknowledgement?.applied);
-    }, null, { timeout: 60000 });
+    const deadline = Date.now() + 60000;
+    let acknowledged = false;
+    while (Date.now() < deadline) {
+      const state = await page.evaluate(async () => (await import('./api.js')).request('state'));
+      const drone = values(state.nodes[0]);
+      const cc = values(state.nodes[state.center]);
+      acknowledged = drone.some(value => Boolean(value.Order)) && cc.some(value => value.Acknowledgement?.applied);
+      if (acknowledged) break;
+      await page.waitForTimeout(250);
+    }
+    assert.ok(acknowledged, 'reconnected drone must execute its order and return an acknowledgement');
     await page.evaluate(() => { const node = document.getElementById('node'); node.value = '0'; node.dispatchEvent(new Event('change')); });
     await page.locator('#order-action').selectOption('patrol');
     await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Order issued'));

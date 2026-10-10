@@ -1,4 +1,4 @@
-use super::super::world::Point;
+use super::super::world::{Point, HEIGHT};
 use super::*;
 
 async fn converged(cluster: &Cluster) {
@@ -10,7 +10,7 @@ async fn converged(cluster: &Cluster) {
     .await
     .unwrap_or_else(|_| {
         let mut state = cluster.state();
-        for key in ["nodes", "links", "truth_map", "positions"] {
+        for key in ["nodes", "links", "reference_map", "positions"] {
             state.as_object_mut().unwrap().remove(key);
         }
         let roots: Vec<_> = cluster.nodes.iter().map(ReplicatedMap::snapshot).collect();
@@ -471,7 +471,7 @@ fn typed_contacts_and_fine_coast_are_repeatable_and_stay_in_water() {
         }
     }
     assert!((0..HEIGHT).any(|y| (0..WIDTH).any(|x| {
-        let detail = terrain_detail(x, y);
+        let detail = super::super::world::terrain_detail(x, y);
         detail.iter().any(|row| *row != 0) && detail.iter().any(|row| *row != 255)
     })));
 }
@@ -564,4 +564,137 @@ async fn first_contact_discovery_is_immutable_while_latest_report_changes() {
 #[test]
 fn command_station_is_on_land() {
     assert!(super::super::world::terrain_at(COMMAND_POSITION));
+}
+
+#[tokio::test]
+async fn reference_chart_is_shared_without_replica_entries_and_coverage_refreshes() {
+    let mut cluster = Cluster::new(0.0, 3).unwrap();
+    for id in 0..cluster.nodes.len() {
+        cluster.set_peer(id, PeerState::Offline).unwrap();
+    }
+    let chart = cluster.state()["reference_map"].clone();
+    assert_eq!(chart["detail"].as_array().unwrap().len(), 640);
+    assert_eq!(chart["km_per_unit"], 1.0);
+    assert!(cluster.nodes[cluster.center()].is_empty());
+    for node in &cluster.nodes {
+        assert!(node
+            .to_vec()
+            .iter()
+            .all(|(key, _)| !key.starts_with("map/")));
+    }
+    let sector = cluster.nodes[0]
+        .to_vec()
+        .into_iter()
+        .find(|(key, _)| key.starts_with("sector/"))
+        .unwrap()
+        .0;
+    cluster.world.ticks = 20;
+    cluster.observe();
+    assert!(matches!(
+        cluster.nodes[0].get_cloned(&sector),
+        Some(Observation::Sector { scanned: 20, .. })
+    ));
+    assert_eq!(chart, cluster.state()["reference_map"]);
+    assert!(cluster.nodes[cluster.center()].is_empty());
+}
+
+#[tokio::test]
+async fn coastal_access_requires_intermediate_replicas_for_offshore_reports_and_commands() {
+    let mut cluster = Cluster::with_limits(0.0, 3, 1200, 10).unwrap();
+    cluster.world.positions = vec![
+        Point { x: 6.0, y: 10.0 },
+        Point { x: 13.0, y: 10.0 },
+        Point { x: 20.0, y: 10.0 },
+    ];
+    cluster.set_range(8.0).unwrap();
+    let center = cluster.center();
+    assert!(cluster.network.allowed(center, 0));
+    assert!(!cluster.network.allowed(center, 1));
+    assert!(!cluster.network.allowed(center, 2));
+    assert!(!cluster.network.allowed(0, 2));
+    assert_eq!(cluster.network.components().len(), 1);
+    cluster.toggle_link(0, 1).unwrap();
+    let key = "contact/99/02".to_string();
+    let report = Observation::Contact {
+        id: 99,
+        kind: super::super::world::ContactKind::Hostile,
+        position: Point { x: 20.0, y: 10.0 },
+        seen: 0,
+        source: 2,
+    };
+    cluster.nodes[2].insert(key.clone(), report.clone());
+    tokio::time::timeout(Duration::from_secs(60), async {
+        while !cluster.nodes[1].contains_key(&key) {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("intermediate drone must integrate the offshore report");
+    assert!(!cluster.nodes[center].contains_key(&key));
+    cluster.set_peer(2, PeerState::Offline).unwrap();
+    cluster.toggle_link(0, 1).unwrap();
+    tokio::time::timeout(Duration::from_secs(60), async {
+        while !cluster.nodes[center].contains_key(&key) {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("retained observation must reach CC while its source is offline");
+    assert_eq!(cluster.nodes[center].get_cloned(&key), Some(report));
+    cluster.issue_order(2, OrderAction::Hold).unwrap();
+    tokio::time::timeout(Duration::from_secs(60), async {
+        while !cluster.nodes[1].contains_key(&"order/02".into()) {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("intermediate drone must integrate a command for another recipient");
+    cluster.advance();
+    assert!(!cluster.world.held.iter().any(|held| *held));
+    cluster.set_peer(2, PeerState::Active).unwrap();
+    let ack = "order-ack/02/0000000000000001".to_string();
+    tokio::time::timeout(Duration::from_secs(90), async {
+        loop {
+            cluster.advance();
+            if cluster.nodes[center].contains_key(&ack) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("desired command and acknowledgement must traverse the chain");
+    assert_eq!(cluster.world.held, vec![false, false, true]);
+    assert!(matches!(
+        cluster.nodes[center].get_cloned(&ack),
+        Some(Observation::Acknowledgement {
+            recipient: 2,
+            applied: true,
+            ..
+        })
+    ));
+    assert!(cluster
+        .network
+        .direct_peers(center)
+        .iter()
+        .all(|peer| peer.peer == 0));
+    assert!(cluster
+        .network
+        .direct_peers(2)
+        .iter()
+        .all(|peer| peer.peer == 1));
+}
+
+#[test]
+fn default_fleet_has_coastal_neighbors_and_offshore_multi_hop_paths() {
+    let world = World::new(12);
+    let mut positions = world.positions;
+    positions.push(COMMAND_POSITION);
+    let network = Network::new(positions);
+    network.topology.write().coastal_position = Some(COASTAL_POSITION);
+    let direct = (0..12).filter(|&peer| network.allowed(12, peer)).count();
+    assert!(direct > 0 && direct < 12);
+    assert_eq!(network.components().len(), 1);
+    assert!(super::super::world::terrain_at(COMMAND_POSITION));
+    assert!(!super::super::world::terrain_at(COASTAL_POSITION));
 }

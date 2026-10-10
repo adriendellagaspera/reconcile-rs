@@ -31,13 +31,30 @@ test('local synthesis keeps source reports and orders by observation time, not w
   }
 });
 
-test('empty command-center replica has no contacts, fleet positions or terrain; terrain does not fade', () => {
+test('empty replica has no operational knowledge; chart data is outside the projection', () => {
   const empty = knowledge([], 1000);
   assert.equal(empty.contact, null);
   assert.equal(empty.vehicles.length, 0);
-  assert.equal(empty.terrain.size, 0);
-  const cell = { x: 1, y: 1, land: true };
-  assert.deepEqual(knowledge([['map/1/1', { Terrain: cell }]], 10000).terrain.get('1,1'), cell);
+  assert.deepEqual(empty.coverage, []);
+  assert.equal('terrain' in empty, false);
+  assert.deepEqual(knowledge([['map/1/1', { Terrain: { x: 1, y: 1 } }]], 1000).coverage, []);
+});
+
+test('coverage uses newest scan time per sector and ages without refreshing on delivery', () => {
+  const entries = [
+    ['sector/00/00', { Sector: { id: 0, scanned: 2 } }],
+    ['sector/00/01', { Sector: { id: 0, scanned: 20 } }],
+    ['sector/01/01', { Sector: { id: 1, scanned: 0 } }],
+  ];
+  for (const reports of [entries, [...entries].reverse()]) {
+    const result = knowledge(reports, 250);
+    assert.equal(result.sectors, 2);
+    const recent = result.coverage.find(s=>s.id===0);
+    assert.equal(recent.scanned, 20);
+    assert.equal(recent.age, 115);
+    assert.equal(recent.stale, false);
+    assert.equal(result.coverage.find(s=>s.id===1).stale, true);
+  }
 });
 
 test('fleet reports have their own freshness horizon and coverage deduplicates source reports', () => {

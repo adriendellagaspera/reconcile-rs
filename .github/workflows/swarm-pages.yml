@@ -4,7 +4,7 @@ on:
   pull_request:
     paths: ['Cargo.toml', 'Cargo.lock', 'src/**', 'gossip/**', 'examples/swarm/**', 'examples/swarm.rs', 'scripts/build-swarm-web.sh', '.github/workflows/swarm-pages.yml']
   push:
-    branches: [main, demo/swarm-wasm]
+    branches: [main, demo/swarm-vertical-slice, demo/swarm-wasm]
     paths: ['Cargo.toml', 'Cargo.lock', 'src/**', 'gossip/**', 'examples/swarm/**', 'examples/swarm.rs', 'scripts/build-swarm-web.sh', '.github/workflows/swarm-pages.yml']
   workflow_dispatch:
 
@@ -54,7 +54,7 @@ jobs:
 
   pages:
     needs: validate
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref != 'refs/heads/demo/swarm-wasm'
     runs-on: ubuntu-latest
     permissions:
       contents: read

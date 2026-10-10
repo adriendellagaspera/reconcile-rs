@@ -18,8 +18,8 @@ use tokio_util::sync::CancellationToken;
 use super::bandwidth::{BandwidthTransport, Counters};
 use super::transport::{address, Network, PartitionGate};
 use super::world::{
-    terrain, terrain_detail, Observation, OrderAction, PeerState, Point, World, COMMAND_POSITION,
-    HEIGHT, WIDTH,
+    Observation, OrderAction, PeerState, Point, ReferenceMap, World, COASTAL_POSITION,
+    COMMAND_POSITION, WIDTH,
 };
 
 pub struct Cluster {
@@ -33,6 +33,7 @@ pub struct Cluster {
     pub bandwidth_kbps: usize,
     bandwidth: Vec<Arc<Counters>>,
     pub world: World,
+    reference_map: ReferenceMap,
     next_order: u64,
     handled_orders: Vec<u64>,
 }
@@ -76,6 +77,7 @@ impl Cluster {
         let mut positions = world.positions.clone();
         positions.push(COMMAND_POSITION);
         let network = Arc::new(Network::new(positions));
+        network.topology.write().coastal_position = Some(COASTAL_POSITION);
         let cancel = CancellationToken::new();
         let mut nodes = Vec::new();
         let mut losses = Vec::new();
@@ -143,6 +145,7 @@ impl Cluster {
             bandwidth_kbps,
             bandwidth,
             world,
+            reference_map: ReferenceMap::new(),
             next_order: 0,
             handled_orders: vec![0; size],
         };
@@ -217,7 +220,7 @@ impl Cluster {
 
     pub fn set_range(&self, range: f64) -> io::Result<()> {
         if !range.is_finite() || !(1.0..=40.0).contains(&range) {
-            return Err(io::Error::other("range must be between 1 and 40 map units"));
+            return Err(io::Error::other("range must be between 1 and 40 km"));
         }
         self.network.topology.write().range = range;
         self.refresh_network();
@@ -392,31 +395,10 @@ impl Cluster {
         let position = &self.world.positions[id];
         let cx = position.x as usize;
         let cy = position.y as usize;
-        let radius = 3;
         let mut updates = Vec::new();
-        for y in cy.saturating_sub(radius)..=(cy + radius).min(HEIGHT - 1) {
-            for x in cx.saturating_sub(radius)..=(cx + radius).min(WIDTH - 1) {
-                if (x as f64 + 0.5 - position.x).hypot(y as f64 + 0.5 - position.y) > radius as f64
-                {
-                    continue;
-                }
-                let key = format!("map/{x:02}/{y:02}");
-                if !self.nodes[id].contains_key(&key) {
-                    updates.push((
-                        key,
-                        Observation::Terrain {
-                            x,
-                            y,
-                            land: terrain(x, y),
-                            detail: terrain_detail(x, y),
-                        },
-                    ));
-                }
-            }
-        }
         let sector = (cy / 5) * (WIDTH / 4) + cx / 4;
         let key = format!("sector/{sector:02}/{id:02}");
-        if !self.nodes[id].contains_key(&key) {
+        if force || self.world.ticks % 20 == 0 {
             updates.push((
                 key,
                 Observation::Sector {
@@ -540,11 +522,10 @@ impl Cluster {
             "delivered_datagrams": self.network.datagrams.load(Ordering::Relaxed),
             "links": self.network.links(), "groups": group_agreement,
             "direct_peers": (0..self.nodes.len()).map(|id| self.network.direct_peers(id)).collect::<Vec<_>>(),
-            "command_position": COMMAND_POSITION, "disruptions": disruptions,
+            "command_position": COMMAND_POSITION, "coastal_position": COASTAL_POSITION,
+            "reference_map": self.reference_map, "disruptions": disruptions,
             "truth_contacts": self.world.contacts(),
-            "truth_detail": (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| terrain_detail(x,y))).collect::<Vec<_>>(),
             "positions": positions, "truth_contact": self.world.contact(),
-            "truth_map": (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| terrain(x, y))).collect::<Vec<_>>(),
             "ticks": self.world.ticks, "seconds": self.world.seconds(), "playing": self.world.playing,
             "scripted": self.world.scripted, "phase": self.world.phase(divergent == 0),
             "library_metrics": super::telemetry::snapshot(),
