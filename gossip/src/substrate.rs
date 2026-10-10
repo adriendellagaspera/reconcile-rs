@@ -104,9 +104,10 @@ impl<A: Clone + Eq + Hash> DatagramPort<A> {
     ///
     /// Like a datagram socket, a message larger than `buf` is truncated on receive.
     pub(crate) async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, A)> {
-        let (src, bytes) = self.rx.lock().await.recv().await.ok_or_else(|| {
-            io::Error::new(io::ErrorKind::BrokenPipe, "in-memory network closed")
-        })?;
+        let (src, bytes) =
+            self.rx.lock().await.recv().await.ok_or_else(|| {
+                io::Error::new(io::ErrorKind::BrokenPipe, "in-memory network closed")
+            })?;
         let n = bytes.len().min(buf.len());
         buf[..n].copy_from_slice(&bytes[..n]);
         Ok((n, src))
@@ -127,8 +128,14 @@ mod tests {
     #[tokio::test]
     async fn non_ip_endpoints_exchange_bounded_datagrams() {
         let fabric = DatagramFabric::new(8);
-        let a = OpticalSlot { terminal: 1, wavelength: 3 };
-        let b = OpticalSlot { terminal: 2, wavelength: 3 };
+        let a = OpticalSlot {
+            terminal: 1,
+            wavelength: 3,
+        };
+        let b = OpticalSlot {
+            terminal: 2,
+            wavelength: 3,
+        };
         let sender = fabric.bind(a);
         let receiver = fabric.bind(b);
 
@@ -143,16 +150,28 @@ mod tests {
             sender.send_to(b"exceeds mtu", &b).unwrap_err().kind(),
             io::ErrorKind::InvalidInput
         );
-        let unbound = OpticalSlot { terminal: 99, wavelength: 5 };
+        let unbound = OpticalSlot {
+            terminal: 99,
+            wavelength: 5,
+        };
         assert_eq!(sender.send_to(b"lost", &unbound).unwrap(), 4);
     }
 
     #[tokio::test]
     async fn endpoint_rebinding_does_not_require_an_ip_identity() {
         let fabric = DatagramFabric::new(4);
-        let source = OpticalSlot { terminal: 1, wavelength: 2 };
-        let old_route = OpticalSlot { terminal: 2, wavelength: 2 };
-        let new_route = OpticalSlot { terminal: 2, wavelength: 7 };
+        let source = OpticalSlot {
+            terminal: 1,
+            wavelength: 2,
+        };
+        let old_route = OpticalSlot {
+            terminal: 2,
+            wavelength: 2,
+        };
+        let new_route = OpticalSlot {
+            terminal: 2,
+            wavelength: 7,
+        };
         let sender = fabric.bind(source);
         let _old = fabric.bind(old_route);
         let relocated = fabric.bind(new_route);
@@ -174,8 +193,14 @@ mod tests {
     #[tokio::test]
     async fn buffer_truncation_matches_legacy_socket_behavior() {
         let fabric = DatagramFabric::default();
-        let source = OpticalSlot { terminal: 1, wavelength: 1 };
-        let target = OpticalSlot { terminal: 2, wavelength: 1 };
+        let source = OpticalSlot {
+            terminal: 1,
+            wavelength: 1,
+        };
+        let target = OpticalSlot {
+            terminal: 2,
+            wavelength: 1,
+        };
         let sender = fabric.bind(source);
         let receiver = fabric.bind(target);
         sender.send_to(b"12345678", &target).unwrap();

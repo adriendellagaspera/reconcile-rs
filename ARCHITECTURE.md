@@ -47,13 +47,6 @@ composes those domain crates with runtime adapters.
 `gossip` does not depend on `lww-register`: its peer identity is an address and its payload is
 bytes.
 
-The in-process `InMemoryTransport` delegates message delivery to the internal
-`gossip::substrate::DatagramFabric<A>`, where `A` is an arbitrary endpoint address type.
-This allows datagram-only non-IP media in deterministic tests, with a configurable maximum
-payload size. The public `Transport`, discovery and reconciliation runtime still use
-`SocketAddr`/`IpAddr`; the internal generic fabric is not an alternate runtime transport API.
-An inbound substrate address alone does not establish an authenticated peer identity.
-
 ### 2.2 Snapshots
 
 `FingerprintTreeMap` is persistent: unchanged nodes are structurally shared through `Arc`.
