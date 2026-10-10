@@ -392,7 +392,10 @@ async fn orders_wait_for_replication_and_acknowledgements_wait_for_return_path()
     let ack = cluster.nodes[0].get_cloned(&"order-ack/00/0000000000000001".into());
     cluster.world.ticks += 1;
     cluster.advance();
-    assert_eq!(ack, cluster.nodes[0].get_cloned(&"order-ack/00/0000000000000001".into()));
+    assert_eq!(
+        ack,
+        cluster.nodes[0].get_cloned(&"order-ack/00/0000000000000001".into())
+    );
     cluster.heal();
     converged(&cluster).await;
     cluster.issue_order(0, OrderAction::Patrol).unwrap();
@@ -524,8 +527,12 @@ async fn immutable_order_history_and_acknowledgements_survive_new_desired_orders
     let ack_two = "order-ack/00/0000000000000002".to_string();
     assert!(cluster.nodes[0].contains_key(&ack_one));
     assert!(cluster.nodes[0].contains_key(&ack_two));
-    assert!(cluster.nodes[cluster.center()].contains_key(&"order-issued/00/0000000000000001".into()));
-    assert!(cluster.nodes[cluster.center()].contains_key(&"order-issued/00/0000000000000002".into()));
+    assert!(
+        cluster.nodes[cluster.center()].contains_key(&"order-issued/00/0000000000000001".into())
+    );
+    assert!(
+        cluster.nodes[cluster.center()].contains_key(&"order-issued/00/0000000000000002".into())
+    );
     assert!(matches!(
         cluster.nodes[0].get_cloned(&"order/00".into()),
         Some(Observation::Order { sequence: 2, .. })
@@ -541,7 +548,9 @@ async fn first_contact_discovery_is_immutable_while_latest_report_changes() {
     cluster.observe();
     let first_key = "contact-first/01/00".to_string();
     let latest_key = "contact/01/00".to_string();
-    let first = cluster.nodes[0].get_cloned(&first_key).expect("first discovery recorded");
+    let first = cluster.nodes[0]
+        .get_cloned(&first_key)
+        .expect("first discovery recorded");
     assert!(matches!(first, Observation::Contact { seen: 2, .. }));
     cluster.world.ticks = 4;
     cluster.observe();

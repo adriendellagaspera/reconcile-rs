@@ -100,7 +100,7 @@ id), excluding the immutable discovery records. Issued-command history is displa
 separately from the current desired order, and acknowledgements are joined by
 recipient/sequence. This is not a sensor-fusion estimate and does not average
 asynchronous positions. The immutability/ownership contract lives in the demo,
-not in an enforced custom merge policy inside reconcile-rs; see #291 and #292.
+not in an enforced custom merge policy inside reconcile-rs.
 
 Vehicle and contact reports progressively gray and fade according to observation time, not
 receipt time or HLC ordering. Vehicle reports are stale after 30 simulated seconds; contacts after
