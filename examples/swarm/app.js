@@ -229,8 +229,13 @@ function draw() {
     row.textContent=contactName(r)+' · '+r.age.toFixed(0)+'s'+(r.stale?' · stale':'')+' · '+known.reports.filter(report=>report.id===r.id).length+' sources';
     return row;
   }));
-  const visibleOrders = (known.orderHistory.length ? known.orderHistory : known.commands)
-    .filter(o => selected === state.center || o.recipient === selected);
+  // The latest desired register and immutable journal can arrive in either order.
+  // Show both without duplicating a command or hiding a newly received desired state.
+  const allOrders = new Map(known.orderHistory.map(o => [o.recipient + '/' + o.sequence, o]));
+  for (const order of known.commands) allOrders.set(order.recipient + '/' + order.sequence, order);
+  const visibleOrders = [...allOrders.values()]
+    .filter(o => selected === state.center || o.recipient === selected)
+    .sort((a, b) => b.sequence - a.sequence);
   const desired = new Map(known.commands.map(o => [o.recipient, o.sequence]));
   $('orders').replaceChildren(...visibleOrders.map(o=>{
     const row=document.createElement('div'); row.className='report';
