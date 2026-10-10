@@ -66,8 +66,8 @@ pub struct SenderCounter {
 }
 
 /// Receiver-side per-peer replay filter.
-/// Entries are purged once `now - stamp_at_max > window`, at which point no replayable datagram
-/// could clear the freshness check anyway. `enabled` mirrors the owning
+/// A sender's entry expires when `now - stamp_at_max > window`; unrelated expired entries are
+/// reclaimed only when admitting a new sender requires capacity. `enabled` mirrors the owning
 /// [`crate::auth::Authenticator`]'s mode, fixed at construction; a disabled filter accepts
 /// everything, so no caller decides whether replay-checking applies.
 #[derive(Debug)]

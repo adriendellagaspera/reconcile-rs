@@ -345,38 +345,61 @@ fn evict_clears_state_and_allows_fresh_start() {
     assert!(filter.check_and_record(peer, Seq::new(1), Stamp::new(now)));
 }
 
-/// The staleness purge keys on sender `stamp_at_max`, not on receiver activity.
+/// Expired known senders restart on first contact. Other expired state is retained until needed.
 #[test]
-fn staleness_purge_removes_silent_peer_and_accepts_fresh_start() {
-    let filter = filter_5min();
+fn stale_known_sender_restarts_without_purging_unrelated_state() {
+    let filter = filter_5min().with_max_senders(3);
     let peer: IpAddr = "127.0.0.20".parse().unwrap();
+    let silent: IpAddr = "127.0.0.21".parse().unwrap();
+    let newcomer: IpAddr = "127.0.0.22".parse().unwrap();
+    let t0 = 1_700_000_000_000_u64;
+    let now = t0 + FRESHNESS_WINDOW_DEFAULT.as_millis() as u64 + 1;
+
+    assert!(check_at(&filter, peer, 42, t0, t0));
+    assert!(check_at(&filter, silent, 42, t0, t0));
+
+    assert!(check_at(&filter, peer, 1, now, now));
+    assert!(!check_at(&filter, peer, 1, now, now));
+    assert_eq!(filter.len(), 2);
+    assert!(filter.peers.lock().contains_key(&silent));
+
+    // A new sender below capacity must not scan or reclaim unrelated stale state.
+    assert!(check_at(&filter, newcomer, 1, now, now));
+    assert_eq!(filter.len(), 3);
+    assert!(filter.peers.lock().contains_key(&silent));
+}
+
+#[test]
+fn capacity_sweep_reclaims_only_expired_sender_state() {
+    let filter = filter_5min().with_max_senders(3);
+    let expired: IpAddr = "127.0.0.40".parse().unwrap();
+    let boundary: IpAddr = "127.0.0.41".parse().unwrap();
+    let ahead: IpAddr = "127.0.0.42".parse().unwrap();
+    let newcomer: IpAddr = "127.0.0.43".parse().unwrap();
+    let t0 = 1_700_000_000_000_u64;
     let window_ms = FRESHNESS_WINDOW_DEFAULT.as_millis() as u64;
+    let now = t0 + window_ms + 1;
 
-    let t0: u64 = 1_700_000_000_000; // arbitrary fixed ms epoch
+    assert!(check_at(&filter, expired, 42, t0, t0));
+    assert!(check_at(&filter, boundary, 42, t0 + 1, t0));
+    assert!(check_at(&filter, ahead, 42, t0 + window_ms, t0));
 
-    assert!(check_at(&filter, peer, 1, t0, t0));
+    // Known senders must not trigger a sweep, even while at capacity.
+    assert!(check_at(&filter, boundary, 43, now, now));
+    assert!(filter.peers.lock().contains_key(&expired));
 
-    let now_after_purge = t0 + window_ms + 1;
+    assert!(check_at(&filter, newcomer, 1, now, now));
+    assert_eq!(filter.len(), 3);
+    let peers = filter.peers.lock();
+    assert!(!peers.contains_key(&expired));
+    assert!(peers.contains_key(&boundary));
+    assert!(peers.contains_key(&ahead));
+    assert!(peers.contains_key(&newcomer));
+    drop(peers);
 
-    // A datagram from another peer triggers the opportunistic purge.
-    let other: IpAddr = "127.0.0.21".parse().unwrap();
-    assert!(check_at(
-        &filter,
-        other,
-        1,
-        now_after_purge,
-        now_after_purge
-    ));
-
-    assert!(
-        !filter.peers.lock().contains_key(&peer),
-        "stale peer entry should have been purged"
-    );
-
-    assert!(
-        check_at(&filter, peer, 1, now_after_purge, now_after_purge),
-        "first-contact datagram after purge must be accepted"
-    );
+    // Retained states must still detect the previously accepted datagrams as replays.
+    assert!(!check_at(&filter, boundary, 42, t0 + 1, now));
+    assert!(!check_at(&filter, ahead, 42, t0 + window_ms, now));
 }
 
 #[test]
@@ -411,8 +434,8 @@ fn restart_with_small_seq_regression_is_accepted() {
 /// With the sender's clock ahead, a receiver-activity-based purge would open a replay window;
 /// purging on `stamp_at_max` must not.
 #[test]
-fn skew_positive_purge_does_not_evict_while_stamp_at_max_is_fresh() {
-    let filter = filter_5min();
+fn skew_positive_capacity_sweep_does_not_evict_while_stamp_at_max_is_fresh() {
+    let filter = filter_5min().with_max_senders(1);
     let peer: IpAddr = "127.1.0.1".parse().unwrap();
     let window_ms = FRESHNESS_WINDOW_DEFAULT.as_millis() as u64;
 
@@ -426,12 +449,11 @@ fn skew_positive_purge_does_not_evict_while_stamp_at_max_is_fresh() {
     let now_mid = receiver_t0 + window_ms + 1;
 
     let other: IpAddr = "127.1.0.2".parse().unwrap();
-    assert!(check_at(&filter, other, 1, now_mid, now_mid));
-
     assert!(
-        filter.peers.lock().contains_key(&peer),
-        "entry must NOT be purged while stamp_at_max is still within the freshness window"
+        !check_at(&filter, other, 1, now_mid, now_mid),
+        "a full-capacity sweep must retain an entry with a fresh future sender stamp"
     );
+    assert!(filter.peers.lock().contains_key(&peer));
 
     assert!(
         !check_at(&filter, peer, 42, sender_stamp, now_mid),
