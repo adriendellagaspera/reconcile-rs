@@ -257,6 +257,76 @@ pub fn reconcile_gossip::gen_ip::host_net(core::net::ip_addr::IpAddr) -> ipnet::
 pub fn reconcile_gossip::gen_ip::net_of(&[ipnet::ipnet::IpNet], core::net::ip_addr::IpAddr) -> core::option::Option<ipnet::ipnet::IpNet>
 pub fn reconcile_gossip::gen_ip::probe_targets<R: rand::rng::Rng>(&mut R, &[ipnet::ipnet::IpNet]) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub mod reconcile_gossip::peer
+pub mod reconcile_gossip::peer::identity
+pub struct reconcile_gossip::peer::identity::PeerAllowlist
+impl reconcile_gossip::peer::identity::PeerAllowlist
+pub fn reconcile_gossip::peer::identity::PeerAllowlist::new(impl core::iter::traits::collect::IntoIterator<Item = reconcile_gossip::peer::PeerId>) -> Self
+pub fn reconcile_gossip::peer::identity::PeerAllowlist::verify(&self, &[u8], &reconcile_gossip::peer::identity::PeerProof) -> core::option::Option<reconcile_gossip::peer::identity::VerifiedPeerId>
+impl core::default::Default for reconcile_gossip::peer::identity::PeerAllowlist
+pub fn reconcile_gossip::peer::identity::PeerAllowlist::default() -> reconcile_gossip::peer::identity::PeerAllowlist
+impl core::fmt::Debug for reconcile_gossip::peer::identity::PeerAllowlist
+pub fn reconcile_gossip::peer::identity::PeerAllowlist::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for reconcile_gossip::peer::identity::PeerAllowlist
+impl core::marker::Send for reconcile_gossip::peer::identity::PeerAllowlist
+impl core::marker::Sync for reconcile_gossip::peer::identity::PeerAllowlist
+impl core::marker::Unpin for reconcile_gossip::peer::identity::PeerAllowlist
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::identity::PeerAllowlist
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::identity::PeerAllowlist
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::identity::PeerAllowlist
+pub struct reconcile_gossip::peer::identity::PeerProof
+impl reconcile_gossip::peer::identity::PeerProof
+pub const fn reconcile_gossip::peer::identity::PeerProof::claimed_id(&self) -> reconcile_gossip::peer::PeerId
+pub const fn reconcile_gossip::peer::identity::PeerProof::from_parts(reconcile_gossip::peer::PeerId, [u8; 64]) -> Self
+pub const fn reconcile_gossip::peer::identity::PeerProof::signature_bytes(&self) -> [u8; 64]
+impl core::clone::Clone for reconcile_gossip::peer::identity::PeerProof
+pub fn reconcile_gossip::peer::identity::PeerProof::clone(&self) -> reconcile_gossip::peer::identity::PeerProof
+impl core::cmp::Eq for reconcile_gossip::peer::identity::PeerProof
+impl core::cmp::PartialEq for reconcile_gossip::peer::identity::PeerProof
+pub fn reconcile_gossip::peer::identity::PeerProof::eq(&self, &reconcile_gossip::peer::identity::PeerProof) -> bool
+impl core::fmt::Debug for reconcile_gossip::peer::identity::PeerProof
+pub fn reconcile_gossip::peer::identity::PeerProof::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile_gossip::peer::identity::PeerProof
+impl core::marker::StructuralPartialEq for reconcile_gossip::peer::identity::PeerProof
+impl core::marker::Freeze for reconcile_gossip::peer::identity::PeerProof
+impl core::marker::Send for reconcile_gossip::peer::identity::PeerProof
+impl core::marker::Sync for reconcile_gossip::peer::identity::PeerProof
+impl core::marker::Unpin for reconcile_gossip::peer::identity::PeerProof
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::identity::PeerProof
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::identity::PeerProof
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::identity::PeerProof
+pub struct reconcile_gossip::peer::identity::PeerSigner(_)
+impl reconcile_gossip::peer::identity::PeerSigner
+pub fn reconcile_gossip::peer::identity::PeerSigner::from_seed([u8; 32]) -> Self
+pub fn reconcile_gossip::peer::identity::PeerSigner::peer_id(&self) -> reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::identity::PeerSigner::sign_datagram(&self, &[u8]) -> reconcile_gossip::peer::identity::PeerProof
+impl core::marker::Freeze for reconcile_gossip::peer::identity::PeerSigner
+impl core::marker::Send for reconcile_gossip::peer::identity::PeerSigner
+impl core::marker::Sync for reconcile_gossip::peer::identity::PeerSigner
+impl core::marker::Unpin for reconcile_gossip::peer::identity::PeerSigner
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::identity::PeerSigner
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::identity::PeerSigner
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::identity::PeerSigner
+pub struct reconcile_gossip::peer::identity::VerifiedPeerId(_)
+impl reconcile_gossip::peer::identity::VerifiedPeerId
+pub const fn reconcile_gossip::peer::identity::VerifiedPeerId::peer_id(self) -> reconcile_gossip::peer::PeerId
+impl core::clone::Clone for reconcile_gossip::peer::identity::VerifiedPeerId
+pub fn reconcile_gossip::peer::identity::VerifiedPeerId::clone(&self) -> reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::cmp::Eq for reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::cmp::PartialEq for reconcile_gossip::peer::identity::VerifiedPeerId
+pub fn reconcile_gossip::peer::identity::VerifiedPeerId::eq(&self, &reconcile_gossip::peer::identity::VerifiedPeerId) -> bool
+impl core::fmt::Debug for reconcile_gossip::peer::identity::VerifiedPeerId
+pub fn reconcile_gossip::peer::identity::VerifiedPeerId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for reconcile_gossip::peer::identity::VerifiedPeerId
+pub fn reconcile_gossip::peer::identity::VerifiedPeerId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::marker::StructuralPartialEq for reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::marker::Freeze for reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::marker::Send for reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::marker::Sync for reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::marker::Unpin for reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::identity::VerifiedPeerId
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::identity::VerifiedPeerId
 pub struct reconcile_gossip::peer::PeerId(_)
 impl reconcile_gossip::peer::PeerId
 pub const fn reconcile_gossip::peer::PeerId::from_bytes([u8; 32]) -> Self

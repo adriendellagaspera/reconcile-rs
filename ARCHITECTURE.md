@@ -44,8 +44,8 @@ External domain dependencies are `rsos` (ordered storage and range aggregates) a
 release gates live in their canonical repositories. `gossip` owns network concerns; `reconcile`
 composes those domain crates with runtime adapters.
 
-`gossip` does not depend on `lww-register`: it defines an opaque, currently unused `PeerId` distinct
-from the address-based runtime identity; application payloads remain bytes.
+`gossip` does not depend on `lww-register`: it defines an opaque `PeerId` with separate Ed25519 proof verification
+but runtime peers remain IP-addressed; application payloads are bytes.
 
 ### 2.2 Snapshots
 
