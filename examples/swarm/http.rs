@@ -84,7 +84,8 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
             ("200 OK", "application/json", cluster.state().to_string())
         }
         ("POST", action)
-            if action.starts_with("/peer/")
+            if action.starts_with("/speed/")
+                || action.starts_with("/peer/")
                 || action.starts_with("/link/")
                 || action.starts_with("/range/")
                 || action.starts_with("/order/") =>

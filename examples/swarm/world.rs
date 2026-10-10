@@ -100,6 +100,20 @@ impl AcousticBearing {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Observation {
+    Poi {
+        id: usize,
+        kind: super::cluster::flood::PoiKind,
+        finding: super::cluster::flood::Finding,
+        position: Point,
+        seen: u64,
+        source: usize,
+    },
+    Intent {
+        recipient: usize,
+        poi: Option<usize>,
+        role: super::cluster::flood::Role,
+        seen: u64,
+    },
     Contact {
         id: usize,
         kind: ContactKind,

@@ -1,150 +1,194 @@
-const http = require('node:http');
-const fs = require('node:fs');
-const path = require('node:path');
-const assert = require('node:assert/strict');
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const http = require("node:http");
+const fs = require("node:fs");
+const path = require("node:path");
+const assert = require("node:assert/strict");
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
 (async () => {
-  const root = path.resolve('target/swarm-pages');
+  const root = path.resolve("target/swarm-pages");
   const server = http.createServer((request, response) => {
-    if (request.url === '/reconcile-rs/probe') return response.end('<!doctype html><title>Runtime probe</title>');
-    const relative = decodeURIComponent(request.url).replace(/^\/reconcile-rs\//, '') || 'index.html';
+    if (request.url === "/reconcile-rs/probe")
+      return response.end("<!doctype html><title>Runtime probe</title>");
+    const relative =
+      decodeURIComponent(request.url).replace(/^\/reconcile-rs\//, "") ||
+      "index.html";
     const file = path.resolve(root, relative);
-    if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    if (
+      !file.startsWith(root + path.sep) ||
+      !fs.existsSync(file) ||
+      !fs.statSync(file).isFile()
+    ) {
       response.statusCode = 404;
       return response.end();
     }
-    response.setHeader('Content-Type', file.endsWith('.wasm') ? 'application/wasm' : file.endsWith('.js') ? 'text/javascript' : 'text/html');
+    response.setHeader(
+      "Content-Type",
+      file.endsWith(".wasm")
+        ? "application/wasm"
+        : file.endsWith(".js")
+          ? "text/javascript"
+          : "text/html",
+    );
     fs.createReadStream(file).pipe(response);
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}/reconcile-rs/`;
   let browser;
   try {
-    browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+    browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
     const page = await browser.newPage();
     const errors = [];
     const apiRequests = [];
-    page.on('pageerror', error => errors.push(error.message));
-    page.on('request', request => { if (/\/state$|\/order\//.test(request.url())) apiRequests.push(request.url()); });
-    await page.goto(base + 'probe');
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("request", (request) => {
+      if (/\/state$|\/order\//.test(request.url()))
+        apiRequests.push(request.url());
+    });
+    await page.goto(base + "probe");
     const proof = await page.evaluate(async () => {
-      const bindings = await import('./pkg/reconcile_swarm_web.js');
+      const bindings = await import("./pkg/reconcile_swarm_web.js");
       await bindings.default();
       return bindings.verify_runtime();
     });
     console.log(proof);
-    const handover = await page.evaluate(async () => {
-      const { Fleet } = await import('./pkg/reconcile_swarm_web.js');
-      const fleet = new Fleet(0,12,1200,0);
+    const mission = await page.evaluate(async () => {
+      const { Fleet } = await import("./pkg/reconcile_swarm_web.js");
+      const fleet = new Fleet(0, 6, 1200, 250);
       try {
-        fleet.command('demo');
-        for(let tick=0;tick<200;tick++)fleet.step();
-        const state=JSON.parse(fleet.command('pause'));
-        const report=(node,source)=>state.nodes[node].find(([key])=>key==='contact/01/'+String(source).padStart(2,'0'))?.[1].Contact;
-        return {old:report(0,0),next:report(1,1),cc:report(state.center,0),peer:state.peer_states[0],mission:state.mission};
-      } finally {fleet.free();}
-    });
-    assert.equal(handover.peer,'stopped');
-    assert.ok(handover.old.seen < handover.next.seen);
-    assert.equal(handover.old.kind,'mechanical');
-    assert.equal(handover.next.kind,'mechanical');
-    assert.equal(handover.cc,undefined);
-    assert.equal(handover.next.bearing.range_km,1.5);
-    assert.equal(handover.mission.corridor.length,2);
-    console.log('WASM corridor: G2 continues observation after G1 halt, dated bearings, no CC shortcut: passed');
-    await page.goto(base);
-    await page.waitForFunction(() => document.getElementById('node').options.length === 13);
-    await page.waitForFunction(() => document.getElementById('reports').textContent.length > 0, null, { timeout: 30000 });
-    const before = await page.evaluate(async () => {
-      const { request } = await import('./api.js');
-      await request('pause', 'POST');
-      await request('peer/0/offline', 'POST');
-      return request('order/0/hold', 'POST');
-    });
-    const values = snapshot => snapshot.map(([, value]) => value);
-    assert.equal(before.reference_map.version, 'synthetic-coast-v1');
-    assert.equal(before.reference_map.detail.length, 32 * 20);
-    assert.ok(before.command_position.x < before.coastal_position.x);
-    assert.ok(before.nodes.every(snapshot => snapshot.every(([key]) => !key.startsWith('map/') && !key.startsWith('sector/'))));
-    const coastalLinks = before.links.filter(link => link.enabled && link.b === before.center);
-    assert.ok(coastalLinks.length > 0 && coastalLinks.length < before.center);
-    assert.equal(before.peer_states[0], 'offline');
-    assert.equal(values(before.nodes[0]).some(value => Boolean(value.Order)), false);
-    assert.equal(values(before.nodes[before.center]).some(value => Boolean(value.Order)), true);
-    const other = await browser.newPage();
-    await other.goto(base);
-    await other.waitForFunction(() => document.getElementById('node').options.length === 13);
-    const independent = await other.evaluate(async () => (await import('./api.js')).request('state'));
-    assert.equal(independent.playing, true);
-    assert.equal(values(independent.nodes[independent.center]).some(value => Boolean(value.Order)), false);
-    await other.close();
-    await page.evaluate(async () => (await import('./api.js')).request('heal', 'POST'));
-    const reconnected = await page.evaluate(async () => (await import('./api.js')).request('state'));
-    assert.equal(reconnected.peer_states[0], 'active');
-    // Verify delivery with a bounded fleet; the default fleet has no 60-second latency guarantee.
-    const delivered = await page.evaluate(async () => {
-      const { default: init, Fleet } = await import('./pkg/reconcile_swarm_web.js');
-      await init();
-      const fleet = new Fleet(0, 3, 1200, 10);
-      const timer = setInterval(() => fleet.step(), 50);
-      try {
-        fleet.command('pause');
-        fleet.command('heal');
-        fleet.command('peer/0/offline');
-        const offline = JSON.parse(fleet.command('order/0/hold'));
-        if (offline.nodes[0].some(([, value]) => value.Order)) throw Error('Offline recipient received an order');
-        fleet.command('peer/0/online');
-        const deadline = Date.now() + 90000;
+        fleet.command("peer/1/offline");
+        fleet.command("peer/6/offline");
+        for (let i = 0; i < 65; i++) fleet.step();
+        let state = JSON.parse(fleet.state());
+        const local = state.nodes[0].find(([k]) => k === "poi/01/00")?.[1].Poi;
+        if (!local) throw Error("Camera did not discover nearby cue");
+        if (state.nodes[6].some(([, v]) => v.Poi))
+          throw Error("Center obtained isolated findings");
+        if (state.flood.aircraft[1].role !== "search")
+          throw Error("Isolated verifier read another replica");
+        fleet.command("heal");
+        let verified = false,
+          confirmed = false;
+        const deadline = Date.now() + 45000;
         while (Date.now() < deadline) {
-          const state = JSON.parse(fleet.state());
-          const order = state.nodes[0].some(([, value]) => value.Order?.recipient === 0);
-          const ack = state.nodes[state.center].some(([, value]) => value.Acknowledgement?.recipient === 0 && value.Acknowledgement.applied);
-          if (order && ack) return true;
-          await new Promise(resolve => setTimeout(resolve, 250));
+          fleet.step();
+          state = JSON.parse(fleet.state());
+          verified ||= state.flood.aircraft[1].role === "verify";
+          confirmed ||= state.nodes[1].some(
+            ([, v]) =>
+              v.Poi?.id === 1 &&
+              v.Poi.source === 1 &&
+              v.Poi.finding === "confirmed",
+          );
+          if (
+            verified &&
+            confirmed &&
+            state.nodes[6].some(
+              ([, v]) => v.Poi?.id === 1 && v.Poi.finding === "confirmed",
+            )
+          )
+            return { verified, confirmed };
+          await new Promise((r) => setTimeout(r, 50));
         }
-        return false;
+        throw Error(
+          "Received finding did not cause verification and reach center",
+        );
       } finally {
-        clearInterval(timer);
         fleet.free();
       }
     });
-    assert.ok(delivered, 'capped three-drone fleet must execute its order and return an acknowledgement');
-    await page.evaluate(() => { const node = document.getElementById('node'); node.value = '0'; node.dispatchEvent(new Event('change')); });
-    await page.locator('#order-action').selectOption('patrol');
-    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Order issued'));
+    assert.equal(mission.verified, true);
+    assert.equal(mission.confirmed, true);
+    console.log(
+      "Flood: isolated knowledge, real report delivery, bounded local rerouting, verification and center reception passed",
+    );
+    await page.goto(base);
+    await page.waitForFunction(
+      () => document.getElementById("fleet").children.length === 7,
+    );
+    await page.waitForFunction(
+      () => document.querySelector("#reports .poi"),
+      null,
+      { timeout: 30000 },
+    );
+    await page.locator("#play").click();
+    await page.waitForFunction(
+      () => document.getElementById("play").textContent === "Play",
+    );
+    await page.locator("#reports .poi").first().click();
+    assert.ok((await page.locator("#object-detail").textContent()).length > 0);
+    const first = await page.evaluate(async () =>
+      (await import("./api.js")).request("state"),
+    );
+    assert.equal(first.center, 6);
+    assert.equal(first.flood.cruise_kmh, 72);
+    assert.equal(first.flood.camera_radius_km, 0.1);
+    await page.screenshot({
+      path: process.env.SWARM_SCREENSHOT_PREFIX
+        ? process.env.SWARM_SCREENSHOT_PREFIX + "-desktop.png"
+        : "/tmp/swarm-desktop.png",
+    });
+    const other = await browser.newPage();
+    await other.goto(base);
+    await other.waitForFunction(
+      () => document.getElementById("fleet").children.length === 7,
+    );
+    const independent = await other.evaluate(async () =>
+      (await import("./api.js")).request("state"),
+    );
+    assert.equal(independent.playing, true);
+    await other.close();
+    await page.locator("#fleet button").last().click();
+    assert.equal(
+      await page.locator("#perspective").textContent(),
+      "RESPONSE CENTER · LOCAL KNOWLEDGE",
+    );
+    assert.equal(
+      await page.locator("#reports .poi").count(),
+      0,
+      "offline center must not display simulator POIs",
+    );
+    await page.locator("details summary").click();
+    await page.locator("#truth").click();
+    assert.equal(await page.locator("#reports .poi").count(), 4);
+    await page.locator("#fleet button").first().click();
     await page.setViewportSize({ width: 390, height: 844 });
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-    const map = page.locator('#map');
-    assert.ok((await map.boundingBox()).height > 844 * .8, 'mobile map must occupy most of the viewport');
-    assert.equal(await map.evaluate(el => getComputedStyle(el).objectFit), 'cover');
-    const sheet = page.locator('#inspector-toggle');
-    assert.equal(await sheet.getAttribute('aria-expanded'), 'false');
-    assert.equal(await page.locator('#inspector-content').evaluate(el => el.inert), true);
-    await sheet.click();
-    assert.equal(await sheet.getAttribute('aria-expanded'), 'true');
-    assert.equal(await page.locator('#inspector-content').evaluate(el => el.inert), false);
-    await page.locator('#order-action').selectOption('hold');
-    await sheet.click();
-    assert.equal(await sheet.getAttribute('aria-expanded'), 'false');
-    await page.locator('#map-overview').click();
-    assert.equal(await map.evaluate(el => getComputedStyle(el).objectFit), 'contain');
-    assert.equal(await page.locator('#map-overview').getAttribute('aria-pressed'), 'true');
-    await page.locator('#map-overview').click();
-    assert.equal(await map.evaluate(el => getComputedStyle(el).objectFit), 'cover');
-    await page.locator('#map-center').click();
-    // Cropped portrait maps must remain draggable even at the initial zoom.
-    const bounds = await map.boundingBox();
-    await page.mouse.move(bounds.x + 200, bounds.y + 180);
-    await page.mouse.down();
-    await page.mouse.move(bounds.x + 80, bounds.y + 180, { steps: 8 });
-    await page.mouse.up();
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > innerWidth,
+      ),
+      false,
+    );
+    assert.ok((await page.locator("#map").boundingBox()).height > 844 * 0.8);
+    assert.equal(
+      await page.locator("#inspector-content").evaluate((e) => e.inert),
+      true,
+    );
+    await page.screenshot({ path: "/tmp/swarm-mobile.png" });
+    await page.locator("#inspector-toggle").click();
+    assert.equal(
+      await page.locator("#inspector-content").evaluate((e) => e.inert),
+      false,
+    );
+    await page.screenshot({ path: "/tmp/swarm-mobile-details.png" });
+    await page.locator("#inspector-toggle").click();
+    await page.locator("#map-overview").click();
+    assert.equal(
+      await page.locator("#map").evaluate((e) => getComputedStyle(e).objectFit),
+      "contain",
+    );
+    await page.locator("#map-overview").click();
+    await page.locator("#map-center").click();
     assert.deepEqual(errors, []);
     assert.deepEqual(apiRequests, []);
-    assert.equal(await page.locator('#error').textContent(), '');
-    console.log('WASM fleet: default limits, offline order, reconnect acknowledgement, independent visitors, mobile, no HTTP API: passed');
+    assert.equal(await page.locator("#error").textContent(), "");
+    console.log(
+      "Flood UI: local/truth separation, independent visitors, finding inspector and full-screen mobile map passed",
+    );
   } finally {
     if (browser) await browser.close();
     server.close();
   }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

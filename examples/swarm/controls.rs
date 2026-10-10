@@ -4,7 +4,7 @@ use std::io;
 
 pub fn apply(cluster: &mut Cluster, path: &str) -> io::Result<()> {
     match path.trim_start_matches('/') {
-        "speed/1" | "speed/5" | "speed/10" => {
+        "speed/1" | "speed/5" | "speed/10" | "speed/30" | "speed/60" => {
             cluster.world.speed = path
                 .trim_start_matches('/')
                 .split('/')
@@ -55,6 +55,7 @@ pub fn apply(cluster: &mut Cluster, path: &str) -> io::Result<()> {
         }
         action @ ("reset" | "demo") => {
             let speed = cluster.world.speed;
+            let flood = cluster.flood.is_some();
             *cluster = Cluster::with_limits(
                 cluster.loss,
                 cluster.center(),
@@ -63,7 +64,10 @@ pub fn apply(cluster: &mut Cluster, path: &str) -> io::Result<()> {
             )?;
             cluster.world.playing = true;
             cluster.world.speed = speed;
-            if action == "demo" {
+            if flood {
+                cluster.start_flood();
+                cluster.world.scripted = action == "demo";
+            } else if action == "demo" {
                 cluster.start_demo();
             }
             return Ok(());

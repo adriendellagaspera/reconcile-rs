@@ -1,8 +1,9 @@
 import init, { Fleet } from './pkg/reconcile_swarm_web.js';
 
 const ready = init().then(() => {
-  const fleet = new Fleet(35, 12, 1200, 10);
-  fleet.command('speed/5');
+  const fleet = new Fleet(5, 6, 1200, 250);
+  fleet.command('speed/10');
+  fleet.command('demo');
   setInterval(() => fleet.step(), 500);
   return fleet;
 });

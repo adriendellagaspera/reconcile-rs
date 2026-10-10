@@ -39,7 +39,7 @@ impl Fleet {
         telemetry::install().map_err(js_error)?;
         let mut cluster =
             cluster::Cluster::with_limits(loss, drones, mtu, bandwidth_kbps).map_err(js_error)?;
-        cluster.world.playing = true;
+        cluster.start_flood();
         Ok(Fleet { cluster })
     }
 

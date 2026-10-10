@@ -22,7 +22,11 @@ use super::world::{
     COASTAL_POSITION, COMMAND_POSITION, CORRIDOR, LISTENING_RANGE_KM,
 };
 
+#[path = "flood.rs"]
+pub mod flood;
+
 pub struct Cluster {
+    pub flood: Option<flood::Mission>,
     pub nodes: Vec<ReplicatedMap<String, Observation>>,
     network: Arc<Network>,
     losses: Vec<Impairments>,
@@ -135,6 +139,7 @@ impl Cluster {
             nodes.push(node);
         }
         let mut cluster = Self {
+            flood: None,
             nodes,
             network,
             losses,
@@ -349,6 +354,10 @@ impl Cluster {
     }
 
     fn advance_tick(&mut self) {
+        if self.flood.is_some() {
+            self.advance_flood();
+            return;
+        }
         self.process_orders();
         if !self.world.playing {
             return;
@@ -393,6 +402,10 @@ impl Cluster {
     }
 
     fn observe_peer(&mut self, id: usize, force: bool) {
+        if self.flood.is_some() {
+            self.observe_flood(id, force);
+            return;
+        }
         if self.network.topology.read().peers[id] == PeerState::Stopped {
             return;
         }
@@ -525,7 +538,8 @@ impl Cluster {
             "delivered_datagrams": self.network.datagrams.load(Ordering::Relaxed),
             "links": self.network.links(), "groups": group_agreement,
             "direct_peers": (0..self.nodes.len()).map(|id| self.network.direct_peers(id)).collect::<Vec<_>>(),
-            "command_position": COMMAND_POSITION, "coastal_position": COASTAL_POSITION,
+            "command_position": if self.flood.is_some() { flood::BASE } else { COMMAND_POSITION }, "coastal_position": if self.flood.is_some() { flood::BASE } else { COASTAL_POSITION },
+            "flood": self.flood.as_ref().map(|m| serde_json::json!({"aircraft":m.aircraft,"truth_pois":m.pois,"camera_radius_km":flood::FOOTPRINT_KM,"cruise_kmh":72,"endurance_minutes":60,"reserve_minutes":15})),
             "mission": {"name": "Coastal corridor watch", "corridor": CORRIDOR, "sensor": "passive_acoustic", "listening_range_km": LISTENING_RANGE_KM, "speed": self.world.speed},
             "reference_map": self.reference_map, "disruptions": disruptions,
             "truth_contacts": self.world.contacts(),

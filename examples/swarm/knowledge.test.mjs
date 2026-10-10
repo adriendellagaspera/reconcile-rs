@@ -151,3 +151,13 @@ test('hit testing covers visible primitives without hidden truth targets', async
   assert.equal(hitVisible([cell],{x:120,y:60}),null);
   assert.equal(hitVisible(visible,{x:-1,y:-1}),null);
 });
+
+test('verified findings survive newer suspicions; dismissal corrects the local view', async()=>{
+ const {floodKnowledge}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ const entry=(source,seen,finding)=>['poi/01/'+source,{Poi:{id:1,source,seen,finding,position:{x:10,y:6},kind:'people'}}];
+ const first=['poi-first/01/0',{Poi:{id:1,source:0,seen:1,finding:'suspected'}}];
+ const entries=[entry(0,100,'suspected'),entry(1,20,'confirmed'),first];
+ for(const e of [entries,[...entries].reverse()]){const k=floodKnowledge(e,120);assert.equal(k.pois[0].finding,'confirmed');assert.equal(k.pois[0].age,50);assert.equal(k.reports.length,2);assert.equal(k.first.length,1);}
+ assert.equal(floodKnowledge([...entries,entry(3,30,'dismissed')],120).pois[0].finding,'dismissed');
+ assert.deepEqual(floodKnowledge([],120).pois,[]);
+});

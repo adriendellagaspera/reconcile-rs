@@ -18,223 +18,87 @@ See k8s/README.md for the Kubernetes example.
 cargo run --release --example swarm
 ~~~
 
-Open `http://127.0.0.1:8088`; exploration starts automatically in the CC perspective. The default is 12 drones,
-one command-center peer, 35% seeded packet loss, and 10 kbit/s per glider in each direction. Options: `--nodes 2..20` (drones,
-excluding the center), `--loss 0..100`, `--port PORT`, `--speed 1..20`, `--mtu BYTES`, `--bandwidth-kbps 0..1000` (0 disables the cap).
-Speed accelerates application time only; emulated 160 ms RTT and protocol timers stay real.
+Open `http://127.0.0.1:8088`. The flood-response mission starts on station with six aircraft
+and an ordinary response-center replica. Defaults: 5% seeded packet loss, 1200-byte datagrams,
+250 kbit/s aggregate aircraft TX/RX, and independent capped CC outbound lanes. Options:
+`--nodes 2..20`, `--loss 0..100`, `--port PORT`, `--speed 1..20`, `--mtu BYTES`,
+`--bandwidth-kbps 0..1000` (0 disables shaping). Protocol timers and bandwidth stay in real time.
+The browser starts the scripted exercise at ×10; the native server starts manual exploration at ×1.
 
-Build before the interview, then run `./target/release/examples/swarm` offline. No Internet or
-external assets are used at runtime. HTTP binds only on loopback. Authenticated replica traffic
-uses `InMemoryNetwork` and a fixed demo-only key. Each peer has its own map, HLC, protocol loops,
-transport endpoint and stable node id. The command center is an ordinary authoritative replica
-that originates no sensor observations; it can exchange data, but fleet operation never requires it.
+No Internet or external assets are used at runtime. Native HTTP binds on loopback. Each aircraft
+owns a real map, HLC, protocol tasks and authenticated in-memory transport endpoint. The shared
+terrestrial map is rendered from fixed mission geography outside every replicated store.
 
-The default 1200-byte datagram budget exercises UDP application framing. Each glider has a
-shared 10,000 bit/s (1,250 byte/s) TX budget across all neighbors, and a separate aggregate RX
-budget of the same size. Two byte-fair TX classes reserve half the glider's capacity for CC
-when both classes have queued packets; either class borrows the full rate when the other is idle.
-Each class reserves 8 KiB of admission space (or one configured datagram if larger),
-including its packet in service, with at most 64 datagrams per class. Fairness is bounded
-by a packet's serialization time; priority changes neither reconciliation nor merge semantics.
-CC has independent 10 kbit/s TX lanes to each configured glider, with 16 KiB (or one configured datagram if larger) of queue space per
-lane, and unlimited aggregate RX. Fleet operation does not depend on CC availability.
-TX serializes packets before seeded loss and latency, including protocol bytes, retries and
-configured-peer probes. Excess packets drop like UDP. Glider RX polices aggregate ingress with
-at most one datagram of burst; concurrent senders can still overload a glider. This is destination
-scheduling and finite capacity, not application-aware scheduling or acoustic physics. HTTP and
-sensor-local writes consume none of this budget. Speed never accelerates bandwidth or protocol
-time; at high application speed fresh reports can outpace the channel.
+### Mission and physical assumptions
 
-The bandwidth panel shows per-peer TX/RX rates, queued bytes, the slowest lane's nominal drain time and saturation
-drops separately from seeded packet loss. Connected peers can remain divergent, and orders can
-expire before delivery. No contact or order receives implicit priority. LWW retains the latest state
-per key, so superseded intermediate reports need not ever be seen remotely. Anti-entropy may
-continue after scripted time stops; the demo never claims a fixed convergence deadline. Use
-`--bandwidth-kbps 0 --mtu 16384` to compare with an unconstrained in-memory transport.
+A synthetic 32×20 km river valley contains flooded settlements, a damaged bridge and a blocked
+road. The region is context, not exhaustively inspected ground. Camera observations require a
+100 m footprint radius. RGB sensors produce possible-person cues; odd-numbered sensor indices
+simulate verification on a subsequent local measurement. Ground-truth objects, classifications
+and actual aircraft intentions appear only in the explicit simulator perspective.
 
-### Interaction
+Aircraft cruise at a bounded 20 m/s (72 km/h) with 60 min nominal endurance and a 15 min reserve.
+They return when the remaining time cannot cover the reserve plus the straight-line return leg,
+or after 45 km of illustrated on-station flight. Initial deployment transit is excluded; aircraft
+start on station. Wind, bank/turn dynamics, image classification and rescue dispatch are not
+modeled. Holding/verification/monitoring is drawn stationary as a kinematic loiter approximation.
+Camera footprints do not imply that whole sectors have been inspected.
 
-Click a visible glider on the map or a locally known fleet report to enter its onboard view.
-Click the fixed station to return to CC. The inspector's order menu immediately issues the chosen
-scan/hold/patrol order from CC, addressed to that selected drone. An issued order does not appear
-in the drone's local knowledge until it arrives. Contacts, visible source observations, links and reference-chart tiles can also be selected.
-Their inspector and hover hints use the same local data; unknown objects have no click targets.
-Scroll or pinch to zoom, drag to pan, and double-click to reset or enlarge the map.
-On phones, the map fills the workspace and the inspector opens from the bottom bar.
-Use Overview to see the entire region and Selected peer to recenter the navigable view.
-Escape clears object selection, then returns to CC. Secondary knowledge lists fold into the rail.
-The only persistent button pauses motion; replica traffic and command delivery continue.
+### Local decisions and evidence
 
-Use the perspective menu to enter ground truth when exploring drones unknown to the current
-observer. Simulation diagnostics and topology/scenario controls are collapsed and available only
-there. The scripted outage sequence lives in that panel's scenario menu. Reset resumes manual
-exploration. Local perspectives hide all global replica states, global counters and global topology;
-unknown fleet members are absent rather than populated from simulator truth.
+`poi/{id}/{sensor}` preserves each sensor's latest observation. `poi-first/{id}/{sensor}` keeps
+immutable first discoveries. A verified confirmation or dismissal outranks an unverified cue;
+among verified reports, observation time wins, then lower sensor index. This is application
+projection over separate LWW entries, not sensor fusion or a new library merge policy.
+Reception never changes the original observation time. No classifier or real track association
+is implemented; POI identities are supplied by the simulator.
 
-### Views and knowledge
+Each aircraft chooses actions from its own replica. A possible-person cue can redirect aircraft 2
+for verification and aircraft 3 for nearby observation. Aircraft 4 verifies its local false-positive cue. Confirmation lets aircraft 1 monitor the
+location; receipt of a dismissal cancels the corresponding verification. Surroundings are drawn
+as a small orbit. These roles are deterministic demonstration capabilities, not optimal task
+allocation. `intent/{aircraft}` advertises the chosen action and POI; it is not an exclusive lock.
+Partitions can cause duplicate work. Plans do not read other replicas or simulator object truth.
 
-- **Local knowledge**: the selected peer's snapshot, plus its own navigation position.
-  CC uses exactly the same operational projection. It is inland, with a terrestrial link to a
-  fixed coastal modem representing its fleet-facing transport endpoint. The modem has no separate
-  replica or merge policy; only nearby gliders can exchange directly with the CC peer.
-- **Simulator / ground truth**: actual positions, typed contacts and failure states.
-Ground truth includes actual allowed links, with a **Show connections** toggle. Local views
-show only direct ingress seen by that observer; silence after five real seconds makes links dashed.
-Endpoints use last known reports; unknown endpoints remain listed. CC and coastal-modem positions are fixed mission configuration. Direct fleet links are drawn
-from the coastal modem; the dashed inland connection is terrestrial infrastructure, not gossip ingress.
+The CC produces no observations. Its received findings can be inspected by selecting Center.
+Locally unknown findings have no markers or hit targets. Own navigation is available immediately;
+other aircraft positions and intentions require received reports. Fixed terrain and the known
+fleet roster are mission configuration. Simulator phase, uplink incident and collapsed diagnostics
+are explicitly global exercise information. Older reports retain their age across relays.
 
-All peers share the immutable, versioned `synthetic-coast-v1` reference chart, built before
-observations start and outside every replicated store. One map unit represents one kilometer;
-the 32×20 km footprint covers 640 km². The whole coastline is visible even in an empty CC replica.
-Only operational knowledge is reconciled: contacts, fleet reports, commands and acknowledgements.
-The dashed coastal corridor is public mission configuration, not inspected water or sensor coverage.
+### Script and interaction
 
-The application deliberately uses **different key shapes for different semantics**, while the
-library itself remains LWW throughout:
-- **Latest-state registers**: `vehicle/{drone}`, `contact/{contact}/{sensor}`,
-  and `order/{recipient}` overwrite older versions. A single sensor owns its
-  contact report key; CC alone issues desired commands.
-- **Immutable facts**: `contact-first/{contact}/{sensor}` first discoveries are
-  written only on first sight. The reference chart has no replicated `map/` keys.
-- **Append-only event keys**: `order-issued/{recipient}/{sequence}` and
-  `order-ack/{recipient}/{sequence}` retain independent issued-command and
-  executed/rejected-command facts. They are **not** an executable event queue.
+The exercise interrupts the CC modem after 20 simulated seconds and cuts cross-group links
+between aircraft 1–3 and the remaining aircraft. Available within-group exchanges continue.
+At five simulated minutes, all peers and links are restored. At fifteen minutes, movement and
+sensor writes freeze for exact anti-entropy repair. The mission clock stops only when dated entries
+agree; no wall-clock convergence deadline is promised. Radio availability is synthetic, not an
+RF propagation model. There is no GNSS jamming, flight-control recovery or jamming mitigation.
 
-Separate per-sensor contact registers preserve each source's latest report, not a full
-measurement history; only first discoveries are recorded as immutable events. The
-application does not write an unbounded observation stream, given the 10 kbit/s
-links. All observers use the same local projection: live contact synthesis selects
-the latest measurement per contact by application observation time (ties by source
-id), excluding the immutable discovery records. Issued-command history is displayed
-separately from the current desired order, and acknowledgements are joined by
-recipient/sequence. This is not a sensor-fusion estimate and does not average
-asynchronous positions. The immutability/ownership contract lives in the demo,
-not in an enforced custom merge policy inside reconcile-rs.
+Select an aircraft or Center to compare local knowledge. Select a finding to read its evidence
+and frame it on the map. Ground truth exposes actual objects and positions separately. Links are
+hidden by default; local links reflect only direct ingress and last-known endpoint positions.
+Drag/pinch/scroll to navigate. On phones the map fills the workspace and an accessible bottom
+sheet opens the inspector; Overview fits the entire region and Follow selected recenters it.
+Pause stops movement and sensor time while network traffic continues. Restart rebuilds all peers.
+Manual modem/heal controls leave scripted timing. UI clock choices are ×1, ×10, ×30 and ×60.
 
-Vehicle and contact reports progressively gray and fade according to observation time, not
-receipt time or HLC ordering. Vehicle reports are stale after 30 simulated seconds; contacts after
-45. Stale markers have dashed outlines. Vehicle rings illustrate growing uncertainty, not calibrated
-covariance or confidence. Acoustic fans retain their measured direction and sensor origin at observation
-time; their midpoint marker is only a drawing anchor. The chart does not age. Reports refresh every ten
-simulated seconds or on explicit listening; visual expiry never deletes replicated data.
-A silent vehicle is shown as stale/unknown, not diagnosed as failed. Failure states and global
-metrics are explicitly simulator information, separate from local knowledge.
+### Transport and semantics
 
-### Orders, contacts and coastline
+Aircraft share bounded TX/RX budgets across neighbors. CC has independent outbound lanes and
+unlimited aggregate reception. Traffic shaping accounts for protocol overhead; packets can drop
+from queue overflow, loss, or unavailable links. Connected replicas may still diverge. Increasing
+the application clock does not accelerate networking and can outpace reconciliation.
 
-The CC writes a latest desired order per drone: **Listen now**, **Hold position**, or **Resume watch patrol**,
-and a separately keyed immutable issuance record. A drone processes **only the desired order**
-in its own replica, records one immutable acknowledgement per sequence, and rejects orders
-older than 120 simulated seconds. Acknowledgements become visible to the CC only through
-replication. Old orders and their acknowledgements remain queryable as history, but
-**the history is not replayed to execute missed or superseded commands**. A modem-offline drone can execute an already received order; a halted
-drone waits for resume. Offshore orders normally require intermediate replicas: each relay integrates the desired
-state but only the addressed drone executes it. Acknowledgements require a return propagation path.
-Reports retain their original source and observation time at every relay; storing and later
-exchanging a report can deliver it after its source disconnects. No simultaneous end-to-end
-path or fixed relay role is required, provided exchanges eventually connect the replicas in time.
-Hold freezes navigation while sensing and protocol traffic continue. New orders supersede older
-ones: this is desired-state control, not a durable queue or a safety-critical command protocol.
-Pausing also pauses order deadlines, while allowing delivered orders to execute.
+Desired orders and immutable issued/acknowledged journals remain supported by the engine;
+only the addressed drone executes a received desired order. History is not a replay queue.
+Exclusive task assignment, bulk imagery transfer, durable recovery, retention/GC and real sensor
+fusion need separate policies. Latest source reports are bounded per POI; journals need retention
+for unbounded missions. The in-memory fleet loses state when reloaded.
 
-The mission watches a 24 km coastal corridor on the existing 32×20 km chart. Gliders patrol
-small loops at a nominal 0.48 m/s. Moving vessels and biological contacts travel along the corridor
-at 2–8 m/s; the ocean front is ground truth only. The chart retains its 8×8 land mask per tile.
-
-Passive acoustic listening uses a **synthetic 1.5 km envelope**, independent of the 10 km communication
-range. This is a simulation assumption, not validated sonar performance. Reports carry the sensor
-origin, a noisy bearing (clockwise from north, ±12° fan) and unresolved range. A hollow marker halfway
-along the fan is a drawing anchor, **not a measured or fused target position**. Civil and hostile vessels
-both produce broad mechanical signatures; animals produce biological signatures. The local replica
-cannot infer intent or species. Track IDs are simulator-provided associations, not a classifier or a
-real data-association algorithm. No optical sensing or calibrated acoustic propagation is modeled.
-
-Per-source latest reports and immutable first discoveries coexist. The UI shows latest and first
-sources; a new source does not refresh an older source's observation time. The corridor scenario cuts
-the shore uplink, isolates G1, introduces a contact, halts G1 while G2 continues observation, then
-restores peers and freezes motion and observations for exact reconciliation. This demonstrates
-observation continuity, not autonomous pursuit or command handoff. Orders still require delivery
-and acknowledgement through actual replicas.
-
-The browser starts with a ×5 mission clock, selectable at ×1, ×5 or ×10. Only application time
-accelerates; network timers and bandwidth remain in real time. Pause freezes motion and order
-deadlines while reconciliation continues. The native `--speed` is an additional multiplier; leave it
-at 1 when comparing UI clock rates.
-
-### Connectivity and failures
-
-Every pair has an independent symmetric availability decision. Distance, drifting storm and human-jamming zones,
-a manual pair cut, or an offline/stopped endpoint can block it. No route requires G1, G7 or the
-center. Zones obstruct segments that intersect their circular footprint; crossing the map midpoint
-has no special meaning. Storm drift follows application time; the jammer is stationary. Zones are
-visible and selectable only in ground truth, where their inspector can clear them. Positions update connectivity as drones move; graph components and their agreement are
-computed from the actual links, rather than fixed west/east memberships. The model is synthetic,
-not an acoustic propagation simulation. Packet loss uses per-directed-link seeded streams;
-latency/loss settings are uniform. The default communication range is 10 km; CC range and
-disruption checks use its coastal modem location. Distance does not guarantee bandwidth;
-the scale and geometry illustrate replication, not validated acoustic propagation.
-
-Simulator controls select any peer (including the center), cut/restore its modem, halt/resume it,
-change communication range, toggle storm or human jamming, or cut one pair. Removing a manual cut
-still requires reachable, online endpoints and clear weather. **Restore all peers & links** resumes
-all peers, reconnects their modems, clears cuts/disruptions and extends range to cover the whole map.
-
-Modem disconnection leaves navigation, sensing and local writes running. Halt suspends navigation,
-sensors and the peer's protocol tasks. Resume restarts the protocol using retained in-memory state;
-this does not demonstrate disk persistence, process-crash recovery or replacement after storage loss.
-Returning peers recover missed reports and contribute their isolated discoveries through normal
-anti-entropy. Already delivered knowledge survives loss of its originating peer.
-
-### Script and timing
-
-The script runs for at least 150 simulated seconds, with a repair deadline at 240 seconds:
-
-1. 0–30 s: listen along the corridor with distance-based peer links.
-2. 30–60 s: a drifting storm obstructs intersecting links; the command center loses its modem.
-3. 60–90 s: G1's modem disconnects; a contact appears near it; local discoveries continue.
-4. 90–120 s: G1 halts; G2 continues reporting the contact.
-5. From 120 s: resume all peers, heal links and freeze motion and new sensor writes for exact repair.
-6. From 150 s: finish only when every dated entry agrees. At 240 s stop scripted time even if
-   repair remains pending; the restored network and anti-entropy continue running.
-
-Manual topology/observation controls leave the script. Pause freezes application motion,
-observations and scenario time; reconciliation and order processing continue. Reset recreates every peer, transport
-pump and traffic counter. Clicking a drone/center in a simulator view opens its local perspective.
-
-### Implementation and measurements
-
-- `swarm/world.rs`: deterministic terrain, patrols and contact truth.
-- `swarm/cluster.rs`: replica lifecycle, local sensor writes and scripted events.
-- `swarm/transport.rs`: pairwise delivery/ingress gates, topology and traffic accounting.
-- `swarm/knowledge.js`: shared snapshot-only knowledge synthesis and freshness projection.
-- `swarm/http.rs`: bounded local HTTP server and embedded browser assets.
-- `swarm/tests.rs`, `swarm/knowledge.test.mjs`: protocol scenarios and local projection properties.
-- `swarm/telemetry.rs`: optional library metric collection without an external exporter.
-
-A staggered application timer invokes public `start_reconciliation` every two real seconds;
-sustained traffic must not starve the library's idle-driven comparison sweep. Merge semantics,
-wire encoding and repair remain library-owned. Delivery checks topology after netem delay; ingress
-rechecks queued datagrams before consumption. Seeding reachable neighbors after topology changes
-restores gossip-routing candidates without decommissioning isolated causal-stability members.
-
-Divergence counts union keys with differing dated entries on any replica, including absent keys
-and LWW timestamps. Agreement includes offline/halted peers and the center. Component agreement
-uses the same definition inside each current connected component; connectivity alone does not
-imply convergence. The UI uses one snapshot per peer per sample, not an atomic distributed cut.
-
-Counters distinguish seeded loss drops, unavailable-link drops, and delivered replica wire traffic.
-Wire bytes include protocol overhead, exclude HTTP, and are not repair-only bytes. Per-peer TX counts offered wire bytes before netem loss;
-RX counts bytes admitted to protocol consumption. Per-sample rates can burst on packet boundaries. Delivered means admitted to the in-memory fabric, not necessarily consumed by an endpoint.
-Round counts come from public `sync_state`. With `--features metrics`, `/state` includes process
-counters, which reset does not clear. Wall-clock HLC stamps and runtime scheduling prevent
-bit-for-bit replay of traffic counts or convergence times despite repeatable geometry and seeds.
-
-Long-offline replica removal, deletion/tombstone GC, permanent storage loss, real sensor fusion
-and exclusive mission assignment require additional application policies; the demo does not
-claim those semantics from LWW convergence alone. Command/acknowledgement and first-discovery
-history is not automatically pruned; unbounded mission duration would need an explicit
-retention and deletion policy. The default demo keeps only latest sensor readings to limit
-replicated state and bandwidth.
+Protocol fixtures also retain the coastal/acoustic geometry to exercise bounded multi-hop repair,
+source retention, order delivery and observer isolation independently of the flood mission.
+The browser verifies the flood runtime and snapshot projection, plus the library convergence probe.
 
 ## Swarm on GitHub Pages
 
@@ -266,8 +130,8 @@ UDP binding and DNS discovery return `Unsupported`. The demo does not use filesy
 
 Frontend and worker request properties are checked with `node --test examples/swarm/*.test.mjs`.
 After building, run `PLAYWRIGHT_MODULE=/path/to/playwright node examples/swarm/browser/check.cjs`
-to verify isolated writes, exact convergence, offline orders, reconnect acknowledgements,
-independent visitors and mobile layout in a real browser.
+to verify real convergence, flood discoveries and local reactions, independent visitors,
+observer isolation and mobile layout in a real browser.
 
 ### Optional shared native server
 

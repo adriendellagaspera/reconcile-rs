@@ -84,3 +84,17 @@ export function hitVisible(entities, point) {
   if(zone)return zone;
   return entities.find(e=>e.kind==='terrain'&&e.x===Math.floor(point.x/30)&&e.y===Math.floor(point.y/30))||null;
 }
+
+export function floodKnowledge(entries, ticks) {
+  const vehicles=[], intents=[], reports=[], first=[];
+  for(const [key,value] of entries) {
+    if(key.startsWith('vehicle/') && value.Vehicle) vehicles.push({...value.Vehicle,...freshness(value.Vehicle.seen,ticks,120)});
+    if(key.startsWith('intent/') && value.Intent) intents.push(value.Intent);
+    if(key.startsWith('poi/') && value.Poi) reports.push({...value.Poi,...freshness(value.Poi.seen,ticks,900)});
+    if(key.startsWith('poi-first/') && value.Poi) first.push(value.Poi);
+  }
+  const rank=r=>r.finding==='suspected'?0:1;
+  reports.sort((a,b)=>rank(b)-rank(a)||b.seen-a.seen||a.source-b.source);
+  const pois=[...new Map(reports.map(r=>r.id).filter((id,i,ids)=>ids.indexOf(id)===i).map(id=>[id,reports.find(r=>r.id===id)])).values()];
+  return {vehicles,intents,reports,pois,first};
+}
