@@ -8,7 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
 
 use super::cluster::Cluster;
-use super::world::{OrderAction, PeerState, STEP_SECONDS};
+use super::world::STEP_SECONDS;
 
 pub async fn serve(cluster: Cluster, port: u16, speed: f64) -> io::Result<()> {
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
@@ -80,46 +80,7 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
             | "/contact" | "/jammer" | "/weather"),
         ) => {
             let mut cluster = shared.lock();
-            match action {
-                "/heal" => {
-                    cluster.world.scripted = false;
-                    cluster.heal();
-                }
-                "/partition" => {
-                    cluster.world.scripted = false;
-                    cluster.partition(true);
-                }
-                "/jammer" => cluster.toggle_jammer(),
-                "/weather" => {
-                    cluster.world.scripted = false;
-                    let storm = cluster.state()["storm"].as_bool().unwrap();
-                    cluster.partition(!storm);
-                }
-                "/observe" => {
-                    cluster.world.scripted = false;
-                    cluster.observe();
-                }
-                "/contact" => {
-                    cluster.world.scripted = false;
-                    cluster.world.reveal_contact();
-                    cluster.observe();
-                }
-                "/play" => cluster.world.playing = true,
-                "/pause" => cluster.world.playing = false,
-                "/reset" | "/demo" => {
-                    *cluster = Cluster::with_limits(
-                        cluster.loss,
-                        cluster.center(),
-                        cluster.datagram_budget,
-                        cluster.bandwidth_kbps,
-                    )?;
-                    cluster.world.playing = true;
-                    if action == "/demo" {
-                        cluster.start_demo();
-                    }
-                }
-                _ => unreachable!(),
-            }
+            super::controls::apply(&mut cluster, action)?;
             ("200 OK", "application/json", cluster.state().to_string())
         }
         ("POST", action)
@@ -129,7 +90,7 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
                 || action.starts_with("/order/") =>
         {
             let mut cluster = shared.lock();
-            let result = control(&mut cluster, action);
+            let result = super::controls::apply(&mut cluster, action);
             match result {
                 Ok(()) => {
                     cluster.world.scripted = false;
@@ -142,34 +103,6 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
     };
     let response = format!("HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{body}", body.len());
     socket.write_all(response.as_bytes()).await
-}
-
-fn control(cluster: &mut Cluster, path: &str) -> io::Result<()> {
-    let parts: Vec<_> = path.trim_start_matches('/').split('/').collect();
-    let index = |value: &str| value.parse::<usize>().map_err(io::Error::other);
-    match parts.as_slice() {
-        ["peer", id, action] => {
-            let state = match *action {
-                "online" => PeerState::Active,
-                "offline" => PeerState::Offline,
-                "stop" => PeerState::Stopped,
-                _ => return Err(io::Error::other("unknown peer action")),
-            };
-            cluster.set_peer(index(id)?, state)
-        }
-        ["link", a, b, "toggle"] => cluster.toggle_link(index(a)?, index(b)?),
-        ["order", id, action] => cluster.issue_order(
-            index(id)?,
-            match *action {
-                "scan" => OrderAction::Scan,
-                "hold" => OrderAction::Hold,
-                "patrol" => OrderAction::Patrol,
-                _ => return Err(io::Error::other("unknown order")),
-            },
-        ),
-        ["range", value] => cluster.set_range(value.parse().map_err(io::Error::other)?),
-        _ => Err(io::Error::other("invalid control")),
-    }
 }
 
 async fn request(socket: &mut TcpStream) -> io::Result<(String, String)> {

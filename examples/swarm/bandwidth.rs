@@ -1,3 +1,6 @@
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use reconcile::runtime as tokio;
+
 use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};

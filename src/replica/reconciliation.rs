@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use ipnet::IpNet;
 use rand::seq::SliceRandom;
@@ -243,7 +243,7 @@ fn still_receiving_bulk(
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
+    use web_time::{Duration, Instant};
 
     use super::{live_entry_count, still_receiving_bulk};
 

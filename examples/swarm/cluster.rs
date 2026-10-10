@@ -1,3 +1,6 @@
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use reconcile::runtime as tokio;
+
 use std::collections::BTreeSet;
 use std::io;
 use std::sync::{atomic::Ordering, Arc};

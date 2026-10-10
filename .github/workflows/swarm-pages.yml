@@ -2,10 +2,10 @@ name: Swarm demo
 
 on:
   pull_request:
-    paths: ['examples/swarm/**', 'examples/swarm.rs', '.github/workflows/swarm-pages.yml']
+    paths: ['Cargo.toml', 'Cargo.lock', 'src/**', 'gossip/**', 'examples/swarm/**', 'examples/swarm.rs', 'scripts/build-swarm-web.sh', '.github/workflows/swarm-pages.yml']
   push:
-    branches: [main, demo/swarm-vertical-slice]
-    paths: ['examples/swarm/**', 'examples/swarm.rs', '.github/workflows/swarm-pages.yml']
+    branches: [main, demo/swarm-wasm]
+    paths: ['Cargo.toml', 'Cargo.lock', 'src/**', 'gossip/**', 'examples/swarm/**', 'examples/swarm.rs', 'scripts/build-swarm-web.sh', '.github/workflows/swarm-pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -20,24 +20,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Read the locked binding generator version
+        id: bindings
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
+          with open('Cargo.lock', 'rb') as source:
+              lock = tomllib.load(source)
+          version = next(p['version'] for p in lock['package'] if p['name'] == 'wasm-bindgen')
+          print(f'version={version}')
+          PY
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@${{ steps.bindings.outputs.version }}
       - run: node --test examples/swarm/*.test.mjs
-      - run: docker build -f examples/swarm/deploy/Dockerfile -t swarm-demo .
-      - run: docker compose -f examples/swarm/deploy/compose.yaml config --quiet
-        env:
-          SWARM_DOMAIN: fleet.example.org
-      - run: >-
-          docker run --rm
-          -e SWARM_DOMAIN=fleet.example.org
-          -e SWARM_UI_ORIGIN=https://adriendellagaspera.github.io
-          -v "$PWD/examples/swarm/deploy/Caddyfile:/etc/caddy/Caddyfile:ro"
-          caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
+      - run: cargo clippy --locked -p reconcile-swarm-web --target wasm32-unknown-unknown -- --deny warnings
+      - run: ./scripts/build-swarm-web.sh
+      - name: Verify real replicas and the fleet in Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/swarm-browser" playwright@1.51.1
+          "$RUNNER_TEMP/swarm-browser/node_modules/.bin/playwright" install --with-deps chromium
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/swarm-browser/node_modules/playwright" node examples/swarm/browser/check.cjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/swarm-pages
 
   pages:
     needs: validate
-    if: github.event_name != 'pull_request' && vars.SWARM_API_URL != ''
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,27 +64,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Build static UI with the HTTPS API endpoint
-        env:
-          SWARM_API_URL: ${{ vars.SWARM_API_URL }}
-        run: |
-          mkdir -p _site
-          cp examples/swarm/{index.html,app.js,knowledge.js,api.js} _site/
-          node --input-type=module <<'JS'
-          import { writeFileSync } from 'node:fs';
-          import { endpoint } from './examples/swarm/api.js';
-          const base = process.env.SWARM_API_URL;
-          endpoint('state', base, 'https://pages.example/');
-          writeFileSync('_site/config.js', `export const apiBase = ${JSON.stringify(base)};\n`);
-          JS
-          touch _site/.nojekyll
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
       - uses: actions/deploy-pages@v4
         id: deploy

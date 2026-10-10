@@ -47,9 +47,15 @@ pub use lww_register::entry;
 // deliberately not re-exported this way: their errors are wrapped instead (`gossip::bincode`,
 // `prometheus.rs`) because they are an implementation choice, not part of the contract.
 pub use gossip::async_trait;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub use gossip::runtime as tokio;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[doc(hidden)]
+pub use gossip::runtime;
 pub use ipnet;
 pub use parking_lot;
 pub use rand;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use tokio;
 pub use tokio_util;
 

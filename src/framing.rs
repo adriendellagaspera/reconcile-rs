@@ -6,7 +6,7 @@
 // except according to those terms.
 
 use std::net::IpAddr;
-use std::time::Instant;
+use web_time::Instant;
 
 use gossip::auth::{Payload, Verified};
 use gossip::framing::{

@@ -280,8 +280,8 @@ impl Reassembler {
         &mut self,
         peer: IpAddr,
         transfer_id: [u8; 32],
-        now: std::time::Instant,
-        retry_interval: std::time::Duration,
+        now: web_time::Instant,
+        retry_interval: web_time::Duration,
         max_ranges: usize,
     ) -> Vec<(u32, u32)> {
         if max_ranges == 0 {
@@ -314,9 +314,9 @@ impl Reassembler {
     /// `max_reports` reports and `max_ranges` ranges per report are returned per tick.
     pub fn poll_idle_missing(
         &mut self,
-        now: std::time::Instant,
-        min_idle: std::time::Duration,
-        retry_interval: std::time::Duration,
+        now: web_time::Instant,
+        min_idle: web_time::Duration,
+        retry_interval: web_time::Duration,
         max_ranges: usize,
         max_reports: usize,
     ) -> Vec<MissingRequest> {
