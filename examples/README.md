@@ -180,3 +180,34 @@ bit-for-bit replay of traffic counts or convergence times despite repeatable geo
 Long-offline replica removal, deletion/tombstone GC, permanent storage loss, real sensor fusion
 and exclusive mission assignment require additional application policies; the demo does not
 claim those semantics from LWW convergence alone.
+
+## Swarm on GitHub Pages
+
+Pages serves the existing UI; the real Rust simulation runs on a separate HTTPS server.
+The simulation is shared by all visitors: orders, pause, topology controls and reset affect everyone.
+It is an unauthenticated public demonstration, not an operational command-center deployment.
+No persistent state is configured; restarting the engine starts a new fleet.
+
+On a Docker Compose server, point a DNS name at the server, allow ports 80/443 and run:
+
+~~~sh
+cd examples/swarm/deploy
+cp .env.example .env
+# Set SWARM_DOMAIN to the server's DNS name in .env.
+docker compose up --build -d
+~~~
+
+Caddy obtains TLS certificates and permits the configured UI origin. The Rust listener stays on
+loopback inside the engine's network namespace; only Caddy's ports are published. The server must
+support the Docker build and keep the simulation running; GitHub Pages does not host this process.
+
+In repository settings, select **Pages → Source → GitHub Actions**, then set the Actions variable
+`SWARM_API_URL` to `https://YOUR-SERVER-DOMAIN`. If a different Pages origin is used, also update
+`SWARM_UI_ORIGIN` in `.env`. The endpoint is public configuration, never a secret or credential.
+The `Swarm demo` workflow validates the container and assets before deploying from `main` or
+`demo/swarm-vertical-slice`; without an API variable, deployment is skipped. The GitHub Pages
+environment must allow the chosen branch. This workflow publishes the root of this repository's
+Pages site, so do not enable it over an existing site that must be preserved.
+
+Local execution still needs no external server or configuration. Browser networking and deployment
+paths are checked alongside the existing projection tests with `node --test examples/swarm/*.test.mjs`.

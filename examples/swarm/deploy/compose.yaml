@@ -1,0 +1,27 @@
+services:
+  engine:
+    build:
+      context: ../../..
+      dockerfile: examples/swarm/deploy/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+  https:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    # Keep the Rust HTTP listener private on loopback, including inside Docker.
+    network_mode: "service:engine"
+    environment:
+      SWARM_DOMAIN: ${SWARM_DOMAIN:?Set the public DNS name of this server}
+      SWARM_UI_ORIGIN: ${SWARM_UI_ORIGIN:-https://adriendellagaspera.github.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - engine
+volumes:
+  caddy_data:
+  caddy_config:

@@ -59,6 +59,16 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
             "text/javascript; charset=utf-8",
             include_str!("knowledge.js").to_string(),
         ),
+        ("GET", "/api.js") => (
+            "200 OK",
+            "text/javascript; charset=utf-8",
+            include_str!("api.js").to_string(),
+        ),
+        ("GET", "/config.js") => (
+            "200 OK",
+            "text/javascript; charset=utf-8",
+            include_str!("config.js").to_string(),
+        ),
         ("GET", "/state") => (
             "200 OK",
             "application/json",

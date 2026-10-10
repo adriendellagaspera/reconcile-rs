@@ -1,0 +1,15 @@
+{$SWARM_DOMAIN} {
+	route {
+		@foreign expression `{http.request.header.Origin} != "" && {http.request.header.Origin} != "{$SWARM_UI_ORIGIN}" && {http.request.header.Origin} != "https://{$SWARM_DOMAIN}"`
+		respond @foreign "Origin not allowed" 403
+		@pages header Origin {$SWARM_UI_ORIGIN}
+		header @pages {
+			Access-Control-Allow-Origin "{$SWARM_UI_ORIGIN}"
+			Access-Control-Allow-Methods "GET, POST, OPTIONS"
+			Vary "Origin"
+		}
+		@preflight method OPTIONS
+		respond @preflight 204
+		reverse_proxy 127.0.0.1:8088
+	}
+}
