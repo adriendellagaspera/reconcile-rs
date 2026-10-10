@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use reconcile::runtime as tokio;
 use reconcile::{
-    async_trait, replicated_map::Config, ClusterKey, InMemoryNetwork, InMemoryTransport, NodeId,
-    ReplicatedMap, Transport,
+    async_trait, replicated_map::Config, ClusterKey, Discovery, DnsDiscovery, DnsDiscoveryError,
+    InMemoryNetwork, InMemoryTransport, NodeId, ReplicatedMap, Transport, UdpTransport,
 };
 use tokio_util::sync::CancellationToken;
 use wasm_bindgen::prelude::*;
@@ -66,6 +66,13 @@ pub async fn verify_runtime() -> Result<String, JsValue> {
         nodes.push(node);
     }
     let result = async {
+        let error = UdpTransport::bind("127.0.0.1:7000".parse().unwrap(), None, None).await.unwrap_err();
+        if error.kind() != io::ErrorKind::Unsupported { return Err(JsValue::from_str("browser UDP did not report Unsupported")); }
+        let resolver = DnsDiscovery::new("fleet.invalid", 7000);
+        let error = resolver.discover().await.unwrap_err();
+        if !matches!(error.downcast_ref::<DnsDiscoveryError>(), Some(DnsDiscoveryError::Resolve(e)) if e.kind() == io::ErrorKind::Unsupported) {
+            return Err(JsValue::from_str("browser DNS did not report Unsupported"));
+        }
         tokio::time::timeout(Duration::ZERO, async {}).await.map_err(|e| JsValue::from_str(&e.to_string()))?;
         if tokio::time::timeout(Duration::from_millis(1), std::future::pending::<()>()).await.is_ok() {
             return Err(JsValue::from_str("browser timeout did not expire"));
@@ -93,7 +100,7 @@ pub async fn verify_runtime() -> Result<String, JsValue> {
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
         }).await.map_err(|e| JsValue::from_str(&e.to_string()))?;
-        Ok("two replicas: isolated writes, concurrent LWW, exact dated-entry convergence; timers and cancellation passed".to_string())
+        Ok("two replicas: isolated writes, concurrent LWW, exact dated-entry convergence; timers, cancellation and unsupported socket/DNS errors passed".to_string())
     }.await;
     cancel.cancel();
     for task in tasks {
