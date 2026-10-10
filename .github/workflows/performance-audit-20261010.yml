@@ -1,0 +1,83 @@
+name: performance-audit-20261010
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/performance-audit-20261010.yml'
+permissions:
+  contents: read
+concurrency:
+  group: performance-audit-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  convergence-framing:
+    if: github.head_ref == 'research/runtime-perf-audit-20261010'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Runtime catch-up, GC skew, framing
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "[audit-env] $(git rev-parse HEAD)"; lscpu | grep -E 'Model name:|CPU\(s\):|Thread\(s\) per core:'
+          echo '=== CATCHUP n=5000 d=50 t=0/100/1000 ==='
+          RECONCILE_RUNTIME_HISTORY_N=5000 RECONCILE_RUNTIME_HISTORY_D=50 RECONCILE_RUNTIME_TOMBSTONES=0,100,1000 cargo bench --bench runtime_history_independent_catchup
+          echo '=== GC-SKEW n=5000 deletes=0/100/1000 live=50 ==='
+          RECONCILE_GC_SKEW_N=5000 RECONCILE_GC_SKEW_DELETIONS=0,100,1000 RECONCILE_GC_SKEW_BASE_DIVERGENCE=50 cargo bench --bench tombstone_gc_skew
+          echo '=== FRAGMENTATION ==='
+          RECONCILE_FRAGMENT_VALUE_SIZES=512,4096,131072 RECONCILE_FRAGMENT_PROFILES=lan-clean,wan-clean,wan-loss-5,sat-600-clean RECONCILE_FRAGMENT_TIMEOUT_MS=10000 cargo bench --bench fragmentation
+  membership-read:
+    if: github.head_ref == 'research/runtime-perf-audit-20261010'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Causal membership, read replicas
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "[audit-env] $(git rev-parse HEAD)"; lscpu | grep -E 'Model name:|CPU\(s\):|Thread\(s\) per core:'
+          echo '=== MEMBERSHIP ==='
+          RECONCILE_MEMBERSHIP_COUNTS=2,10,50,200 RECONCILE_MEMBERSHIP_TOMBSTONES=0,100 cargo bench --bench membership_scaling
+          echo '=== READ REPLICA FLEET ==='
+          RECONCILE_READ_REPLICA_COUNTS=1,10,100,300 RECONCILE_READ_AUTHORITATIVE_PEERS=3 cargo bench --bench read_replica_fleet
+          echo '=== CAUSAL DEBT ==='
+          RECONCILE_CAUSAL_MEMBERS=10,100,300 RECONCILE_CAUSAL_TOMBSTONES=0,100 RECONCILE_CAUSAL_ROUNDS=3 RECONCILE_FAILURE_MEMBERS=300 RECONCILE_FAILURE_TOMBSTONES=100 cargo bench --bench membership_causal_debt
+  storage-security:
+    if: github.head_ref == 'research/runtime-perf-audit-20261010'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Persistence, ingress, security amplification
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "[audit-env] $(git rev-parse HEAD)"; lscpu | grep -E 'Model name:|CPU\(s\):|Thread\(s\) per core:'
+          echo '=== SNAPSHOTS ==='
+          RECONCILE_SNAPSHOT_SIZES=1000,10000 RECONCILE_SNAPSHOT_DELTAS=0,1,100 RECONCILE_SNAPSHOT_CHAIN_LENGTHS=1,8 RECONCILE_SNAPSHOT_CHAIN_DELTAS=1,100 RECONCILE_SNAPSHOT_TRIALS=1 cargo bench --bench snapshot_write_amplification
+          echo '=== SECURITY INGRESS ==='
+          RECONCILE_SECURITY_ITERS=5000 RECONCILE_SECURITY_PAYLOADS=64,1024,8192 RECONCILE_SECURITY_REPLAY_POPULATIONS=1,128,1024,4096 cargo bench --bench security_ingress
+          echo '=== SECURITY AMPLIFICATION ==='
+          RECONCILE_SECURITY_DATASET=5000 RECONCILE_SECURITY_BURST_PEERS=8 RECONCILE_SECURITY_REPEAT_MISMATCHES=5 cargo bench --bench security_amplification
+  core-criterion:
+    if: github.head_ref == 'research/runtime-perf-audit-20261010'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      RECONCILE_BENCH_SIZES: "1000,10000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Public API point reads and bulk loading
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "[audit-env] $(git rev-parse HEAD)"; lscpu | grep -E 'Model name:|CPU\(s\):|Thread\(s\) per core:'
+          echo '=== POINT READ ==='
+          cargo bench --bench system -- point_read --sample-size 10 --measurement-time 0.5 --warm-up-time 0.2 --noplot
+          echo '=== BULK LOAD ==='
+          cargo bench --bench system -- bulk_load --sample-size 10 --measurement-time 0.5 --warm-up-time 0.2 --noplot
