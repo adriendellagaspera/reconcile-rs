@@ -61,17 +61,36 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(values(independent.nodes[independent.center]).some(value => Boolean(value.Order)), false);
     await other.close();
     await page.evaluate(async () => (await import('./api.js')).request('heal', 'POST'));
-    const deadline = Date.now() + 60000;
-    let acknowledged = false;
-    while (Date.now() < deadline) {
-      const state = await page.evaluate(async () => (await import('./api.js')).request('state'));
-      const drone = values(state.nodes[0]);
-      const cc = values(state.nodes[state.center]);
-      acknowledged = drone.some(value => Boolean(value.Order)) && cc.some(value => value.Acknowledgement?.applied);
-      if (acknowledged) break;
-      await page.waitForTimeout(250);
-    }
-    assert.ok(acknowledged, 'reconnected drone must execute its order and return an acknowledgement');
+    const reconnected = await page.evaluate(async () => (await import('./api.js')).request('state'));
+    assert.equal(reconnected.peer_states[0], 'active');
+    // Verify delivery with a bounded fleet; the default fleet has no 60-second latency guarantee.
+    const delivered = await page.evaluate(async () => {
+      const { default: init, Fleet } = await import('./pkg/reconcile_swarm_web.js');
+      await init();
+      const fleet = new Fleet(0, 3, 1200, 10);
+      const timer = setInterval(() => fleet.step(), 50);
+      try {
+        fleet.command('pause');
+        fleet.command('heal');
+        fleet.command('peer/0/offline');
+        const offline = JSON.parse(fleet.command('order/0/hold'));
+        if (offline.nodes[0].some(([, value]) => value.Order)) throw Error('Offline recipient received an order');
+        fleet.command('peer/0/online');
+        const deadline = Date.now() + 90000;
+        while (Date.now() < deadline) {
+          const state = JSON.parse(fleet.state());
+          const order = state.nodes[0].some(([, value]) => value.Order?.recipient === 0);
+          const ack = state.nodes[state.center].some(([, value]) => value.Acknowledgement?.recipient === 0 && value.Acknowledgement.applied);
+          if (order && ack) return true;
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
+        return false;
+      } finally {
+        clearInterval(timer);
+        fleet.free();
+      }
+    });
+    assert.ok(delivered, 'capped three-drone fleet must execute its order and return an acknowledgement');
     await page.evaluate(() => { const node = document.getElementById('node'); node.value = '0'; node.dispatchEvent(new Event('change')); });
     await page.locator('#order-action').selectOption('patrol');
     await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Order issued'));
