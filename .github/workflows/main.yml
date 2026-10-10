@@ -58,6 +58,8 @@ jobs:
     - uses: taiki-e/install-action@v2
       with:
         tool: cargo-mutants@27.1.0
+    - name: Swarm knowledge projection
+      run: node --test examples/swarm/knowledge.test.mjs
     - name: Documentation budgets
       run: ./scripts/check-doc-budget.sh
     - name: Domain purity
@@ -110,6 +112,8 @@ jobs:
     - run: cargo nextest run --workspace --retries 4 --flaky-result fail
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
+    - name: Swarm isolation, lifecycle and convergence
+      run: cargo test --example swarm --features metrics
     - run: cargo test --doc --workspace --verbose
       env:
         RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing

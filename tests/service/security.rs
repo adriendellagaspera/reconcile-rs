@@ -23,7 +23,7 @@ use reconcile::{replicated_map::Config, transport::UdpTransport, ClusterKey, Rep
 
 #[cfg(feature = "encryption")]
 use crate::support::wait_until;
-use crate::support::{assert_until, bind_udp_pair};
+use crate::support::{assert_until, assert_until_slow, bind_udp_pair};
 
 /// Two nodes sharing the same cluster key must still converge, proving that authenticated
 /// datagrams round-trip end-to-end through the MAC layer.
@@ -65,8 +65,8 @@ async fn authenticated_nodes_converge() {
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
 
-    // store2 should receive all of store1's values across the authenticated channel
-    assert_until!(store2.fingerprint(..) == start_fingerprint);
+    // Bulk UDP startup can require repair; leave time for a complete periodic sweep.
+    assert_until_slow!(store2.fingerprint(..) == start_fingerprint);
 
     // a fresh incremental insert also propagates
     let key = "auth-key".to_string();

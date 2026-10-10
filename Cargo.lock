@@ -1334,6 +1334,7 @@ dependencies = [
  "reconcile-gossip",
  "rsos",
  "serde",
+ "serde_json",
  "socket2",
  "tempfile",
  "tokio",
