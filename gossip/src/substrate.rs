@@ -146,6 +146,13 @@ mod tests {
         assert_eq!(&buffer[..read], b"contact");
         assert_eq!(receiver.local_addr(), b);
 
+        // A datagram exactly at the MTU must be admitted; only larger messages fail.
+        // This also protects the strict '>' comparison against a '>=' regression.
+        assert_eq!(sender.send_to(b"capacity", &b).unwrap(), 8);
+        let (read, source) = receiver.recv_from(&mut buffer).await.unwrap();
+        assert_eq!(source, a);
+        assert_eq!(&buffer[..read], b"capacity");
+
         assert_eq!(
             sender.send_to(b"exceeds mtu", &b).unwrap_err().kind(),
             io::ErrorKind::InvalidInput
