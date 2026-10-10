@@ -34,6 +34,25 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return bindings.verify_runtime();
     });
     console.log(proof);
+    const handover = await page.evaluate(async () => {
+      const { Fleet } = await import('./pkg/reconcile_swarm_web.js');
+      const fleet = new Fleet(0,12,1200,0);
+      try {
+        fleet.command('demo');
+        for(let tick=0;tick<200;tick++)fleet.step();
+        const state=JSON.parse(fleet.command('pause'));
+        const report=(node,source)=>state.nodes[node].find(([key])=>key==='contact/01/'+String(source).padStart(2,'0'))?.[1].Contact;
+        return {old:report(0,0),next:report(1,1),cc:report(state.center,0),peer:state.peer_states[0],mission:state.mission};
+      } finally {fleet.free();}
+    });
+    assert.equal(handover.peer,'stopped');
+    assert.ok(handover.old.seen < handover.next.seen);
+    assert.equal(handover.old.kind,'mechanical');
+    assert.equal(handover.next.kind,'mechanical');
+    assert.equal(handover.cc,undefined);
+    assert.equal(handover.next.bearing.range_km,1.5);
+    assert.equal(handover.mission.corridor.length,2);
+    console.log('WASM corridor: G2 continues observation after G1 halt, dated bearings, no CC shortcut: passed');
     await page.goto(base);
     await page.waitForFunction(() => document.getElementById('node').options.length === 13);
     await page.waitForFunction(() => document.getElementById('reports').textContent.length > 0, null, { timeout: 30000 });
@@ -47,7 +66,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(before.reference_map.version, 'synthetic-coast-v1');
     assert.equal(before.reference_map.detail.length, 32 * 20);
     assert.ok(before.command_position.x < before.coastal_position.x);
-    assert.ok(before.nodes.every(snapshot => snapshot.every(([key]) => !key.startsWith('map/'))));
+    assert.ok(before.nodes.every(snapshot => snapshot.every(([key]) => !key.startsWith('map/') && !key.startsWith('sector/'))));
     const coastalLinks = before.links.filter(link => link.enabled && link.b === before.center);
     assert.ok(coastalLinks.length > 0 && coastalLinks.length < before.center);
     assert.equal(before.peer_states[0], 'offline');

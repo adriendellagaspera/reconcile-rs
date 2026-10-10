@@ -5,6 +5,12 @@ export function freshness(seen, ticks, lifetime = 45) {
   return { age, amount, stale: age >= lifetime, alpha: 1 - amount * .45 };
 }
 
+export function bearingAnchor(bearing) {
+  const angle = bearing.direction_deg * Math.PI / 180;
+  return {x: bearing.origin.x + Math.sin(angle) * bearing.range_km / 2,
+    y: bearing.origin.y - Math.cos(angle) * bearing.range_km / 2};
+}
+
 // A local synthesis keeps the newest measurement and exposes every available source.
 // It does not average asynchronous measurements or claim a sensor-fusion estimate.
 export function knowledge(entries, ticks) {
@@ -14,23 +20,19 @@ export function knowledge(entries, ticks) {
   const orders = [];
   const issued = [];
   const acknowledgements = new Map();
-  const sectors = new Map();
   for (const [key, value] of entries) {
     // Keep latest-state registers separate from immutable event keys. All of
     // these are still ordinary LWW entries in the library; immutability is an
     // application-level guarantee from disjoint, single-writer key ownership.
     if (key.startsWith('vehicle/') && value.Vehicle) vehicles.push({ ...value.Vehicle, ...freshness(value.Vehicle.seen, ticks, 30) });
-    else if (key.startsWith('contact/') && value.Contact) reports.push({ ...value.Contact, ...freshness(value.Contact.seen, ticks) });
+    else if (key.startsWith('contact/') && value.Contact) reports.push({ ...value.Contact, position: value.Contact.bearing ? bearingAnchor(value.Contact.bearing) : value.Contact.position, ...freshness(value.Contact.seen, ticks) });
     else if (key.startsWith('contact-first/') && value.Contact) discoveries.push(value.Contact);
     else if (key.startsWith('order/') && value.Order) orders.push(value.Order);
     else if (key.startsWith('order-issued/') && value.Order) issued.push(value.Order);
     else if (key.startsWith('order-ack/') && value.Acknowledgement) {
       acknowledgements.set(value.Acknowledgement.recipient + '/' + value.Acknowledgement.sequence, value.Acknowledgement);
     }
-    else if (key.startsWith('sector/') && value.Sector) {
-      const sector = value.Sector;
-      if (!sectors.has(sector.id) || sector.scanned > sectors.get(sector.id).scanned) sectors.set(sector.id, sector);
-    }
+
   }
   reports.sort((a, b) => b.seen - a.seen || a.source - b.source || (a.id ?? 0) - (b.id ?? 0));
   const byContact = new Map();
@@ -39,6 +41,10 @@ export function knowledge(entries, ticks) {
     if (!byContact.has(id)) byContact.set(id, report);
   }
   const contacts = [...byContact.values()];
+  for (const contact of contacts) {
+    const first = discoveries.filter(d => d.id === contact.id).sort((a,b) => a.seen-b.seen || a.source-b.source)[0];
+    contact.firstSource = first?.source ?? contact.source;
+  }
   const decorate = order => ({
     ...order,
     acknowledgement: acknowledgements.get(order.recipient + '/' + order.sequence) || null,
@@ -46,10 +52,8 @@ export function knowledge(entries, ticks) {
   });
   const commands = orders.map(decorate);
   const orderHistory = issued.sort((a, b) => b.sequence - a.sequence).map(decorate);
-  const coverage = [...sectors.values()].map(sector => ({ ...sector, ...freshness(sector.scanned, ticks, 120) }));
-  return { coverage, vehicles, reports, contacts, commands, orderHistory, discoveries,
-    acknowledgements: [...acknowledgements.values()],
-    contact: reports[0] || null, sectors: sectors.size };
+  return { vehicles, reports, contacts, commands, orderHistory, discoveries,
+    acknowledgements: [...acknowledgements.values()], contact: reports[0] || null };
 }
 
 // Connectivity is inferred only from this observer's direct ingress. Relayed reports

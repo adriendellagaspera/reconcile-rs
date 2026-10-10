@@ -1,4 +1,4 @@
-use super::super::world::{Point, HEIGHT};
+use super::super::world::{Point, HEIGHT, WIDTH};
 use super::*;
 
 async fn converged(cluster: &Cluster) {
@@ -89,6 +89,7 @@ async fn concurrent_contact_updates_use_the_real_lww_order() {
                     x: 10.0 + id as f64,
                     y: 7.0,
                 },
+                bearing: None,
                 seen: 2,
                 source: id,
             },
@@ -163,6 +164,7 @@ async fn scripted_outages_keep_isolated_contact_local_then_converge() {
         tokio::task::yield_now().await;
     }
     assert_eq!(cluster.state()["partitioned"], false);
+    let frozen_contacts = serde_json::to_value(cluster.world.contacts()).unwrap();
     let cut = cluster
         .nodes
         .iter()
@@ -179,6 +181,10 @@ async fn scripted_outages_keep_isolated_contact_local_then_converge() {
             .iter()
             .map(ReplicatedMap::to_vec)
             .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        frozen_contacts,
+        serde_json::to_value(cluster.world.contacts()).unwrap()
     );
     converged(&cluster).await;
     cluster.advance();
@@ -237,7 +243,7 @@ async fn isolated_drone_keeps_working_and_exchanges_both_ways_on_return() {
     for node in &cluster.nodes {
         let Some(Observation::Contact {
             id: 1,
-            kind: super::super::world::ContactKind::Hostile,
+            kind: super::super::world::ContactKind::Mechanical,
             seen,
             ..
         }) = node.get_cloned(&isolated_contact)
@@ -328,6 +334,7 @@ async fn source_reports_coexist_and_center_has_no_omniscient_shortcut() {
                     x: 10.0 + id as f64,
                     y: 7.0,
                 },
+                bearing: None,
                 seen: 8 + id as u64,
                 source: id,
             },
@@ -543,7 +550,7 @@ async fn immutable_order_history_and_acknowledgements_survive_new_desired_orders
 #[tokio::test]
 async fn first_contact_discovery_is_immutable_while_latest_report_changes() {
     let mut cluster = Cluster::new(0.0, 2).unwrap();
-    cluster.world.ticks = 2;
+    cluster.world.ticks = 20;
     cluster.world.reveal_contact();
     cluster.observe();
     let first_key = "contact-first/01/00".to_string();
@@ -551,13 +558,13 @@ async fn first_contact_discovery_is_immutable_while_latest_report_changes() {
     let first = cluster.nodes[0]
         .get_cloned(&first_key)
         .expect("first discovery recorded");
-    assert!(matches!(first, Observation::Contact { seen: 2, .. }));
-    cluster.world.ticks = 4;
+    assert!(matches!(first, Observation::Contact { seen: 20, .. }));
+    cluster.world.ticks = 40;
     cluster.observe();
     assert_eq!(cluster.nodes[0].get_cloned(&first_key), Some(first));
     assert!(matches!(
         cluster.nodes[0].get_cloned(&latest_key),
-        Some(Observation::Contact { seen: 4, .. })
+        Some(Observation::Contact { seen: 40, .. })
     ));
 }
 
@@ -567,7 +574,7 @@ fn command_station_is_on_land() {
 }
 
 #[tokio::test]
-async fn reference_chart_is_shared_without_replica_entries_and_coverage_refreshes() {
+async fn reference_chart_is_shared_without_replica_entries_or_sector_coverage() {
     let mut cluster = Cluster::new(0.0, 3).unwrap();
     for id in 0..cluster.nodes.len() {
         cluster.set_peer(id, PeerState::Offline).unwrap();
@@ -582,17 +589,17 @@ async fn reference_chart_is_shared_without_replica_entries_and_coverage_refreshe
             .iter()
             .all(|(key, _)| !key.starts_with("map/")));
     }
-    let sector = cluster.nodes[0]
-        .to_vec()
-        .into_iter()
-        .find(|(key, _)| key.starts_with("sector/"))
-        .unwrap()
-        .0;
     cluster.world.ticks = 20;
     cluster.observe();
+    for node in &cluster.nodes {
+        assert!(node
+            .to_vec()
+            .iter()
+            .all(|(key, _)| !key.starts_with("sector/") && !key.starts_with("map/")));
+    }
     assert!(matches!(
-        cluster.nodes[0].get_cloned(&sector),
-        Some(Observation::Sector { scanned: 20, .. })
+        cluster.nodes[0].get_cloned(&"vehicle/00".into()),
+        Some(Observation::Vehicle { seen: 20, .. })
     ));
     assert_eq!(chart, cluster.state()["reference_map"]);
     assert!(cluster.nodes[cluster.center()].is_empty());
@@ -619,6 +626,7 @@ async fn coastal_access_requires_intermediate_replicas_for_offshore_reports_and_
         id: 99,
         kind: super::super::world::ContactKind::Hostile,
         position: Point { x: 20.0, y: 10.0 },
+        bearing: None,
         seen: 0,
         source: 2,
     };
@@ -697,4 +705,110 @@ fn default_fleet_has_coastal_neighbors_and_offshore_multi_hop_paths() {
     assert_eq!(network.components().len(), 1);
     assert!(super::super::world::terrain_at(COMMAND_POSITION));
     assert!(!super::super::world::terrain_at(COASTAL_POSITION));
+}
+
+#[tokio::test]
+async fn listening_envelope_and_bearings_never_reveal_truth_identity_or_position() {
+    let mut cluster = Cluster::new(0.0, 2).unwrap();
+    for id in 0..cluster.nodes.len() {
+        cluster.set_peer(id, PeerState::Offline).unwrap();
+    }
+    cluster.world.reveal_contact();
+    cluster.observe();
+    let truth = cluster.world.contact().unwrap();
+    let Some(Observation::Contact {
+        kind,
+        position,
+        bearing: Some(bearing),
+        ..
+    }) = cluster.nodes[0].get_cloned(&"contact/01/00".into())
+    else {
+        panic!("missing bearing")
+    };
+    assert_eq!(kind, ContactKind::Mechanical);
+    assert_eq!(position, bearing.anchor());
+    assert_ne!(position, truth);
+    assert!(bearing.origin.distance(truth) <= bearing.range_km);
+    let actual = (truth.x - bearing.origin.x)
+        .atan2(-(truth.y - bearing.origin.y))
+        .to_degrees();
+    let error = (actual - bearing.direction_deg + 180.0).rem_euclid(360.0) - 180.0;
+    assert!(error.abs() <= bearing.half_angle_deg);
+    assert!(!cluster.nodes[1].contains_key(&"contact/01/01".into()));
+    cluster.world.positions[1] = Point {
+        x: truth.x + 2.0,
+        y: truth.y,
+    };
+    cluster.observe_peer(1, true);
+    assert!(!cluster.nodes[1].contains_key(&"contact/01/01".into()));
+    cluster.world.positions[1].x = truth.x + 1.0;
+    cluster.observe_peer(1, true);
+    assert!(cluster.nodes[1].contains_key(&"contact/01/01".into()));
+}
+
+#[tokio::test]
+async fn capped_handover_retains_old_source_and_delivers_new_source_without_cc_shortcuts() {
+    let mut cluster = Cluster::with_limits(0.0, 3, 1200, 10).unwrap();
+    for id in 0..cluster.nodes.len() {
+        cluster.set_peer(id, PeerState::Offline).unwrap();
+    }
+    cluster.world.positions[1] = Point { x: 7.0, y: 3.0 };
+    cluster.world.ticks = 20;
+    cluster.world.reveal_contact();
+    cluster.observe();
+    let old_key = "contact/01/00".to_string();
+    let next_key = "contact/01/01".to_string();
+    let old = cluster.nodes[0].get_cloned(&old_key).unwrap();
+    cluster.set_peer(0, PeerState::Stopped).unwrap();
+    cluster.world.ticks = 40;
+    cluster.observe();
+    let next = cluster.nodes[1].get_cloned(&next_key).unwrap();
+    assert!(matches!(
+        next,
+        Observation::Contact {
+            source: 1,
+            seen: 40,
+            bearing: Some(_),
+            ..
+        }
+    ));
+    assert_eq!(cluster.nodes[0].get_cloned(&old_key), Some(old.clone()));
+    assert!(cluster.nodes[cluster.center()].is_empty());
+    cluster.heal();
+    converged(&cluster).await;
+    for node in &cluster.nodes {
+        assert_eq!(node.get_cloned(&old_key), Some(old.clone()));
+        assert_eq!(node.get_cloned(&next_key), Some(next.clone()));
+    }
+}
+
+#[tokio::test]
+async fn mission_clock_acceleration_preserves_pause_and_validates_rates() {
+    let mut cluster = Cluster::new(0.0, 2).unwrap();
+    assert!(super::super::controls::apply(&mut cluster, "speed/7").is_err());
+    super::super::controls::apply(&mut cluster, "speed/5").unwrap();
+    cluster.world.playing = true;
+    cluster.advance();
+    assert_eq!(cluster.world.ticks, 5);
+    cluster.world.playing = false;
+    cluster.advance();
+    assert_eq!(cluster.world.ticks, 5);
+    super::super::controls::apply(&mut cluster, "reset").unwrap();
+    assert_eq!(cluster.world.speed, 5);
+}
+
+#[test]
+fn corridor_contact_moves_between_watch_stations_at_a_bounded_speed() {
+    let mut world = World::new(12);
+    world.reveal_contact();
+    let start = world.contact().unwrap();
+    assert!(start.distance(world.positions[0]) <= LISTENING_RANGE_KM);
+    world.ticks = 800;
+    let next = world.contact().unwrap();
+    assert!(next.distance(world.positions[0]) > LISTENING_RANGE_KM);
+    assert!(world.positions[1..]
+        .iter()
+        .any(|p| next.distance(*p) <= LISTENING_RANGE_KM));
+    assert!(start.distance(next) <= world.seconds() * 0.008 + f64::EPSILON);
+    assert!(!super::super::world::terrain_at(next));
 }

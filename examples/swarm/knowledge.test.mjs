@@ -35,37 +35,32 @@ test('empty replica has no operational knowledge; chart data is outside the proj
   const empty = knowledge([], 1000);
   assert.equal(empty.contact, null);
   assert.equal(empty.vehicles.length, 0);
-  assert.deepEqual(empty.coverage, []);
+  assert.equal('coverage' in empty, false);
   assert.equal('terrain' in empty, false);
-  assert.deepEqual(knowledge([['map/1/1', { Terrain: { x: 1, y: 1 } }]], 1000).coverage, []);
+  assert.equal(knowledge([['map/1/1', { Terrain: { x: 1, y: 1 } }]], 1000).reports.length, 0);
 });
 
-test('coverage uses newest scan time per sector and ages without refreshing on delivery', () => {
-  const entries = [
-    ['sector/00/00', { Sector: { id: 0, scanned: 2 } }],
-    ['sector/00/01', { Sector: { id: 0, scanned: 20 } }],
-    ['sector/01/01', { Sector: { id: 1, scanned: 0 } }],
-  ];
-  for (const reports of [entries, [...entries].reverse()]) {
-    const result = knowledge(reports, 250);
-    assert.equal(result.sectors, 2);
-    const recent = result.coverage.find(s=>s.id===0);
-    assert.equal(recent.scanned, 20);
-    assert.equal(recent.age, 115);
-    assert.equal(recent.stale, false);
-    assert.equal(result.coverage.find(s=>s.id===1).stale, true);
-  }
+test('sector visits do not imply inspected areas; fleet reports retain observation age', () => {
+  const result=knowledge([
+    ['vehicle/00',{Vehicle:{source:0,seen:0,position:{x:1,y:1},battery:70}}],
+    ['sector/00/00',{Sector:{id:0,scanned:2}}],
+  ],60);
+  assert.equal(result.vehicles[0].age,30);
+  assert.equal(result.vehicles[0].stale,true);
+  assert.equal('coverage' in result,false);
 });
 
-test('fleet reports have their own freshness horizon and coverage deduplicates source reports', () => {
-  const result = knowledge([
-    ['vehicle/00', { Vehicle: { source: 0, seen: 0, position: { x: 1, y: 1 }, battery: 70 } }],
-    ['sector/00/00', { Sector: { id: 0 } }],
-    ['sector/00/01', { Sector: { id: 0 } }],
-  ], 60);
-  assert.equal(result.vehicles[0].stale, true);
-  assert.equal(result.vehicles[0].age, 30);
-  assert.equal(result.sectors, 1);
+test('bearing anchors ignore supplied positions and preserve first source across handover', () => {
+  const bearing={origin:{x:5,y:3},direction_deg:90,half_angle_deg:12,range_km:1.5};
+  const result=knowledge([
+    ['contact-first/01/00',{Contact:{id:1,source:0,seen:0,bearing}}],
+    ['contact/01/01',{Contact:{id:1,source:1,seen:20,bearing,position:{x:30,y:19}}}],
+  ],40);
+  assert.deepEqual(result.contact.position,{x:5.75,y:3});
+  assert.equal(result.contact.firstSource,0);
+  assert.equal(result.contact.source,1);
+  assert.equal(result.contact.age,10);
+  assert.deepEqual(result.contact.bearing,bearing);
 });
 
 test('direct neighbors require ingress, never relayed reports or simulator positions', () => {

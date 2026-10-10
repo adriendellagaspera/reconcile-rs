@@ -4,6 +4,16 @@ use std::io;
 
 pub fn apply(cluster: &mut Cluster, path: &str) -> io::Result<()> {
     match path.trim_start_matches('/') {
+        "speed/1" | "speed/5" | "speed/10" => {
+            cluster.world.speed = path
+                .trim_start_matches('/')
+                .split('/')
+                .nth(1)
+                .unwrap()
+                .parse()
+                .unwrap();
+            return Ok(());
+        }
         "heal" => {
             cluster.world.scripted = false;
             cluster.heal();
@@ -44,6 +54,7 @@ pub fn apply(cluster: &mut Cluster, path: &str) -> io::Result<()> {
             return Ok(());
         }
         action @ ("reset" | "demo") => {
+            let speed = cluster.world.speed;
             *cluster = Cluster::with_limits(
                 cluster.loss,
                 cluster.center(),
@@ -51,6 +62,7 @@ pub fn apply(cluster: &mut Cluster, path: &str) -> io::Result<()> {
                 cluster.bandwidth_kbps,
             )?;
             cluster.world.playing = true;
+            cluster.world.speed = speed;
             if action == "demo" {
                 cluster.start_demo();
             }

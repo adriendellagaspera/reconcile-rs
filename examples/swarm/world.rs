@@ -1,10 +1,11 @@
-use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 pub const WIDTH: usize = 32;
 pub const HEIGHT: usize = 20;
 pub const STEP_SECONDS: f64 = 0.5;
 pub const KM_PER_UNIT: f64 = 1.0;
+pub const LISTENING_RANGE_KM: f64 = 1.5;
+pub const CORRIDOR: [Point; 2] = [Point { x: 5.0, y: 3.0 }, Point { x: 29.0, y: 3.0 }];
 pub const COMMAND_POSITION: Point = Point { x: 1.0, y: 10.0 };
 pub const COASTAL_POSITION: Point = Point { x: 3.8, y: 10.0 };
 
@@ -67,6 +68,8 @@ pub enum ContactKind {
     Whale,
     SpermWhale,
     OceanFront,
+    Mechanical,
+    Biological,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -76,12 +79,32 @@ pub struct ContactPosition {
     pub position: Point,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AcousticBearing {
+    pub origin: Point,
+    pub direction_deg: f64,
+    pub half_angle_deg: f64,
+    pub range_km: f64,
+}
+
+impl AcousticBearing {
+    // The midpoint is a drawing anchor, never a measured or fused target position.
+    pub fn anchor(self) -> Point {
+        let a = self.direction_deg.to_radians();
+        Point {
+            x: self.origin.x + a.sin() * self.range_km * 0.5,
+            y: self.origin.y - a.cos() * self.range_km * 0.5,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Observation {
     Contact {
         id: usize,
         kind: ContactKind,
         position: Point,
+        bearing: Option<AcousticBearing>,
         seen: u64,
         source: usize,
     },
@@ -146,6 +169,7 @@ pub struct World {
     pub ticks: u64,
     pub playing: bool,
     pub scripted: bool,
+    pub speed: u32,
     pub positions: Vec<Point>,
     contact_origin: Option<ContactTruth>,
     contacts: Vec<(ContactKind, Point, f64)>,
@@ -163,35 +187,19 @@ impl World {
             ticks: 0,
             playing: false,
             scripted: false,
+            speed: 1,
             positions: vec![Point { x: 0.0, y: 0.0 }; nodes],
             contact_origin: None,
             contacts: Vec::new(),
             held: vec![false; nodes],
         };
-        let mut rng = StdRng::seed_from_u64(42);
-        for kind in [
-            ContactKind::Civil,
-            ContactKind::Hostile,
-            ContactKind::Whale,
-            ContactKind::SpermWhale,
-            ContactKind::OceanFront,
-        ] {
-            let origin = loop {
-                let p = Point {
-                    x: rng.gen_range(5.0..29.0),
-                    y: rng.gen_range(3.0..17.0),
-                };
-                if (0..64).all(|i| {
-                    !terrain_at(Point {
-                        x: p.x + (i as f64 * 0.1).sin(),
-                        y: p.y + (i as f64 * 0.1).cos(),
-                    })
-                }) {
-                    break p;
-                }
-            };
-            world.contacts.push((kind, origin, rng.gen_range(0.0..6.0)));
-        }
+        world.contacts = vec![
+            (ContactKind::Civil, Point { x: 6.2, y: 3.1 }, 0.008),
+            (ContactKind::Hostile, Point { x: 17.0, y: 3.4 }, 0.006),
+            (ContactKind::Whale, Point { x: 12.0, y: 2.6 }, 0.003),
+            (ContactKind::SpermWhale, Point { x: 23.0, y: 3.6 }, 0.002),
+            (ContactKind::OceanFront, Point { x: 10.0, y: 16.0 }, 0.0),
+        ];
         world.move_vehicles();
         world
     }
@@ -206,24 +214,15 @@ impl World {
 
     pub fn move_active(&mut self, peers: &[PeerState]) {
         let count = self.positions.len();
-        let columns = ((count as f64 * 4.0 / 3.0).sqrt().ceil() as usize).min(count);
-        let rows = count.div_ceil(columns);
         let seconds = self.seconds();
         for (id, position) in self.positions.iter_mut().enumerate() {
             if peers[id] == PeerState::Stopped || self.held[id] {
                 continue;
             }
-            let column = id % columns;
-            let row = id / columns;
-            let phase = id as f64 * 1.7 + seconds * 0.0006;
-            // Patrol cells span the coast and offshore waters; no peer owns a relay role.
+            let phase = id as f64 * 1.7 + seconds * 0.0016;
             let mut next = Point {
-                x: 5.5 + 22.0 * column as f64 / (columns - 1) as f64 + 0.8 * phase.cos(),
-                y: if rows == 1 {
-                    10.0
-                } else {
-                    4.0 + 12.0 * row as f64 / (rows - 1) as f64
-                } + 0.8 * phase.sin(),
+                x: 5.5 + 23.0 * id as f64 / (count - 1) as f64 + 0.3 * phase.cos(),
+                y: 3.0 + 0.3 * phase.sin(),
             };
             // A deterministic cosmetic detour around islands and the shoreline.
             while terrain_at(next) {
@@ -235,7 +234,7 @@ impl World {
 
     pub fn reveal_contact(&mut self) {
         let vehicle = self.positions[0];
-        self.contact_origin = [(1.5, 0.0), (0.0, 1.5), (0.0, -1.5), (-1.5, 0.0)]
+        self.contact_origin = [(0.4, 0.0), (0.0, 0.4), (0.0, -0.4), (-0.4, 0.0)]
             .into_iter()
             .map(|(dx, dy)| Point {
                 x: vehicle.x + dx,
@@ -257,10 +256,15 @@ impl World {
     pub fn contact(&self) -> Option<Point> {
         self.contact_origin.as_ref().map(|contact| {
             let origin = contact.origin;
-            let angle = self.ticks.saturating_sub(contact.born_tick) as f64 * STEP_SECONDS * 0.0006;
+            let ticks = if self.scripted {
+                self.ticks.min(239)
+            } else {
+                self.ticks
+            };
+            let elapsed = ticks.saturating_sub(contact.born_tick) as f64 * STEP_SECONDS;
             Point {
-                x: origin.x + angle.sin(),
-                y: origin.y + (angle.cos() - 1.0) * 0.7,
+                x: route_x(origin.x, elapsed * 0.008),
+                y: origin.y,
             }
         })
     }
@@ -270,14 +274,18 @@ impl World {
             .contacts
             .iter()
             .enumerate()
-            .map(|(i, &(kind, origin, phase))| {
-                let a = self.seconds() * 0.0006 + phase;
+            .map(|(i, &(kind, origin, speed))| {
+                let elapsed = if self.scripted {
+                    self.ticks.min(239) as f64 * STEP_SECONDS
+                } else {
+                    self.seconds()
+                };
                 ContactPosition {
                     id: i + 2,
                     kind,
                     position: Point {
-                        x: origin.x + a.sin(),
-                        y: origin.y + a.cos(),
+                        x: route_x(origin.x, elapsed * speed),
+                        y: origin.y,
                     },
                 }
             })
@@ -294,16 +302,21 @@ impl World {
 
     pub fn phase(&self, converged: bool) -> &'static str {
         if !self.scripted {
-            return "Manual exploration";
+            return "Coastal watch / passive acoustic bearings";
         }
         match self.ticks {
-            0..60 => "1 / Explore — distance-based peer links",
-            60..120 => "2 / Drifting storm — command center disconnected",
-            120..180 => "3 / G1 modem offline — local discoveries continue",
-            180..240 => "3 / G1 reconnects — G7 halted with state retained",
+            0..60 => "1 / Watch corridor — collect acoustic bearings",
+            60..120 => "2 / Shore uplink lost — fleet retains reports",
+            120..180 => "3 / G1 modem offline — new contact remains local",
+            180..240 => "3 / G1 sensor halted — G2 continues contact watch",
             240..300 => "4 / All peers restored — observations frozen for repair",
             _ if converged => "5 / Converged — every dated entry agrees",
             _ => "4 / Waiting for actual convergence",
         }
     }
+}
+
+fn route_x(origin: f64, distance: f64) -> f64 {
+    let phase = (origin - 5.0 + distance).rem_euclid(48.0);
+    5.0 + if phase <= 24.0 { phase } else { 48.0 - phase }
 }

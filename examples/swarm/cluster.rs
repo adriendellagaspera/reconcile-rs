@@ -18,8 +18,8 @@ use tokio_util::sync::CancellationToken;
 use super::bandwidth::{BandwidthTransport, Counters};
 use super::transport::{address, Network, PartitionGate};
 use super::world::{
-    Observation, OrderAction, PeerState, Point, ReferenceMap, World, COASTAL_POSITION,
-    COMMAND_POSITION, WIDTH,
+    AcousticBearing, ContactKind, Observation, OrderAction, PeerState, Point, ReferenceMap, World,
+    COASTAL_POSITION, COMMAND_POSITION, CORRIDOR, LISTENING_RANGE_KM,
 };
 
 pub struct Cluster {
@@ -343,6 +343,12 @@ impl Cluster {
     }
 
     pub fn advance(&mut self) {
+        for _ in 0..self.world.speed {
+            self.advance_tick();
+        }
+    }
+
+    fn advance_tick(&mut self) {
         self.process_orders();
         if !self.world.playing {
             return;
@@ -359,9 +365,7 @@ impl Cluster {
                     self.world.reveal_contact();
                 }
                 180 => {
-                    self.set_peer(0, PeerState::Active).unwrap();
-                    self.set_peer(self.center() / 2, PeerState::Stopped)
-                        .unwrap();
+                    self.set_peer(0, PeerState::Stopped).unwrap();
                 }
                 240 => self.heal(),
                 _ => (),
@@ -393,21 +397,8 @@ impl Cluster {
             return;
         }
         let position = &self.world.positions[id];
-        let cx = position.x as usize;
-        let cy = position.y as usize;
         let mut updates = Vec::new();
-        let sector = (cy / 5) * (WIDTH / 4) + cx / 4;
-        let key = format!("sector/{sector:02}/{id:02}");
         if force || self.world.ticks % 20 == 0 {
-            updates.push((
-                key,
-                Observation::Sector {
-                    id: sector,
-                    scanned: self.world.ticks,
-                },
-            ));
-        }
-        if force || self.world.ticks % 4 == 0 {
             updates.push((
                 format!("vehicle/{id:02}"),
                 Observation::Vehicle {
@@ -418,17 +409,29 @@ impl Cluster {
                 },
             ));
         }
-        for contact in self
-            .world
-            .contacts()
-            .into_iter()
-            .filter(|c| c.position.distance(*position) <= 4.0)
-        {
-            if force || self.world.ticks % 2 == 0 {
+        for contact in self.world.contacts().into_iter().filter(|c| {
+            c.kind != ContactKind::OceanFront
+                && c.position.distance(*position) <= LISTENING_RANGE_KM
+        }) {
+            if force || self.world.ticks % 20 == 0 {
+                let dx = contact.position.x - position.x;
+                let dy = contact.position.y - position.y;
+                let noise =
+                    ((id + contact.id) as f64 * 1.7 + (self.world.ticks / 20) as f64).sin() * 6.0;
+                let bearing = AcousticBearing {
+                    origin: *position,
+                    direction_deg: (dx.atan2(-dy).to_degrees() + noise).rem_euclid(360.0),
+                    half_angle_deg: 12.0,
+                    range_km: LISTENING_RANGE_KM,
+                };
                 let report = Observation::Contact {
                     id: contact.id,
-                    kind: contact.kind,
-                    position: contact.position,
+                    kind: match contact.kind {
+                        ContactKind::Civil | ContactKind::Hostile => ContactKind::Mechanical,
+                        _ => ContactKind::Biological,
+                    },
+                    position: bearing.anchor(),
+                    bearing: Some(bearing),
                     seen: self.world.ticks,
                     source: id,
                 };
@@ -523,6 +526,7 @@ impl Cluster {
             "links": self.network.links(), "groups": group_agreement,
             "direct_peers": (0..self.nodes.len()).map(|id| self.network.direct_peers(id)).collect::<Vec<_>>(),
             "command_position": COMMAND_POSITION, "coastal_position": COASTAL_POSITION,
+            "mission": {"name": "Coastal corridor watch", "corridor": CORRIDOR, "sensor": "passive_acoustic", "listening_range_km": LISTENING_RANGE_KM, "speed": self.world.speed},
             "reference_map": self.reference_map, "disruptions": disruptions,
             "truth_contacts": self.world.contacts(),
             "positions": positions, "truth_contact": self.world.contact(),

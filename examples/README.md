@@ -86,15 +86,13 @@ from the coastal modem; the dashed inland connection is terrestrial infrastructu
 All peers share the immutable, versioned `synthetic-coast-v1` reference chart, built before
 observations start and outside every replicated store. One map unit represents one kilometer;
 the 32×20 km footprint covers 640 km². The whole coastline is visible even in an empty CC replica.
-Only operational knowledge is reconciled: contacts, fleet reports, inspections, commands and acknowledgements.
-Colored sea sectors indicate locally known inspection reports; shading fades with their original scan time
-over 120 simulated seconds. Unshaded water means no local inspection report, not unknown geography.
-A reported sector does not imply exhaustive sensor coverage or absence of contacts.
+Only operational knowledge is reconciled: contacts, fleet reports, commands and acknowledgements.
+The dashed coastal corridor is public mission configuration, not inspected water or sensor coverage.
 
 The application deliberately uses **different key shapes for different semantics**, while the
 library itself remains LWW throughout:
 - **Latest-state registers**: `vehicle/{drone}`, `contact/{contact}/{sensor}`,
-  `sector/{sector}/{sensor}`, and `order/{recipient}` overwrite older versions. A single sensor owns its
+  and `order/{recipient}` overwrite older versions. A single sensor owns its
   contact report key; CC alone issues desired commands.
 - **Immutable facts**: `contact-first/{contact}/{sensor}` first discoveries are
   written only on first sight. The reference chart has no replicated `map/` keys.
@@ -115,15 +113,16 @@ not in an enforced custom merge policy inside reconcile-rs.
 
 Vehicle and contact reports progressively gray and fade according to observation time, not
 receipt time or HLC ordering. Vehicle reports are stale after 30 simulated seconds; contacts after
-45. Stale positions have dashed outlines. Rings illustrate growing uncertainty, not calibrated
-covariance or confidence. The reference chart does not age. Inspection registers refresh every ten simulated seconds
-or on an explicit scan; local projection retains the newest scan per sector across available sources. Visual expiry never deletes replicated data.
+45. Stale markers have dashed outlines. Vehicle rings illustrate growing uncertainty, not calibrated
+covariance or confidence. Acoustic fans retain their measured direction and sensor origin at observation
+time; their midpoint marker is only a drawing anchor. The chart does not age. Reports refresh every ten
+simulated seconds or on explicit listening; visual expiry never deletes replicated data.
 A silent vehicle is shown as stale/unknown, not diagnosed as failed. Failure states and global
 metrics are explicitly simulator information, separate from local knowledge.
 
 ### Orders, contacts and coastline
 
-The CC writes a latest desired order per drone: **Scan now**, **Hold position**, or **Resume patrol**,
+The CC writes a latest desired order per drone: **Listen now**, **Hold position**, or **Resume watch patrol**,
 and a separately keyed immutable issuance record. A drone processes **only the desired order**
 in its own replica, records one immutable acknowledgement per sequence, and rejects orders
 older than 120 simulated seconds. Acknowledgements become visible to the CC only through
@@ -138,15 +137,29 @@ Hold freezes navigation while sensing and protocol traffic continue. New orders 
 ones: this is desired-state control, not a durable queue or a safety-critical command protocol.
 Pausing also pauses order deadlines, while allowing delivered orders to execute.
 
-Five seeded mobile contacts represent a civil vessel, hostile vessel, whale, sperm whale and
-an ocean front; the scripted discovery adds another hostile contact. Reset repeats their initial
-layout. Nature is synthetic sensor ground truth, not a classifier or threat assessment. The ocean
-front contact is separate from the topology's drifting storm zone. Each sensor retains its
-latest report per contact, and each local view synthesizes each identity separately.
-The shared reference chart includes an 8×8 land mask per tile for an irregular coastline and islands.
-Default patrol cells spread from coastal to offshore waters; some drones need multiple peer exchanges
-to reach CC. Patrol and contact loops use a nominal angular speed of 0.0006 rad/s
-(about 0.48 m/s for a glider's 0.8 km loop); coastline detours remain synthetic.
+The mission watches a 24 km coastal corridor on the existing 32×20 km chart. Gliders patrol
+small loops at a nominal 0.48 m/s. Moving vessels and biological contacts travel along the corridor
+at 2–8 m/s; the ocean front is ground truth only. The chart retains its 8×8 land mask per tile.
+
+Passive acoustic listening uses a **synthetic 1.5 km envelope**, independent of the 10 km communication
+range. This is a simulation assumption, not validated sonar performance. Reports carry the sensor
+origin, a noisy bearing (clockwise from north, ±12° fan) and unresolved range. A hollow marker halfway
+along the fan is a drawing anchor, **not a measured or fused target position**. Civil and hostile vessels
+both produce broad mechanical signatures; animals produce biological signatures. The local replica
+cannot infer intent or species. Track IDs are simulator-provided associations, not a classifier or a
+real data-association algorithm. No optical sensing or calibrated acoustic propagation is modeled.
+
+Per-source latest reports and immutable first discoveries coexist. The UI shows latest and first
+sources; a new source does not refresh an older source's observation time. The corridor scenario cuts
+the shore uplink, isolates G1, introduces a contact, halts G1 while G2 continues observation, then
+restores peers and freezes motion and observations for exact reconciliation. This demonstrates
+observation continuity, not autonomous pursuit or command handoff. Orders still require delivery
+and acknowledgement through actual replicas.
+
+The browser starts with a ×5 mission clock, selectable at ×1, ×5 or ×10. Only application time
+accelerates; network timers and bandwidth remain in real time. Pause freezes motion and order
+deadlines while reconciliation continues. The native `--speed` is an additional multiplier; leave it
+at 1 when comparing UI clock rates.
 
 ### Connectivity and failures
 
@@ -176,11 +189,11 @@ anti-entropy. Already delivered knowledge survives loss of its originating peer.
 
 The script runs for at least 150 simulated seconds, with a repair deadline at 240 seconds:
 
-1. 0–30 s: explore with distance-based peer links.
+1. 0–30 s: listen along the corridor with distance-based peer links.
 2. 30–60 s: a drifting storm obstructs intersecting links; the command center loses its modem.
 3. 60–90 s: G1's modem disconnects; a contact appears near it; local discoveries continue.
-4. 90–120 s: G1 reconnects; another drone halts (G7 with the default fleet size).
-5. From 120 s: resume all peers, heal links and freeze new sensor writes for exact repair.
+4. 90–120 s: G1 halts; G2 continues reporting the contact.
+5. From 120 s: resume all peers, heal links and freeze motion and new sensor writes for exact repair.
 6. From 150 s: finish only when every dated entry agrees. At 240 s stop scripted time even if
    repair remains pending; the restored network and anti-entropy continue running.
 

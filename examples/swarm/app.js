@@ -14,7 +14,7 @@ const hotDirect = new Map();
 let controlsBusy = false;
 const nodeName = n => n === state.center ? 'COMMAND CENTER' : 'GLIDER-' + String(n + 1).padStart(2, '0');
 const shortName = n => n === state.center ? 'CC' : 'G' + (n + 1);
-const contactColor = kind => ({civil:'#83bdf5', hostile:'#fa937d', whale:'#c4a5f5', sperm_whale:'#e4a5ef', ocean_front:'#74dbe7'}[kind] || '#f6bc73');
+const contactColor = kind => ({mechanical:'#83bdf5', biological:'#c4a5f5', civil:'#83bdf5', hostile:'#fa937d', whale:'#c4a5f5', sperm_whale:'#e4a5ef', ocean_front:'#74dbe7'}[kind] || '#f6bc73');
 const contactName = r => 'C' + r.id + ' · ' + (r.kind || 'contact').replaceAll('_', ' ');
 const color = n => n === state.center ? '#b5a3f4' : '#5adbc6';
 let toastUntil = 0;
@@ -79,6 +79,8 @@ $('order-action').onchange = () => {
   if(action) command('order/' + selectedReplica() + '/' + action);
   $('order-action').value='';
 };
+$('mission-speed').onchange=()=>command('speed/'+$('mission-speed').value);
+$('run-mission').onclick=()=>command('demo');
 $('scenario-action').onchange=()=>{if($('scenario-action').value) command($('scenario-action').value);$('scenario-action').value='';};
 $('peer-action').onchange=()=>{if($('peer-action').value) command('peer/'+$('peer').value+'/'+$('peer-action').value);$('peer-action').value='';};
 $('link-toggle').onclick = () => command('link/' + $('link-a').value + '/' + $('link-b').value + '/toggle');
@@ -172,11 +174,11 @@ function drawSelection(known, local) {
     if(!reports.length){selection=null;panel.hidden=true;return;}
     const r=reports.find(r=>r.source===selection.source)||reports[0];
     selection.position=r.position;
-    title=contactName(r); detail=local?'Observed '+r.age.toFixed(0)+'s ago by '+shortName(r.source)+'.\n'+reports.map(v=>shortName(v.source)+': '+v.age.toFixed(0)+'s old · ('+v.position.x.toFixed(1)+', '+v.position.y.toFixed(1)+')').join('\n'):'Actual position ('+r.position.x.toFixed(1)+', '+r.position.y.toFixed(1)+'). Simulator classification.';
+    title=contactName(r);
+    detail=local?'Passive acoustic reports · range unresolved.\n'+reports.map(v=>shortName(v.source)+': '+v.age.toFixed(0)+'s old'+(v.bearing?' · bearing '+v.bearing.direction_deg.toFixed(0)+'° ± '+v.bearing.half_angle_deg+'° · listening envelope '+v.bearing.range_km+' km':'')).join('\n')+'\nMechanical / biological is a simulated broad signature, not identity or intent.':'Actual position ('+r.position.x.toFixed(1)+', '+r.position.y.toFixed(1)+'). Simulator classification.';
   } else if(selection.kind==='terrain') {
     title='Reference chart '+selection.x+' / '+selection.y;
-    const sector=known.coverage.find(s=>s.id===Math.floor(selection.y/5)*8+Math.floor(selection.x/4));
-    detail='Preloaded chart · '+state.reference_map.version+'.\n'+(local?(sector?'Last reported inspection '+sector.age.toFixed(0)+'s ago.':'No inspection report in this replica.'):'Inspection knowledge depends on each replica.');
+    detail='Preloaded chart · '+state.reference_map.version+'.\nThe corridor is public mission configuration; passage does not imply inspection.';
   } else if(selection.kind==='link') {
     title=shortName(selection.a)+' ↔ '+shortName(selection.b);
     if(local){const peer=selection.b===selectedReplica()?selection.a:selection.b;const receipt=state.direct_peers[selectedReplica()].find(r=>r.peer===peer);detail=receipt?'Last direct ingress '+(receipt.age_ms/1000).toFixed(1)+'s ago.\n'+receipt.datagrams+' datagrams heard. Availability now is unknown.':'No ingress known.';}
@@ -214,8 +216,10 @@ function draw() {
   $('status').textContent = state.partitioned ? 'DISCONNECTED COMPONENTS' : state.divergent_keys ? 'RECONCILING' : 'CONVERGED';
   $('title').textContent = mode === 'truth' ? 'SIMULATOR / GROUND TRUTH' : nodeName(selected) + ' · LOCAL KNOWLEDGE';
   $('keys').textContent = entries.length + ' local keys';
-  $('map-note').textContent = local ? 'Preloaded chart · shading = reported inspection · 32 × 20 km' : 'Actual world · 640 km² · click a glider for its view';
-  $('keys').hidden=true; $('sectors').hidden=false;
+  $('map-note').textContent = local ? 'Coastal watch · acoustic bearings · 32 × 20 km' : 'Actual world · 640 km² · click a glider for its view';
+  $('keys').hidden=true;
+  $('mission-speed').value=state.mission.speed;
+  $('mission-phase').textContent=state.phase;
   labels=[];
   ctx.resetTransform();ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.setTransform(zoom*pixelRatio,0,0,zoom*pixelRatio,offset.x*pixelRatio,offset.y*pixelRatio);
@@ -223,11 +227,6 @@ function draw() {
     const detail = state.reference_map.detail[y * 32 + x];
     ctx.fillStyle = '#102732';
     ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-    const sector = known.coverage.find(s=>s.id===Math.floor(y/5)*8+Math.floor(x/4));
-    if(local && sector) {
-      ctx.fillStyle = sector.stale ? '#8194a712' : '#5adbc6'+Math.round(34*(1-sector.amount)+8).toString(16).padStart(2,'0');
-      ctx.fillRect(x*cellSize,y*cellSize,cellSize,cellSize);
-    }
     if (detail) for (let row=0;row<8;row++) for(let col=0;col<8;col++) {
       if (!(detail[row] & (1 << col))) continue;
       ctx.fillStyle = '#40594e';
@@ -235,6 +234,7 @@ function draw() {
     }
     entities.push({kind:'terrain',x,y,label:'Reference chart '+x+' / '+y});
   }
+  drawCorridor();
   drawCoastalAccess();
   if ($('show-connections').checked) {
     if (local) drawDirectLinks(direct, selected);
@@ -249,19 +249,19 @@ function draw() {
     if ($('show-connections').checked) direct.forEach(link => {
       if (link.position && isDirectHot(selected, link.peer)) drawFlash(link.position);
     });
-    known.reports.forEach(report => drawContact(report.position, report, known.contacts.includes(report) ? contactName(report) + ' · ' + report.age.toFixed(0) + 's' : '', known.contacts.includes(report)));
+    known.reports.forEach(report => drawContact(report.position, report, known.contacts.includes(report) ? contactName(report) + ' · ' + shortName(report.source) + ' · ' + report.age.toFixed(0) + 's' : '', known.contacts.includes(report)));
   } else {
     state.positions.forEach((p, n) => drawVehicle(p, n, freshness(state.ticks, state.ticks), n === selected, state.peer_states[n]));
     state.truth_contacts.forEach(r => drawContact(r.position, {...r,...freshness(state.ticks,state.ticks)},contactName(r),true));
   }
-  $('sectors').textContent = known.coverage.filter(s=>!s.stale).length+' recently inspected / '+known.sectors+' sectors reported';
+
   $('contact').textContent = known.contacts.length + ' contacts · ' + known.reports.length + ' latest reports · ' + known.discoveries.length + ' first discoveries';
   $('reports').replaceChildren(...known.contacts.map(r => {
     const row = document.createElement('div'); row.className = 'report peer-item';
     row.tabIndex=0;row.setAttribute('role','link');row.onclick=()=>inspect({kind:'contact',id:r.id,source:r.source});row.onkeydown=e=>{if(e.key==='Enter')row.click();};
     row.style.color = agedColor(contactColor(r.kind), r.amount);
     row.title=known.reports.filter(report=>report.id===r.id).map(report=>'Sensor '+shortName(report.source)+' · '+report.age.toFixed(0)+'s old').join('\n');
-    row.textContent=contactName(r)+' · '+r.age.toFixed(0)+'s'+(r.stale?' · stale':'')+' · '+known.reports.filter(report=>report.id===r.id).length+' sources';
+    row.textContent=contactName(r)+' · '+shortName(r.source)+' · '+r.age.toFixed(0)+'s'+(r.stale?' · stale':'')+' · '+known.reports.filter(report=>report.id===r.id).length+' sources'+(r.firstSource!==r.source?' · first '+shortName(r.firstSource):'');
     return row;
   }));
   // The latest desired register and immutable journal can arrive in either order.
@@ -365,12 +365,31 @@ function drawLabel(text,point,tint,above) {
 function drawContact(position, fresh, label, primary) {
   entities.push({kind:'contact',id:fresh.id,source:fresh.source,position,label:contactName(fresh)});
   const tint = agedColor(contactColor(fresh.kind), fresh.amount);
-  if (primary) uncertainty(position, fresh.age, tint);
+  if (fresh.bearing) drawBearing(fresh, tint, primary);
+  else if (primary) uncertainty(position, fresh.age, tint);
   ctx.save(); ctx.globalAlpha = fresh.alpha; ctx.fillStyle = tint; ctx.strokeStyle = tint;
   if (fresh.stale) ctx.setLineDash([3, 3]);
   ctx.beginPath(); ctx.arc(position.x * cellSize, position.y * cellSize, primary ? 7 : 4, 0, Math.PI * 2);
-  if (primary && !fresh.stale) ctx.fill(); else ctx.stroke();
+  if (primary && !fresh.stale && !fresh.bearing) ctx.fill(); else ctx.stroke();
   ctx.restore(); drawLabel(label,position,tint,true);
+}
+
+function drawBearing(report, tint, primary) {
+  const b=report.bearing, a=(b.direction_deg-90)*Math.PI/180, half=b.half_angle_deg*Math.PI/180;
+  ctx.save();ctx.translate(b.origin.x*cellSize,b.origin.y*cellSize);
+  ctx.strokeStyle=tint;ctx.fillStyle=tint;ctx.lineWidth=primary?1.5:.7;
+  ctx.globalAlpha=report.alpha*(primary?.18:.07);
+  ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,b.range_km*cellSize,a-half,a+half);ctx.closePath();ctx.fill();
+  ctx.globalAlpha=report.alpha*(primary?.7:.25);ctx.stroke();ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(a)*b.range_km*cellSize,Math.sin(a)*b.range_km*cellSize);ctx.stroke();ctx.restore();
+}
+
+function drawCorridor() {
+  if(!state.mission)return;
+  const [a,b]=state.mission.corridor;
+  ctx.save();ctx.strokeStyle='#c4b78a55';ctx.lineWidth=1;ctx.setLineDash([8,8]);
+  for(const dy of [-.8,.8]) {ctx.beginPath();ctx.moveTo(a.x*cellSize,(a.y+dy)*cellSize);ctx.lineTo(b.x*cellSize,(b.y+dy)*cellSize);ctx.stroke();}
+  ctx.restore();drawLabel('WATCH CORRIDOR · MISSION PLAN',{x:12,y:1.8},'#c4b78a',true);
 }
 
 function radioPosition(peer) {
