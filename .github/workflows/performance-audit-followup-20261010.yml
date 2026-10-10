@@ -1,0 +1,113 @@
+name: performance-audit-followup-20261010
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/performance-audit-followup-20261010.yml'
+permissions:
+  contents: read
+jobs:
+  corrected-membership:
+    if: github.head_ref == 'research/runtime-perf-audit-20261010'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Patch obsolete benchmark file-path assumption in runner only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('benches/membership_scaling.rs')
+          content = p.read_text()
+          old = 'let file_bytes = fs::metadata(&path).expect("snapshot metadata").len();'
+          new = '''let file_bytes: u64 = fs::read_dir(path.with_extension("bin.d"))
+              .expect("incremental snapshot directory")
+              .map(|file| file.expect("segment").metadata().expect("segment metadata").len())
+              .sum();'''
+          assert content.count(old) == 1
+          p.write_text(content.replace(old,new))
+          PY
+      - name: Membership, read-replica fleet and causal debt
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "=== MEMBERSHIP (corrected size collection only) ==="
+          RECONCILE_MEMBERSHIP_COUNTS=2,10,50,200 RECONCILE_MEMBERSHIP_TOMBSTONES=0,100 cargo bench --bench membership_scaling
+          echo '=== READ REPLICA FLEET ==='
+          RECONCILE_READ_REPLICA_COUNTS=1,10,100,300 RECONCILE_READ_AUTHORITATIVE_PEERS=3 cargo bench --bench read_replica_fleet
+          echo '=== CAUSAL DEBT ==='
+          RECONCILE_CAUSAL_MEMBERS=10,100,300 RECONCILE_CAUSAL_TOMBSTONES=0,100 RECONCILE_CAUSAL_ROUNDS=3 RECONCILE_FAILURE_MEMBERS=300 RECONCILE_FAILURE_TOMBSTONES=100 cargo bench --bench membership_causal_debt
+  gc-framing:
+    if: github.head_ref == 'research/runtime-perf-audit-20261010'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      RUSTFLAGS: '--cfg reconcile_internal_testing'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: GC skew and real framed transport
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '=== GC SKEW n=5000 ==='
+          RECONCILE_GC_SKEW_N=5000 RECONCILE_GC_SKEW_DELETIONS=0,100,1000 RECONCILE_GC_SKEW_BASE_DIVERGENCE=50 cargo bench --bench tombstone_gc_skew
+          echo '=== FRAGMENTATION ==='
+          RECONCILE_FRAGMENT_VALUE_SIZES=512,4096,131072 RECONCILE_FRAGMENT_PROFILES=lan-clean,wan-clean,wan-loss-5,sat-600-clean RECONCILE_FRAGMENT_TIMEOUT_MS=10000 cargo bench --bench fragmentation
+  public-api-cost:
+    if: github.head_ref == 'research/runtime-perf-audit-20261010'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Measure exact public API len() scan on immutable roots
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat > examples/runtime_perf_probe.rs <<'RS'
+          use std::hint::black_box;
+          use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+          use std::sync::Arc;
+          use std::time::Instant;
+          use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
+
+          fn main() {
+              let network = InMemoryNetwork::new();
+              for (i, n) in [1_000usize, 10_000, 100_000].into_iter().enumerate() {
+                  let addr = IpAddr::V4(Ipv4Addr::new(127, 90, 0, (i + 1) as u8));
+                  let config = Config::default()
+                      .with_port(9870)
+                      .with_listen_addr(addr)
+                      .with_net("127.0.0.1/8".parse().unwrap())
+                      .unwrap()
+                      .with_insecure_no_key();
+                  let store = ReplicatedMap::<u32,u32>::new_with_transport(
+                      config, Arc::new(network.bind(SocketAddr::new(addr, 9870)))
+                  ).expect("build store");
+                  let corpus: Vec<_> = (0..n as u32).map(|k| (k, k.wrapping_mul(7))).collect();
+                  store.load_bulk(&corpus);
+                  assert_eq!(store.len(), n);
+                  let repetitions = (10_000_000 / n).max(40);
+                  let started = Instant::now();
+                  for _ in 0..repetitions {
+                      black_box(store.len());
+                  }
+                  let live_len_ns = started.elapsed().as_nanos() as f64 / repetitions as f64;
+                  let started = Instant::now();
+                  for _ in 0..repetitions {
+                      black_box(store.snapshot().len());
+                  }
+                  let raw_len_ns = started.elapsed().as_nanos() as f64 / repetitions as f64;
+                  let key = (n/2) as u32;
+                  let started = Instant::now();
+                  for _ in 0..100_000 {
+                      black_box(store.get_cloned(&key));
+                  }
+                  let get_ns = started.elapsed().as_nanos() as f64 / 100_000.0;
+                  println!("[api-scan] n={n},iterations={repetitions},live_len_ns={live_len_ns:.1},raw_snapshot_len_ns={raw_len_ns:.1},get_cloned_ns={get_ns:.1}");
+              }
+          }
+          RS
+          cargo run --release --example runtime_perf_probe
