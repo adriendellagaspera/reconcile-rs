@@ -387,12 +387,12 @@ async fn orders_wait_for_replication_and_acknowledgements_wait_for_return_path()
     cluster.set_peer(0, PeerState::Offline).unwrap();
     cluster.advance();
     assert!(cluster.world.held[0]);
-    assert!(cluster.nodes[0].contains_key(&"order-ack/00".into()));
-    assert!(!cluster.nodes[cluster.center()].contains_key(&"order-ack/00".into()));
-    let ack = cluster.nodes[0].get_cloned(&"order-ack/00".into());
+    assert!(cluster.nodes[0].contains_key(&"order-ack/00/0000000000000001".into()));
+    assert!(!cluster.nodes[cluster.center()].contains_key(&"order-ack/00/0000000000000001".into()));
+    let ack = cluster.nodes[0].get_cloned(&"order-ack/00/0000000000000001".into());
     cluster.world.ticks += 1;
     cluster.advance();
-    assert_eq!(ack, cluster.nodes[0].get_cloned(&"order-ack/00".into()));
+    assert_eq!(ack, cluster.nodes[0].get_cloned(&"order-ack/00/0000000000000001".into()));
     cluster.heal();
     converged(&cluster).await;
     cluster.issue_order(0, OrderAction::Patrol).unwrap();
@@ -419,7 +419,7 @@ async fn halted_drone_rejects_expired_orders_and_halted_center_cannot_issue() {
     cluster.advance();
     assert!(!cluster.world.held[0]);
     assert!(matches!(
-        cluster.nodes[0].get_cloned(&"order-ack/00".into()),
+        cluster.nodes[0].get_cloned(&"order-ack/00/0000000000000001".into()),
         Some(Observation::Acknowledgement { applied: false, .. })
     ));
     cluster
@@ -483,7 +483,7 @@ async fn capped_network_delivers_orders_through_real_reconciliation() {
         loop {
             cluster.advance();
             if matches!(
-                cluster.nodes[cluster.center()].get_cloned(&"order-ack/00".into()),
+                cluster.nodes[cluster.center()].get_cloned(&"order-ack/00/0000000000000001".into()),
                 Some(Observation::Acknowledgement { applied: true, .. })
             ) {
                 break;
@@ -503,6 +503,53 @@ async fn capped_network_delivers_orders_through_real_reconciliation() {
         .all(|stats| stats["queued_bytes"].as_u64().unwrap()
             <= super::super::bandwidth::QUEUE_BYTES as u64));
     assert!(state["bandwidth"][0]["tx_bytes"].as_u64().unwrap() > 0);
+}
+
+#[tokio::test]
+async fn immutable_order_history_and_acknowledgements_survive_new_desired_orders() {
+    let mut cluster = Cluster::new(0.0, 2).unwrap();
+    cluster.heal();
+    converged(&cluster).await;
+    cluster.issue_order(0, OrderAction::Hold).unwrap();
+    converged(&cluster).await;
+    cluster.advance();
+    let ack_one = "order-ack/00/0000000000000001".to_string();
+    assert!(cluster.nodes[0].contains_key(&ack_one));
+    cluster.heal();
+    converged(&cluster).await;
+
+    cluster.issue_order(0, OrderAction::Patrol).unwrap();
+    converged(&cluster).await;
+    cluster.advance();
+    let ack_two = "order-ack/00/0000000000000002".to_string();
+    assert!(cluster.nodes[0].contains_key(&ack_one));
+    assert!(cluster.nodes[0].contains_key(&ack_two));
+    assert!(cluster.nodes[cluster.center()].contains_key(&"order-issued/00/0000000000000001".into()));
+    assert!(cluster.nodes[cluster.center()].contains_key(&"order-issued/00/0000000000000002".into()));
+    assert!(matches!(
+        cluster.nodes[0].get_cloned(&"order/00".into()),
+        Some(Observation::Order { sequence: 2, .. })
+    ));
+    converged(&cluster).await;
+}
+
+#[tokio::test]
+async fn first_contact_discovery_is_immutable_while_latest_report_changes() {
+    let mut cluster = Cluster::new(0.0, 2).unwrap();
+    cluster.world.ticks = 2;
+    cluster.world.reveal_contact();
+    cluster.observe();
+    let first_key = "contact-first/01/00".to_string();
+    let latest_key = "contact/01/00".to_string();
+    let first = cluster.nodes[0].get_cloned(&first_key).expect("first discovery recorded");
+    assert!(matches!(first, Observation::Contact { seen: 2, .. }));
+    cluster.world.ticks = 4;
+    cluster.observe();
+    assert_eq!(cluster.nodes[0].get_cloned(&first_key), Some(first));
+    assert!(matches!(
+        cluster.nodes[0].get_cloned(&latest_key),
+        Some(Observation::Contact { seen: 4, .. })
+    ));
 }
 
 #[test]

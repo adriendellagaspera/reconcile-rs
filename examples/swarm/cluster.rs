@@ -277,16 +277,20 @@ impl Cluster {
             return Err(io::Error::other("command center is halted"));
         }
         self.next_order += 1;
-        self.nodes[self.center()].insert(
-            format!("order/{recipient:02}"),
-            Observation::Order {
-                recipient,
-                sequence: self.next_order,
-                issued: self.world.ticks,
-                expires: self.world.ticks + 240,
-                action,
-            },
-        );
+        let sequence = self.next_order;
+        let order = Observation::Order {
+            recipient,
+            sequence,
+            issued: self.world.ticks,
+            expires: self.world.ticks + 240,
+            action,
+        };
+        // Keep the desired command compact (LWW) while retaining each issued command
+        // as an immutable fact. The journal is not an executable delivery queue.
+        self.nodes[self.center()].insert_bulk(&[
+            (format!("order/{recipient:02}"), order.clone()),
+            (format!("order-issued/{recipient:02}/{sequence:016}"), order),
+        ]);
         Ok(())
     }
 
@@ -321,7 +325,7 @@ impl Cluster {
                 }
             }
             self.nodes[id].insert(
-                format!("order-ack/{id:02}"),
+                format!("order-ack/{id:02}/{sequence:016}"),
                 Observation::Acknowledgement {
                     recipient: id,
                     sequence,
@@ -436,16 +440,20 @@ impl Cluster {
             .filter(|c| c.position.distance(*position) <= 4.0)
         {
             if force || self.world.ticks % 2 == 0 {
-                updates.push((
-                    format!("contact/{:02}/{id:02}", contact.id),
-                    Observation::Contact {
-                        id: contact.id,
-                        kind: contact.kind,
-                        position: contact.position,
-                        seen: self.world.ticks,
-                        source: id,
-                    },
-                ));
+                let report = Observation::Contact {
+                    id: contact.id,
+                    kind: contact.kind,
+                    position: contact.position,
+                    seen: self.world.ticks,
+                    source: id,
+                };
+                // First discovery is a unique immutable fact per (contact, sensor).
+                // Only the live report is overwritten on subsequent measurements.
+                let first_key = format!("contact-first/{:02}/{id:02}", contact.id);
+                if !self.nodes[id].contains_key(&first_key) {
+                    updates.push((first_key, report.clone()));
+                }
+                updates.push((format!("contact/{:02}/{id:02}", contact.id), report));
             }
         }
         self.nodes[id].insert_bulk(&updates);
