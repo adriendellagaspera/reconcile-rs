@@ -33,11 +33,11 @@ jobs:
           {
             echo '## security_ingress before (base)'
             echo '```'
-            grep -E '^\\[security-(replay|full-gate)\\]' /tmp/replay-before.txt || true
+            grep -E '^\[security-(replay|full-gate)\]' /tmp/replay-before.txt || true
             echo '```'
             echo '## security_ingress after (PR)'
             echo '```'
-            grep -E '^\\[security-(replay|full-gate)\\]' /tmp/replay-after.txt || true
+            grep -E '^\[security-(replay|full-gate)\]' /tmp/replay-after.txt || true
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
       - uses: actions/upload-artifact@v4
