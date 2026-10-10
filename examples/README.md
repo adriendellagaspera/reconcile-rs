@@ -18,9 +18,9 @@ See k8s/README.md for the Kubernetes example.
 cargo run --release --example swarm
 ~~~
 
-Open `http://127.0.0.1:8088` and click **Run Helsing demo**. The default is 12 drones,
-one command-center peer, and 35% seeded packet loss. Options: `--nodes 2..20` (drones,
-excluding the center), `--loss 0..100`, `--port PORT`, `--speed 1..20`, `--mtu BYTES`.
+Open `http://127.0.0.1:8088`; exploration starts automatically in the CC perspective. The default is 12 drones,
+one command-center peer, 35% seeded packet loss, and 10 kbit/s per peer in each direction. Options: `--nodes 2..20` (drones,
+excluding the center), `--loss 0..100`, `--port PORT`, `--speed 1..20`, `--mtu BYTES`, `--bandwidth-kbps 0..1000` (0 disables the cap).
 Speed accelerates application time only; emulated 160 ms RTT and protocol timers stay real.
 
 Build before the interview, then run `./target/release/examples/swarm` offline. No Internet or
@@ -29,10 +29,35 @@ uses `InMemoryNetwork` and a fixed demo-only key. Each peer has its own map, HLC
 transport endpoint and stable node id. The command center is an ordinary authoritative replica
 that originates no sensor observations; it can exchange data, but fleet operation never requires it.
 
-The explicit default 16 KiB in-memory datagram budget is displayed in the UI. This is not an
-MTU-safe UDP configuration. `--mtu 1200` exercises default application framing; under high loss,
-repair of large refinement worksets can exceed the scripted interview window. Completion always
-requires actual dated-entry equality; the simulation never copies snapshots between replicas.
+The default 1200-byte datagram budget exercises UDP application framing. Each peer, including
+CC, has a shared 10,000 bit/s (1,250 byte/s) TX budget and a separate RX budget of the same size,
+across all neighbors. TX serializes packets before seeded loss and latency, including protocol
+bytes, retries and discovery probes. Its FIFO holds at most 16 KiB including the packet in service;
+excess packets drop like UDP. RX polices aggregate ingress with at most one datagram of burst.
+This models finite capacity and overload loss, not application-aware scheduling or acoustic physics.
+HTTP and sensor-local writes consume none of this replica-transport budget. Speed never accelerates
+bandwidth or protocol time; at high application speed fresh reports can outpace the channel.
+
+The bandwidth panel shows per-peer TX/RX rates, queued bytes, nominal drain time and saturation
+drops separately from seeded packet loss. Connected peers can remain divergent, and orders can
+expire before delivery. No contact or order receives implicit priority. LWW retains the latest state
+per key, so superseded intermediate reports need not ever be seen remotely. Anti-entropy may
+continue after scripted time stops; the demo never claims a fixed convergence deadline. Use
+`--bandwidth-kbps 0 --mtu 16384` to compare with an unconstrained in-memory transport.
+
+### Interaction
+
+Click a visible glider on the map or a locally known fleet report to enter its onboard view.
+Click the fixed station to return to CC. The inspector's order menu immediately issues the chosen
+scan/hold/patrol order from CC, addressed to that selected drone. An issued order does not appear
+in the drone's local knowledge until it arrives. The map's hover hints use the same local reports.
+The only persistent button pauses motion; replica traffic and command delivery continue.
+
+Use the perspective menu to enter ground truth when exploring drones unknown to the current
+observer. Simulation diagnostics and topology/scenario controls are collapsed and available only
+there. The scripted outage sequence lives in that panel's scenario menu. Reset resumes manual
+exploration. Local perspectives hide all global replica states, global counters and global topology;
+unknown fleet members are absent rather than populated from simulator truth.
 
 ### Views and knowledge
 
@@ -108,7 +133,7 @@ The script runs for at least 150 simulated seconds, with a repair deadline at 24
 6. From 150 s: finish only when every dated entry agrees. At 240 s stop scripted time even if
    repair remains pending; the restored network and anti-entropy continue running.
 
-Manual topology/observation controls leave the script. Play/pause freezes application motion,
+Manual topology/observation controls leave the script. Pause freezes application motion,
 observations and scenario time; reconciliation and order processing continue. Reset recreates every peer, transport
 pump and traffic counter. Clicking a drone/center in a simulator view opens its local perspective.
 
@@ -134,8 +159,8 @@ uses the same definition inside each current connected component; connectivity a
 imply convergence. The UI uses one snapshot per peer per sample, not an atomic distributed cut.
 
 Counters distinguish seeded loss drops, unavailable-link drops, and delivered replica wire traffic.
-Wire bytes include protocol overhead, exclude HTTP, and are not repair-only bytes or bandwidth
-caps. Delivered means admitted to the in-memory fabric, not necessarily consumed by an endpoint.
+Wire bytes include protocol overhead, exclude HTTP, and are not repair-only bytes. Per-peer TX counts offered wire bytes before netem loss;
+RX counts bytes admitted to protocol consumption. Per-sample rates can burst on packet boundaries. Delivered means admitted to the in-memory fabric, not necessarily consumed by an endpoint.
 Round counts come from public `sync_state`. With `--features metrics`, `/state` includes process
 counters, which reset does not clear. Wall-clock HLC stamps and runtime scheduling prevent
 bit-for-bit replay of traffic counts or convergence times despite repeatable geometry and seeds.

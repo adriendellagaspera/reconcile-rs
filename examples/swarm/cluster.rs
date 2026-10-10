@@ -12,6 +12,7 @@ use reconcile::{
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use super::bandwidth::{BandwidthTransport, Counters};
 use super::transport::{address, Network, PartitionGate};
 use super::world::{
     terrain, terrain_detail, Observation, OrderAction, PeerState, World, COMMAND_POSITION, HEIGHT,
@@ -26,6 +27,8 @@ pub struct Cluster {
     runtimes: Vec<Runtime>,
     pub loss: f64,
     pub datagram_budget: usize,
+    pub bandwidth_kbps: usize,
+    bandwidth: Vec<Arc<Counters>>,
     pub world: World,
     next_order: u64,
     handled_orders: Vec<u64>,
@@ -48,14 +51,20 @@ impl Runtime {
 impl Cluster {
     #[cfg(test)]
     pub fn new(loss: f64, size: usize) -> io::Result<Self> {
-        Self::with_datagram_budget(loss, size, 16 * 1024)
+        Self::with_limits(loss, size, 16 * 1024, 0)
     }
 
-    pub fn with_datagram_budget(
+    pub fn with_limits(
         loss: f64,
         size: usize,
         datagram_budget: usize,
+        bandwidth_kbps: usize,
     ) -> io::Result<Self> {
+        if bandwidth_kbps > 1000 {
+            return Err(io::Error::other(
+                "bandwidth must be between 0 and 1000 kbit/s",
+            ));
+        }
         if !(2..=20).contains(&size) {
             return Err(io::Error::other("node count must be between 2 and 20"));
         }
@@ -68,6 +77,7 @@ impl Cluster {
         let mut nodes = Vec::new();
         let mut losses = Vec::new();
         let mut runtimes = Vec::new();
+        let mut bandwidth = Vec::new();
         for id in 0..=size {
             let addr = address(id);
             let gate = PartitionGate {
@@ -95,6 +105,14 @@ impl Cluster {
                 .with_node_id(NodeId::new(id as u64 + 1))
                 .with_repair_interval(Duration::from_millis(350))
                 .with_reconcile_interval(Duration::from_secs(2));
+            let counters = Arc::new(Counters::default());
+            let transport = BandwidthTransport::new(
+                Arc::new(transport),
+                bandwidth_kbps,
+                datagram_budget,
+                counters.clone(),
+            );
+            bandwidth.push(counters);
             let node = ReplicatedMap::new_with_transport(config, Arc::new(transport))
                 .map_err(io::Error::other)?;
             runtimes.push(Self::spawn_runtime(&node, id, cancel.child_token()));
@@ -108,6 +126,8 @@ impl Cluster {
             runtimes,
             loss,
             datagram_budget,
+            bandwidth_kbps,
+            bandwidth,
             world,
             next_order: 0,
             handled_orders: vec![0; size],
@@ -475,6 +495,8 @@ impl Cluster {
             "partitioned": components.len() > 1, "loss": self.loss,
             "center": self.center(), "peer_states": peer_states, "storm": storm, "range": range,
             "datagram_budget": self.datagram_budget,
+            "bandwidth_kbps": self.bandwidth_kbps, "queue_capacity": super::bandwidth::QUEUE_BYTES,
+            "bandwidth": self.bandwidth.iter().map(|stats| stats.snapshot()).collect::<Vec<_>>(),
             "nodes": entries, "union_keys": keys.len(), "divergent_keys": divergent,
             "loss_offered": self.losses.iter().map(Impairments::offered).sum::<u64>(),
             "loss_dropped": self.losses.iter().map(Impairments::dropped).sum::<u64>(),

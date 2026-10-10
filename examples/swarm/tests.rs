@@ -466,3 +466,35 @@ fn typed_contacts_and_fine_coast_are_repeatable_and_stay_in_water() {
         detail.iter().any(|row| *row != 0) && detail.iter().any(|row| *row != 255)
     })));
 }
+
+#[tokio::test]
+async fn capped_network_delivers_orders_through_real_reconciliation() {
+    let mut cluster = Cluster::with_limits(0.0, 2, 1200, 10).unwrap();
+    cluster.heal();
+    cluster.issue_order(0, OrderAction::Hold).unwrap();
+    assert!(!cluster.world.held[0]);
+    tokio::time::timeout(Duration::from_secs(90), async {
+        loop {
+            cluster.advance();
+            if matches!(
+                cluster.nodes[cluster.center()].get_cloned(&"order-ack/00".into()),
+                Some(Observation::Acknowledgement { applied: true, .. })
+            ) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("a quiescent capped fleet must eventually acknowledge a command");
+    assert!(cluster.world.held[0]);
+    let state = cluster.state();
+    assert_eq!(state["bandwidth_kbps"], 10);
+    assert!(state["bandwidth"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|stats| stats["queued_bytes"].as_u64().unwrap()
+            <= super::super::bandwidth::QUEUE_BYTES as u64));
+    assert!(state["bandwidth"][0]["tx_bytes"].as_u64().unwrap() > 0);
+}

@@ -18,6 +18,8 @@ pub async fn serve(cluster: Cluster, port: u16, speed: f64) -> io::Result<()> {
         cluster.nodes.len(),
         cluster.loss
     );
+    let mut cluster = cluster;
+    cluster.world.playing = true;
     let cluster = Arc::new(Mutex::new(cluster));
     let connections = Arc::new(Semaphore::new(16));
     let mut ticks = tokio::time::interval(Duration::from_secs_f64(STEP_SECONDS / speed));
@@ -94,11 +96,13 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
                 "/play" => cluster.world.playing = true,
                 "/pause" => cluster.world.playing = false,
                 "/reset" | "/demo" => {
-                    *cluster = Cluster::with_datagram_budget(
+                    *cluster = Cluster::with_limits(
                         cluster.loss,
                         cluster.center(),
                         cluster.datagram_budget,
+                        cluster.bandwidth_kbps,
                     )?;
+                    cluster.world.playing = true;
                     if action == "/demo" {
                         cluster.start_demo();
                     }

@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+#[path = "swarm/bandwidth.rs"]
+mod bandwidth;
 #[path = "swarm/cluster.rs"]
 mod cluster;
 #[path = "swarm/http.rs"]
@@ -31,8 +33,11 @@ struct Args {
     #[arg(long, default_value_t = 1.0)]
     speed: f64,
     /// In-memory datagram budget in bytes; use 1200 for default UDP framing.
-    #[arg(long, default_value_t = 16 * 1024)]
+    #[arg(long, default_value_t = 1200)]
     mtu: usize,
+    /// Per-peer TX and RX limits in decimal kbit/s; 0 disables shaping.
+    #[arg(long, default_value_t = 10)]
+    bandwidth_kbps: usize,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -49,7 +54,7 @@ async fn main() -> io::Result<()> {
         return Err(io::Error::other("speed must be between 1 and 20"));
     }
     http::serve(
-        Cluster::with_datagram_budget(args.loss, args.nodes, args.mtu)?,
+        Cluster::with_limits(args.loss, args.nodes, args.mtu, args.bandwidth_kbps)?,
         args.port,
         args.speed,
     )

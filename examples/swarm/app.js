@@ -6,6 +6,7 @@ const cellSize = 30;
 let state, previous;
 let sampledAt = performance.now();
 let trafficRate = 0;
+let peerRates = [];
 const hotLinks = new Map();
 const hotDirect = new Map();
 let controlsBusy = false;
@@ -14,9 +15,14 @@ const shortName = n => n === state.center ? 'CC' : 'G' + (n + 1);
 const contactColor = kind => ({civil:'#83bdf5', hostile:'#fa937d', whale:'#c4a5f5', sperm_whale:'#e4a5ef', ocean_front:'#74dbe7'}[kind] || '#f6bc73');
 const contactName = r => 'C' + r.id + ' · ' + (r.kind || 'contact').replaceAll('_', ' ');
 const color = n => n === state.center ? '#b5a3f4' : '#5adbc6';
+let toastUntil = 0;
+let labels = [];
+let lastDrone = 0;
 const selectedReplica = () => $('view').value === 'command' ? state.center : Number($('node').value);
 
 function selectNode(n) {
+  $('hover-info').hidden=true;
+  if(n!==state.center) lastDrone=n;
   $('node').value = n;
   $('view').value = n === state.center ? 'command' : 'local';
   draw();
@@ -25,6 +31,7 @@ function selectNode(n) {
 function apply(next) {
   const now = performance.now();
   if (previous && next.delivered_bytes >= previous.delivered_bytes && now > sampledAt) {
+    peerRates = next.bandwidth.map((stats,id)=>({tx: Math.max(0,stats.tx_bytes-previous.bandwidth[id].tx_bytes)*8/(now-sampledAt),rx:Math.max(0,stats.rx_bytes-previous.bandwidth[id].rx_bytes)*8/(now-sampledAt)}));
     trafficRate = (next.delivered_bytes - previous.delivered_bytes) * 1000 / (now - sampledAt);
     const old = new Map(previous.links.map(l => [l.a + ':' + l.b, l.bytes]));
     next.links.forEach(l => { if (l.bytes > (old.get(l.a + ':' + l.b) || 0)) hotLinks.set(l.a + ':' + l.b, now + 450); });
@@ -32,7 +39,7 @@ function apply(next) {
     next.direct_peers.forEach((peers, observer) => peers.forEach(peer => {
       if (peer.datagrams > (received.get(observer + ':' + peer.peer) || 0)) hotDirect.set(observer + ':' + peer.peer, now + 450);
     }));
-  } else { trafficRate = 0; hotLinks.clear(); hotDirect.clear(); }
+  } else { peerRates = []; trafficRate = 0; hotLinks.clear(); hotDirect.clear(); }
   sampledAt = now; previous = next; state = next;
   for (const id of ['node', 'peer', 'link-a', 'link-b']) {
     if ($(id).options.length !== state.nodes.length) {
@@ -40,7 +47,6 @@ function apply(next) {
       if (id === 'link-b') $(id).value = 1;
     }
   }
-  if ($('order-drone').options.length !== state.center) $('order-drone').replaceChildren(...state.nodes.slice(0,state.center).map((_,n)=>new Option(nodeName(n),n)));
   if (document.activeElement !== $('range')) $('range').value = state.range;
   draw();
 }
@@ -52,6 +58,7 @@ async function command(action) {
     const response = await fetch('/' + action, { method: 'POST' });
     if (!response.ok) throw Error(await response.text());
     apply(await response.json()); $('error').textContent = '';
+    if(action.startsWith('order/')) { $('toast').textContent='Order issued by CC · awaiting network delivery'; toastUntil=performance.now()+5000; }
   } catch (error) { $('error').textContent = error.message; }
   finally { controlsBusy = false; }
 }
@@ -62,20 +69,38 @@ for (const button of document.querySelectorAll('[data-action]')) {
 for (const button of document.querySelectorAll('[data-peer]')) {
   button.onclick = () => command('peer/' + $('peer').value + '/' + button.dataset.peer);
 }
-$('send-order').onclick = () => command('order/' + $('order-drone').value + '/' + $('order-action').value);
+$('order-action').onchange = () => {
+  const action=$('order-action').value;
+  if(action) command('order/' + selectedReplica() + '/' + action);
+  $('order-action').value='';
+};
+$('scenario-action').onchange=()=>{if($('scenario-action').value) command($('scenario-action').value);$('scenario-action').value='';};
+$('peer-action').onchange=()=>{if($('peer-action').value) command('peer/'+$('peer').value+'/'+$('peer-action').value);$('peer-action').value='';};
 $('link-toggle').onclick = () => command('link/' + $('link-a').value + '/' + $('link-b').value + '/toggle');
 $('range').onchange = () => command('range/' + $('range').value);
-$('view').onchange = $('node').onchange = $('show-connections').onchange = draw;
+$('view').onchange=()=>{if($('view').value==='local')$('node').value=lastDrone;draw();};
+$('node').onchange = $('show-connections').onchange = draw;
 $('peer').onchange = $('link-a').onchange = $('link-b').onchange = draw;
-$('inspect-command').onclick = () => selectNode(state.center);
-$('map').onclick = event => {
-  if (!state || ['local', 'command'].includes($('view').value)) return;
-  const bounds = $('map').getBoundingClientRect();
-  const x = (event.clientX - bounds.left) * 960 / bounds.width;
-  const y = (event.clientY - bounds.top) * 600 / bounds.height;
-  const nearest = state.positions.map((p, n) => ({ n, distance: Math.hypot(x - p.x * cellSize, y - p.y * cellSize) })).sort((a, b) => a.distance - b.distance)[0];
-  if (nearest.distance < 25) selectNode(nearest.n);
+
+function visiblePeers() {
+  const selected=selectedReplica();
+  if($('view').value==='truth') return state.positions.map((position,source)=>({position,source,age:0}));
+  const known=knowledge(state.nodes[selected],state.ticks);
+  return [...known.vehicles.filter(v=>v.source!==selected),{position:state.positions[selected],source:selected,age:0},...(selected!==state.center ? [{position:state.command_position,source:state.center,age:0}] : [])];
+}
+function hitPeer(event) {
+  const bounds=$('map').getBoundingClientRect();
+  const x=(event.clientX-bounds.left)*960/bounds.width, y=(event.clientY-bounds.top)*600/bounds.height;
+  return visiblePeers().map(peer=>({...peer,distance:Math.hypot(x-peer.position.x*cellSize,y-peer.position.y*cellSize)})).sort((a,b)=>a.distance-b.distance).find(p=>p.distance<22);
+}
+$('map').onclick=event=>{if(!state)return;const peer=hitPeer(event);if(peer)selectNode(peer.source);};
+$('map').onmousemove=event=>{
+  if(!state)return; const peer=hitPeer(event), tip=$('hover-info'); tip.hidden=!peer;
+  $('map').style.cursor=peer?'pointer':'crosshair';
+  if(peer){const bounds=$('map').getBoundingClientRect();tip.style.left=Math.min(event.clientX-bounds.left+12,bounds.width-170)+'px';tip.style.top=Math.max(30,event.clientY-bounds.top-35)+'px';tip.textContent=shortName(peer.source)+' · '+(peer.source===selectedReplica()?'own navigation':peer.source===state.center?'fixed station':peer.age.toFixed(0)+'s old')+' · click to inspect';}
 };
+$('map').onmouseleave=()=>{$('hover-info').hidden=true;};
+$('map').onkeydown=event=>{if(event.key==='Escape'){selectNode(state.center);}};
 
 function draw() {
   if (!state) return;
@@ -87,10 +112,20 @@ function draw() {
   const direct = directConnections(known, selected, state.direct_peers[selected], state.center, state.command_position);
   if (mode === 'command') $('node').value = state.center;
   $('node').disabled = mode === 'command';
+  $('inspector-name').textContent=mode==='truth'?'Ground truth':nodeName(selected);
+  $('inspector-note').textContent=mode==='truth'?'Simulator view. Click a glider to inspect its local knowledge.':selected===state.center?'Reports received by the station. Missing information stays unknown.':'Own navigation and received reports only. Older positions fade; failure of another peer cannot be inferred from silence.';
+  $('order-controls').hidden=selected===state.center || mode==='truth';
+  $('local-inspector').hidden=!local;
+  $('mission-layout').style.gridTemplateColumns=local?'':'1fr';
+  $('diagnostics').hidden=local;
+  if(local) $('diagnostics').open=false;
+  if(performance.now()>toastUntil) $('toast').textContent='';
   $('status').textContent = state.partitioned ? 'DISCONNECTED COMPONENTS' : state.divergent_keys ? 'RECONCILING' : 'CONVERGED';
   $('title').textContent = mode === 'truth' ? 'SIMULATOR / GROUND TRUTH' : nodeName(selected) + ' / ' + (mode === 'command' ? 'LOCAL SYNTHESIS' : 'ONBOARD KNOWLEDGE');
   $('keys').textContent = entries.length + ' local keys';
-  $('map-note').textContent = local ? 'Local knowledge · links = direct ingress · endpoints = last known positions' : 'Simulator truth · links = actual availability · flashes = delivered traffic';
+  $('map-note').textContent = local ? 'Only information available to this peer' : 'Actual world · click a glider to enter its view';
+  $('keys').hidden=!local; $('sectors').hidden=!local;
+  labels=[];
   ctx.clearRect(0, 0, 960, 600);
   for (let y = 0; y < 20; y++) for (let x = 0; x < 32; x++) {
     const cell = known.terrain.get(x + ',' + y);
@@ -125,10 +160,11 @@ function draw() {
   }
   $('sectors').textContent = known.sectors + ' sectors known locally';
   $('contact').textContent = known.contacts.length + ' contacts · ' + known.reports.length + ' source reports available. Latest measurement per contact; no averaging.';
-  $('reports').replaceChildren(...known.reports.map(r => {
+  $('reports').replaceChildren(...known.contacts.map(r => {
     const row = document.createElement('div'); row.className = 'report';
     row.style.color = agedColor(contactColor(r.kind), r.amount);
-    row.textContent = contactName(r) + ' · ' + shortName(r.source) + ' · ' + r.age.toFixed(0) + 's · (' + r.position.x.toFixed(1) + ', ' + r.position.y.toFixed(1) + ')' + (r.stale ? ' · stale' : '');
+    row.title=known.reports.filter(report=>report.id===r.id).map(report=>'Sensor '+shortName(report.source)+' · '+report.age.toFixed(0)+'s old').join('\n');
+    row.textContent=contactName(r)+' · '+r.age.toFixed(0)+'s'+(r.stale?' · stale':'')+' · '+known.reports.filter(report=>report.id===r.id).length+' sources';
     return row;
   }));
   $('orders').replaceChildren(...known.commands.filter(o=>selected===state.center || o.recipient===selected).map(o=>{
@@ -138,7 +174,7 @@ function draw() {
     return row;
   }));
   if (!$('orders').children.length) $('orders').textContent='No order known in this replica';
-  $('send-order').disabled=state.peer_states[state.center]==='stopped';
+  $('order-action').disabled=controlsBusy;
   drawFleetKnowledge(known, selected);
   drawDirectPeers(direct, selected);
   $('count').textContent = state.nodes.length + ' (' + state.center + ' drones + CC)';
@@ -152,10 +188,22 @@ function draw() {
   $('progress').value = ratio; $('ratio').textContent = (ratio * 100).toFixed(1) + '% identical on every replica, including isolated peers';
   $('groups').textContent = state.groups.map(g => g.members.map(shortName).join(', ') + ': ' + (g.keys ? g.same * 100 / g.keys : 100).toFixed(0) + '% agreement').join(' · ');
   $('packets').textContent = state.delivered_datagrams; $('bytes').textContent = (state.delivered_bytes / 1024).toFixed(1) + ' KiB'; $('rate').textContent = (trafficRate / 1024).toFixed(1) + ' KiB/s';
+  const ownTraffic=state.bandwidth[selected];
+  const ownDelay=state.bandwidth_kbps ? ownTraffic.queued_bytes*8/(state.bandwidth_kbps*1000) : 0;
+  $('local-network-health').textContent=ownDelay>1?'Transmit backlog ≈ '+ownDelay.toFixed(0)+'s. Updates may reach peers late.':ownTraffic.rx_dropped?'Receive capacity exceeded; some datagrams were lost.':' ';
+  $('bandwidth-limit').textContent = state.bandwidth_kbps ? state.bandwidth_kbps + ' kbit/s TX + RX per peer' : 'Unlimited';
+  $('peer-bandwidth').replaceChildren(...state.bandwidth.map((stats,id)=>{
+    const row=document.createElement('div'); row.className='report';
+    const rate=peerRates[id] || {tx:0,rx:0};
+    const delay=state.bandwidth_kbps ? stats.queued_bytes*8/(state.bandwidth_kbps*1000) : 0;
+    row.style.color=stats.queued_bytes ? '#f6bc73' : '#8194a7';
+    row.textContent=shortName(id)+' · TX '+rate.tx.toFixed(1)+' / RX '+rate.rx.toFixed(1)+' kbit/s · queue '+(stats.queued_bytes/1024).toFixed(1)+' KiB (~'+delay.toFixed(1)+'s) · drops '+stats.tx_dropped+' TX / '+stats.rx_dropped+' RX';
+    return row;
+  }));
   $('phase').textContent = state.phase;
   $('time').textContent = Math.floor(state.seconds / 60) + ':' + String(Math.floor(state.seconds % 60)).padStart(2, '0');
-  $('sim-status').textContent = state.playing ? 'running' : 'paused'; $('play').textContent = state.playing ? 'Pause exploration' : 'Play exploration';
-  $('weather').textContent = state.storm ? 'Clear weather front' : 'Activate weather front';
+  $('sim-status').textContent = state.playing ? 'running' : 'paused'; $('play').textContent=state.playing?'Ⅱ':'▷'; $('play').setAttribute('aria-label',state.playing?'Pause exploration':'Play exploration'); $('play').title=state.playing?'Pause exploration':'Play exploration';
+
   $('range-value').textContent = state.range.toFixed(0) + ' map units';
   $('peer-status').textContent = nodeName(Number($('peer').value)) + ': ' + state.peer_states[Number($('peer').value)] + ' (simulator truth)';
   const a = Number($('link-a').value), b = Number($('link-b').value);
@@ -164,7 +212,7 @@ function draw() {
   $('link-toggle').textContent = link?.manual_cut ? 'Remove manual cut' : 'Cut selected link';
   $('link-toggle').disabled = a === b;
   document.querySelectorAll('[data-act]').forEach(el => el.classList.toggle('active', state.scripted && state.phase.startsWith(el.dataset.act + ' /')));
-  drawNodeCards(selected);
+  if(!local) drawNodeCards(selected);
 }
 
 function agedColor(hex, amount) {
@@ -174,8 +222,8 @@ function agedColor(hex, amount) {
 
 function uncertainty(position, age, stroke) {
   if (age < 5) return;
-  ctx.save(); ctx.setLineDash([3, 5]); ctx.strokeStyle = stroke; ctx.globalAlpha = .22;
-  ctx.beginPath(); ctx.arc(position.x * cellSize, position.y * cellSize, Math.min(90, 8 + age * .7), 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.setLineDash([3, 5]); ctx.strokeStyle = stroke; ctx.globalAlpha = .09;
+  ctx.beginPath(); ctx.arc(position.x * cellSize, position.y * cellSize, Math.min(45, 8 + age * .35), 0, Math.PI * 2); ctx.stroke(); ctx.restore();
 }
 
 function drawVehicle(point, n, fresh, own, truthState) {
@@ -189,9 +237,19 @@ function drawVehicle(point, n, fresh, own, truthState) {
   else { ctx.moveTo(0, -9); ctx.lineTo(7, 8); ctx.lineTo(-7, 8); ctx.closePath(); }
   if (!fresh.stale) ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
   ctx.globalAlpha = .85; ctx.font = '11px system-ui';
-  ctx.fillText(shortName(n) + (truthState && truthState !== 'active' ? ' / ' + truthState : own ? ' / self' : n === state.center ? ' / station' : ' / ' + fresh.age.toFixed(0) + 's'), 11, 4);
   if (truthState === 'stopped') { ctx.beginPath(); ctx.moveTo(-10, -10); ctx.lineTo(10, 10); ctx.moveTo(10, -10); ctx.lineTo(-10, 10); ctx.stroke(); }
   ctx.restore();
+  drawLabel(shortName(n)+(truthState ? (truthState==='active'?'':' / '+truthState) : own?' / self':n===state.center?' / station':' / '+fresh.age.toFixed(0)+'s'),point,tint,false);
+}
+
+function drawLabel(text,point,tint,above) {
+  if(!text)return;
+  ctx.save();ctx.font='11px system-ui';ctx.fillStyle=tint;ctx.globalAlpha=.85;
+  const width=ctx.measureText(text).width, x=point.x*cellSize, y=point.y*cellSize;
+  const offsets=above?[[12,-12],[12,-28],[12,20],[-width-12,-12],[12,36]]:[[11,4],[11,-16],[11,22],[-width-11,4],[11,38]];
+  const fits=([dx,dy])=>{const box={x:x+dx,y:y+dy-10,w:width,h:14};return box.x>=4&&box.x+box.w<=956&&box.y>=4&&box.y+box.h<=596&&!labels.some(r=>box.x<r.x+r.w+3&&box.x+box.w+3>r.x&&box.y<r.y+r.h+2&&box.y+box.h+2>r.y);};
+  const [dx,dy]=offsets.find(fits)||offsets[0];labels.push({x:x+dx,y:y+dy-10,w:width,h:14});
+  ctx.fillText(text,x+dx,y+dy);ctx.restore();
 }
 
 function drawContact(position, fresh, label, primary) {
@@ -201,7 +259,7 @@ function drawContact(position, fresh, label, primary) {
   if (fresh.stale) ctx.setLineDash([3, 3]);
   ctx.beginPath(); ctx.arc(position.x * cellSize, position.y * cellSize, primary ? 7 : 4, 0, Math.PI * 2);
   if (primary && !fresh.stale) ctx.fill(); else ctx.stroke();
-  ctx.globalAlpha = .85; ctx.font = '12px system-ui'; ctx.fillText(label, position.x * cellSize + 12, position.y * cellSize - 12); ctx.restore();
+  ctx.restore(); drawLabel(label,position,tint,true);
 }
 
 function drawNetwork() {
@@ -210,7 +268,7 @@ function drawNetwork() {
     if (!link.enabled) continue;
     const a = state.positions[link.a], b = state.positions[link.b];
     const hot = (hotLinks.get(link.a + ':' + link.b) || 0) > now;
-    ctx.strokeStyle = hot ? '#e7f6efaa' : '#5adbc640'; ctx.lineWidth = hot ? 2 : 1;
+    ctx.strokeStyle = hot ? '#98dace55' : '#5adbc620'; ctx.lineWidth = hot ? .65 : .35;
     ctx.beginPath(); ctx.moveTo(a.x * cellSize, a.y * cellSize); ctx.lineTo(b.x * cellSize, b.y * cellSize); ctx.stroke();
   }
 }
@@ -230,8 +288,8 @@ function drawDirectLinks(links, selected) {
   for (const link of links) {
     if (!link.position) continue;
     const hot = isDirectHot(selected, link.peer);
-    ctx.save(); ctx.strokeStyle = hot ? '#e7f6efcc' : link.active ? '#5adbc680' : '#8194a755';
-    ctx.lineWidth = hot ? 2.5 : 1;
+    ctx.save(); ctx.strokeStyle = hot ? '#98dace66' : link.active ? '#5adbc638' : '#8194a728';
+    ctx.lineWidth = hot ? .7 : .4;
     if (!link.active) ctx.setLineDash([4, 7]);
     ctx.beginPath(); ctx.moveTo(own.x * cellSize, own.y * cellSize);
     ctx.lineTo(link.position.x * cellSize, link.position.y * cellSize); ctx.stroke(); ctx.restore();
@@ -239,8 +297,8 @@ function drawDirectLinks(links, selected) {
 }
 
 function drawFlash(position) {
-  ctx.save(); ctx.strokeStyle = '#e7f6efbb'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(position.x * cellSize, position.y * cellSize, 15, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.strokeStyle = '#98dace60'; ctx.lineWidth = .6;
+  ctx.beginPath(); ctx.arc(position.x * cellSize, position.y * cellSize, 12, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
 }
 
 function drawDirectPeers(links, selected) {
@@ -258,11 +316,12 @@ function drawDirectPeers(links, selected) {
 function drawFleetKnowledge(known, selected) {
   const reports = new Map(known.vehicles.map(v => [v.source, v]));
   $('fleet').replaceChildren(...Array.from({ length: state.center }, (_, n) => {
-    const v = reports.get(n); const row = document.createElement('div'); row.className = 'report';
+    const v = reports.get(n); if(!v && n!==selected)return null; const row = document.createElement('div'); row.className = 'report';
     row.style.color = v ? agedColor('#5adbc6', v.amount) : '#8194a7';
+    if(v || n===selected){row.classList.add('peer-item');row.tabIndex=0;row.setAttribute('role','link');row.onclick=()=>selectNode(n);row.onkeydown=e=>{if(e.key==='Enter')selectNode(n);};}
     row.textContent = shortName(n) + ' · ' + (n === selected ? 'own navigation' : v ? 'last report ' + v.age.toFixed(0) + 's ago' + (v.stale ? ' · silent / stale' : '') : 'unknown') + (v ? ' · battery ' + v.battery + '%' : '');
     return row;
-  }));
+  }).filter(Boolean));
 }
 
 function drawNodeCards(selected) {
