@@ -127,19 +127,13 @@ pub use in_memory::{InMemoryNetwork, InMemoryTransport};
 
 mod in_memory {
     use super::*;
-    use std::collections::HashMap;
+    use crate::substrate::{DatagramFabric, DatagramPort};
 
-    use parking_lot::Mutex;
-    use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-    use tokio::sync::Mutex as AsyncMutex;
-
-    type Datagram = (SocketAddr, Vec<u8>);
-
-    /// A shared in-process datagram fabric. [`bind`](InMemoryNetwork::bind) a
-    /// [`InMemoryTransport`] per node onto the same network and they can exchange datagrams.
+    /// A shared in-process datagram fabric. Addresses retain the historical socket-shaped API;
+    /// the underlying message fabric itself is generic over the address type.
     #[derive(Clone, Default, Debug)]
     pub struct InMemoryNetwork {
-        routes: Arc<Mutex<HashMap<SocketAddr, UnboundedSender<Datagram>>>>,
+        fabric: DatagramFabric<SocketAddr>,
     }
 
     impl InMemoryNetwork {
@@ -151,12 +145,8 @@ mod in_memory {
         /// Bind a transport at `addr`. A datagram sent to `addr` by any peer on this network is
         /// delivered to the returned transport's [`recv_from`](Transport::recv_from).
         pub fn bind(&self, addr: SocketAddr) -> InMemoryTransport {
-            let (tx, rx) = unbounded_channel();
-            self.routes.lock().insert(addr, tx);
             InMemoryTransport {
-                network: self.clone(),
-                addr,
-                rx: AsyncMutex::new(rx),
+                port: self.fabric.bind(addr),
             }
         }
     }
@@ -164,35 +154,24 @@ mod in_memory {
     /// One endpoint on an [`InMemoryNetwork`].
     #[derive(Debug)]
     pub struct InMemoryTransport {
-        network: InMemoryNetwork,
-        addr: SocketAddr,
-        rx: AsyncMutex<UnboundedReceiver<Datagram>>,
+        port: DatagramPort<SocketAddr>,
     }
 
     #[async_trait]
     impl Transport for InMemoryTransport {
         async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-            let (src, bytes) = self.rx.lock().await.recv().await.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::BrokenPipe, "in-memory network closed")
-            })?;
-            let n = bytes.len().min(buf.len());
-            buf[..n].copy_from_slice(&bytes[..n]);
-            Ok((n, src))
+            self.port.recv_from(buf).await
         }
 
         async fn send_to(&self, buf: &[u8], dst: &SocketAddr) -> io::Result<usize> {
-            if let Some(tx) = self.network.routes.lock().get(dst) {
-                let _ = tx.send((self.addr, buf.to_vec()));
-            }
-            Ok(buf.len())
+            self.port.send_to(buf, dst)
         }
 
         fn local_addr(&self) -> io::Result<SocketAddr> {
-            Ok(self.addr)
+            Ok(self.port.local_addr())
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
