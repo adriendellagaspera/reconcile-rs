@@ -256,6 +256,33 @@ pub fn reconcile_gossip::gen_ip::gen_ipv6<R: rand::rng::Rng>(&mut R, ipnet::ipne
 pub fn reconcile_gossip::gen_ip::host_net(core::net::ip_addr::IpAddr) -> ipnet::ipnet::IpNet
 pub fn reconcile_gossip::gen_ip::net_of(&[ipnet::ipnet::IpNet], core::net::ip_addr::IpAddr) -> core::option::Option<ipnet::ipnet::IpNet>
 pub fn reconcile_gossip::gen_ip::probe_targets<R: rand::rng::Rng>(&mut R, &[ipnet::ipnet::IpNet]) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
+pub mod reconcile_gossip::peer
+pub struct reconcile_gossip::peer::PeerId(_)
+impl reconcile_gossip::peer::PeerId
+pub const fn reconcile_gossip::peer::PeerId::from_bytes([u8; 32]) -> Self
+pub const fn reconcile_gossip::peer::PeerId::to_bytes(self) -> [u8; 32]
+impl core::clone::Clone for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::clone(&self) -> reconcile_gossip::peer::PeerId
+impl core::cmp::Eq for reconcile_gossip::peer::PeerId
+impl core::cmp::Ord for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::cmp(&self, &reconcile_gossip::peer::PeerId) -> core::cmp::Ordering
+impl core::cmp::PartialEq for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::eq(&self, &reconcile_gossip::peer::PeerId) -> bool
+impl core::cmp::PartialOrd for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::partial_cmp(&self, &reconcile_gossip::peer::PeerId) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for reconcile_gossip::peer::PeerId
+impl core::marker::StructuralPartialEq for reconcile_gossip::peer::PeerId
+impl core::marker::Freeze for reconcile_gossip::peer::PeerId
+impl core::marker::Send for reconcile_gossip::peer::PeerId
+impl core::marker::Sync for reconcile_gossip::peer::PeerId
+impl core::marker::Unpin for reconcile_gossip::peer::PeerId
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::PeerId
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::PeerId
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::PeerId
 pub mod reconcile_gossip::replay
 pub struct reconcile_gossip::replay::ReplayFilter
 impl reconcile_gossip::replay::ReplayFilter
@@ -391,6 +418,32 @@ impl core::marker::Unpin for reconcile_gossip::InMemoryTransport
 impl core::marker::UnsafeUnpin for reconcile_gossip::InMemoryTransport
 impl !core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::InMemoryTransport
 impl !core::panic::unwind_safe::UnwindSafe for reconcile_gossip::InMemoryTransport
+pub struct reconcile_gossip::PeerId(_)
+impl reconcile_gossip::peer::PeerId
+pub const fn reconcile_gossip::peer::PeerId::from_bytes([u8; 32]) -> Self
+pub const fn reconcile_gossip::peer::PeerId::to_bytes(self) -> [u8; 32]
+impl core::clone::Clone for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::clone(&self) -> reconcile_gossip::peer::PeerId
+impl core::cmp::Eq for reconcile_gossip::peer::PeerId
+impl core::cmp::Ord for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::cmp(&self, &reconcile_gossip::peer::PeerId) -> core::cmp::Ordering
+impl core::cmp::PartialEq for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::eq(&self, &reconcile_gossip::peer::PeerId) -> bool
+impl core::cmp::PartialOrd for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::partial_cmp(&self, &reconcile_gossip::peer::PeerId) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::PeerId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for reconcile_gossip::peer::PeerId
+impl core::marker::StructuralPartialEq for reconcile_gossip::peer::PeerId
+impl core::marker::Freeze for reconcile_gossip::peer::PeerId
+impl core::marker::Send for reconcile_gossip::peer::PeerId
+impl core::marker::Sync for reconcile_gossip::peer::PeerId
+impl core::marker::Unpin for reconcile_gossip::peer::PeerId
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::PeerId
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::PeerId
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::PeerId
 pub struct reconcile_gossip::transport::UdpTransport(_)
 impl reconcile_gossip::transport::UdpTransport
 pub async fn reconcile_gossip::transport::UdpTransport::bind(core::net::socket_addr::SocketAddr, core::option::Option<usize>, core::option::Option<usize>) -> core::io::error::Result<Self>

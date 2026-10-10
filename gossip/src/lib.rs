@@ -27,8 +27,8 @@ pub mod framing;
 pub mod gen_ip;
 #[cfg(feature = "netem")]
 pub mod netem;
-pub mod replay;
 pub mod peer;
+pub mod replay;
 mod substrate;
 pub mod transport;
 
