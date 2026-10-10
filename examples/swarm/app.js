@@ -218,7 +218,7 @@ function draw() {
     state.truth_contacts.forEach(r => drawContact(r.position, {...r,...freshness(state.ticks,state.ticks)},contactName(r),true));
   }
   $('sectors').textContent = known.sectors + ' sectors known locally';
-  $('contact').textContent = known.contacts.length + ' contacts · ' + known.reports.length + ' observations';
+  $('contact').textContent = known.contacts.length + ' contacts · ' + known.reports.length + ' latest reports · ' + known.discoveries.length + ' first discoveries';
   $('reports').replaceChildren(...known.contacts.map(r => {
     const row = document.createElement('div'); row.className = 'report peer-item';
     row.tabIndex=0;row.setAttribute('role','link');row.onclick=()=>inspect({kind:'contact',id:r.id,source:r.source});row.onkeydown=e=>{if(e.key==='Enter')row.click();};
@@ -227,10 +227,15 @@ function draw() {
     row.textContent=contactName(r)+' · '+r.age.toFixed(0)+'s'+(r.stale?' · stale':'')+' · '+known.reports.filter(report=>report.id===r.id).length+' sources';
     return row;
   }));
-  $('orders').replaceChildren(...known.commands.filter(o=>selected===state.center || o.recipient===selected).map(o=>{
+  const visibleOrders = (known.orderHistory.length ? known.orderHistory : known.commands)
+    .filter(o => selected === state.center || o.recipient === selected);
+  const desired = new Map(known.commands.map(o => [o.recipient, o.sequence]));
+  $('orders').replaceChildren(...visibleOrders.map(o=>{
     const row=document.createElement('div'); row.className='report';
     const ack=o.acknowledgement;
-    row.textContent='#'+o.sequence+' → '+shortName(o.recipient)+' / '+o.action+' · '+(ack ? (ack.applied ? 'applied / acknowledged' : 'expired / rejected') : o.expired ? 'deadline passed / no acknowledgement' : 'issued / awaiting acknowledgement');
+    const current=desired.get(o.recipient)===o.sequence;
+    const status=ack ? (ack.applied ? 'applied / acknowledged' : 'expired / rejected') : o.expired ? 'deadline passed / no acknowledgement' : 'no acknowledgement';
+    row.textContent=(current ? 'DESIRED ' : 'HISTORY ')+'#'+o.sequence+' → '+shortName(o.recipient)+' / '+o.action+' · '+status;
     return row;
   }));
   if (!$('orders').children.length) $('orders').textContent='No order known in this replica';

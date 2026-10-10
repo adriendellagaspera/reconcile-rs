@@ -77,9 +77,9 @@ test('silent links expire on real transport time and unknown locations stay unkn
 
 test('distinct contact identities are synthesized independently', () => {
   const result = knowledge([
-    ['a', {Contact:{id:1,kind:'civil',source:0,seen:5}}],
-    ['b', {Contact:{id:2,kind:'whale',source:0,seen:10}}],
-    ['c', {Contact:{id:1,kind:'civil',source:1,seen:20}}],
+    ['contact/01/00', {Contact:{id:1,kind:'civil',source:0,seen:5}}],
+    ['contact/02/00', {Contact:{id:2,kind:'whale',source:0,seen:10}}],
+    ['contact/01/01', {Contact:{id:1,kind:'civil',source:1,seen:20}}],
   ],30);
   assert.equal(result.contacts.length,2);
   assert.equal(result.contacts.find(r=>r.id===1).source,1);
@@ -88,11 +88,39 @@ test('distinct contact identities are synthesized independently', () => {
 
 test('order status requires a matching acknowledgement in the same replica', () => {
   const order=['order/00',{Order:{recipient:0,sequence:2,expires:240,action:'hold'}}];
-  const old=['order-ack/00',{Acknowledgement:{recipient:0,sequence:1,applied:true}}];
+  const old=['order-ack/00/0000000000000001',{Acknowledgement:{recipient:0,sequence:1,applied:true}}];
   assert.equal(knowledge([order,old],250).commands[0].acknowledgement,null);
   assert.equal(knowledge([order],250).commands[0].expired,true);
-  const ack=['order-ack/00',{Acknowledgement:{recipient:0,sequence:2,applied:true}}];
+  const ack=['order-ack/00/0000000000000002',{Acknowledgement:{recipient:0,sequence:2,applied:true}}];
   assert.equal(knowledge([order,ack],100).commands[0].acknowledgement.applied,true);
+});
+
+test('immutable discovery and order journals never appear as live contacts or duplicate commands', () => {
+  const discovery = { Contact: { id: 0, source: 0, seen: 2, position: { x: 1, y: 1 } } };
+  const latest = { Contact: { id: 0, source: 0, seen: 10, position: { x: 2, y: 2 } } };
+  const another = { Contact: { id: 1, source: 1, seen: 5, position: { x: 3, y: 3 } } };
+  const oldOrder = { Order: { recipient: 0, sequence: 1, expires: 100, action: 'hold' } };
+  const nextOrder = { Order: { recipient: 0, sequence: 2, expires: 100, action: 'patrol' } };
+  const result = knowledge([
+    ['contact-first/00/00', discovery],
+    ['contact/00/00', latest],
+    ['contact/01/01', another],
+    ['order-issued/00/0000000000000001', oldOrder],
+    ['order-issued/00/0000000000000002', nextOrder],
+    ['order/00', nextOrder],
+    ['order-ack/00/0000000000000001', { Acknowledgement: { recipient: 0, sequence: 1, applied: true } }],
+    ['order-ack/00/0000000000000002', { Acknowledgement: { recipient: 0, sequence: 2, applied: false } }],
+  ], 10);
+  assert.equal(result.reports.length, 2);
+  assert.equal(result.contacts.length, 2); // id=0 must not be confused with id=1
+  assert.equal(result.contacts.find(r => r.id === 0).seen, 10);
+  assert.equal(result.discoveries.length, 1);
+  assert.equal(result.discoveries[0].seen, 2);
+  assert.equal(result.commands.length, 1);
+  assert.equal(result.commands[0].sequence, 2);
+  assert.equal(result.commands[0].acknowledgement.applied, false);
+  assert.deepEqual(result.orderHistory.map(o => o.sequence), [2, 1]);
+  assert.equal(result.orderHistory[1].acknowledgement.applied, true);
 });
 
 test('hit testing covers visible primitives without hidden truth targets', async () => {

@@ -78,12 +78,29 @@ Ground truth includes actual allowed links, with a **Show connections** toggle. 
 show only direct ingress seen by that observer; silence after five real seconds makes links dashed.
 Endpoints use last known reports; unknown endpoints remain listed. CC position is fixed mission configuration.
 
-The application stores static terrain, per-drone coverage reports, each drone's latest vehicle
-report, and the latest observation per contact and sensor. Separate contact keys preserve reports from
-different sensors; this is a bounded latest-report model, not an unbounded observation history.
-All observers use the same local projection: contact synthesis selects the latest observation for each contact by
-application observation time, breaks ties by source id, and exposes other source reports. It is
-not a sensor-fusion estimate and does not average asynchronous positions.
+The application deliberately uses **different key shapes for different semantics**, while the
+library itself remains LWW throughout:
+- **Latest-state registers**: `vehicle/{drone}`, `contact/{contact}/{sensor}`,
+  and `order/{recipient}` overwrite older versions. A single sensor owns its
+  contact report key; CC alone issues desired commands.
+- **Immutable facts**: `map/{x}/{y}` tiles, `sector/{sector}/{sensor}` first
+  coverage, and `contact-first/{contact}/{sensor}` first discoveries are written only
+  on first sight. Static terrain is deterministic across sensors; any same-key
+  rediscovery has identical content, though its HLC metadata may differ.
+- **Append-only event keys**: `order-issued/{recipient}/{sequence}` and
+  `order-ack/{recipient}/{sequence}` retain independent issued-command and
+  executed/rejected-command facts. They are **not** an executable event queue.
+
+Separate per-sensor contact registers preserve each source's latest report, not a full
+measurement history; only first discoveries are recorded as immutable events. The
+application does not write an unbounded observation stream, given the 10 kbit/s
+links. All observers use the same local projection: live contact synthesis selects
+the latest measurement per contact by application observation time (ties by source
+id), excluding the immutable discovery records. Issued-command history is displayed
+separately from the current desired order, and acknowledgements are joined by
+recipient/sequence. This is not a sensor-fusion estimate and does not average
+asynchronous positions. The immutability/ownership contract lives in the demo,
+not in an enforced custom merge policy inside reconcile-rs.
 
 Vehicle and contact reports progressively gray and fade according to observation time, not
 receipt time or HLC ordering. Vehicle reports are stale after 30 simulated seconds; contacts after
@@ -94,10 +111,12 @@ metrics are explicitly simulator information, separate from local knowledge.
 
 ### Orders, contacts and coastline
 
-The CC writes a latest desired order per drone: **Scan now**, **Hold position**, or **Resume patrol**.
-A drone processes only orders in its own replica, writes an acknowledgement once per sequence,
-and rejects orders older than 120 simulated seconds. Acknowledgements become visible to the CC
-only through replication. A modem-offline drone can execute an already received order; a halted
+The CC writes a latest desired order per drone: **Scan now**, **Hold position**, or **Resume patrol**,
+and a separately keyed immutable issuance record. A drone processes **only the desired order**
+in its own replica, records one immutable acknowledgement per sequence, and rejects orders
+older than 120 simulated seconds. Acknowledgements become visible to the CC only through
+replication. Old orders and their acknowledgements remain queryable as history, but
+**the history is not replayed to execute missed or superseded commands**. A modem-offline drone can execute an already received order; a halted
 drone waits for resume. Indirect paths can deliver orders even when the direct CC link is cut.
 Hold freezes navigation while sensing and protocol traffic continue. New orders supersede older
 ones: this is desired-state control, not a durable queue or a safety-critical command protocol.
@@ -179,7 +198,10 @@ bit-for-bit replay of traffic counts or convergence times despite repeatable geo
 
 Long-offline replica removal, deletion/tombstone GC, permanent storage loss, real sensor fusion
 and exclusive mission assignment require additional application policies; the demo does not
-claim those semantics from LWW convergence alone.
+claim those semantics from LWW convergence alone. Command/acknowledgement and first-discovery
+history is not automatically pruned; unbounded mission duration would need an explicit
+retention and deletion policy. The default demo keeps only latest sensor readings to limit
+replicated state and bandwidth.
 
 ## Swarm on GitHub Pages
 

@@ -11,21 +11,43 @@ export function knowledge(entries, ticks) {
   const terrain = new Map();
   const vehicles = [];
   const reports = [];
+  const discoveries = [];
   const orders = [];
-  const acknowledgements = [];
+  const issued = [];
+  const acknowledgements = new Map();
   const sectors = new Set();
   for (const [key, value] of entries) {
-    if (value.Terrain) terrain.set(value.Terrain.x + ',' + value.Terrain.y, value.Terrain);
-    if (value.Vehicle) vehicles.push({ ...value.Vehicle, ...freshness(value.Vehicle.seen, ticks, 30) });
-    if (value.Contact) reports.push({ ...value.Contact, ...freshness(value.Contact.seen, ticks) });
-    if (value.Order) orders.push(value.Order);
-    if (value.Acknowledgement) acknowledgements.push(value.Acknowledgement);
-    if (value.Sector) sectors.add(value.Sector.id);
+    // Keep latest-state registers separate from immutable event keys. All of
+    // these are still ordinary LWW entries in the library; immutability is an
+    // application-level guarantee from disjoint, single-writer key ownership.
+    if (key.startsWith('map/') && value.Terrain) terrain.set(value.Terrain.x + ',' + value.Terrain.y, value.Terrain);
+    else if (key.startsWith('vehicle/') && value.Vehicle) vehicles.push({ ...value.Vehicle, ...freshness(value.Vehicle.seen, ticks, 30) });
+    else if (key.startsWith('contact/') && value.Contact) reports.push({ ...value.Contact, ...freshness(value.Contact.seen, ticks) });
+    else if (key.startsWith('contact-first/') && value.Contact) discoveries.push(value.Contact);
+    else if (key.startsWith('order/') && value.Order) orders.push(value.Order);
+    else if (key.startsWith('order-issued/') && value.Order) issued.push(value.Order);
+    else if (key.startsWith('order-ack/') && value.Acknowledgement) {
+      acknowledgements.set(value.Acknowledgement.recipient + '/' + value.Acknowledgement.sequence, value.Acknowledgement);
+    }
+    else if (key.startsWith('sector/') && value.Sector) sectors.add(value.Sector.id);
   }
-  reports.sort((a, b) => b.seen - a.seen || a.source - b.source);
-  const contacts = [...new Map(reports.map(r => r.id || 1).map(id => [id, reports.find(r => (r.id || 1) === id)])).values()];
-  const commands = orders.map(order => ({ ...order, acknowledgement: acknowledgements.find(ack => ack.recipient === order.recipient && ack.sequence === order.sequence) || null, expired: ticks > order.expires }));
-  return { terrain, vehicles, reports, contacts, commands, contact: reports[0] || null, sectors: sectors.size };
+  reports.sort((a, b) => b.seen - a.seen || a.source - b.source || (a.id ?? 0) - (b.id ?? 0));
+  const byContact = new Map();
+  for (const report of reports) {
+    const id = report.id ?? 1;
+    if (!byContact.has(id)) byContact.set(id, report);
+  }
+  const contacts = [...byContact.values()];
+  const decorate = order => ({
+    ...order,
+    acknowledgement: acknowledgements.get(order.recipient + '/' + order.sequence) || null,
+    expired: ticks > order.expires,
+  });
+  const commands = orders.map(decorate);
+  const orderHistory = issued.sort((a, b) => b.sequence - a.sequence).map(decorate);
+  return { terrain, vehicles, reports, contacts, commands, orderHistory, discoveries,
+    acknowledgements: [...acknowledgements.values()],
+    contact: reports[0] || null, sectors: sectors.size };
 }
 
 // Connectivity is inferred only from this observer's direct ingress. Relayed reports
