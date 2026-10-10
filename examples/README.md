@@ -57,7 +57,7 @@ continue after scripted time stops; the demo never claims a fixed convergence de
 Click a visible glider on the map or a locally known fleet report to enter its onboard view.
 Click the fixed station to return to CC. The inspector's order menu immediately issues the chosen
 scan/hold/patrol order from CC, addressed to that selected drone. An issued order does not appear
-in the drone's local knowledge until it arrives. Contacts, visible source observations, links and surveyed terrain tiles can also be selected.
+in the drone's local knowledge until it arrives. Contacts, visible source observations, links and reference-chart tiles can also be selected.
 Their inspector and hover hints use the same local data; unknown objects have no click targets.
 Scroll or pinch to zoom, drag to pan, and double-click to reset or enlarge the map.
 Escape clears object selection, then returns to CC. Secondary knowledge lists fold into the rail.
@@ -72,21 +72,30 @@ unknown fleet members are absent rather than populated from simulator truth.
 ### Views and knowledge
 
 - **Local knowledge**: the selected peer's snapshot, plus its own navigation position.
-  CC uses exactly the same projection. Its fixed station is on the central island.
-- **Simulator / ground truth**: actual terrain, positions, typed contacts and failure states.
+  CC uses exactly the same operational projection. It is inland, with a terrestrial link to a
+  fixed coastal modem representing its fleet-facing transport endpoint. The modem has no separate
+  replica or merge policy; only nearby gliders can exchange directly with the CC peer.
+- **Simulator / ground truth**: actual positions, typed contacts and failure states.
 Ground truth includes actual allowed links, with a **Show connections** toggle. Local views
 show only direct ingress seen by that observer; silence after five real seconds makes links dashed.
-Endpoints use last known reports; unknown endpoints remain listed. CC position is fixed mission configuration.
+Endpoints use last known reports; unknown endpoints remain listed. CC and coastal-modem positions are fixed mission configuration. Direct fleet links are drawn
+from the coastal modem; the dashed inland connection is terrestrial infrastructure, not gossip ingress.
+
+All peers share the immutable, versioned `synthetic-coast-v1` reference chart, built before
+observations start and outside every replicated store. One map unit represents one kilometer;
+the 32×20 km footprint covers 640 km². The whole coastline is visible even in an empty CC replica.
+Only operational knowledge is reconciled: contacts, fleet reports, inspections, commands and acknowledgements.
+Colored sea sectors indicate locally known inspection reports; shading fades with their original scan time
+over 120 simulated seconds. Unshaded water means no local inspection report, not unknown geography.
+A reported sector does not imply exhaustive sensor coverage or absence of contacts.
 
 The application deliberately uses **different key shapes for different semantics**, while the
 library itself remains LWW throughout:
 - **Latest-state registers**: `vehicle/{drone}`, `contact/{contact}/{sensor}`,
-  and `order/{recipient}` overwrite older versions. A single sensor owns its
+  `sector/{sector}/{sensor}`, and `order/{recipient}` overwrite older versions. A single sensor owns its
   contact report key; CC alone issues desired commands.
-- **Immutable facts**: `map/{x}/{y}` tiles, `sector/{sector}/{sensor}` first
-  coverage, and `contact-first/{contact}/{sensor}` first discoveries are written only
-  on first sight. Static terrain is deterministic across sensors; any same-key
-  rediscovery has identical content, though its HLC metadata may differ.
+- **Immutable facts**: `contact-first/{contact}/{sensor}` first discoveries are
+  written only on first sight. The reference chart has no replicated `map/` keys.
 - **Append-only event keys**: `order-issued/{recipient}/{sequence}` and
   `order-ack/{recipient}/{sequence}` retain independent issued-command and
   executed/rejected-command facts. They are **not** an executable event queue.
@@ -105,7 +114,8 @@ not in an enforced custom merge policy inside reconcile-rs.
 Vehicle and contact reports progressively gray and fade according to observation time, not
 receipt time or HLC ordering. Vehicle reports are stale after 30 simulated seconds; contacts after
 45. Stale positions have dashed outlines. Rings illustrate growing uncertainty, not calibrated
-covariance or confidence. Terrain does not age. Visual expiry never deletes replicated data.
+covariance or confidence. The reference chart does not age. Inspection registers refresh every ten simulated seconds
+or on an explicit scan; local projection retains the newest scan per sector across available sources. Visual expiry never deletes replicated data.
 A silent vehicle is shown as stale/unknown, not diagnosed as failed. Failure states and global
 metrics are explicitly simulator information, separate from local knowledge.
 
@@ -117,7 +127,11 @@ in its own replica, records one immutable acknowledgement per sequence, and reje
 older than 120 simulated seconds. Acknowledgements become visible to the CC only through
 replication. Old orders and their acknowledgements remain queryable as history, but
 **the history is not replayed to execute missed or superseded commands**. A modem-offline drone can execute an already received order; a halted
-drone waits for resume. Indirect paths can deliver orders even when the direct CC link is cut.
+drone waits for resume. Offshore orders normally require intermediate replicas: each relay integrates the desired
+state but only the addressed drone executes it. Acknowledgements require a return propagation path.
+Reports retain their original source and observation time at every relay; storing and later
+exchanging a report can deliver it after its source disconnects. No simultaneous end-to-end
+path or fixed relay role is required, provided exchanges eventually connect the replicas in time.
 Hold freezes navigation while sensing and protocol traffic continue. New orders supersede older
 ones: this is desired-state control, not a durable queue or a safety-critical command protocol.
 Pausing also pauses order deadlines, while allowing delivered orders to execute.
@@ -127,8 +141,10 @@ an ocean front; the scripted discovery adds another hostile contact. Reset repea
 layout. Nature is synthetic sensor ground truth, not a classifier or threat assessment. The ocean
 front contact is separate from the topology's drifting storm zone. Each sensor retains its
 latest report per contact, and each local view synthesizes each identity separately.
-Terrain tiles include an 8×8 land mask for a finer irregular coastline and islands. Local views
-render only masks present in their replica; ground truth renders every tile.
+The shared reference chart includes an 8×8 land mask per tile for an irregular coastline and islands.
+Default patrol cells spread from coastal to offshore waters; some drones need multiple peer exchanges
+to reach CC. Patrol and contact loops use a nominal angular speed of 0.0006 rad/s
+(about 0.48 m/s for a glider's 0.8 km loop); coastline detours remain synthetic.
 
 ### Connectivity and failures
 
@@ -139,7 +155,9 @@ has no special meaning. Storm drift follows application time; the jammer is stat
 visible and selectable only in ground truth, where their inspector can clear them. Positions update connectivity as drones move; graph components and their agreement are
 computed from the actual links, rather than fixed west/east memberships. The model is synthetic,
 not an acoustic propagation simulation. Packet loss uses per-directed-link seeded streams;
-latency/loss settings are uniform. Link range uses map units, not meters or guaranteed bandwidth.
+latency/loss settings are uniform. The default communication range is 10 km; CC range and
+disruption checks use its coastal modem location. Distance does not guarantee bandwidth;
+the scale and geometry illustrate replication, not validated acoustic propagation.
 
 Simulator controls select any peer (including the center), cut/restore its modem, halt/resume it,
 change communication range, toggle storm or human jamming, or cut one pair. Removing a manual cut

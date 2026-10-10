@@ -16,10 +16,11 @@ pub fn address(id: usize) -> SocketAddr {
     SocketAddr::from((Ipv4Addr::new(127, 0, 0, (id + 1) as u8), 9000))
 }
 
-pub const DEFAULT_RANGE: f64 = 13.0;
+pub const DEFAULT_RANGE: f64 = 10.0;
 
 pub struct Topology {
     pub positions: Vec<Point>,
+    pub coastal_position: Option<Point>,
     pub peers: Vec<PeerState>,
     pub blocked: Vec<bool>,
     pub range: f64,
@@ -54,6 +55,14 @@ impl Disruption {
 }
 
 impl Topology {
+    pub fn radio_position(&self, peer: usize) -> Point {
+        if peer == self.positions.len() - 1 {
+            self.coastal_position.unwrap_or(self.positions[peer])
+        } else {
+            self.positions[peer]
+        }
+    }
+
     pub fn disruptions(&self) -> Vec<Disruption> {
         let mut zones = Vec::new();
         if self.storm {
@@ -86,11 +95,11 @@ impl Topology {
         if self.blocked[a * self.peers.len() + b] {
             return Some("manual cut");
         }
-        if self.positions[a].distance(self.positions[b]) > self.range {
+        if self.radio_position(a).distance(self.radio_position(b)) > self.range {
             return Some("out of range");
         }
         for zone in self.disruptions() {
-            if zone.intersects(self.positions[a], self.positions[b]) {
+            if zone.intersects(self.radio_position(a), self.radio_position(b)) {
                 return Some(zone.kind);
             }
         }
@@ -137,6 +146,7 @@ impl Network {
         Self {
             topology: RwLock::new(Topology {
                 positions,
+                coastal_position: None,
                 peers: vec![PeerState::Active; size],
                 blocked: vec![false; size * size],
                 range: DEFAULT_RANGE,
@@ -168,7 +178,9 @@ impl Network {
                     enabled: reason.is_none(),
                     manual_cut: topology.blocked[a * self.size + b],
                     reason,
-                    distance: topology.positions[a].distance(topology.positions[b]),
+                    distance: topology
+                        .radio_position(a)
+                        .distance(topology.radio_position(b)),
                     bytes: self.bytes[a * self.size + b].load(Ordering::Relaxed)
                         + self.bytes[b * self.size + a].load(Ordering::Relaxed),
                 }

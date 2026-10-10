@@ -4,7 +4,32 @@ use serde::{Deserialize, Serialize};
 pub const WIDTH: usize = 32;
 pub const HEIGHT: usize = 20;
 pub const STEP_SECONDS: f64 = 0.5;
-pub const COMMAND_POSITION: Point = Point { x: 15.0, y: 8.0 };
+pub const KM_PER_UNIT: f64 = 1.0;
+pub const COMMAND_POSITION: Point = Point { x: 1.0, y: 10.0 };
+pub const COASTAL_POSITION: Point = Point { x: 3.8, y: 10.0 };
+
+#[derive(Serialize)]
+pub struct ReferenceMap {
+    pub version: &'static str,
+    pub width: usize,
+    pub height: usize,
+    pub km_per_unit: f64,
+    pub detail: Vec<[u8; 8]>,
+}
+
+impl ReferenceMap {
+    pub fn new() -> Self {
+        Self {
+            version: "synthetic-coast-v1",
+            width: WIDTH,
+            height: HEIGHT,
+            km_per_unit: KM_PER_UNIT,
+            detail: (0..HEIGHT)
+                .flat_map(|y| (0..WIDTH).map(move |x| terrain_detail(x, y)))
+                .collect(),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -53,12 +78,6 @@ pub struct ContactPosition {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Observation {
-    Terrain {
-        x: usize,
-        y: usize,
-        land: bool,
-        detail: [u8; 8],
-    },
     Contact {
         id: usize,
         kind: ContactKind,
@@ -186,26 +205,25 @@ impl World {
     }
 
     pub fn move_active(&mut self, peers: &[PeerState]) {
-        let half = self.positions.len() / 2;
         let count = self.positions.len();
+        let columns = ((count as f64 * 4.0 / 3.0).sqrt().ceil() as usize).min(count);
+        let rows = count.div_ceil(columns);
         let seconds = self.seconds();
-        let exploration = ((seconds - 30.0) / 30.0).clamp(0.0, 1.0);
         for (id, position) in self.positions.iter_mut().enumerate() {
             if peers[id] == PeerState::Stopped || self.held[id] {
                 continue;
             }
-            let group = usize::from(id >= half);
-            let group_size = if group == 0 { half } else { count - half };
-            let slot = if group == 0 { id } else { id - half };
-            let phase = slot as f64 * std::f64::consts::TAU / group_size as f64 + seconds * 0.025;
-            // Fixed offshore patrol loops: motion is cosmetic, observation writes are not.
+            let column = id % columns;
+            let row = id / columns;
+            let phase = id as f64 * 1.7 + seconds * 0.0006;
+            // Patrol cells span the coast and offshore waters; no peer owns a relay role.
             let mut next = Point {
-                x: if group == 0 {
-                    8.5 - 3.0 * exploration + 2.5 * phase.cos()
+                x: 5.5 + 22.0 * column as f64 / (columns - 1) as f64 + 0.8 * phase.cos(),
+                y: if rows == 1 {
+                    10.0
                 } else {
-                    21.0 + 6.0 * exploration + 1.5 * phase.cos()
-                },
-                y: 10.0 + 6.5 * phase.sin(),
+                    4.0 + 12.0 * row as f64 / (rows - 1) as f64
+                } + 0.8 * phase.sin(),
             };
             // A deterministic cosmetic detour around islands and the shoreline.
             while terrain_at(next) {
@@ -239,7 +257,7 @@ impl World {
     pub fn contact(&self) -> Option<Point> {
         self.contact_origin.as_ref().map(|contact| {
             let origin = contact.origin;
-            let angle = self.ticks.saturating_sub(contact.born_tick) as f64 * STEP_SECONDS * 0.03;
+            let angle = self.ticks.saturating_sub(contact.born_tick) as f64 * STEP_SECONDS * 0.0006;
             Point {
                 x: origin.x + angle.sin(),
                 y: origin.y + (angle.cos() - 1.0) * 0.7,
@@ -253,7 +271,7 @@ impl World {
             .iter()
             .enumerate()
             .map(|(i, &(kind, origin, phase))| {
-                let a = self.seconds() * 0.025 + phase;
+                let a = self.seconds() * 0.0006 + phase;
                 ContactPosition {
                     id: i + 2,
                     kind,

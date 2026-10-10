@@ -8,20 +8,18 @@ export function freshness(seen, ticks, lifetime = 45) {
 // A local synthesis keeps the newest measurement and exposes every available source.
 // It does not average asynchronous measurements or claim a sensor-fusion estimate.
 export function knowledge(entries, ticks) {
-  const terrain = new Map();
   const vehicles = [];
   const reports = [];
   const discoveries = [];
   const orders = [];
   const issued = [];
   const acknowledgements = new Map();
-  const sectors = new Set();
+  const sectors = new Map();
   for (const [key, value] of entries) {
     // Keep latest-state registers separate from immutable event keys. All of
     // these are still ordinary LWW entries in the library; immutability is an
     // application-level guarantee from disjoint, single-writer key ownership.
-    if (key.startsWith('map/') && value.Terrain) terrain.set(value.Terrain.x + ',' + value.Terrain.y, value.Terrain);
-    else if (key.startsWith('vehicle/') && value.Vehicle) vehicles.push({ ...value.Vehicle, ...freshness(value.Vehicle.seen, ticks, 30) });
+    if (key.startsWith('vehicle/') && value.Vehicle) vehicles.push({ ...value.Vehicle, ...freshness(value.Vehicle.seen, ticks, 30) });
     else if (key.startsWith('contact/') && value.Contact) reports.push({ ...value.Contact, ...freshness(value.Contact.seen, ticks) });
     else if (key.startsWith('contact-first/') && value.Contact) discoveries.push(value.Contact);
     else if (key.startsWith('order/') && value.Order) orders.push(value.Order);
@@ -29,7 +27,10 @@ export function knowledge(entries, ticks) {
     else if (key.startsWith('order-ack/') && value.Acknowledgement) {
       acknowledgements.set(value.Acknowledgement.recipient + '/' + value.Acknowledgement.sequence, value.Acknowledgement);
     }
-    else if (key.startsWith('sector/') && value.Sector) sectors.add(value.Sector.id);
+    else if (key.startsWith('sector/') && value.Sector) {
+      const sector = value.Sector;
+      if (!sectors.has(sector.id) || sector.scanned > sectors.get(sector.id).scanned) sectors.set(sector.id, sector);
+    }
   }
   reports.sort((a, b) => b.seen - a.seen || a.source - b.source || (a.id ?? 0) - (b.id ?? 0));
   const byContact = new Map();
@@ -45,16 +46,17 @@ export function knowledge(entries, ticks) {
   });
   const commands = orders.map(decorate);
   const orderHistory = issued.sort((a, b) => b.sequence - a.sequence).map(decorate);
-  return { terrain, vehicles, reports, contacts, commands, orderHistory, discoveries,
+  const coverage = [...sectors.values()].map(sector => ({ ...sector, ...freshness(sector.scanned, ticks, 120) }));
+  return { coverage, vehicles, reports, contacts, commands, orderHistory, discoveries,
     acknowledgements: [...acknowledgements.values()],
     contact: reports[0] || null, sectors: sectors.size };
 }
 
 // Connectivity is inferred only from this observer's direct ingress. Relayed reports
 // do not make their sensor source a neighbor, or expose other peers' network edges.
-export function directConnections(known, observer, receipts, center, commandPosition) {
+export function directConnections(known, observer, receipts, center, coastalPosition) {
   const positions = new Map(known.vehicles.map(vehicle => [vehicle.source, vehicle.position]));
-  positions.set(center, commandPosition); // Fixed station location is mission configuration.
+  positions.set(center, coastalPosition); // Fixed station location is mission configuration.
   return receipts.filter(receipt => receipt.peer !== observer).map(receipt => ({
     ...receipt,
     position: positions.get(receipt.peer) || null,

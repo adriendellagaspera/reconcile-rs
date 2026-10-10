@@ -145,17 +145,18 @@ function drawSelection(known, local) {
     selection.position=r.position;
     title=contactName(r); detail=local?'Observed '+r.age.toFixed(0)+'s ago by '+shortName(r.source)+'.\n'+reports.map(v=>shortName(v.source)+': '+v.age.toFixed(0)+'s old · ('+v.position.x.toFixed(1)+', '+v.position.y.toFixed(1)+')').join('\n'):'Actual position ('+r.position.x.toFixed(1)+', '+r.position.y.toFixed(1)+'). Simulator classification.';
   } else if(selection.kind==='terrain') {
-    title='Survey tile '+selection.x+' / '+selection.y;
-    detail=local?'Coastline available in this replica.':'Actual coastline · simulator truth.';
+    title='Reference chart '+selection.x+' / '+selection.y;
+    const sector=known.coverage.find(s=>s.id===Math.floor(selection.y/5)*8+Math.floor(selection.x/4));
+    detail='Preloaded chart · '+state.reference_map.version+'.\n'+(local?(sector?'Last reported inspection '+sector.age.toFixed(0)+'s ago.':'No inspection report in this replica.'):'Inspection knowledge depends on each replica.');
   } else if(selection.kind==='link') {
     title=shortName(selection.a)+' ↔ '+shortName(selection.b);
     if(local){const peer=selection.b===selectedReplica()?selection.a:selection.b;const receipt=state.direct_peers[selectedReplica()].find(r=>r.peer===peer);detail=receipt?'Last direct ingress '+(receipt.age_ms/1000).toFixed(1)+'s ago.\n'+receipt.datagrams+' datagrams heard. Availability now is unknown.':'No ingress known.';}
-    else {const link=state.links.find(l=>l.a===Math.min(selection.a,selection.b)&&l.b===Math.max(selection.a,selection.b));detail=link?(link.enabled?'Available':link.reason)+' · '+link.distance.toFixed(1)+' map units.':'Unknown link';}
+    else {const link=state.links.find(l=>l.a===Math.min(selection.a,selection.b)&&l.b===Math.max(selection.a,selection.b));detail=link?(link.enabled?'Available':link.reason)+' · '+link.distance.toFixed(1)+' km.':'Unknown link';}
   } else if(selection.kind==='zone') {
     const zone=state.disruptions.find(z=>z.kind===selection.zone.kind);
     if(!zone){selection=null;panel.hidden=true;return;}
     selection.position=zone.position;selection.zone=zone;
-    title=zone.kind==='storm'?'Drifting storm':'Human jamming';detail='Communication paths crossing this zone are unavailable.\nRadius '+zone.radius+' map units · simulator truth. Motion and sensor observations continue.';
+    title=zone.kind==='storm'?'Drifting storm':'Human jamming';detail='Communication paths crossing this zone are unavailable.\nRadius '+zone.radius+' km · simulator truth. Motion and sensor observations continue.';
     $('object-action').hidden=local;
   }
   $('object-name').textContent=title;$('object-detail').textContent=detail;
@@ -169,10 +170,10 @@ function draw() {
   entities=[];
   const entries = state.nodes[selected];
   const known = knowledge(entries, state.ticks);
-  const direct = directConnections(known, selected, state.direct_peers[selected], state.center, state.command_position);
+  const direct = directConnections(known, selected, state.direct_peers[selected], state.center, state.coastal_position);
 
   $('inspector-name').textContent=mode==='truth'?'Ground truth':nodeName(selected);
-  $('inspector-note').textContent=mode==='truth'?'Simulator view. Click a glider to inspect its local knowledge.':selected===state.center?'Received reports. Unknown areas stay blank.':'Own navigation and received reports. Older positions fade.';
+  $('inspector-note').textContent=mode==='truth'?'Simulator view. Click a glider to inspect its local knowledge.':selected===state.center?'Preloaded chart. Offshore reports and orders travel through available gliders.':'Preloaded chart, own navigation and received reports. Older observations fade.';
   $('order-controls').hidden=selected===state.center || mode==='truth';
   $('local-inspector').hidden=!local && !selection;
   $('mission-layout').style.gridTemplateColumns=local||selection?'':'1fr';
@@ -183,24 +184,28 @@ function draw() {
   $('status').textContent = state.partitioned ? 'DISCONNECTED COMPONENTS' : state.divergent_keys ? 'RECONCILING' : 'CONVERGED';
   $('title').textContent = mode === 'truth' ? 'SIMULATOR / GROUND TRUTH' : nodeName(selected) + ' · LOCAL KNOWLEDGE';
   $('keys').textContent = entries.length + ' local keys';
-  $('map-note').textContent = local ? 'Only information available to this peer' : 'Actual world · click a glider to enter its view';
-  $('keys').hidden=true; $('sectors').hidden=true;
+  $('map-note').textContent = local ? 'Preloaded chart · shading = reported inspection · 32 × 20 km' : 'Actual world · 640 km² · click a glider for its view';
+  $('keys').hidden=true; $('sectors').hidden=false;
   labels=[];
   ctx.resetTransform();ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.setTransform(zoom*pixelRatio,0,0,zoom*pixelRatio,offset.x*pixelRatio,offset.y*pixelRatio);
   for (let y = 0; y < 20; y++) for (let x = 0; x < 32; x++) {
-    const cell = known.terrain.get(x + ',' + y);
-    const visible = !local || cell;
-    const detail = local ? cell?.detail : state.truth_detail[y * 32 + x];
-    ctx.fillStyle = visible ? '#163442' : '#0a1420';
+    const detail = state.reference_map.detail[y * 32 + x];
+    ctx.fillStyle = '#102732';
     ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+    const sector = known.coverage.find(s=>s.id===Math.floor(y/5)*8+Math.floor(x/4));
+    if(local && sector) {
+      ctx.fillStyle = sector.stale ? '#8194a712' : '#5adbc6'+Math.round(34*(1-sector.amount)+8).toString(16).padStart(2,'0');
+      ctx.fillRect(x*cellSize,y*cellSize,cellSize,cellSize);
+    }
     if (detail) for (let row=0;row<8;row++) for(let col=0;col<8;col++) {
       if (!(detail[row] & (1 << col))) continue;
       ctx.fillStyle = '#40594e';
       ctx.fillRect(x*cellSize+col*cellSize/8,y*cellSize+row*cellSize/8,cellSize/8,cellSize/8);
     }
-    if(visible)entities.push({kind:'terrain',x,y,label:'Survey tile '+x+' / '+y});
+    entities.push({kind:'terrain',x,y,label:'Reference chart '+x+' / '+y});
   }
+  drawCoastalAccess();
   if ($('show-connections').checked) {
     if (local) drawDirectLinks(direct, selected);
     else drawNetwork();
@@ -219,7 +224,7 @@ function draw() {
     state.positions.forEach((p, n) => drawVehicle(p, n, freshness(state.ticks, state.ticks), n === selected, state.peer_states[n]));
     state.truth_contacts.forEach(r => drawContact(r.position, {...r,...freshness(state.ticks,state.ticks)},contactName(r),true));
   }
-  $('sectors').textContent = known.sectors + ' sectors known locally';
+  $('sectors').textContent = known.coverage.filter(s=>!s.stale).length+' recently inspected / '+known.sectors+' sectors reported';
   $('contact').textContent = known.contacts.length + ' contacts · ' + known.reports.length + ' latest reports · ' + known.discoveries.length + ' first discoveries';
   $('reports').replaceChildren(...known.contacts.map(r => {
     const row = document.createElement('div'); row.className = 'report peer-item';
@@ -276,7 +281,7 @@ function draw() {
   $('time').textContent = Math.floor(state.seconds / 60) + ':' + String(Math.floor(state.seconds % 60)).padStart(2, '0');
   $('sim-status').textContent = state.playing ? 'running' : 'paused'; $('play').textContent=state.playing?'Ⅱ':'▷'; $('play').setAttribute('aria-label',state.playing?'Pause exploration':'Play exploration'); $('play').title=state.playing?'Pause exploration':'Play exploration';
 
-  $('range-value').textContent = state.range.toFixed(0) + ' map units';
+  $('range-value').textContent = state.range.toFixed(0) + ' km';
   $('peer-status').textContent = nodeName(Number($('peer').value)) + ': ' + state.peer_states[Number($('peer').value)] + ' (simulator truth)';
   const a = Number($('link-a').value), b = Number($('link-b').value);
   const link = state.links.find(l => l.a === Math.min(a, b) && l.b === Math.max(a, b));
@@ -301,7 +306,7 @@ function uncertainty(position, age, stroke) {
 }
 
 function drawVehicle(point, n, fresh, own, truthState) {
-  entities.push({kind:'peer',source:n,position:point,label:shortName(n)+(own?' · own navigation':n===state.center?' · station':' · '+fresh.age.toFixed(0)+'s old')});
+  entities.push({kind:'peer',source:n,position:point,label:shortName(n)+(own?' · own navigation':n===state.center?' · inland CC':' · '+fresh.age.toFixed(0)+'s old')});
   const tint = agedColor(color(n), fresh.amount);
   if (!own) uncertainty(point, fresh.age, tint);
   ctx.save(); ctx.globalAlpha = fresh.alpha; ctx.translate(point.x * cellSize, point.y * cellSize);
@@ -314,7 +319,7 @@ function drawVehicle(point, n, fresh, own, truthState) {
   ctx.globalAlpha = .85; ctx.font = '11px system-ui';
   if (truthState === 'stopped') { ctx.beginPath(); ctx.moveTo(-10, -10); ctx.lineTo(10, 10); ctx.moveTo(10, -10); ctx.lineTo(-10, 10); ctx.stroke(); }
   ctx.restore();
-  drawLabel(shortName(n)+(truthState ? (truthState==='active'?'':' / '+truthState) : own?' / self':n===state.center?' / station':' / '+fresh.age.toFixed(0)+'s'),point,tint,false);
+  drawLabel(shortName(n)+(truthState ? (truthState==='active'?'':' / '+truthState) : own?' / self':n===state.center?' / inland':' / '+fresh.age.toFixed(0)+'s'),point,tint,false);
 }
 
 function drawLabel(text,point,tint,above) {
@@ -338,11 +343,25 @@ function drawContact(position, fresh, label, primary) {
   ctx.restore(); drawLabel(label,position,tint,true);
 }
 
+function radioPosition(peer) {
+  return peer===state.center ? state.coastal_position : state.positions[peer];
+}
+
+function drawCoastalAccess() {
+  const a=state.command_position,b=state.coastal_position;
+  ctx.save();ctx.strokeStyle='#b5a3f477';ctx.lineWidth=1;ctx.setLineDash([2,3]);
+  ctx.beginPath();ctx.moveTo(a.x*cellSize,a.y*cellSize);ctx.lineTo(b.x*cellSize,b.y*cellSize);ctx.stroke();
+  ctx.setLineDash([]);ctx.fillStyle='#b5a3f4';
+  ctx.beginPath();ctx.arc(b.x*cellSize,b.y*cellSize,5,0,Math.PI*2);ctx.fill();ctx.restore();
+  entities.push({kind:'peer',source:state.center,position:b,label:'Coastal modem · terrestrial link to CC'});
+  drawLabel('COASTAL MODEM',b,'#b5a3f4',true);
+}
+
 function drawNetwork() {
   const now = performance.now();
   for (const link of state.links) {
     if (!link.enabled) continue;
-    const a = state.positions[link.a], b = state.positions[link.b];
+    const a = radioPosition(link.a), b = radioPosition(link.b);
     entities.push({kind:'link',a:link.a,b:link.b,from:a,to:b,label:shortName(link.a)+' ↔ '+shortName(link.b)});
     const hot = (hotLinks.get(link.a + ':' + link.b) || 0) > now;
     ctx.strokeStyle = hot ? '#98dace55' : '#5adbc620'; ctx.lineWidth = hot ? .65 : .35;
@@ -364,7 +383,7 @@ function drawWeather() {
 const isDirectHot = (observer, peer) => (hotDirect.get(observer + ':' + peer) || 0) > performance.now();
 
 function drawDirectLinks(links, selected) {
-  const own = state.positions[selected];
+  const own = radioPosition(selected);
   for (const link of links) {
     if (!link.position) continue;
     entities.push({kind:'link',a:selected,b:link.peer,from:own,to:link.position,label:shortName(selected)+' ↔ '+shortName(link.peer)});
