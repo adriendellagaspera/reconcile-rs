@@ -1,0 +1,51 @@
+name: performance-audit-network-20261010
+on:
+  push:
+    branches:
+      - research/runtime-perf-audit-20261010
+    paths:
+      - .github/workflows/performance-audit-network-20261010.yml
+permissions:
+  contents: read
+jobs:
+  fragment-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Actual two-replica framed traffic under Netem
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "[audit-sha] $(git rev-parse HEAD)"
+          echo '=== 1200B FRAMING ==='
+          RECONCILE_FRAGMENT_BUDGETS=1200 RECONCILE_FRAGMENT_VALUE_SIZES=512,4096,131072 RECONCILE_FRAGMENT_PROFILES=lan-clean,wan-clean,wan-loss-5,sat-600-clean RECONCILE_FRAGMENT_TIMEOUT_MS=12000 cargo bench --bench fragmentation
+          echo '=== 1472B FRAMING SENSITIVITY ==='
+          RECONCILE_FRAGMENT_BUDGETS=1472 RECONCILE_FRAGMENT_VALUE_SIZES=4096,131072 RECONCILE_FRAGMENT_PROFILES=lan-clean,wan-loss-5 RECONCILE_FRAGMENT_TIMEOUT_MS=12000 cargo bench --bench fragmentation
+  causal-scaling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Compare ack-resend traffic and round CPU with 0-5000 tombstones
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '[audit] causal 2/10/50 peers and 0/100/1000/5000 tombstones'
+          RECONCILE_CAUSAL_MEMBERS=2,10,50 RECONCILE_CAUSAL_TOMBSTONES=0,100,1000,5000 RECONCILE_CAUSAL_ROUNDS=2 RECONCILE_FAILURE_MEMBERS=50 RECONCILE_FAILURE_TOMBSTONES=100 cargo bench --bench membership_causal_debt
+  catchup-scaling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Reconciliation across 1k-10k keys and fixed divergence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for n in 1000 5000 10000; do
+            echo "=== RUNTIME CATCHUP n=$n, d=50 ==="
+            RECONCILE_RUNTIME_HISTORY_N="$n" RECONCILE_RUNTIME_HISTORY_D=50 RECONCILE_RUNTIME_TOMBSTONES=0,1000 cargo bench --bench runtime_history_independent_catchup
+          done
