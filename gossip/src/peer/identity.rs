@@ -139,7 +139,8 @@ impl PeerAllowlist {
         }
         let key = VerifyingKey::from_bytes(&proof.claimed.to_bytes()).ok()?;
         let signature = Signature::from_bytes(&proof.signature);
-        key.verify_strict(&signed_bytes(datagram), &signature).ok()?;
+        key.verify_strict(&signed_bytes(datagram), &signature)
+            .ok()?;
         Some(VerifiedPeerId(proof.claimed))
     }
 }
@@ -166,7 +167,9 @@ mod tests {
         assert_eq!(proof.claimed_id(), signer.peer_id());
         assert!(proof.signature_bytes().iter().any(|&x| x != 0));
         assert_eq!(
-            allowed.verify(datagram, &proof).map(VerifiedPeerId::peer_id),
+            allowed
+                .verify(datagram, &proof)
+                .map(VerifiedPeerId::peer_id),
             Some(signer.peer_id())
         );
     }
@@ -177,7 +180,9 @@ mod tests {
         let proof = attacker.sign_datagram(b"payload");
         let allowlist = PeerAllowlist::new([alice().peer_id()]);
         assert!(allowlist.verify(b"payload", &proof).is_none());
-        assert!(PeerAllowlist::default().verify(b"payload", &proof).is_none());
+        assert!(PeerAllowlist::default()
+            .verify(b"payload", &proof)
+            .is_none());
     }
 
     #[test]
@@ -190,7 +195,9 @@ mod tests {
 
         assert!(allowlist.verify(b"payload", &claim_b).is_none());
         assert_eq!(
-            allowlist.verify(b"payload", &signed).map(VerifiedPeerId::peer_id),
+            allowlist
+                .verify(b"payload", &signed)
+                .map(VerifiedPeerId::peer_id),
             Some(a.peer_id())
         );
     }
@@ -202,10 +209,18 @@ mod tests {
         let message = b"version-1 | seq-7 | payload";
         let proof = signer.sign_datagram(message);
         assert!(allowlist.verify(message, &proof).is_some());
-        assert!(allowlist.verify(b"version-2 | seq-7 | payload", &proof).is_none());
-        assert!(allowlist.verify(b"version-1 | seq-8 | payload", &proof).is_none());
-        assert!(allowlist.verify(b"version-1 | seq-7 | PAYLOAD", &proof).is_none());
-        assert!(allowlist.verify(b"version-1 | seq-7 | payload!", &proof).is_none());
+        assert!(allowlist
+            .verify(b"version-2 | seq-7 | payload", &proof)
+            .is_none());
+        assert!(allowlist
+            .verify(b"version-1 | seq-8 | payload", &proof)
+            .is_none());
+        assert!(allowlist
+            .verify(b"version-1 | seq-7 | PAYLOAD", &proof)
+            .is_none());
+        assert!(allowlist
+            .verify(b"version-1 | seq-7 | payload!", &proof)
+            .is_none());
     }
 
     #[test]
@@ -217,7 +232,8 @@ mod tests {
         sig[0] ^= 0x01;
         let tampered = PeerProof::from_parts(signer.peer_id(), sig);
         assert!(allowlist.verify(b"payload", &tampered).is_none());
-        let invalid = PeerProof::from_parts(PeerId::from_bytes([0xff; 32]), proof.signature_bytes());
+        let invalid =
+            PeerProof::from_parts(PeerId::from_bytes([0xff; 32]), proof.signature_bytes());
         assert!(allowlist.verify(b"payload", &invalid).is_none());
     }
 
