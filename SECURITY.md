@@ -18,8 +18,8 @@ Construction requires an explicit mode:
 
 A shared cluster key proves membership, not peer identity. Any holder can impersonate another
 holder. The protocol provides no forward secrecy.
-`PeerId` is a label. `peer::identity` verifies allowlisted Ed25519-signed datagrams, but the
-runtime does not yet use this proof: live ingress, replay and causal membership remain IP-keyed.
+`PeerId` is only a label. Ed25519 proof verification in `peer::identity` is available, but
+the deployed ingress, replay and membership remain keyed by IP.
 
 With the `encryption` feature, `with_encryption()` uses XChaCha20-Poly1305 for payload
 confidentiality. Encryption does not change the shared-secret trust model.
