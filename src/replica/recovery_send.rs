@@ -8,7 +8,7 @@
 //! Selective-recovery control and retransmission sending.
 
 use std::net::SocketAddr;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use parking_lot::Mutex;
 

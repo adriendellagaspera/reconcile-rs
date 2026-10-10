@@ -28,6 +28,9 @@ pub mod gen_ip;
 #[cfg(feature = "netem")]
 pub mod netem;
 pub mod replay;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[doc(hidden)]
+pub mod runtime;
 pub mod transport;
 
 pub use discovery::{
@@ -41,4 +44,7 @@ pub use async_trait::async_trait;
 pub use ipnet;
 pub use parking_lot;
 pub use rand;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub use runtime as tokio;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use tokio;

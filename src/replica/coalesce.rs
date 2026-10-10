@@ -13,6 +13,9 @@
 //! (`coalesce_window == Duration::ZERO`): every write flushes immediately, byte-for-byte the
 //! immediate-broadcast behavior — see [`Replica::queue_broadcast`].
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use gossip::runtime as tokio;
+
 use std::hash::Hash;
 use std::time::Duration;
 

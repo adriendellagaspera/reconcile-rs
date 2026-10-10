@@ -7,7 +7,7 @@
 
 #[cfg(feature = "metrics")]
 mod imp {
-    use std::time::Instant;
+    use web_time::Instant;
 
     use ::metrics::{counter, gauge, histogram};
 
@@ -92,7 +92,7 @@ mod imp {
 
 #[cfg(not(feature = "metrics"))]
 mod imp {
-    use std::time::Instant;
+    use web_time::Instant;
 
     #[inline(always)]
     pub(crate) fn record_snapshot_full(_compaction: bool, _segments: usize, _bytes: u64) {}

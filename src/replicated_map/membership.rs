@@ -6,10 +6,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use gossip::runtime as tokio;
+
 use std::hash::Hash;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use ipnet::IpNet;
 use tokio_util::sync::CancellationToken;

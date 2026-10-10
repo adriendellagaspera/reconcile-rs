@@ -13,7 +13,7 @@
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use ipnet::IpNet;
 

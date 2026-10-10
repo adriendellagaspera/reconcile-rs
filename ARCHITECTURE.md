@@ -42,7 +42,7 @@ External domain dependencies are `rsos` (ordered storage and range aggregates) a
 ### 2.1 Domain boundary
 `rsos`, `rbsr`, and `lww-register` are crates.io dependencies whose standalone invariants and
 release gates live in their canonical repositories. `gossip` owns network concerns; `reconcile`
-composes those domain crates with runtime adapters.
+composes those domain crates with runtime adapters: Tokio natively, worker-local tasks/timers in browsers.
 
 `gossip` does not depend on `lww-register`: its peer identity is an address and its payload is
 bytes.

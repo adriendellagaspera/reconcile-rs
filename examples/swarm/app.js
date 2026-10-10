@@ -1,4 +1,4 @@
-import { endpoint } from './api.js';
+import { request } from './api.js';
 import { freshness, knowledge, directConnections, hitVisible } from './knowledge.js';
 
 const $ = id => document.getElementById(id);
@@ -62,9 +62,7 @@ async function command(action) {
   if (controlsBusy) return;
   controlsBusy = true;
   try {
-    const response = await fetch(endpoint(action), { method: 'POST' });
-    if (!response.ok) throw Error(await response.text());
-    apply(await response.json()); $('error').textContent = '';
+    apply(await request(action, 'POST')); $('error').textContent = '';
     if(action.startsWith('order/')) { $('toast').textContent='Order issued by CC · awaiting network delivery'; toastUntil=performance.now()+5000; }
   } catch (error) { $('error').textContent = error.message; }
   finally { controlsBusy = false; }
@@ -448,9 +446,7 @@ function drawNodeCards(selected) {
 async function poll() {
   try {
     if (!controlsBusy) {
-      const response = await fetch(endpoint('state'));
-      if (!response.ok) throw Error('State unavailable');
-      const next = await response.json(); if (!controlsBusy) apply(next); $('error').textContent = '';
+      const next = await request('state'); if (!controlsBusy) apply(next); $('error').textContent = '';
     }
   } catch (error) { $('error').textContent = error.message; }
   setTimeout(poll, 250);

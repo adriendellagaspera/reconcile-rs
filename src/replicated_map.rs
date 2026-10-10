@@ -13,7 +13,7 @@ use std::io;
 use std::net::IpAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use parking_lot::{Mutex, RwLock};
 

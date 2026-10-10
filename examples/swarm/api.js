@@ -1,4 +1,4 @@
-import { apiBase } from './config.js';
+import { apiBase, simulationMode } from './config.js';
 
 export function endpoint(path, base = apiBase, page = globalThis.location.href) {
   const origin = new URL(page);
@@ -14,4 +14,15 @@ export function endpoint(path, base = apiBase, page = globalThis.location.href) 
   }
   target.pathname = target.pathname.replace(/\/$/, '') + '/' + path;
   return target.href;
+}
+
+let localWorker;
+export async function request(path, method = 'GET') {
+  if (simulationMode === 'wasm') {
+    localWorker ??= import('./worker-client.js').then(({ WorkerClient }) => new WorkerClient());
+    return (await localWorker).request(path, method);
+  }
+  const response = await fetch(endpoint(path), { method });
+  if (!response.ok) throw Error(await response.text());
+  return response.json();
 }

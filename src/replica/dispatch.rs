@@ -9,7 +9,7 @@
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::Instant;
+use web_time::Instant;
 
 use rbsr::RangeAggregate;
 use tracing::{debug, instrument, trace, warn};

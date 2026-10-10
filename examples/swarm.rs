@@ -4,6 +4,8 @@
 mod bandwidth;
 #[path = "swarm/cluster.rs"]
 mod cluster;
+#[path = "swarm/controls.rs"]
+mod controls;
 #[path = "swarm/http.rs"]
 mod http;
 #[path = "swarm/telemetry.rs"]

@@ -4,7 +4,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
-use std::time::Instant;
+use web_time::Instant;
 
 use parking_lot::RwLock;
 use reconcile::{async_trait, InMemoryTransport, Transport};

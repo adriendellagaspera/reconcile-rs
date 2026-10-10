@@ -223,31 +223,43 @@ replicated state and bandwidth.
 
 ## Swarm on GitHub Pages
 
-Pages serves the existing UI; the real Rust simulation runs on a separate HTTPS server.
-The simulation is shared by all visitors: orders, pause, topology controls and reset affect everyone.
-It is an unauthenticated public demonstration, not an operational command-center deployment.
-No persistent state is configured; restarting the engine starts a new fleet.
+GitHub Pages serves the UI and the compiled Rust fleet. Each visitor owns an independent
+simulation in a dedicated Web Worker: the same replicas, authenticated datagrams, network limits,
+orders and reconciliation as the native example. No API server or external runtime assets are needed.
+There is no communication between visitors; reloading starts a new fleet with no persistent state.
+Browser scheduling, including background-tab throttling, can delay protocol timers.
 
-On a Docker Compose server, point a DNS name at the server, allow ports 80/443 and run:
+Install the `wasm32-unknown-unknown` Rust target and `wasm-bindgen-cli` matching the version in
+`Cargo.lock`, then build:
 
 ~~~sh
-cd examples/swarm/deploy
-cp .env.example .env
-# Set SWARM_DOMAIN to the server's DNS name in .env.
-docker compose up --build -d
+rustup target add wasm32-unknown-unknown
+./scripts/build-swarm-web.sh
 ~~~
 
-Caddy obtains TLS certificates and permits the configured UI origin. The Rust listener stays on
-loopback inside the engine's network namespace; only Caddy's ports are published. The server must
-support the Docker build and keep the simulation running; GitHub Pages does not host this process.
+Serve `target/swarm-pages` with any static HTTP server. Module workers require HTTP(S), rather
+than opening `index.html` directly. The build generates browser configuration and relative module
+paths, so the same artifact works under the repository's Pages subdirectory.
 
-In repository settings, select **Pages → Source → GitHub Actions**, then set the Actions variable
-`SWARM_API_URL` to `https://YOUR-SERVER-DOMAIN`. If a different Pages origin is used, also update
-`SWARM_UI_ORIGIN` in `.env`. The endpoint is public configuration, never a secret or credential.
-The `Swarm demo` workflow validates the container and assets before deploying from `main` or
-`demo/swarm-vertical-slice`; without an API variable, deployment is skipped. The GitHub Pages
-environment must allow the chosen branch. This workflow publishes the root of this repository's
-Pages site, so do not enable it over an existing site that must be preserved.
+In repository settings, select **Pages → Source → GitHub Actions** and allow the publishing branch
+in the `github-pages` environment. The `Swarm demo` workflow builds and verifies the WASM fleet
+in Chromium, then deploys from `main` or `demo/swarm-vertical-slice`; `demo/swarm-wasm` is validation-only. It publishes this repository's Pages root.
 
-Local execution still needs no external server or configuration. Browser networking and deployment
-paths are checked alongside the existing projection tests with `node --test examples/swarm/*.test.mjs`.
+The browser adapter keeps timers cancellable and runs replica tasks on the worker event loop;
+Tokio remains the native runtime. Browser callers supply an in-memory or custom transport:
+UDP binding and DNS discovery return `Unsupported`. The demo does not use filesystem persistence.
+
+Frontend and worker request properties are checked with `node --test examples/swarm/*.test.mjs`.
+After building, run `PLAYWRIGHT_MODULE=/path/to/playwright node examples/swarm/browser/check.cjs`
+to verify isolated writes, exact convergence, offline orders, reconnect acknowledgements,
+independent visitors and mobile layout in a real browser.
+
+### Optional shared native server
+
+The native HTTP UI is still available through `cargo run --release --example swarm`.
+For a shared HTTPS simulation, use `examples/swarm/deploy/compose.yaml` and its `.env.example`:
+point `SWARM_DOMAIN` at the server and configure `SWARM_UI_ORIGIN` for the UI's origin.
+Caddy publishes ports 80/443; the Rust listener stays on loopback inside the engine namespace.
+A separately served UI can select `simulationMode = 'http'` and set `apiBase` in `config.js`.
+Orders and reset then affect all visitors to that server. This is an unauthenticated demonstration,
+with no persistent state, rather than an operational command center.

@@ -5,10 +5,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use gossip::runtime as tokio;
 use std::net::SocketAddr;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::time::Instant;
+use std::sync::{atomic::Ordering, Arc};
+use web_time::Instant;
 
 use tokio::time::timeout;
 use tracing::{debug, trace, warn};
