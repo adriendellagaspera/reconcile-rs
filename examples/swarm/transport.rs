@@ -24,9 +24,55 @@ pub struct Topology {
     pub blocked: Vec<bool>,
     pub range: f64,
     pub storm: bool,
+    pub storm_position: Point,
+    pub jammer: bool,
+}
+
+#[derive(Serialize)]
+pub struct Disruption {
+    pub kind: &'static str,
+    pub position: Point,
+    pub radius: f64,
+}
+
+impl Disruption {
+    fn intersects(&self, a: Point, b: Point) -> bool {
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let length_squared = dx * dx + dy * dy;
+        let t = if length_squared == 0.0 {
+            0.0
+        } else {
+            (((self.position.x - a.x) * dx + (self.position.y - a.y) * dy) / length_squared)
+                .clamp(0.0, 1.0)
+        };
+        self.position.distance(Point {
+            x: a.x + t * dx,
+            y: a.y + t * dy,
+        }) <= self.radius
+    }
 }
 
 impl Topology {
+    pub fn disruptions(&self) -> Vec<Disruption> {
+        let mut zones = Vec::new();
+        if self.storm {
+            zones.push(Disruption {
+                kind: "storm",
+                position: self.storm_position,
+                radius: 4.0,
+            });
+        }
+        if self.jammer {
+            zones.push(Disruption {
+                kind: "human jamming",
+                position: Point { x: 24.0, y: 12.0 },
+                radius: 3.0,
+            });
+        }
+        zones
+    }
+
     fn reason(&self, a: usize, b: usize) -> Option<&'static str> {
         if a == b {
             return Some("self");
@@ -43,10 +89,10 @@ impl Topology {
         if self.positions[a].distance(self.positions[b]) > self.range {
             return Some("out of range");
         }
-        // A synthetic weather front obstructs paths crossing the central channel.
-        // It models pairwise link outages, not an acoustic propagation model.
-        if self.storm && ((self.positions[a].x < 16.0) != (self.positions[b].x < 16.0)) {
-            return Some("weather front");
+        for zone in self.disruptions() {
+            if zone.intersects(self.positions[a], self.positions[b]) {
+                return Some(zone.kind);
+            }
         }
         None
     }
@@ -95,6 +141,8 @@ impl Network {
                 blocked: vec![false; size * size],
                 range: DEFAULT_RANGE,
                 storm: false,
+                storm_position: Point { x: 16.0, y: 13.0 },
+                jammer: false,
             }),
             blocked_drops: AtomicU64::new(0),
             bytes: (0..size * size).map(|_| AtomicU64::new(0)).collect(),
@@ -216,5 +264,22 @@ impl Transport for PartitionGate {
 
     fn local_addr(&self) -> io::Result<SocketAddr> {
         self.inner.local_addr()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn disruption_blocks_intersecting_paths_not_map_halves() {
+        let zone = Disruption {
+            kind: "storm",
+            position: Point { x: 16.0, y: 10.0 },
+            radius: 3.0,
+        };
+        assert!(zone.intersects(Point { x: 10.0, y: 10.0 }, Point { x: 22.0, y: 10.0 }));
+        assert!(zone.intersects(Point { x: 14.0, y: 8.0 }, Point { x: 14.0, y: 12.0 }));
+        assert!(!zone.intersects(Point { x: 10.0, y: 2.0 }, Point { x: 22.0, y: 2.0 }));
+        assert!(!zone.intersects(Point { x: 10.0, y: 10.0 }, Point { x: 12.0, y: 10.0 }));
     }
 }

@@ -94,3 +94,20 @@ test('order status requires a matching acknowledgement in the same replica', () 
   const ack=['order-ack/00',{Acknowledgement:{recipient:0,sequence:2,applied:true}}];
   assert.equal(knowledge([order,ack],100).commands[0].acknowledgement.applied,true);
 });
+
+test('hit testing covers visible primitives without hidden truth targets', async () => {
+  const { hitVisible } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+  const cell={kind:'terrain',x:1,y:1};
+  const contact={kind:'contact',id:2,position:{x:1.5,y:1.5}};
+  const peer={kind:'peer',source:3,position:{x:4,y:2}};
+  const link={kind:'link',from:{x:4,y:2},to:{x:8,y:2}};
+  const zone={kind:'zone',position:{x:10,y:10},radius:2};
+  const visible=[cell,contact,peer,link,zone];
+  assert.equal(hitVisible(visible,{x:45,y:45}),contact);
+  assert.equal(hitVisible(visible,{x:120,y:60}),peer);
+  assert.equal(hitVisible(visible,{x:180,y:61}),link);
+  assert.equal(hitVisible(visible,{x:330,y:300}),zone);
+  assert.equal(hitVisible([cell],{x:45,y:45}),cell);
+  assert.equal(hitVisible([cell],{x:120,y:60}),null);
+  assert.equal(hitVisible(visible,{x:-1,y:-1}),null);
+});

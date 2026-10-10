@@ -39,3 +39,20 @@ export function directConnections(known, observer, receipts, center, commandPosi
     active: receipt.age_ms < 5000,
   }));
 }
+
+// Hit testing receives exactly the primitives drawn in the active perspective.
+// Unknown cells and peers therefore cannot become invisible click targets.
+export function hitVisible(entities, point) {
+  const distance = entity => Math.hypot(point.x - entity.position.x * 30, point.y - entity.position.y * 30);
+  const markers=entities.filter(e=>e.kind==='peer'||e.kind==='contact').map(e=>({e,d:distance(e)})).sort((a,b)=>a.d-b.d);
+  if(markers[0]?.d<18)return markers[0].e;
+  const links=entities.filter(e=>e.kind==='link').map(e=>{
+    const ax=e.from.x*30,ay=e.from.y*30,dx=(e.to.x-e.from.x)*30,dy=(e.to.y-e.from.y)*30;
+    const length=dx*dx+dy*dy,t=length?Math.max(0,Math.min(1,((point.x-ax)*dx+(point.y-ay)*dy)/length)):0;
+    return {e,d:Math.hypot(point.x-ax-t*dx,point.y-ay-t*dy)};
+  }).sort((a,b)=>a.d-b.d);
+  if(links[0]?.d<4)return links[0].e;
+  const zone=entities.find(e=>e.kind==='zone'&&distance(e)<=e.radius*30);
+  if(zone)return zone;
+  return entities.find(e=>e.kind==='terrain'&&e.x===Math.floor(point.x/30)&&e.y===Math.floor(point.y/30))||null;
+}

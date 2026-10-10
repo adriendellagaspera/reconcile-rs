@@ -67,7 +67,7 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
         (
             "POST",
             action @ ("/heal" | "/partition" | "/observe" | "/reset" | "/play" | "/pause" | "/demo"
-            | "/contact" | "/weather"),
+            | "/contact" | "/jammer" | "/weather"),
         ) => {
             let mut cluster = shared.lock();
             match action {
@@ -79,6 +79,7 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
                     cluster.world.scripted = false;
                     cluster.partition(true);
                 }
+                "/jammer" => cluster.toggle_jammer(),
                 "/weather" => {
                     cluster.world.scripted = false;
                     let storm = cluster.state()["storm"].as_bool().unwrap();

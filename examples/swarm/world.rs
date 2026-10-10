@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub const WIDTH: usize = 32;
 pub const HEIGHT: usize = 20;
 pub const STEP_SECONDS: f64 = 0.5;
-pub const COMMAND_POSITION: Point = Point { x: 16.0, y: 1.0 };
+pub const COMMAND_POSITION: Point = Point { x: 15.0, y: 8.0 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -280,7 +280,7 @@ impl World {
         }
         match self.ticks {
             0..60 => "1 / Explore — distance-based peer links",
-            60..120 => "2 / Weather front — command center disconnected",
+            60..120 => "2 / Drifting storm — command center disconnected",
             120..180 => "3 / G1 modem offline — local discoveries continue",
             180..240 => "3 / G1 reconnects — G7 halted with state retained",
             240..300 => "4 / All peers restored — observations frozen for repair",

@@ -15,8 +15,8 @@ use tokio_util::sync::CancellationToken;
 use super::bandwidth::{BandwidthTransport, Counters};
 use super::transport::{address, Network, PartitionGate};
 use super::world::{
-    terrain, terrain_detail, Observation, OrderAction, PeerState, World, COMMAND_POSITION, HEIGHT,
-    WIDTH,
+    terrain, terrain_detail, Observation, OrderAction, PeerState, Point, World, COMMAND_POSITION,
+    HEIGHT, WIDTH,
 };
 
 pub struct Cluster {
@@ -106,12 +106,23 @@ impl Cluster {
                 .with_repair_interval(Duration::from_millis(350))
                 .with_reconcile_interval(Duration::from_secs(2));
             let counters = Arc::new(Counters::default());
-            let transport = BandwidthTransport::new(
-                Arc::new(transport),
-                bandwidth_kbps,
-                datagram_budget,
-                counters.clone(),
-            );
+            let transport = if id == size {
+                BandwidthTransport::command_center(
+                    Arc::new(transport),
+                    bandwidth_kbps,
+                    datagram_budget,
+                    counters.clone(),
+                    (0..size).map(address).collect(),
+                )
+            } else {
+                BandwidthTransport::glider(
+                    Arc::new(transport),
+                    bandwidth_kbps,
+                    datagram_budget,
+                    counters.clone(),
+                    Some(address(size)),
+                )
+            };
             bandwidth.push(counters);
             let node = ReplicatedMap::new_with_transport(config, Arc::new(transport))
                 .map_err(io::Error::other)?;
@@ -174,6 +185,10 @@ impl Cluster {
         {
             let mut topology = self.network.topology.write();
             topology.positions[..self.center()].copy_from_slice(&self.world.positions);
+            topology.storm_position = Point {
+                x: 16.0 + (self.world.seconds() / 35.0).sin() * 5.0,
+                y: 10.0 + (self.world.seconds() / 50.0).cos() * 3.0,
+            };
         }
         // Newly reachable pairs may have aged out of gossip discovery during isolation.
         for (id, node) in self.nodes.iter().enumerate() {
@@ -187,6 +202,13 @@ impl Cluster {
 
     pub fn partition(&self, enabled: bool) {
         self.network.topology.write().storm = enabled;
+        self.refresh_network();
+    }
+
+    pub fn toggle_jammer(&self) {
+        let mut topology = self.network.topology.write();
+        topology.jammer = !topology.jammer;
+        drop(topology);
         self.refresh_network();
     }
 
@@ -234,6 +256,7 @@ impl Cluster {
         {
             let mut topology = self.network.topology.write();
             topology.storm = false;
+            topology.jammer = false;
             topology.blocked.fill(false);
             topology.range = 40.0;
         }
@@ -490,12 +513,13 @@ impl Cluster {
         let peer_states = topology.peers.clone();
         let storm = topology.storm;
         let range = topology.range;
+        let disruptions = topology.disruptions();
         drop(topology);
         serde_json::json!({
             "partitioned": components.len() > 1, "loss": self.loss,
             "center": self.center(), "peer_states": peer_states, "storm": storm, "range": range,
             "datagram_budget": self.datagram_budget,
-            "bandwidth_kbps": self.bandwidth_kbps, "queue_capacity": super::bandwidth::QUEUE_BYTES,
+            "bandwidth_kbps": self.bandwidth_kbps, "queue_capacity": super::bandwidth::QUEUE_BYTES.max(2 * self.datagram_budget),
             "bandwidth": self.bandwidth.iter().map(|stats| stats.snapshot()).collect::<Vec<_>>(),
             "nodes": entries, "union_keys": keys.len(), "divergent_keys": divergent,
             "loss_offered": self.losses.iter().map(Impairments::offered).sum::<u64>(),
@@ -505,7 +529,7 @@ impl Cluster {
             "delivered_datagrams": self.network.datagrams.load(Ordering::Relaxed),
             "links": self.network.links(), "groups": group_agreement,
             "direct_peers": (0..self.nodes.len()).map(|id| self.network.direct_peers(id)).collect::<Vec<_>>(),
-            "command_position": COMMAND_POSITION,
+            "command_position": COMMAND_POSITION, "disruptions": disruptions,
             "truth_contacts": self.world.contacts(),
             "truth_detail": (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| terrain_detail(x,y))).collect::<Vec<_>>(),
             "positions": positions, "truth_contact": self.world.contact(),

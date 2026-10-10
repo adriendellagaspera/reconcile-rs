@@ -39,7 +39,9 @@ async fn converged(cluster: &Cluster) {
 #[tokio::test]
 async fn local_observations_stay_isolated_then_repair_over_packet_loss() {
     let mut cluster = Cluster::new(35.0, 2).unwrap();
-    cluster.partition(true);
+    for id in 0..cluster.nodes.len() {
+        cluster.set_peer(id, PeerState::Offline).unwrap();
+    }
     cluster.world.reveal_contact();
     cluster.observe();
     let before = cluster.nodes[1].to_vec();
@@ -53,7 +55,9 @@ async fn local_observations_stay_isolated_then_repair_over_packet_loss() {
     assert!(cluster.state()["loss_dropped"].as_u64().unwrap() > 0);
     assert!(cluster.state()["delivered_bytes"].as_u64().unwrap() > 0);
 
-    cluster.partition(true);
+    for id in 0..cluster.nodes.len() {
+        cluster.set_peer(id, PeerState::Offline).unwrap();
+    }
     tokio::time::sleep(Duration::from_millis(300)).await;
     cluster.world.ticks = 80;
     cluster.world.move_vehicles();
@@ -71,7 +75,9 @@ async fn local_observations_stay_isolated_then_repair_over_packet_loss() {
 #[tokio::test]
 async fn concurrent_contact_updates_use_the_real_lww_order() {
     let mut cluster = Cluster::new(0.0, 2).unwrap();
-    cluster.partition(true);
+    for id in 0..cluster.nodes.len() {
+        cluster.set_peer(id, PeerState::Offline).unwrap();
+    }
     let key = "contact/01".to_string();
     for id in 0..2 {
         cluster.nodes[id].insert(
@@ -129,7 +135,7 @@ async fn reset_recreates_independent_replicas_and_empty_traffic_counters() {
 }
 
 #[tokio::test]
-async fn scripted_swarm_keeps_new_contact_in_its_group_then_converges() {
+async fn scripted_outages_keep_isolated_contact_local_then_converge() {
     super::super::telemetry::install().unwrap();
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -143,7 +149,7 @@ async fn scripted_swarm_keeps_new_contact_in_its_group_then_converges() {
     assert_eq!(cluster.state()["partitioned"], true);
     assert!(cluster.nodes[0].contains_key(&"contact/01/00".into()));
     tokio::time::sleep(Duration::from_secs(3)).await;
-    for node in &cluster.nodes[6..] {
+    for node in &cluster.nodes[1..] {
         assert!(!node.contains_key(&"contact/01/00".into()));
     }
     assert!(cluster.divergent_keys() > 0);
@@ -497,4 +503,9 @@ async fn capped_network_delivers_orders_through_real_reconciliation() {
         .all(|stats| stats["queued_bytes"].as_u64().unwrap()
             <= super::super::bandwidth::QUEUE_BYTES as u64));
     assert!(state["bandwidth"][0]["tx_bytes"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn command_station_is_on_land() {
+    assert!(super::super::world::terrain_at(COMMAND_POSITION));
 }

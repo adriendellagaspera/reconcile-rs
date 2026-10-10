@@ -1,8 +1,9 @@
-import { freshness, knowledge, directConnections } from './knowledge.js';
+import { freshness, knowledge, directConnections, hitVisible } from './knowledge.js';
 
 const $ = id => document.getElementById(id);
 const ctx = $('map').getContext('2d');
 const cellSize = 30;
+const pixelRatio=$('map').width/960;
 let state, previous;
 let sampledAt = performance.now();
 let trafficRate = 0;
@@ -17,14 +18,18 @@ const contactName = r => 'C' + r.id + ' · ' + (r.kind || 'contact').replaceAll(
 const color = n => n === state.center ? '#b5a3f4' : '#5adbc6';
 let toastUntil = 0;
 let labels = [];
-let lastDrone = 0;
-const selectedReplica = () => $('view').value === 'command' ? state.center : Number($('node').value);
+let initialized = false;
+let selection = null;
+let entities = [];
+let zoom=1, offset={x:0,y:0}, gestureMoved=false;
+const pointers=new Map();
+const selectedReplica = () => Number($('node').value);
 
 function selectNode(n) {
   $('hover-info').hidden=true;
-  if(n!==state.center) lastDrone=n;
+  selection=null;
   $('node').value = n;
-  $('view').value = n === state.center ? 'command' : 'local';
+  $('view').value = 'local';
   draw();
 }
 
@@ -47,6 +52,7 @@ function apply(next) {
       if (id === 'link-b') $(id).value = 1;
     }
   }
+  if(!initialized){$('node').value=state.center;initialized=true;}
   if (document.activeElement !== $('range')) $('range').value = state.range;
   draw();
 }
@@ -78,55 +84,109 @@ $('scenario-action').onchange=()=>{if($('scenario-action').value) command($('sce
 $('peer-action').onchange=()=>{if($('peer-action').value) command('peer/'+$('peer').value+'/'+$('peer-action').value);$('peer-action').value='';};
 $('link-toggle').onclick = () => command('link/' + $('link-a').value + '/' + $('link-b').value + '/toggle');
 $('range').onchange = () => command('range/' + $('range').value);
-$('view').onchange=()=>{if($('view').value==='local')$('node').value=lastDrone;draw();};
+$('view').onchange=()=>{selection=null;draw();};
+$('object-action').onchange=()=>{if(selection?.kind==='zone' && $('object-action').value)command(selection.zone.kind==='storm'?'weather':'jammer');$('object-action').value='';};
 $('node').onchange = $('show-connections').onchange = draw;
 $('peer').onchange = $('link-a').onchange = $('link-b').onchange = draw;
 
-function visiblePeers() {
-  const selected=selectedReplica();
-  if($('view').value==='truth') return state.positions.map((position,source)=>({position,source,age:0}));
-  const known=knowledge(state.nodes[selected],state.ticks);
-  return [...known.vehicles.filter(v=>v.source!==selected),{position:state.positions[selected],source:selected,age:0},...(selected!==state.center ? [{position:state.command_position,source:state.center,age:0}] : [])];
-}
-function hitPeer(event) {
+function mapPoint(event) {
   const bounds=$('map').getBoundingClientRect();
-  const x=(event.clientX-bounds.left)*960/bounds.width, y=(event.clientY-bounds.top)*600/bounds.height;
-  return visiblePeers().map(peer=>({...peer,distance:Math.hypot(x-peer.position.x*cellSize,y-peer.position.y*cellSize)})).sort((a,b)=>a.distance-b.distance).find(p=>p.distance<22);
+  // object-fit: contain may letterbox the canvas inside its flexible workspace.
+  const scale=Math.min(bounds.width/960,bounds.height/600);
+  return {x:(event.clientX-bounds.left-(bounds.width-960*scale)/2)/scale,
+    y:(event.clientY-bounds.top-(bounds.height-600*scale)/2)/scale};
 }
-$('map').onclick=event=>{if(!state)return;const peer=hitPeer(event);if(peer)selectNode(peer.source);};
+function pick(event) {
+  const point=mapPoint(event);
+  return hitVisible(entities, {x:(point.x-offset.x)/zoom,y:(point.y-offset.y)/zoom});
+}
+function inspect(entity) { selection=entity;draw(); }
+$('map').onclick=event=>{if(!state||gestureMoved)return;const entity=pick(event);if(entity?.kind==='peer')selectNode(entity.source);else inspect(entity);};
 $('map').onmousemove=event=>{
-  if(!state)return; const peer=hitPeer(event), tip=$('hover-info'); tip.hidden=!peer;
-  $('map').style.cursor=peer?'pointer':'crosshair';
-  if(peer){const bounds=$('map').getBoundingClientRect();tip.style.left=Math.min(event.clientX-bounds.left+12,bounds.width-170)+'px';tip.style.top=Math.max(30,event.clientY-bounds.top-35)+'px';tip.textContent=shortName(peer.source)+' · '+(peer.source===selectedReplica()?'own navigation':peer.source===state.center?'fixed station':peer.age.toFixed(0)+'s old')+' · click to inspect';}
+  if(!state)return; const entity=pick(event), tip=$('hover-info'); tip.hidden=!entity;
+  $('map').style.cursor=entity?'pointer':'default';
+  if(entity){const bounds=$('map').getBoundingClientRect();tip.style.left=Math.max(0,Math.min(event.clientX-bounds.left+12,bounds.width-190))+'px';tip.style.top=Math.max(30,event.clientY-bounds.top-35)+'px';tip.textContent=entity.label+' · click to inspect';}
 };
 $('map').onmouseleave=()=>{$('hover-info').hidden=true;};
-$('map').onkeydown=event=>{if(event.key==='Escape'){selectNode(state.center);}};
+$('map').onkeydown=event=>{if(event.key==='Escape'){if(selection)inspect(null);else selectNode(state.center);}};
+
+function constrainMap() {
+  offset.x=Math.min(0,Math.max(960*(1-zoom),offset.x));
+  offset.y=Math.min(0,Math.max(600*(1-zoom),offset.y));
+}
+function zoomAt(point, next) {
+  next=Math.max(1,Math.min(5,next));
+  offset={x:point.x-(point.x-offset.x)*next/zoom,y:point.y-(point.y-offset.y)*next/zoom};
+  zoom=next;constrainMap();draw();
+}
+$('map').addEventListener('wheel',event=>{event.preventDefault();zoomAt(mapPoint(event),zoom*Math.exp(-event.deltaY*.002));},{passive:false});
+$('map').ondblclick=event=>{event.preventDefault();zoomAt(mapPoint(event),zoom===1?2:1);};
+$('map').onpointerdown=event=>{gestureMoved=false;pointers.set(event.pointerId,mapPoint(event));$('map').setPointerCapture(event.pointerId);};
+$('map').addEventListener('pointermove',event=>{
+  if(!pointers.has(event.pointerId))return;
+  const before=[...pointers.values()],previousPoint=pointers.get(event.pointerId),point=mapPoint(event);
+  pointers.set(event.pointerId,point);
+  if(pointers.size===2){const after=[...pointers.values()];const distance=points=>Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);zoomAt({x:(after[0].x+after[1].x)/2,y:(after[0].y+after[1].y)/2},zoom*distance(after)/Math.max(1,distance(before)));gestureMoved=true;}
+  else if(Math.hypot(point.x-previousPoint.x,point.y-previousPoint.y)>1){offset.x+=point.x-previousPoint.x;offset.y+=point.y-previousPoint.y;constrainMap();gestureMoved=true;draw();}
+  $('hover-info').hidden=true;
+});
+$('map').onpointerup=$('map').onpointercancel=event=>pointers.delete(event.pointerId);
+
+function drawSelection(known, local) {
+  const panel=$('object-inspector'); panel.hidden=!selection;
+  $('object-action').hidden=true;
+  if(!selection)return;
+  let title='', detail='';
+  if(selection.kind==='contact') {
+    const reports=local?known.reports.filter(r=>r.id===selection.id):state.truth_contacts.filter(r=>r.id===selection.id);
+    if(!reports.length){selection=null;panel.hidden=true;return;}
+    const r=reports.find(r=>r.source===selection.source)||reports[0];
+    selection.position=r.position;
+    title=contactName(r); detail=local?'Observed '+r.age.toFixed(0)+'s ago by '+shortName(r.source)+'.\n'+reports.map(v=>shortName(v.source)+': '+v.age.toFixed(0)+'s old · ('+v.position.x.toFixed(1)+', '+v.position.y.toFixed(1)+')').join('\n'):'Actual position ('+r.position.x.toFixed(1)+', '+r.position.y.toFixed(1)+'). Simulator classification.';
+  } else if(selection.kind==='terrain') {
+    title='Survey tile '+selection.x+' / '+selection.y;
+    detail=local?'Coastline available in this replica.':'Actual coastline · simulator truth.';
+  } else if(selection.kind==='link') {
+    title=shortName(selection.a)+' ↔ '+shortName(selection.b);
+    if(local){const peer=selection.b===selectedReplica()?selection.a:selection.b;const receipt=state.direct_peers[selectedReplica()].find(r=>r.peer===peer);detail=receipt?'Last direct ingress '+(receipt.age_ms/1000).toFixed(1)+'s ago.\n'+receipt.datagrams+' datagrams heard. Availability now is unknown.':'No ingress known.';}
+    else {const link=state.links.find(l=>l.a===Math.min(selection.a,selection.b)&&l.b===Math.max(selection.a,selection.b));detail=link?(link.enabled?'Available':link.reason)+' · '+link.distance.toFixed(1)+' map units.':'Unknown link';}
+  } else if(selection.kind==='zone') {
+    const zone=state.disruptions.find(z=>z.kind===selection.zone.kind);
+    if(!zone){selection=null;panel.hidden=true;return;}
+    selection.position=zone.position;selection.zone=zone;
+    title=zone.kind==='storm'?'Drifting storm':'Human jamming';detail='Communication paths crossing this zone are unavailable.\nRadius '+zone.radius+' map units · simulator truth. Motion and sensor observations continue.';
+    $('object-action').hidden=local;
+  }
+  $('object-name').textContent=title;$('object-detail').textContent=detail;
+}
 
 function draw() {
   if (!state) return;
   const selected = selectedReplica();
   const mode = $('view').value;
-  const local = mode === 'local' || mode === 'command';
+  const local = mode === 'local';
+  entities=[];
   const entries = state.nodes[selected];
   const known = knowledge(entries, state.ticks);
   const direct = directConnections(known, selected, state.direct_peers[selected], state.center, state.command_position);
-  if (mode === 'command') $('node').value = state.center;
-  $('node').disabled = mode === 'command';
+
   $('inspector-name').textContent=mode==='truth'?'Ground truth':nodeName(selected);
-  $('inspector-note').textContent=mode==='truth'?'Simulator view. Click a glider to inspect its local knowledge.':selected===state.center?'Reports received by the station. Missing information stays unknown.':'Own navigation and received reports only. Older positions fade; failure of another peer cannot be inferred from silence.';
+  $('inspector-note').textContent=mode==='truth'?'Simulator view. Click a glider to inspect its local knowledge.':selected===state.center?'Received reports. Unknown areas stay blank.':'Own navigation and received reports. Older positions fade.';
   $('order-controls').hidden=selected===state.center || mode==='truth';
-  $('local-inspector').hidden=!local;
-  $('mission-layout').style.gridTemplateColumns=local?'':'1fr';
+  $('local-inspector').hidden=!local && !selection;
+  $('mission-layout').style.gridTemplateColumns=local||selection?'':'1fr';
+  document.querySelectorAll('#local-inspector > .inspector, #local-inspector > .knowledge-section').forEach(el=>el.hidden=!local);
   $('diagnostics').hidden=local;
   if(local) $('diagnostics').open=false;
   if(performance.now()>toastUntil) $('toast').textContent='';
   $('status').textContent = state.partitioned ? 'DISCONNECTED COMPONENTS' : state.divergent_keys ? 'RECONCILING' : 'CONVERGED';
-  $('title').textContent = mode === 'truth' ? 'SIMULATOR / GROUND TRUTH' : nodeName(selected) + ' / ' + (mode === 'command' ? 'LOCAL SYNTHESIS' : 'ONBOARD KNOWLEDGE');
+  $('title').textContent = mode === 'truth' ? 'SIMULATOR / GROUND TRUTH' : nodeName(selected) + ' · LOCAL KNOWLEDGE';
   $('keys').textContent = entries.length + ' local keys';
   $('map-note').textContent = local ? 'Only information available to this peer' : 'Actual world · click a glider to enter its view';
-  $('keys').hidden=!local; $('sectors').hidden=!local;
+  $('keys').hidden=true; $('sectors').hidden=true;
   labels=[];
-  ctx.clearRect(0, 0, 960, 600);
+  ctx.resetTransform();ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.setTransform(zoom*pixelRatio,0,0,zoom*pixelRatio,offset.x*pixelRatio,offset.y*pixelRatio);
   for (let y = 0; y < 20; y++) for (let x = 0; x < 32; x++) {
     const cell = known.terrain.get(x + ',' + y);
     const visible = !local || cell;
@@ -138,7 +198,7 @@ function draw() {
       ctx.fillStyle = '#40594e';
       ctx.fillRect(x*cellSize+col*cellSize/8,y*cellSize+row*cellSize/8,cellSize/8,cellSize/8);
     }
-    ctx.strokeStyle = '#ffffff06'; ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+    if(visible)entities.push({kind:'terrain',x,y,label:'Survey tile '+x+' / '+y});
   }
   if ($('show-connections').checked) {
     if (local) drawDirectLinks(direct, selected);
@@ -156,12 +216,13 @@ function draw() {
     known.reports.forEach(report => drawContact(report.position, report, known.contacts.includes(report) ? contactName(report) + ' · ' + report.age.toFixed(0) + 's' : '', known.contacts.includes(report)));
   } else {
     state.positions.forEach((p, n) => drawVehicle(p, n, freshness(state.ticks, state.ticks), n === selected, state.peer_states[n]));
-    state.truth_contacts.forEach(r => drawContact(r.position, {...freshness(state.ticks,state.ticks),kind:r.kind},contactName(r),true));
+    state.truth_contacts.forEach(r => drawContact(r.position, {...r,...freshness(state.ticks,state.ticks)},contactName(r),true));
   }
   $('sectors').textContent = known.sectors + ' sectors known locally';
-  $('contact').textContent = known.contacts.length + ' contacts · ' + known.reports.length + ' source reports available. Latest measurement per contact; no averaging.';
+  $('contact').textContent = known.contacts.length + ' contacts · ' + known.reports.length + ' observations';
   $('reports').replaceChildren(...known.contacts.map(r => {
-    const row = document.createElement('div'); row.className = 'report';
+    const row = document.createElement('div'); row.className = 'report peer-item';
+    row.tabIndex=0;row.setAttribute('role','link');row.onclick=()=>inspect({kind:'contact',id:r.id,source:r.source});row.onkeydown=e=>{if(e.key==='Enter')row.click();};
     row.style.color = agedColor(contactColor(r.kind), r.amount);
     row.title=known.reports.filter(report=>report.id===r.id).map(report=>'Sensor '+shortName(report.source)+' · '+report.age.toFixed(0)+'s old').join('\n');
     row.textContent=contactName(r)+' · '+r.age.toFixed(0)+'s'+(r.stale?' · stale':'')+' · '+known.reports.filter(report=>report.id===r.id).length+' sources';
@@ -189,13 +250,13 @@ function draw() {
   $('groups').textContent = state.groups.map(g => g.members.map(shortName).join(', ') + ': ' + (g.keys ? g.same * 100 / g.keys : 100).toFixed(0) + '% agreement').join(' · ');
   $('packets').textContent = state.delivered_datagrams; $('bytes').textContent = (state.delivered_bytes / 1024).toFixed(1) + ' KiB'; $('rate').textContent = (trafficRate / 1024).toFixed(1) + ' KiB/s';
   const ownTraffic=state.bandwidth[selected];
-  const ownDelay=state.bandwidth_kbps ? ownTraffic.queued_bytes*8/(state.bandwidth_kbps*1000) : 0;
-  $('local-network-health').textContent=ownDelay>1?'Transmit backlog ≈ '+ownDelay.toFixed(0)+'s. Updates may reach peers late.':ownTraffic.rx_dropped?'Receive capacity exceeded; some datagrams were lost.':' ';
-  $('bandwidth-limit').textContent = state.bandwidth_kbps ? state.bandwidth_kbps + ' kbit/s TX + RX per peer' : 'Unlimited';
+  const ownDelay=state.bandwidth_kbps ? ownTraffic.max_lane_queued_bytes*8/(state.bandwidth_kbps*1000) : 0;
+  $('local-network-health').textContent=ownDelay>1?(selected===state.center?'Slowest transmit lane ≈ ':'Transmit backlog ≈ ')+ownDelay.toFixed(0)+'s. Updates may reach peers late.':ownTraffic.rx_dropped?'Receive capacity exceeded; some datagrams were lost.':' ';
+  $('bandwidth-limit').textContent = state.bandwidth_kbps ? state.bandwidth_kbps + ' kbit/s gliders · CC per-link' : 'Unlimited';
   $('peer-bandwidth').replaceChildren(...state.bandwidth.map((stats,id)=>{
     const row=document.createElement('div'); row.className='report';
     const rate=peerRates[id] || {tx:0,rx:0};
-    const delay=state.bandwidth_kbps ? stats.queued_bytes*8/(state.bandwidth_kbps*1000) : 0;
+    const delay=state.bandwidth_kbps ? stats.max_lane_queued_bytes*8/(state.bandwidth_kbps*1000) : 0;
     row.style.color=stats.queued_bytes ? '#f6bc73' : '#8194a7';
     row.textContent=shortName(id)+' · TX '+rate.tx.toFixed(1)+' / RX '+rate.rx.toFixed(1)+' kbit/s · queue '+(stats.queued_bytes/1024).toFixed(1)+' KiB (~'+delay.toFixed(1)+'s) · drops '+stats.tx_dropped+' TX / '+stats.rx_dropped+' RX';
     return row;
@@ -213,6 +274,8 @@ function draw() {
   $('link-toggle').disabled = a === b;
   document.querySelectorAll('[data-act]').forEach(el => el.classList.toggle('active', state.scripted && state.phase.startsWith(el.dataset.act + ' /')));
   if(!local) drawNodeCards(selected);
+  drawSelection(known,local);
+  if(selection?.position){ctx.save();ctx.strokeStyle='#ffffff88';ctx.lineWidth=1;ctx.beginPath();ctx.arc(selection.position.x*cellSize,selection.position.y*cellSize,15,0,Math.PI*2);ctx.stroke();ctx.restore();}
 }
 
 function agedColor(hex, amount) {
@@ -227,6 +290,7 @@ function uncertainty(position, age, stroke) {
 }
 
 function drawVehicle(point, n, fresh, own, truthState) {
+  entities.push({kind:'peer',source:n,position:point,label:shortName(n)+(own?' · own navigation':n===state.center?' · station':' · '+fresh.age.toFixed(0)+'s old')});
   const tint = agedColor(color(n), fresh.amount);
   if (!own) uncertainty(point, fresh.age, tint);
   ctx.save(); ctx.globalAlpha = fresh.alpha; ctx.translate(point.x * cellSize, point.y * cellSize);
@@ -253,6 +317,7 @@ function drawLabel(text,point,tint,above) {
 }
 
 function drawContact(position, fresh, label, primary) {
+  entities.push({kind:'contact',id:fresh.id,source:fresh.source,position,label:contactName(fresh)});
   const tint = agedColor(contactColor(fresh.kind), fresh.amount);
   if (primary) uncertainty(position, fresh.age, tint);
   ctx.save(); ctx.globalAlpha = fresh.alpha; ctx.fillStyle = tint; ctx.strokeStyle = tint;
@@ -267,6 +332,7 @@ function drawNetwork() {
   for (const link of state.links) {
     if (!link.enabled) continue;
     const a = state.positions[link.a], b = state.positions[link.b];
+    entities.push({kind:'link',a:link.a,b:link.b,from:a,to:b,label:shortName(link.a)+' ↔ '+shortName(link.b)});
     const hot = (hotLinks.get(link.a + ':' + link.b) || 0) > now;
     ctx.strokeStyle = hot ? '#98dace55' : '#5adbc620'; ctx.lineWidth = hot ? .65 : .35;
     ctx.beginPath(); ctx.moveTo(a.x * cellSize, a.y * cellSize); ctx.lineTo(b.x * cellSize, b.y * cellSize); ctx.stroke();
@@ -274,10 +340,13 @@ function drawNetwork() {
 }
 
 function drawWeather() {
-  if (state.storm) {
-    ctx.fillStyle = '#df8e6e15'; ctx.fillRect(15.5 * cellSize, 0, cellSize, 600);
-    ctx.strokeStyle = '#df8e6e77'; ctx.setLineDash([8, 10]); ctx.beginPath(); ctx.moveTo(16 * cellSize, 0); ctx.lineTo(16 * cellSize, 600); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = '#dfb594'; ctx.font = '12px system-ui'; ctx.fillText('WEATHER FRONT', 16 * cellSize + 10, 35);
+  for(const zone of state.disruptions) {
+    entities.push({kind:'zone',zone,position:zone.position,radius:zone.radius,label:zone.kind});
+    ctx.save();const x=zone.position.x*cellSize,y=zone.position.y*cellSize,r=zone.radius*cellSize;
+    const tint=zone.kind==='storm'?'#a7bfd1':'#edab86';
+    const gradient=ctx.createRadialGradient(x,y,0,x,y,r);gradient.addColorStop(0,tint+'22');gradient.addColorStop(1,tint+'08');ctx.fillStyle=gradient;
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle=tint+'55';ctx.lineWidth=.7;ctx.setLineDash([3,7]);ctx.stroke();ctx.restore();
+    drawLabel(zone.kind.toUpperCase(),zone.position,tint,true);
   }
 }
 
@@ -287,6 +356,7 @@ function drawDirectLinks(links, selected) {
   const own = state.positions[selected];
   for (const link of links) {
     if (!link.position) continue;
+    entities.push({kind:'link',a:selected,b:link.peer,from:own,to:link.position,label:shortName(selected)+' ↔ '+shortName(link.peer)});
     const hot = isDirectHot(selected, link.peer);
     ctx.save(); ctx.strokeStyle = hot ? '#98dace66' : link.active ? '#5adbc638' : '#8194a728';
     ctx.lineWidth = hot ? .7 : .4;
@@ -303,7 +373,8 @@ function drawFlash(position) {
 
 function drawDirectPeers(links, selected) {
   $('direct-peers').replaceChildren(...links.map(link => {
-    const row = document.createElement('div'); row.className = 'report';
+    const row = document.createElement('div'); row.className = 'report peer-item';
+    row.tabIndex=0;row.setAttribute('role','link');row.onclick=()=>inspect({kind:'link',a:selected,b:link.peer});row.onkeydown=e=>{if(e.key==='Enter')row.click();};
     row.classList.toggle('flash', $('show-connections').checked && isDirectHot(selected, link.peer));
     row.style.color = link.active ? '#5adbc6' : '#8194a7';
     row.textContent = shortName(link.peer) + ' · ' + (link.active ? 'recent ingress' : 'silent / last heard') +

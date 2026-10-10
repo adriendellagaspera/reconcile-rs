@@ -35,7 +35,7 @@ struct Args {
     /// In-memory datagram budget in bytes; use 1200 for default UDP framing.
     #[arg(long, default_value_t = 1200)]
     mtu: usize,
-    /// Per-peer TX and RX limits in decimal kbit/s; 0 disables shaping.
+    /// Glider aggregate TX/RX and CC per-glider TX in kbit/s; 0 disables shaping.
     #[arg(long, default_value_t = 10)]
     bandwidth_kbps: usize,
 }
