@@ -190,13 +190,6 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - run: rm -rf ~/.cargo/registry/src/*/{lww-register,reconcile-gossip}-* ~/.cargo/registry/cache/*/{rsos,rbsr,lww-register,reconcile-gossip}-*
     - run: cargo package --workspace --allow-dirty
-    # Temporary CI diagnostic: capture Cargo's resolved lockfile for the identity dependency.
-    - name: Export resolved lockfile
-      run: |
-        echo LOCKFILE_START
-        base64 -w0 Cargo.lock
-        echo
-        echo LOCKFILE_END
 
   deny:
     needs: changes
