@@ -28,6 +28,7 @@ pub mod gen_ip;
 #[cfg(feature = "netem")]
 pub mod netem;
 pub mod replay;
+mod substrate;
 pub mod transport;
 
 pub use discovery::{
