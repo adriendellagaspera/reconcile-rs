@@ -1,0 +1,24 @@
+name: performance-audit-write-20261010
+on:
+  push:
+    branches:
+      - research/runtime-perf-audit-20261010
+    paths:
+      - .github/workflows/performance-audit-write-20261010.yml
+permissions:
+  contents: read
+jobs:
+  write-bursts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Compare immediate and coalesced bursts through live replicas
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '=== BROADCAST COALESCING 64 writes, 16 keys, 8 nodes ==='
+          cargo bench --bench system -- broadcast_coalescing --sample-size 10 --measurement-time 0.5 --warm-up-time 0.2 --noplot
+          echo '=== FANOUT one write, n=2..128 ==='
+          cargo bench --bench system -- gossip_fanout --sample-size 10 --measurement-time 0.5 --warm-up-time 0.2 --noplot
