@@ -31,7 +31,7 @@ function selectNode(n) {
   selection=null;
   $('node').value = n;
   $('view').value = 'local';
-  draw();
+  centerMap();draw();
 }
 
 function apply(next) {
@@ -53,7 +53,7 @@ function apply(next) {
       if (id === 'link-b') $(id).value = 1;
     }
   }
-  if(!initialized){$('node').value=state.center;initialized=true;}
+  if(!initialized){$('node').value=state.center;initialized=true;centerMap();}
   if (document.activeElement !== $('range')) $('range').value = state.range;
   draw();
 }
@@ -88,13 +88,42 @@ $('object-action').onchange=()=>{if(selection?.kind==='zone' && $('object-action
 $('node').onchange = $('show-connections').onchange = draw;
 $('peer').onchange = $('link-a').onchange = $('link-b').onchange = draw;
 
-function mapPoint(event) {
+function mapViewport() {
   const bounds=$('map').getBoundingClientRect();
-  // object-fit: contain may letterbox the canvas inside its flexible workspace.
-  const scale=Math.min(bounds.width/960,bounds.height/600);
-  return {x:(event.clientX-bounds.left-(bounds.width-960*scale)/2)/scale,
-    y:(event.clientY-bounds.top-(bounds.height-600*scale)/2)/scale};
+  const cover=getComputedStyle($('map')).objectFit==='cover';
+  const scale=(cover?Math.max:Math.min)(bounds.width/960,bounds.height/600);
+  const x=(960-bounds.width/scale)/2,y=(600-bounds.height/scale)/2;
+  return {bounds,scale,x,y,width:bounds.width/scale,height:bounds.height/scale};
 }
+function mapPoint(event) {
+  const v=mapViewport();
+  return {x:(event.clientX-v.bounds.left)/v.scale+v.x,
+    y:(event.clientY-v.bounds.top)/v.scale+v.y};
+}
+function centerMap() {
+  if(!state)return;
+  const p=state.positions[selectedReplica()];
+  offset={x:480-p.x*cellSize*zoom,y:300-p.y*cellSize*zoom};
+  constrainMap();
+}
+$('map-center').onclick=()=>{centerMap();draw();};
+$('map-overview').onclick=()=>{
+  const enabled=$('map').parentElement.classList.toggle('overview');
+  $('map-overview').setAttribute('aria-pressed',String(enabled));
+  zoom=1;offset={x:0,y:0};constrainMap();draw();
+};
+const mobileLayout=matchMedia('(max-width:600px)');
+function syncInspector() {
+  $('inspector-content').inert=mobileLayout.matches && !$('local-inspector').classList.contains('expanded');
+}
+mobileLayout.addEventListener('change',syncInspector);
+syncInspector();
+$('inspector-toggle').onclick=()=>{
+  const expanded=$('local-inspector').classList.toggle('expanded');
+  $('inspector-toggle').setAttribute('aria-expanded',String(expanded));
+  syncInspector();
+};
+new ResizeObserver(()=>{if(state){constrainMap();draw();}}).observe($('map'));
 function pick(event) {
   const point=mapPoint(event);
   return hitVisible(entities, {x:(point.x-offset.x)/zoom,y:(point.y-offset.y)/zoom});
@@ -110,8 +139,10 @@ $('map').onmouseleave=()=>{$('hover-info').hidden=true;};
 $('map').onkeydown=event=>{if(event.key==='Escape'){if(selection)inspect(null);else selectNode(state.center);}};
 
 function constrainMap() {
-  offset.x=Math.min(0,Math.max(960*(1-zoom),offset.x));
-  offset.y=Math.min(0,Math.max(600*(1-zoom),offset.y));
+  const v=mapViewport();
+  const clamp=(value,start,size,world)=>Math.min(Math.max(0,start),Math.max(Math.min(0,start+size-world*zoom),value));
+  offset.x=clamp(offset.x,v.x,v.width,960);
+  offset.y=clamp(offset.y,v.y,v.height,600);
 }
 function zoomAt(point, next) {
   next=Math.max(1,Math.min(5,next));
@@ -170,12 +201,13 @@ function draw() {
   const known = knowledge(entries, state.ticks);
   const direct = directConnections(known, selected, state.direct_peers[selected], state.center, state.coastal_position);
 
+  $('inspector-toggle').textContent=selection?'Selected object':mode==='truth'?'Ground truth':nodeName(selected);
   $('inspector-name').textContent=mode==='truth'?'Ground truth':nodeName(selected);
   $('inspector-note').textContent=mode==='truth'?'Simulator view. Click a glider to inspect its local knowledge.':selected===state.center?'Preloaded chart. Offshore reports and orders travel through available gliders.':'Preloaded chart, own navigation and received reports. Older observations fade.';
   $('order-controls').hidden=selected===state.center || mode==='truth';
   $('local-inspector').hidden=!local && !selection;
   $('mission-layout').style.gridTemplateColumns=local||selection?'':'1fr';
-  document.querySelectorAll('#local-inspector > .inspector, #local-inspector > .knowledge-section').forEach(el=>el.hidden=!local);
+  document.querySelectorAll('#inspector-content > .inspector, #inspector-content > .knowledge-section').forEach(el=>el.hidden=!local);
   $('diagnostics').hidden=local;
   if(local) $('diagnostics').open=false;
   if(performance.now()>toastUntil) $('toast').textContent='';

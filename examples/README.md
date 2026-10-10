@@ -60,6 +60,8 @@ scan/hold/patrol order from CC, addressed to that selected drone. An issued orde
 in the drone's local knowledge until it arrives. Contacts, visible source observations, links and reference-chart tiles can also be selected.
 Their inspector and hover hints use the same local data; unknown objects have no click targets.
 Scroll or pinch to zoom, drag to pan, and double-click to reset or enlarge the map.
+On phones, the map fills the workspace and the inspector opens from the bottom bar.
+Use Overview to see the entire region and Selected peer to recenter the navigable view.
 Escape clears object selection, then returns to CC. Secondary knowledge lists fold into the rail.
 The only persistent button pauses motion; replica traffic and command delivery continue.
 
