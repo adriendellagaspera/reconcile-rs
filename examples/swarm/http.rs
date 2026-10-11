@@ -1,6 +1,5 @@
 use std::io;
 use std::sync::Arc;
-use std::time::Duration;
 
 use parking_lot::Mutex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -8,35 +7,24 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
 
 use super::cluster::Cluster;
-use super::world::STEP_SECONDS;
 
-pub async fn serve(cluster: Cluster, port: u16, speed: f64) -> io::Result<()> {
+pub async fn serve(cluster: Cluster, port: u16) -> io::Result<()> {
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
-    println!("Swarm demo: http://{}/", listener.local_addr()?);
-    println!(
-        "{} actual replicas; seeded loss {}%; 160 ms RTT. Ctrl-C to stop.",
-        cluster.nodes.len(),
-        cluster.loss
-    );
-    let mut cluster = cluster;
-    cluster.world.playing = true;
+    println!("Reconciliation lab: http://{}/", listener.local_addr()?);
     let cluster = Arc::new(Mutex::new(cluster));
     let connections = Arc::new(Semaphore::new(16));
-    let mut ticks = tokio::time::interval(Duration::from_secs_f64(STEP_SECONDS / speed));
-    ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
-        tokio::select! {
-            _ = ticks.tick() => cluster.lock().advance(),
-            connection = listener.accept() => {
-                let (socket, _) = connection?;
-                if let Ok(permit) = connections.clone().try_acquire_owned() {
-                    let cluster = cluster.clone();
-                    tokio::spawn(async move {
-                        let _permit = permit;
-                        let _ = tokio::time::timeout(Duration::from_secs(3), respond(socket, cluster)).await;
-                    });
-                }
-            }
+        let (socket, _) = listener.accept().await?;
+        if let Ok(permit) = connections.clone().try_acquire_owned() {
+            let cluster = cluster.clone();
+            tokio::spawn(async move {
+                let _permit = permit;
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(3),
+                    respond(socket, cluster),
+                )
+                .await;
+            });
         }
     }
 }
@@ -54,11 +42,6 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
             "text/javascript; charset=utf-8",
             include_str!("app.js").to_string(),
         ),
-        ("GET", "/knowledge.js") => (
-            "200 OK",
-            "text/javascript; charset=utf-8",
-            include_str!("knowledge.js").to_string(),
-        ),
         ("GET", "/api.js") => (
             "200 OK",
             "text/javascript; charset=utf-8",
@@ -74,29 +57,10 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
             "application/json",
             shared.lock().state().to_string(),
         ),
-        (
-            "POST",
-            action @ ("/heal" | "/partition" | "/observe" | "/reset" | "/play" | "/pause" | "/demo"
-            | "/contact" | "/jammer" | "/weather"),
-        ) => {
+        ("POST", action @ ("/next" | "/reset")) => {
             let mut cluster = shared.lock();
-            super::controls::apply(&mut cluster, action)?;
-            ("200 OK", "application/json", cluster.state().to_string())
-        }
-        ("POST", action)
-            if action.starts_with("/speed/")
-                || action.starts_with("/peer/")
-                || action.starts_with("/link/")
-                || action.starts_with("/range/")
-                || action.starts_with("/order/") =>
-        {
-            let mut cluster = shared.lock();
-            let result = super::controls::apply(&mut cluster, action);
-            match result {
-                Ok(()) => {
-                    cluster.world.scripted = false;
-                    ("200 OK", "application/json", cluster.state().to_string())
-                }
+            match super::controls::apply(&mut cluster, action) {
+                Ok(()) => ("200 OK", "application/json", cluster.state().to_string()),
                 Err(error) => ("400 Bad Request", "text/plain", error.to_string()),
             }
         }

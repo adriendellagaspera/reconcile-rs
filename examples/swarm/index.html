@@ -1,453 +1,509 @@
 <!doctype html>
 <html lang="en">
-  <meta charset="utf-8" /><meta
-    name="viewport"
-    content="width=device-width,initial-scale=1,viewport-fit=cover"
-  /><title>After the flood · Reconcile</title>
-  <style>
-    * {
-      box-sizing: border-box;
-    }
-    body {
-      margin: 0;
-      background: #eef1ec;
-      color: #233c38;
-      font:
-        14px system-ui,
-        sans-serif;
-    }
-    button,
-    select {
-      font: inherit;
-      color: inherit;
-      background: #fff;
-      border: 1px solid #c6d3ca;
-      border-radius: 8px;
-      padding: 9px 12px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #e4eee7;
-    }
-    button:focus-visible,
-    select:focus-visible {
-      outline: 3px solid #159e86;
-    }
-    button.active {
-      background: #234b43;
-      color: white;
-      border-color: #234b43;
-    }
-    header {
-      height: 76px;
-      padding: 14px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: #fcfdf9;
-      border-bottom: 1px solid #d4ddd3;
-    }
-    h1 {
-      font:
-        600 23px Georgia,
-        serif;
-      margin: 3px 0;
-    }
-    .eyebrow {
-      font-size: 10px;
-      letter-spacing: 2px;
-      color: #668177;
-      text-transform: uppercase;
-    }
-    .header-controls {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    main {
-      height: calc(100dvh - 76px);
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 320px;
-    }
-    .map-wrap {
-      position: relative;
-      overflow: hidden;
-      background: #dbe5d6;
-    }
-    canvas {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      touch-action: none;
-    }
-    .map-tools {
-      position: absolute;
-      right: 16px;
-      top: 16px;
-      display: flex;
-      gap: 6px;
-    }
-    .map-caption {
-      position: absolute;
-      left: 16px;
-      top: 16px;
-      padding: 10px 14px;
-      background: #ffffffec;
-      border-radius: 8px;
-      max-width: 55%;
-      box-shadow: 0 2px 8px #26473612;
-    }
-    .map-caption strong {
-      display: block;
-      font-size: 12px;
-    }
-    .map-caption span {
-      font-size: 11px;
-      color: #657c70;
-    }
-    .map-footer {
-      position: absolute;
-      bottom: 18px;
-      left: 16px;
-      background: #ffffffed;
-      border-radius: 8px;
-      padding: 10px 14px;
-      font-size: 11px;
-    }
-    .legend {
-      display: flex;
-      gap: 14px;
-      margin-top: 5px;
-    }
-    .sheet {
-      background: #fcfdf9;
-      border-left: 1px solid #d4ddd3;
-      overflow: auto;
-      padding: 22px;
-    }
-    .sheet-toggle {
-      display: none;
-    }
-    .sheet h2 {
-      font:
-        600 24px Georgia,
-        serif;
-      margin: 7px 0 12px;
-    }
-    .note {
-      font-size: 12px;
-      line-height: 1.7;
-      color: #60786e;
-    }
-    section {
-      border-top: 1px solid #dce4da;
-      margin-top: 20px;
-      padding-top: 16px;
-    }
-    section h3 {
-      font-size: 12px;
-      margin: 0 0 10px;
-    }
-    .fleet {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-    .poi {
-      width: 100%;
-      text-align: left;
-      margin: 5px 0;
-      padding: 11px;
-      background: #fff;
-    }
-    .poi strong,
-    .poi small {
-      display: block;
-    }
-    .poi small {
-      font-size: 11px;
-      color: #6a7e73;
-      margin-top: 5px;
-    }
-    .empty {
-      padding: 12px;
-      background: #f0f3eb;
-      border-radius: 8px;
-      font-size: 12px;
-      line-height: 1.7;
-      color: #6c7e71;
-    }
-    .status {
-      padding: 10px 12px;
-      border-radius: 8px;
-      background: #e2eee7;
-      font-size: 12px;
-      line-height: 1.5;
-    }
-    .status.offline {
-      background: #fff0d6;
-      color: #8a632f;
-    }
-    .metric {
-      display: flex;
-      justify-content: space-between;
-      font-size: 12px;
-      margin: 10px 0;
-    }
-    #error {
-      color: #b84c38;
-    }
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
-    }
-    details {
-      margin-top: 20px;
-      font-size: 12px;
-    }
-    details p {
-      line-height: 1.6;
-    }
-    summary {
-      cursor: pointer;
-    }
-    .clock {
-      font-variant-numeric: tabular-nums;
-      font-size: 12px;
-      color: #60786e;
-    }
-    .badge {
-      background: #e5eee4;
-      padding: 4px 7px;
-      border-radius: 4px;
-      font-size: 10px;
-    }
-    .tip {
-      position: absolute;
-      bottom: 75px;
-      left: 16px;
-      background: #fff;
-      padding: 8px;
-      border-radius: 6px;
-      font-size: 12px;
-    }
-    .tip:empty {
-      display: none;
-    }
-    @media (max-width: 700px) {
-      header {
-        height: 84px;
-        padding: 10px 12px;
-        align-items: flex-start;
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>reconcile-rs · Runtime lab</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        color: #202b39;
+        background: #f6f7f9;
       }
-      h1 {
-        font-size: 21px;
+      * {
+        box-sizing: border-box;
       }
-      .header-controls {
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        max-width: 170px;
-        gap: 5px;
-      }
-      .header-controls button,
-      .header-controls select {
-        padding: 6px;
-        font-size: 11px;
+      body {
+        margin: 0;
       }
       main {
-        height: calc(100dvh - 84px);
-        display: block;
-        position: relative;
+        max-width: 1160px;
+        margin: auto;
+        padding: 24px;
       }
-      .map-wrap {
-        height: 100%;
+      header,
+      .scene,
+      .section-heading,
+      .replica-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
       }
-      canvas {
-        object-fit: cover;
+      header {
+        margin-bottom: 28px;
       }
-      .map-wrap.overview canvas {
-        object-fit: contain;
+      .brand {
+        font-size: 20px;
+        font-weight: 750;
+        letter-spacing: -0.5px;
       }
-      .map-caption {
-        top: 12px;
-        left: 10px;
-        max-width: 57%;
-        padding: 8px;
+      small,
+      .muted {
+        color: #647084;
       }
-      .map-tools {
-        top: 12px;
-        right: 10px;
-        flex-direction: column;
+      button {
+        font: inherit;
+        cursor: pointer;
+        border: 1px solid #ced3db;
+        border-radius: 6px;
+        background: white;
+        padding: 9px 16px;
       }
-      .map-tools button {
-        font-size: 11px;
-        padding: 8px;
+      button:disabled {
+        cursor: wait;
+        opacity: 0.45;
       }
-      .sheet {
-        position: absolute;
-        bottom: 8px;
-        left: 8px;
-        right: 8px;
-        max-height: 55px;
-        z-index: 3;
-        border: 1px solid #c8d6cb;
-        border-radius: 16px;
+      button:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid #769fde;
+        outline-offset: 3px;
+      }
+      #next {
+        color: white;
+        background: #244b7e;
+        border-color: #244b7e;
+        white-space: nowrap;
+        min-width: 165px;
+      }
+      #steps {
+        display: flex;
         padding: 0;
-        box-shadow: 0 -3px 20px #26473618;
+        margin: 0 0 18px;
+        list-style: none;
+        gap: 6px;
+        font-size: 13px;
+      }
+      #steps li {
+        flex: 1;
+        padding: 7px 10px;
+        border-bottom: 2px solid #dce1e8;
+        color: #778191;
+      }
+      #steps li.active {
+        border-color: #244b7e;
+        color: #244b7e;
+        font-weight: 700;
+      }
+      h1 {
+        font-size: clamp(23px, 3vw, 31px);
+        letter-spacing: -0.7px;
+        line-height: 1.2;
+        margin: 0 0 8px;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 0;
+      }
+      p {
+        margin: 0 0 10px;
+      }
+      .scene {
+        min-height: 106px;
+        margin-bottom: 15px;
+      }
+      #description {
+        max-width: 700px;
+        margin: 0;
+      }
+      #agreement {
+        font-size: 13px;
+        font-weight: 650;
+        padding: 4px 9px;
+        border-radius: 4px;
+        background: #e6edf5;
+      }
+      #agreement.diverged {
+        background: #fff0d8;
+        color: #875712;
+      }
+      #replicas {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      .replica {
+        min-width: 0;
+        border: 1px solid #d4dae3;
+        border-radius: 8px;
+        background: white;
         overflow: hidden;
       }
-      .sheet.expanded {
-        max-height: 72dvh;
-        overflow: auto;
+      .replica-title {
+        padding: 12px 16px;
+        border-bottom: 1px solid #e5e8ee;
       }
-      .sheet-toggle {
-        display: block;
-        position: sticky;
-        top: 0;
-        width: 100%;
-        height: 54px;
-        z-index: 2;
-        border: 0;
-        background: #fcfdf9;
-        text-align: left;
-        padding: 14px 18px;
+      .replica-title strong {
+        font-size: 21px;
       }
-      .sheet-toggle:after {
-        content: "Details ↑";
-        float: right;
-        color: #56806f;
+      .replica-title small {
+        font-size: 12px;
       }
-      .expanded .sheet-toggle:after {
-        content: "Map ↓";
+      .local {
+        padding: 12px 16px 14px;
       }
-      #inspector-content {
-        padding: 0 18px 18px;
+      .layer {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #647084;
+        margin-bottom: 8px;
       }
-      .map-footer {
-        bottom: 75px;
-        left: 10px;
-        font-size: 10px;
-        padding: 8px;
+      .entries {
+        display: grid;
+        gap: 5px;
       }
-      .legend {
+      .entry {
+        display: flex;
+        justify-content: space-between;
         gap: 8px;
+        align-items: center;
       }
-      .tip {
-        bottom: 130px;
-        max-width: 80%;
+      code,
+      .fingerprint,
+      .stamp {
+        font:
+          13px/1.5 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
       }
-    }
-  </style>
-  <header>
-    <div>
-      <div class="eyebrow">Reconcile · distributed field knowledge</div>
-      <h1>After the flood</h1>
-    </div>
-    <div class="header-controls">
-      <span id="time" class="clock">00:00</span
-      ><select id="speed" aria-label="Mission clock">
-        <option value="1">×1</option>
-        <option value="10">×10</option>
-        <option value="30">×30</option>
-        <option value="60">×60</option></select
-      ><button id="play">Pause</button><button id="restart">Restart</button>
-    </div>
-  </header>
-  <main>
-    <div class="map-wrap" id="map-wrap">
-      <canvas
-        id="map"
-        width="1920"
-        height="1200"
-        tabindex="0"
-        aria-label="Flood response map. Select a drone or finding; drag to pan, pinch to zoom."
-      ></canvas>
-      <div class="map-caption">
-        <strong id="perspective">UAV 1 · LOCAL KNOWLEDGE</strong
-        ><span id="map-note">32 × 20 km · preloaded terrain</span>
-      </div>
-      <div class="map-tools">
-        <button id="map-overview" aria-pressed="false">Overview</button
-        ><button id="map-center">Follow selected</button>
-      </div>
-      <div class="map-footer">
-        <span id="phase">Search isolated settlements</span>
-        <div class="legend">
-          <span>△ Aircraft</span><span>◌ Possible presence</span
-          ><span>● Confirmed</span><span>× Dismissed</span>
+      .value {
+        min-width: 64px;
+        text-align: center;
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: #f0f2f5;
+        font:
+          14px ui-monospace,
+          monospace;
+      }
+      .value.alpha {
+        background: #ffebd3;
+        color: #75450d;
+      }
+      .value.charlie {
+        background: #ddeafa;
+        color: #244b7e;
+      }
+      .stamp {
+        color: #647084;
+        font-size: 11px;
+        margin-top: 8px;
+        min-height: 18px;
+        overflow-wrap: anywhere;
+      }
+      .backend {
+        background: #f8f9fb;
+        padding: 11px 16px 13px;
+        border-top: 1px solid #e5e8ee;
+      }
+      .backend .layer {
+        margin-bottom: 3px;
+      }
+      .fingerprint {
+        letter-spacing: 0.4px;
+      }
+      .fingerprint:focus::after {
+        content: attr(title);
+        position: fixed;
+        bottom: 16px;
+        left: 16px;
+        right: 16px;
+        max-width: 650px;
+        padding: 12px;
+        background: #202b39;
+        color: white;
+        border-radius: 6px;
+        overflow-wrap: anywhere;
+        z-index: 2;
+      }
+      .runtime {
+        padding: 8px 16px;
+        border-top: 1px solid #e5e8ee;
+        font-size: 12px;
+        color: #647084;
+      }
+      #links {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin: 12px 0 24px;
+        font-size: 13px;
+      }
+      .link {
+        border-bottom: 2px solid #8dabc6;
+        padding: 0 4px 6px;
+      }
+      .link.cut {
+        border-bottom: 2px dashed #b58b58;
+        color: #875712;
+      }
+      .link span {
+        float: right;
+        font-size: 12px;
+        color: #647084;
+      }
+      .section-heading {
+        margin-bottom: 10px;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        background: white;
+        border: 1px solid #d4dae3;
+        border-radius: 6px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        text-align: left;
+      }
+      th,
+      td {
+        padding: 9px 14px;
+        border-bottom: 1px solid #e5e8ee;
+        font-size: 13px;
+      }
+      tr:last-child td {
+        border: 0;
+      }
+      th {
+        font-weight: 600;
+        color: #647084;
+      }
+      tr.different td {
+        background: #fff8ed;
+      }
+      .note {
+        font-size: 12px;
+        color: #647084;
+        margin: 7px 0 22px;
+      }
+      details {
+        border-top: 1px solid #d4dae3;
+        padding: 12px 0;
+      }
+      summary {
+        cursor: pointer;
+        font-size: 14px;
+      }
+      details p {
+        margin-top: 10px;
+        font-size: 14px;
+        max-width: 850px;
+      }
+      #events {
+        font:
+          12px/1.8 ui-monospace,
+          monospace;
+        padding-left: 22px;
+      }
+      #speaker {
+        border-left: 3px solid #8dabc6;
+        padding-left: 16px;
+      }
+      #error {
+        color: #9b2525;
+        white-space: pre-wrap;
+      }
+      footer {
+        margin-top: 16px;
+        font-size: 12px;
+        color: #647084;
+      }
+      footer a {
+        color: inherit;
+      }
+      @media (max-width: 700px) {
+        main {
+          padding: 16px;
+        }
+        header {
+          margin-bottom: 18px;
+        }
+        header small {
+          display: block;
+        }
+        .scene {
+          display: block;
+        }
+        #next {
+          margin-top: 14px;
+          width: 100%;
+        }
+        #steps li {
+          font-size: 11px;
+          padding: 5px 3px;
+        }
+        #replicas {
+          grid-template-columns: 1fr;
+          gap: 10px;
+        }
+        .replica-title {
+          padding: 5px 12px;
+        }
+        .replica-title strong {
+          font-size: 18px;
+        }
+        .local .layer {
+          font-size: 9px;
+          margin-bottom: 5px;
+        }
+        .local {
+          padding: 6px 12px;
+        }
+        .entries {
+          grid-template-columns: repeat(3, 1fr);
+          gap: 6px;
+        }
+        .entry {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .entry code {
+          font-size: 11px;
+        }
+        .backend {
+          padding: 6px 12px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+        }
+        .backend .layer {
+          margin: 0;
+          font-size: 10px;
+        }
+        .runtime {
+          padding: 5px 12px;
+          font-size: 10px;
+        }
+        #links {
+          gap: 8px;
+          font-size: 12px;
+        }
+        .link span {
+          float: none;
+          display: block;
+          font-size: 10px;
+        }
+        th,
+        td {
+          padding: 8px;
+        }
+        td .fingerprint {
+          font-size: 10px;
+        }
+        .section-heading {
+          flex-wrap: wrap;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <span class="brand">reconcile-rs</span>
+          <small>Runtime lab · RSOS backend</small>
         </div>
+        <button id="reset" disabled>Reset</button>
+      </header>
+      <ol id="steps" aria-label="Demonstration steps">
+        <li>0 · Empty replicas</li>
+        <li>1 · Local write</li>
+        <li>2 · Partition</li>
+        <li>3 · Reconcile</li>
+      </ol>
+      <section class="scene" aria-labelledby="title">
+        <div>
+          <h1 id="title">Starting the Rust runtime…</h1>
+          <p id="description"></p>
+        </div>
+        <button id="next" disabled>Starting…</button>
+      </section>
+      <div class="section-heading">
+        <h2>Three independent replicas</h2>
+        <span id="agreement" role="status">Starting</span>
       </div>
-      <div class="tip" id="tip"></div>
-    </div>
-    <aside class="sheet" id="sheet">
-      <button
-        class="sheet-toggle"
-        id="inspector-toggle"
-        aria-expanded="false"
-        aria-controls="inspector-content"
-      >
-        UAV 1
-      </button>
-      <div id="inspector-content">
-        <div class="eyebrow">Flood response · exercise</div>
-        <h2>Find. Verify. Share.</h2>
+      <section id="replicas" aria-label="Replica states"></section>
+      <div id="links" aria-label="Transport links"></div>
+      <div class="section-heading">
+        <h2>Inspect RSOS range summaries</h2>
+        <small>Count + fingerprint of dated entries</small>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Key range</th>
+              <th>A</th>
+              <th>B</th>
+              <th>C</th>
+            </tr>
+          </thead>
+          <tbody id="ranges"></tbody>
+        </table>
+      </div>
+      <p class="note">
+        Fixed inspection ranges queried from the real RSOS snapshots. These are
+        not a trace of the protocol’s chosen splits. Full fingerprints are
+        available on focus or hover.
+      </p>
+      <details id="presenter">
+        <summary>Presenter notes · what to say now</summary>
+        <p id="speaker"></p>
+      </details>
+      <details>
+        <summary>Observed activity</summary>
         <p class="note">
-          Search isolated settlements. A possible presence can redirect a
-          verification aircraft and a neighbor to inspect the surroundings.
-          Every aircraft acts on its own received reports.
+          Sampled replica changes and explicit actions; intermediate states may
+          be missed. Link counts measure datagrams received by the demo
+          transport, not protocol acknowledgements.
         </p>
-        <div id="status" class="status"></div>
-        <section>
-          <h3>Whose knowledge?</h3>
-          <div id="fleet" class="fleet"></div>
-          <p class="note">
-            Selecting an aircraft reveals its local reports. The response center
-            may know less.
-          </p>
-        </section>
-        <section>
-          <h3 id="finding-title">Known findings</h3>
-          <div id="reports"></div>
-          <div id="object-detail" class="note"></div>
-        </section>
-        <section>
-          <h3>Aircraft intentions</h3>
-          <div id="intents"></div>
-          <p class="note">
-            Intentions are shared reports, not exclusive reservations.
-            Disconnected aircraft may duplicate work.
-          </p>
-        </section>
-        <section>
-          <h3>Response center</h3>
-          <div id="center-status" class="note"></div>
-        </section>
-        <details>
-          <summary>Simulation & controls</summary>
-          <p>
-            Synthetic 72 km/h aircraft, 60 min endurance, 15 min reserve. Camera
-            footprint radius 100 m; RGB / verification sensors are simulated.
-            Tracks begin on station. Return legs are reserved; wind, flight
-            dynamics, image classification and rescue dispatch are not modeled.
-          </p>
-          <p>
-            Radio availability is a synthetic scenario, not a propagation model.
-            Network timers stay in real time; the clock accelerates flight and
-            observations.
-          </p>
-          <div class="controls">
-            <button id="disconnect">Cut selected modem</button
-            ><button id="heal">Restore links</button
-            ><button id="links">Show links</button
-            ><button id="truth">Ground truth</button>
-          </div>
-          <p id="diagnostics"></p>
-        </details>
-        <p id="error" role="alert"></p>
-      </div>
-    </aside>
-  </main>
-  <script type="module" src="./app.js"></script>
+        <ol id="events"></ol>
+      </details>
+      <details>
+        <summary>Architecture and limits</summary>
+        <p>
+          Each replica embeds <strong>ReplicatedMap</strong>.
+          <strong>reconcile-rs</strong> composes local writes, HLC/LWW merge,
+          reconciliation and task lifecycle;
+          <strong>RSOS / FingerprintTreeMap</strong> provides the ordered
+          persistent tree and range aggregates; <strong>RBSR</strong> compares
+          ranges; <strong>gossip</strong> supplies authenticated messaging and
+          discovery. RSOS is inside every replica, not a central server.
+        </p>
+        <p>
+          The displayed values, stamps and summaries come from actual Rust
+          snapshots. Convergence is checked by exact dated-entry equality, not
+          fingerprint equality alone. The greatest HLC + node stamp wins a
+          same-key conflict; the other value is discarded. This is eventual
+          consistency, not consensus, exclusive ownership or business conflict
+          resolution.
+        </p>
+        <p>
+          Connectivity is controlled by an in-memory transport decorator. No
+          physical network, artificial packet animation, persistence, or
+          performance claim is demonstrated. There are three keys: this explains
+          the mechanism, not its scaling. Periodic protocol traffic continues
+          after convergence.
+        </p>
+      </details>
+      <p id="error" role="alert"></p>
+      <footer>
+        Real Rust replicas · no application simulation ·
+        <a href="https://github.com/adriendellagaspera/reconcile-rs">Source</a>
+      </footer>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
 </html>

@@ -1,3 +1,3 @@
-// Same-origin locally; Pages supplies the public HTTPS simulation endpoint.
+// Native loopback server; the static build selects the WASM worker.
 export const apiBase = '';
 export const simulationMode = 'http';

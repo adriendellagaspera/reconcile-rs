@@ -15,7 +15,7 @@ if [ "$(wasm-bindgen --version)" != "wasm-bindgen $expected" ]; then
 fi
 CARGO_PROFILE_RELEASE_DEBUG=0 cargo build --locked --release -p reconcile-swarm-web --target wasm32-unknown-unknown
 mkdir -p target/swarm-pages/pkg
-cp examples/swarm/{index.html,app.js,knowledge.js,api.js,worker-client.js,worker.js} target/swarm-pages/
+cp examples/swarm/{index.html,app.js,api.js,worker-client.js,worker.js} target/swarm-pages/
 printf "export const apiBase = '';\nexport const simulationMode = 'wasm';\n" > target/swarm-pages/config.js
 wasm-bindgen --target web --no-typescript --out-dir target/swarm-pages/pkg target/wasm32-unknown-unknown/release/reconcile_swarm_web.wasm
 touch target/swarm-pages/.nojekyll

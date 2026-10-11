@@ -1399,17 +1399,13 @@ name = "reconcile-swarm-web"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "metrics-util",
- "parking_lot",
- "rand 0.8.7",
  "reconcile",
  "reconcile-gossip",
- "serde",
+ "rsos",
  "serde_json",
  "tokio-util",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "web-time",
 ]
 
 [[package]]

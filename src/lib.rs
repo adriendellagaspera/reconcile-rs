@@ -37,6 +37,7 @@ pub mod value_ref;
 
 // Stable facade re-exports.
 pub use gossip::auth::{ClusterKey, ClusterKeyError};
+pub use gossip::PeerId;
 pub use gossip::{discovery, transport};
 pub use lww_register::entry;
 

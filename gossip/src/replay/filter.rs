@@ -6,11 +6,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! [`ReplayFilter`]'s per-peer map, staleness purge and public entry points.
+//! [`ReplayFilter`]'s per-peer map, lazy staleness reclamation and public entry points.
 //!
-//! The staleness purge (module docs' "Replay state outlives membership" rule) never runs on
-//! decommission — only opportunistically, keyed on a peer's own `stamp_at_max`, on every
-//! `check_and_record` call. A decommissioned-but-not-stale peer's entry is never touched here.
+//! A known sender's staleness is checked against its own `stamp_at_max` on every datagram.
+//! Unrelated stale entries are reclaimed only when a new sender encounters full capacity.
+//! Replay state remains independent of peer decommissioning.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -69,16 +69,23 @@ impl ReplayFilter {
 
         let mut map = self.peers.lock();
 
-        // Opportunistic staleness purge; sound because a replayable stamp would fail above.
-        let window = self.freshness_window;
-        map.retain(|_, s| s.stamp_at_max().age_relative_to(now) <= window.as_millis() as u64);
-
+        let window_ms = self.freshness_window.as_millis() as u64;
         if let Some(state) = map.get_mut(&sender) {
-            return state.accept(seq, stamp);
+            if state.stamp_at_max().age_relative_to(now) <= window_ms {
+                return state.accept(seq, stamp);
+            }
+            // No replayable stamp can belong to this expired window.
+            map.remove(&sender);
         }
+
         if map.len() >= self.max_senders {
-            return false;
+            // Only a new sender at capacity pays for reclaiming unrelated stale entries.
+            map.retain(|_, s| s.stamp_at_max().age_relative_to(now) <= window_ms);
+            if map.len() >= self.max_senders {
+                return false;
+            }
         }
+
         map.insert(sender, PeerState::new(seq, stamp));
         true
     }

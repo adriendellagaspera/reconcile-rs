@@ -25,6 +25,7 @@ pub use reconcile::Keys
 pub use reconcile::LogicalCounter
 pub use reconcile::MAX_CLOCK_DRIFT
 pub use reconcile::NodeId
+pub use reconcile::PeerId
 pub use reconcile::PhysicalTime
 pub use reconcile::RandomProbe
 pub use reconcile::Rsos

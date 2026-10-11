@@ -51,106 +51,72 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
       return bindings.verify_runtime();
     });
     console.log(proof);
-    const mission = await page.evaluate(async () => {
-      const { Fleet } = await import("./pkg/reconcile_swarm_web.js");
-      const fleet = new Fleet(0, 6, 1200, 250);
-      try {
-        fleet.command("peer/1/offline");
-        fleet.command("peer/6/offline");
-        for (let i = 0; i < 65; i++) fleet.step();
-        let state = JSON.parse(fleet.state());
-        const local = state.nodes[0].find(([k]) => k === "poi/01/00")?.[1].Poi;
-        if (!local) throw Error("Camera did not discover nearby cue");
-        if (state.nodes[6].some(([, v]) => v.Poi))
-          throw Error("Center obtained isolated findings");
-        if (state.flood.aircraft[1].role !== "search")
-          throw Error("Isolated verifier read another replica");
-        fleet.command("heal");
-        let verified = false,
-          confirmed = false;
-        const deadline = Date.now() + 45000;
-        while (Date.now() < deadline) {
-          fleet.step();
-          state = JSON.parse(fleet.state());
-          verified ||= state.flood.aircraft[1].role === "verify";
-          confirmed ||= state.nodes[1].some(
-            ([, v]) =>
-              v.Poi?.id === 1 &&
-              v.Poi.source === 1 &&
-              v.Poi.finding === "confirmed",
-          );
-          if (
-            verified &&
-            confirmed &&
-            state.nodes[6].some(
-              ([, v]) => v.Poi?.id === 1 && v.Poi.finding === "confirmed",
-            )
-          )
-            return { verified, confirmed };
-          await new Promise((r) => setTimeout(r, 50));
-        }
-        throw Error(
-          "Received finding did not cause verification and reach center",
-        );
-      } finally {
-        fleet.free();
-      }
-    });
-    assert.equal(mission.verified, true);
-    assert.equal(mission.confirmed, true);
-    console.log(
-      "Flood: isolated knowledge, real report delivery, bounded local rerouting, verification and center reception passed",
-    );
     await page.goto(base);
     await page.waitForFunction(
-      () => document.getElementById("fleet").children.length === 7,
+      () => document.querySelectorAll(".replica").length === 3,
     );
+    const read = () =>
+      page.evaluate(async () => (await import("./api.js")).request("state"));
+    const advance = async () => {
+      await page.waitForFunction(
+        () => !document.getElementById("next").disabled,
+      );
+      await page.locator("#next").click();
+    };
+    assert.equal((await read()).stage, 0);
+    await page.screenshot({ path: "/tmp/runtime-empty.png", fullPage: true });
+    await advance();
     await page.waitForFunction(
-      () => document.querySelector("#reports .poi"),
-      null,
-      { timeout: 30000 },
+      () =>
+        document.getElementById("agreement").textContent ===
+        "Dated entries agree",
     );
-    await page.locator("#play").click();
-    await page.waitForFunction(
-      () => document.getElementById("play").textContent === "Play",
+    const shared = await read();
+    assert.equal(shared.stage, 1);
+    assert.equal(shared.equal, true);
+    assert.equal(shared.nodes[0].entries.length, 3);
+    assert.deepEqual(shared.nodes[0].entries, shared.nodes[2].entries);
+    await page.screenshot({ path: "/tmp/runtime-shared.png", fullPage: true });
+    await advance();
+    await page.waitForFunction(() => !document.getElementById("next").disabled);
+    const divergent = await read();
+    assert.equal(divergent.stage, 2);
+    assert.equal(divergent.equal, false);
+    assert.equal(divergent.isolated, true);
+    assert.equal(await page.locator("#ranges .different").count(), 1);
+    const value = (id) =>
+      page
+        .locator(`[data-replica="${id}"] [data-key="m/status"] .value`)
+        .textContent();
+    assert.equal(await value("A"), "alpha");
+    assert.equal(await value("B"), "alpha");
+    assert.equal(await value("C"), "charlie");
+    await page.waitForTimeout(1700);
+    assert.equal(
+      await value("C"),
+      "charlie",
+      "isolated C must retain its own write",
     );
-    await page.locator("#reports .poi").first().click();
-    assert.ok((await page.locator("#object-detail").textContent()).length > 0);
-    const first = await page.evaluate(async () =>
-      (await import("./api.js")).request("state"),
+    await page.locator("#presenter summary").click();
+    assert.ok(
+      (await page.locator("#speaker").textContent()).includes("sans voir"),
     );
-    assert.equal(first.center, 6);
-    assert.equal(first.flood.cruise_kmh, 72);
-    assert.equal(first.flood.camera_radius_km, 0.1);
+    await page.locator("#presenter summary").click();
     await page.screenshot({
-      path: process.env.SWARM_SCREENSHOT_PREFIX
-        ? process.env.SWARM_SCREENSHOT_PREFIX + "-desktop.png"
-        : "/tmp/swarm-desktop.png",
+      path: "/tmp/runtime-partition.png",
+      fullPage: true,
     });
     const other = await browser.newPage();
     await other.goto(base);
     await other.waitForFunction(
-      () => document.getElementById("fleet").children.length === 7,
+      () => document.querySelectorAll(".replica").length === 3,
     );
     const independent = await other.evaluate(async () =>
       (await import("./api.js")).request("state"),
     );
-    assert.equal(independent.playing, true);
+    assert.equal(independent.stage, 0);
+    assert.equal(independent.nodes[0].entries.length, 0);
     await other.close();
-    await page.locator("#fleet button").last().click();
-    assert.equal(
-      await page.locator("#perspective").textContent(),
-      "RESPONSE CENTER · LOCAL KNOWLEDGE",
-    );
-    assert.equal(
-      await page.locator("#reports .poi").count(),
-      0,
-      "offline center must not display simulator POIs",
-    );
-    await page.locator("details summary").click();
-    await page.locator("#truth").click();
-    assert.equal(await page.locator("#reports .poi").count(), 4);
-    await page.locator("#fleet button").first().click();
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(
       await page.evaluate(
@@ -158,31 +124,61 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
       ),
       false,
     );
-    assert.ok((await page.locator("#map").boundingBox()).height > 844 * 0.8);
-    assert.equal(
-      await page.locator("#inspector-content").evaluate((e) => e.inert),
-      true,
+    const cards = await page.locator(".replica").all();
+    for (const card of cards)
+      assert.ok((await card.boundingBox()).width <= 390);
+    assert.ok((await page.locator("#ranges").boundingBox()).width <= 390);
+    await page.screenshot({ path: "/tmp/runtime-mobile.png", fullPage: true });
+    await advance();
+    await page.waitForFunction(
+      () =>
+        document.getElementById("next").textContent ===
+        "Converged · reset to repeat",
     );
-    await page.screenshot({ path: "/tmp/swarm-mobile.png" });
-    await page.locator("#inspector-toggle").click();
-    assert.equal(
-      await page.locator("#inspector-content").evaluate((e) => e.inert),
-      false,
+    const healed = await read();
+    assert.equal(healed.stage, 3);
+    assert.equal(healed.isolated, false);
+    assert.equal(healed.equal, true);
+    assert.deepEqual(healed.nodes[0].entries, healed.nodes[2].entries);
+    assert.deepEqual(healed.nodes[0].root, healed.nodes[2].root);
+    assert.equal(await page.locator("#ranges .different").count(), 0);
+    const contenders = [
+      divergent.nodes[0].entries[1],
+      divergent.nodes[2].entries[1],
+    ];
+    const compare = (a, b) =>
+      a.stamp.physical - b.stamp.physical ||
+      a.stamp.logical - b.stamp.logical ||
+      a.stamp.node - b.stamp.node;
+    const winner = contenders.sort(compare).at(-1);
+    assert.deepEqual(healed.nodes[0].entries[1], winner);
+    assert.ok(healed.links.every((link) => link.connected));
+    assert.ok(
+      healed.links.some((link) => link.datagrams > 0 && link.bytes > 0),
     );
-    await page.screenshot({ path: "/tmp/swarm-mobile-details.png" });
-    await page.locator("#inspector-toggle").click();
-    await page.locator("#map-overview").click();
-    assert.equal(
-      await page.locator("#map").evaluate((e) => getComputedStyle(e).objectFit),
-      "contain",
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({
+      path: "/tmp/runtime-converged.png",
+      fullPage: true,
+    });
+    await page.locator("#reset").click();
+    await page.waitForFunction(
+      () => document.getElementById("next").textContent === "Write on A",
     );
-    await page.locator("#map-overview").click();
-    await page.locator("#map-center").click();
+    const reset = await read();
+    assert.equal(reset.stage, 0);
+    assert.ok(reset.nodes.every((node) => node.entries.length === 0));
+    await assert.rejects(
+      page.evaluate(async () =>
+        (await import("./api.js")).request("invalid", "POST"),
+      ),
+      /Invalid lab request/,
+    );
     assert.deepEqual(errors, []);
     assert.deepEqual(apiRequests, []);
     assert.equal(await page.locator("#error").textContent(), "");
     console.log(
-      "Flood UI: local/truth separation, independent visitors, finding inspector and full-screen mobile map passed",
+      "Runtime lab: local writes, isolation, exact LWW convergence, RSOS ranges, independent visitors, reset and mobile layout passed",
     );
   } finally {
     if (browser) await browser.close();

@@ -13,7 +13,7 @@ export class WorkerClient {
       clearTimeout(pending.timer);
       data.error ? pending.reject(Error(data.error)) : pending.resolve(data.state);
     };
-    worker.onerror = event => this.fail(Error(event.message || 'Simulation worker failed'));
+    worker.onerror = event => this.fail(Error(event.message || 'Lab worker failed'));
     worker.onmessageerror = () => this.fail(Error('Invalid simulation worker message'));
   }
 
@@ -29,10 +29,10 @@ export class WorkerClient {
 
   request(path, method = 'GET') {
     if (this.failure) return Promise.reject(this.failure);
-    if (this.pending.size >= 16) return Promise.reject(Error('Simulation is busy'));
+    if (this.pending.size >= 16) return Promise.reject(Error('Lab is busy'));
     return new Promise((resolve, reject) => {
       const id = ++this.nextId;
-      const timer = setTimeout(() => this.fail(Error('Simulation worker timed out')), this.timeoutMs);
+      const timer = setTimeout(() => this.fail(Error('Lab worker timed out')), this.timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       try { this.worker.postMessage({ id, path, method }); }
       catch (error) { this.fail(error); }

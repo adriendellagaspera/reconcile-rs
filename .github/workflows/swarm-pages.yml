@@ -1,4 +1,4 @@
-name: Swarm demo
+name: Runtime demo
 
 on:
   pull_request:
@@ -43,7 +43,7 @@ jobs:
       - run: node --test examples/swarm/*.test.mjs
       - run: cargo clippy --locked -p reconcile-swarm-web --target wasm32-unknown-unknown -- --deny warnings
       - run: ./scripts/build-swarm-web.sh
-      - name: Verify real replicas and the fleet in Chromium
+      - name: Verify real replicas and the runtime lab in Chromium
         run: |
           npm install --prefix "$RUNNER_TEMP/swarm-browser" playwright@1.51.1
           "$RUNNER_TEMP/swarm-browser/node_modules/.bin/playwright" install --with-deps chromium
