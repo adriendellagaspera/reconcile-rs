@@ -37,6 +37,16 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
             "text/html; charset=utf-8",
             include_str!("index.html").to_string(),
         ),
+        ("GET", "/architecture.html") => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            include_str!("architecture.html").to_string(),
+        ),
+        ("GET", "/session.js") => (
+            "200 OK",
+            "text/javascript; charset=utf-8",
+            include_str!("session.js").to_string(),
+        ),
         ("GET", "/app.js") => (
             "200 OK",
             "text/javascript; charset=utf-8",
@@ -57,7 +67,7 @@ async fn respond(mut socket: TcpStream, shared: Arc<Mutex<Cluster>>) -> io::Resu
             "application/json",
             shared.lock().state().to_string(),
         ),
-        ("POST", action @ ("/next" | "/reset")) => {
+        ("POST", action) => {
             let mut cluster = shared.lock();
             match super::controls::apply(&mut cluster, action) {
                 Ok(()) => ("200 OK", "application/json", cluster.state().to_string()),

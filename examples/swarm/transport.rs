@@ -12,7 +12,8 @@ pub fn address(id: usize) -> SocketAddr {
 }
 
 pub struct Network {
-    pub isolated: AtomicBool,
+    pub online: Vec<AtomicBool>,
+    pub blocked: Vec<AtomicBool>,
     pub received: Vec<AtomicU64>,
     pub bytes: Vec<AtomicU64>,
     pub dropped: AtomicU64,
@@ -20,14 +21,18 @@ pub struct Network {
 impl Network {
     pub fn new() -> Self {
         Self {
-            isolated: AtomicBool::new(false),
+            online: (0..SIZE).map(|_| AtomicBool::new(true)).collect(),
+            blocked: (0..SIZE * SIZE).map(|_| AtomicBool::new(false)).collect(),
             received: (0..SIZE * SIZE).map(|_| AtomicU64::new(0)).collect(),
             bytes: (0..SIZE * SIZE).map(|_| AtomicU64::new(0)).collect(),
             dropped: AtomicU64::new(0),
         }
     }
     pub fn allowed(&self, a: usize, b: usize) -> bool {
-        a != b && !(self.isolated.load(Ordering::Relaxed) && (a == 2 || b == 2))
+        a != b
+            && self.online[a].load(Ordering::Relaxed)
+            && self.online[b].load(Ordering::Relaxed)
+            && !self.blocked[a * SIZE + b].load(Ordering::Relaxed)
     }
 }
 

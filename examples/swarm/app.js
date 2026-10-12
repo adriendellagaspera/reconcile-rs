@@ -1,253 +1,369 @@
 import { request } from "./api.js";
-
+import { Session } from "./session.js";
 const names = ["A", "B", "C"];
-const keys = ["a/config", "m/status", "z/version"];
-const ranges = ["[−∞, m)", "[m, z)", "[z, +∞)"];
-const scenes = [
-  {
-    title: "Local state. No central server.",
-    description:
-      "Each box runs an independent Rust replica. Start with one local write on A.",
-    action: "Write on A",
-    speaker:
-      "« Chaque instance embarque son propre store. Les lectures sont locales ; aucune instance n’est le maître. Je vais écrire trois clés sur A. » Présenter les trois cases avant de cliquer.",
-  },
-  {
-    title: "One write, three local copies.",
-    description:
-      "A writes locally. Its runtime propagates the dated entries to B and C.",
-    action: "Isolate C + write",
-    speaker:
-      "« Le code applicatif écrit sur A. Le runtime propage les entrées ; B et C possèdent ensuite leur propre copie. En dessous, RSOS résume le contenu ordonné par plages. » Attendre l’accord des trois répliques, puis annoncer deux écritures indépendantes.",
-  },
-  {
-    title: "Disconnected. Still writable.",
-    description:
-      "A writes “alpha”; isolated C writes “charlie” to the same key. B can learn from A.",
-    action: "Reconnect C",
-    speaker:
-      "« C ne communique plus, mais peut écrire. A et C ont modifié la même clé sans voir l’autre écriture. Regardez les valeurs, leurs stamps et la seule plage qui diverge. » Laisser quelques secondes pour comparer. Ne pas présenter LWW comme une résolution métier.",
-  },
-  {
-    title: "Reconnect. Compare. Merge.",
-    description:
-      "The real protocol resumes. The greatest stamp wins; convergence is observed, not scripted.",
-    action: "Waiting for convergence…",
-    speaker:
-      "« Je rétablis uniquement les liens. Le protocole compare les résumés et échange du contenu ; LWW choisit le plus grand stamp. Quand les entrées datées sont identiques, la vue constate la convergence. » Terminer par les limites : conflit perdant écrasé, pas de consensus, transport en mémoire.",
-  },
-];
 const $ = (id) => document.getElementById(id);
-const element = (tag, text, className) => {
-  const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
-  if (className) node.className = className;
-  return node;
+const make = (tag, text, cls) => {
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
 };
-function signature(summary) {
-  const node = element(
-    "span",
-    `${summary.count} · ${summary.fingerprint.slice(0, 12)}`,
-    "fingerprint",
-  );
-  node.title = `${summary.count} dated entries · ${summary.fingerprint}`;
-  node.tabIndex = 0;
-  return node;
-}
+const hex = (text) =>
+  [...new TextEncoder().encode(text)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 let previous,
-  busy = false;
-const events = [];
-function event(text) {
-  events.unshift(text);
-  events.length = Math.min(events.length, 12);
-  $("events").replaceChildren(...events.map((text) => element("li", text)));
+  state,
+  pending = 0,
+  writes = 0;
+const actions = [];
+function selection() {
+  const start = Number($("start").value),
+    end = Number($("end").value),
+    peer = Number($("peer").value);
+  if (
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 0 ||
+    start >= end ||
+    end > 1024
+  )
+    throw Error("Range: 0 ≤ from < to ≤ 1024");
+  return { start, end, peer };
 }
-function render(state) {
-  const scene = scenes[state.stage];
-  $("title").textContent = scene.title;
-  $("description").textContent = scene.description;
-  $("speaker").textContent = scene.speaker;
-  $("next").textContent =
-    state.stage === 3 && state.equal
-      ? "Converged · reset to repeat"
-      : scene.action;
-  $("next").disabled = busy || !state.ready || state.stage === 3;
-  $("reset").disabled = busy;
-  [...$("steps").children].forEach((node, i) => {
-    node.classList.toggle("active", i === state.stage);
-    if (i === state.stage) node.setAttribute("aria-current", "step");
-    else node.removeAttribute("aria-current");
-  });
-  $("agreement").textContent = state.equal
+function signature(s) {
+  const e = make("code", `${s.count} · ${s.fingerprint.slice(0, 10)}`);
+  e.title = s.fingerprint;
+  return e;
+}
+function render(s) {
+  state = s;
+  $("agreement").textContent = s.equal
     ? "Dated entries agree"
-    : "Dated entries differ";
-  $("agreement").classList.toggle("diverged", !state.equal);
+    : `${s.divergent} divergent keys`;
+  $("agreement").style.color = s.equal ? "#426c58" : "#92631c";
   const changed =
     !previous ||
-    state.isolated !== previous.isolated ||
-    state.nodes.some(
-      (node, id) =>
-        JSON.stringify(node.entries) !==
-        JSON.stringify(previous.nodes[id].entries),
-    );
-  if (changed)
+    JSON.stringify(s.nodes.map((n) => n.entries)) !==
+      JSON.stringify(previous.nodes.map((n) => n.entries));
+  if (!previous) {
     $("replicas").replaceChildren(
-      ...state.nodes.map((replica, id) => {
-        const box = element("article", undefined, "replica");
-        box.dataset.replica = names[id];
-        const heading = element("div", undefined, "replica-title");
-        heading.append(
-          element("strong", names[id]),
-          element(
-            "small",
-            id === 2 && state.isolated
-              ? "ISOLATED · running"
-              : "CONNECTED · running",
-          ),
+      ...names.map((name, id) => {
+        const card = make("article", undefined, "replica");
+        card.dataset.replica = name;
+        const head = make("div", undefined, "replica-head");
+        const toggle = make("button");
+        toggle.type = "button";
+        toggle.onclick = () =>
+          act(`connect/${id}/${state.nodes[id].online ? 0 : 1}`);
+        head.append(make("strong", name), toggle);
+        const content = make("div", undefined, "content");
+        content.append(
+          make("div", undefined, "counts"),
+          make("div", undefined, "bins"),
         );
-        const local = element("div", undefined, "local");
-        local.append(element("div", "ReplicatedMap · local snapshot", "layer"));
-        const entries = element("div", undefined, "entries");
-        for (const key of keys) {
-          const entry = replica.entries.find((entry) => entry.key === key);
-          const row = element("div", undefined, "entry");
-          row.dataset.key = key;
-          const value = entry?.value ?? "—";
-          row.append(
-            element("code", key),
-            element("span", value, `value ${value}`),
+        const caption = make("div", undefined, "bin-caption");
+        caption.append(
+          make("span", "0"),
+          make("span", "1024 · 32 keys / tile"),
+        );
+        content.append(caption, make("div", undefined, "entries"));
+        const backend = make("div", undefined, "backend");
+        const runtime = make("div", undefined, "runtime");
+        card.append(head, content, backend, runtime);
+        return card;
+      }),
+    );
+  }
+  const from = Number($("start").value),
+    to = Number($("end").value);
+  [...$("replicas").children].forEach((card, id) => {
+    const node = s.nodes[id],
+      button = card.querySelector("button");
+    button.textContent = node.online ? "Disconnect" : "Reconnect";
+    button.classList.toggle("offline", !node.online);
+    button.disabled = pending > 0;
+    card.querySelector(".counts").textContent =
+      `${node.live} live · ${node.tombstones} tombstones`;
+    card.querySelector(".runtime").textContent =
+      `Runtime · ${node.rounds} rounds initiated`;
+    if (!card.querySelector(".bin")) {
+      card.querySelector(".bins").replaceChildren(
+        ...node.bins.map((bin, i) => {
+          const others = s.nodes.map((n) => n.bins[i]);
+          const different = others.some(
+            (b) => b.count !== bin.count || b.fingerprint !== bin.fingerprint,
           );
-          entries.append(row);
-        }
-        local.append(entries);
-        const stamp = replica.entries.find(
-          (entry) => entry.key === "m/status",
-        )?.stamp;
-        local.append(
-          element(
-            "div",
-            stamp
-              ? `m/status stamp: ${stamp.physical}:${stamp.logical} @${stamp.node}`
-              : "No dated entries yet",
-            "stamp",
-          ),
+          const entries = node.entries.filter(
+            (e) => e.key >= i * 32 && e.key < (i + 1) * 32,
+          );
+          const deleted =
+            entries.length > 0 && entries.every((e) => e.value === null);
+          const e = make(
+            "button",
+            bin.count || "",
+            `bin ${bin.count ? "populated" : ""} ${different ? "diverged" : ""} ${deleted ? "deleted" : ""}`,
+          );
+          e.type = "button";
+          e.dataset.bin = i;
+          e.title = `[${i * 32}, ${(i + 1) * 32}) · ${bin.count} entries · ${bin.fingerprint}`;
+          e.setAttribute(
+            "aria-label",
+            `Select keys ${i * 32} to ${(i + 1) * 32}`,
+          );
+          e.onclick = () => {
+            $("peer").value = id;
+            $("start").value = i * 32;
+            $("end").value = (i + 1) * 32;
+            render(state);
+          };
+          return e;
+        }),
+      );
+      card
+        .querySelector(".backend")
+        .replaceChildren(
+          make("span", "RSOS · full range"),
+          signature(node.root),
         );
-        const backend = element("div", undefined, "backend");
-        backend.append(
-          element("div", "RSOS · ordered store · full range", "layer"),
-          signature(replica.root),
+    }
+    card.querySelectorAll(".bin").forEach((b, i) => {
+      const bin = node.bins[i],
+        others = s.nodes.map((n) => n.bins[i]),
+        entries = node.entries.filter(
+          (e) => e.key >= i * 32 && e.key < (i + 1) * 32,
         );
-        box.append(
-          heading,
-          local,
-          backend,
-          element(
-            "div",
-            `reconcile-rs runtime · ${replica.rounds} rounds initiated`,
-            "runtime",
-          ),
-        );
+      b.textContent = bin.count || "";
+      b.classList.toggle("populated", bin.count > 0);
+      b.classList.toggle(
+        "diverged",
+        others.some(
+          (o) => o.count !== bin.count || o.fingerprint !== bin.fingerprint,
+        ),
+      );
+      b.classList.toggle(
+        "deleted",
+        entries.length > 0 && entries.every((e) => e.value === null),
+      );
+      b.classList.toggle("selected", i * 32 < to && (i + 1) * 32 > from);
+      b.title = `[${i * 32}, ${(i + 1) * 32}) · ${bin.count} entries · ${bin.fingerprint}`;
+    });
+    card
+      .querySelector(".backend")
+      .replaceChildren(make("span", "RSOS · full range"), signature(node.root));
+    const selected = node.entries.filter((e) => e.key >= from && e.key < to),
+      visible = selected.slice(0, 6);
+    const table = make("table", undefined, "preview");
+    const header = make("tr");
+    header.append(make("th", "Key"), make("th", "Value"), make("th", "Writer"));
+    table.append(header);
+    for (const entry of visible) {
+      const row = make("tr");
+      row.dataset.key = entry.key;
+      row.append(
+        make("td", entry.key),
+        make(
+          "td",
+          entry.value === null
+            ? "† deleted"
+            : entry.value === ""
+              ? '""'
+              : entry.value,
+          entry.value === null ? "tombstone" : "",
+        ),
+        make("td", names[entry.stamp.node - 1]),
+      );
+      row.title = `HLC ${entry.stamp.physical}:${entry.stamp.logical} @${entry.stamp.node}`;
+      table.append(row);
+    }
+    if (!visible.length) {
+      const row = make("tr");
+      const cell = make("td", "No entries in selection", "muted");
+      cell.colSpan = 3;
+      row.append(cell);
+      table.append(row);
+    }
+    const entries = card.querySelector(".entries");
+    entries.replaceChildren(table);
+    if (selected.length > 6)
+      entries.append(
+        make("small", `${selected.length} selected · first 6 shown`),
+      );
+  });
+  const pairs = [
+    [0, 1],
+    [0, 2],
+    [1, 2],
+  ];
+  if (!$("links").children.length)
+    $("links").replaceChildren(
+      ...pairs.map(([a, b]) => {
+        const box = make("div", undefined, "link"),
+          label = make("div"),
+          text = make("span"),
+          stats = make("small"),
+          button = make("button");
+        label.append(text, stats);
+        button.type = "button";
+        button.onclick = () => {
+          const link = state.links.find((l) => l.a === a && l.b === b);
+          act(`link/${a}/${b}/${link.open ? 0 : 1}`);
+        };
+        box.append(label, button);
         return box;
       }),
     );
-  [...$("replicas").children].forEach((box, id) => {
-    box.querySelector(".runtime").textContent =
-      `reconcile-rs runtime · ${state.nodes[id].rounds} rounds initiated`;
+  [...$("links").children].forEach((box, i) => {
+    const [a, b] = pairs[i],
+      directions = s.links.filter(
+        (l) => (l.a === a && l.b === b) || (l.a === b && l.b === a),
+      ),
+      link = directions[0];
+    box.classList.toggle("cut", !link.connected);
+    box.querySelector("span").textContent =
+      `${names[a]} ↔ ${names[b]} · ${link.connected ? "open" : "unavailable"}`;
+    box.querySelector("small").textContent =
+      `${directions.reduce((n, l) => n + l.datagrams, 0)} received datagrams · ${directions.reduce((n, l) => n + l.bytes, 0)} B`;
+    const button = box.querySelector("button");
+    button.textContent = link.open ? "Cut link" : "Open link";
+    button.disabled = pending > 0;
   });
-  $("links").replaceChildren(
-    ...[
-      [0, 1],
-      [0, 2],
-      [1, 2],
-    ].map(([a, b]) => {
-      const directions = state.links.filter(
-        (link) =>
-          (link.a === a && link.b === b) || (link.a === b && link.b === a),
-      );
-      const connected = directions.every((link) => link.connected);
-      const count = directions.reduce((sum, link) => sum + link.datagrams, 0);
-      const bytes = directions.reduce((sum, link) => sum + link.bytes, 0);
-      const node = element(
-        "div",
-        `${names[a]} ↔ ${names[b]} · ${connected ? "open" : "cut"}`,
-        `link ${connected ? "" : "cut"}`,
-      );
-      node.append(element("span", `${count} rx · ${bytes} B`));
-      return node;
-    }),
-  );
+  for (const id of ["write", "delete", "load", "reset", "heal"])
+    $(id).disabled = pending > 0;
   if (changed)
     $("ranges").replaceChildren(
-      ...ranges.map((label, i) => {
-        const summaries = state.nodes.map((node) => node.ranges[i]);
-        const different = summaries.some(
-          (s) =>
-            s.count !== summaries[0].count ||
-            s.fingerprint !== summaries[0].fingerprint,
+      ...Array.from({ length: 32 }, (_, i) => {
+        const bins = s.nodes.map((n) => n.bins[i]);
+        const row = make(
+          "tr",
+          undefined,
+          bins.some(
+            (b) =>
+              b.count !== bins[0].count ||
+              b.fingerprint !== bins[0].fingerprint,
+          )
+            ? "different"
+            : "",
         );
-        const row = element("tr", undefined, different ? "different" : "");
-        row.append(element("td", label));
-        summaries.forEach((summary) => {
-          const cell = element("td");
-          cell.append(signature(summary));
+        row.append(make("td", `[${i * 32}, ${(i + 1) * 32})`));
+        bins.forEach((b) => {
+          const cell = make("td");
+          cell.append(signature(b));
           row.append(cell);
         });
         return row;
       }),
     );
-  if (previous && previous.stage !== state.stage) {
-    const actions = [
-      "",
-      "Local bulk insert on A",
-      "Cut C links; independent writes on A and C",
-      "Reconnected C; reseeded peer discovery",
-    ];
-    event(actions[state.stage]);
-  }
-  state.nodes.forEach((node, id) => {
-    if (
-      !previous ||
-      JSON.stringify(node.entries) ===
-        JSON.stringify(previous.nodes[id].entries)
-    )
-      return;
-    const value = node.entries.find((entry) => entry.key === "m/status")?.value;
-    event(`${names[id]} snapshot observed: m/status = ${value ?? "absent"}`);
-  });
-  if (previous && !previous.equal && state.equal)
-    event("Exact dated-entry agreement observed across A, B and C");
-  previous = state;
+  previous = s;
 }
-async function command(path) {
-  busy = true;
-  $("next").disabled = $("reset").disabled = true;
+const session = new Session(request, render);
+function feedback(text, error = false) {
+  $("feedback").textContent = text;
+  $("feedback").classList.toggle("error", error);
+}
+async function act(path) {
+  pending++;
+  feedback("Applying…");
+  if (state) render(state);
   try {
-    if (path === "reset") {
-      previous = undefined;
-      events.length = 0;
-      $("events").replaceChildren();
-    }
-    const state = await request(path, "POST");
-    busy = false;
-    render(state);
+    const s = await session.run(path, "POST");
+    feedback(s.last_action);
+    actions.unshift(s.last_action);
+    actions.length = Math.min(actions.length, 8);
+    $("activity").replaceChildren(...actions.map((a) => make("li", a)));
     $("error").textContent = "";
   } catch (error) {
-    $("error").textContent = String(error);
+    feedback(String(error), true);
   } finally {
-    busy = false;
+    pending--;
+    if (state) render(state);
   }
 }
-$("next").onclick = () => command("next");
-$("reset").onclick = () => command("reset");
+function write() {
+  try {
+    const { start, end, peer } = selection();
+    if (new TextEncoder().encode($("value").value).length > 256)
+      throw Error("Value: at most 256 UTF-8 bytes");
+    act(`write/${peer}/${start}/${end}/${hex($("value").value)}`);
+  } catch (e) {
+    feedback(e.message, true);
+  }
+}
+$("operations").onsubmit = (e) => {
+  e.preventDefault();
+  write();
+};
+$("delete").onclick = () => {
+  try {
+    const { start, end, peer } = selection();
+    act(`delete/${peer}/${start}/${end}`);
+  } catch (e) {
+    feedback(e.message, true);
+  }
+};
+$("load").onclick = () =>
+  act(`write/${Number($("peer").value)}/0/128/${hex("shared")}`);
+$("heal").onclick = () => act("heal");
+$("reset").onclick = () => {
+  $("stream").checked = false;
+  actions.length = 0;
+  act("reset");
+};
+for (const id of ["start", "end", "peer"])
+  $(id).onchange = () => {
+    if (state) render(state);
+  };
+setInterval(() => {
+  if (!$("stream").checked || session.pending) return;
+  try {
+    const { start, end, peer } = selection();
+    const key = start + (writes % (end - start));
+    writes++;
+    const value = `${$("value").value}:${writes}`;
+    if (new TextEncoder().encode(value).length > 256)
+      throw Error("Value: at most 256 UTF-8 bytes including live-write suffix");
+    act(`write/${peer}/${key}/${key + 1}/${hex(value)}`);
+  } catch (e) {
+    $("stream").checked = false;
+    feedback(e.message, true);
+  }
+}, 1000);
 async function poll() {
   try {
-    if (!busy) {
-      render(await request("state"));
-      $("error").textContent = "";
-    }
-  } catch (error) {
-    $("error").textContent = String(error);
+    await session.poll();
+    if (!previous) feedback("Starting…");
+    else if ($("feedback").textContent === "Starting…") feedback("Ready");
+    $("error").textContent = "";
+  } catch (e) {
+    $("error").textContent = String(e);
   }
-  setTimeout(poll, 150);
+  setTimeout(poll, 250);
 }
 poll();
+
+document.addEventListener("keydown", (event) => {
+  if (
+    event.repeat ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    event.target.closest('input,select,textarea,[contenteditable="true"]')
+  )
+    return;
+  const key = event.key.toLowerCase();
+  if (["a", "b", "c"].includes(key)) {
+    $("peer").value = names.indexOf(key.toUpperCase());
+    if (state) render(state);
+  } else if (key === "w" && !pending) write();
+  else if (key === "d" && !pending) $("delete").click();
+  else if (
+    key === " " &&
+    !pending &&
+    state &&
+    !event.target.closest("button,a")
+  ) {
+    const id = Number($("peer").value);
+    act(`connect/${id}/${state.nodes[id].online ? 0 : 1}`);
+  } else return;
+  event.preventDefault();
+});

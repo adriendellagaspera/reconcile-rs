@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>reconcile-rs · Architecture</title>
+    <style>
+      :root {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        background: #f5f7fa;
+        color: #21334b;
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        background: #f5f7faf2;
+        backdrop-filter: blur(10px);
+        z-index: 2;
+        border-bottom: 1px solid #d9e0e9;
+      }
+      header > div {
+        max-width: 1200px;
+        margin: auto;
+        padding: 14px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+      }
+      header strong {
+        font-size: 22px;
+        letter-spacing: -0.5px;
+      }
+      nav {
+        display: flex;
+        gap: 18px;
+        font-size: 13px;
+        flex-wrap: wrap;
+      }
+      a {
+        color: #315b88;
+        text-decoration: none;
+      }
+      main {
+        max-width: 1200px;
+        margin: auto;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 32px;
+        letter-spacing: -1px;
+        margin: 5px 0 8px;
+      }
+      h2 {
+        font-size: 23px;
+        letter-spacing: -0.5px;
+        margin: 0;
+      }
+      h3 {
+        font-size: 15px;
+        margin: 0 0 6px;
+      }
+      p {
+        margin: 0;
+        color: #60718a;
+      }
+      section {
+        margin: 28px 0 42px;
+        scroll-margin-top: 95px;
+      }
+      .caption {
+        font-size: 12px;
+        margin-top: 8px;
+        color: #68768a;
+      }
+      .diagram {
+        border: 1px solid #d5deea;
+        background: white;
+        border-radius: 8px;
+        margin-top: 14px;
+        padding: 15px;
+        overflow: auto;
+      }
+      .diagram svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        min-width: 660px;
+      }
+      svg text {
+        font-family: system-ui, sans-serif;
+        fill: #25384f;
+        font-size: 15px;
+      }
+      svg .title {
+        font-size: 19px;
+        font-weight: 700;
+      }
+      svg .small {
+        font-size: 12px;
+        fill: #64738b;
+      }
+      svg .mono {
+        font:
+          13px ui-monospace,
+          monospace;
+      }
+      svg .runtime {
+        fill: #e6effa;
+        stroke: #9ab7d8;
+      }
+      svg .store {
+        fill: #e4f1e9;
+        stroke: #8db6a0;
+      }
+      svg .protocol {
+        fill: #fff0db;
+        stroke: #d9b477;
+      }
+      svg .wire {
+        fill: #ebe7f7;
+        stroke: #b5a2d4;
+      }
+      svg .neutral {
+        fill: #f5f7fa;
+        stroke: #c6d1df;
+      }
+      svg .line {
+        stroke: #7890aa;
+        stroke-width: 2;
+        fill: none;
+      }
+      svg .dash {
+        stroke-dasharray: 6 5;
+      }
+      svg .changed {
+        fill: #ffe4bb;
+        stroke: #d6a461;
+      }
+      .facts {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 14px;
+      }
+      .fact {
+        border-left: 3px solid #a4b9cf;
+        padding: 5px 12px;
+      }
+      .fact p {
+        font-size: 13px;
+      }
+      .legend {
+        display: flex;
+        gap: 18px;
+        font-size: 13px;
+        margin: 18px 0;
+        flex-wrap: wrap;
+      }
+      .legend span::before {
+        content: "";
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin-right: 7px;
+        background: #e6effa;
+        border: 1px solid #9ab7d8;
+      }
+      .legend .green::before {
+        background: #e4f1e9;
+        border-color: #8db6a0;
+      }
+      .legend .amber::before {
+        background: #fff0db;
+        border-color: #d9b477;
+      }
+      .legend .purple::before {
+        background: #ebe7f7;
+        border-color: #b5a2d4;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+        margin-top: 14px;
+        background: white;
+      }
+      td,
+      th {
+        padding: 10px 14px;
+        border: 1px solid #d5deea;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #edf2f8;
+        font-size: 13px;
+      }
+      code {
+        font:
+          13px ui-monospace,
+          monospace;
+      }
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .flow article {
+        border: 1px solid #c6d1df;
+        background: white;
+        border-radius: 6px;
+        padding: 14px;
+        position: relative;
+      }
+      .flow article:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        right: -12px;
+        top: 38%;
+        color: #738ca8;
+        z-index: 1;
+      }
+      .flow p {
+        font-size: 12px;
+      }
+      .number {
+        font-size: 11px;
+        color: #6a7f9b;
+      }
+      .limits {
+        background: #edf2f8;
+        padding: 16px;
+        border-radius: 6px;
+        margin-top: 14px;
+        font-size: 14px;
+      }
+      .layers {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .layers article {
+        border: 1px solid #d5deea;
+        background: white;
+        border-radius: 6px;
+        padding: 18px;
+      }
+      .layers h3 {
+        font-size: 17px;
+      }
+      .layers p {
+        font-size: 14px;
+      }
+      footer {
+        border-top: 1px solid #d5deea;
+        margin-top: 24px;
+        padding-top: 14px;
+        font-size: 12px;
+        color: #68768a;
+      }
+      @media (max-width: 750px) {
+        main {
+          padding: 16px;
+        }
+        header > div {
+          padding: 12px 16px;
+          align-items: start;
+        }
+        header strong {
+          font-size: 18px;
+        }
+        nav {
+          gap: 10px;
+          font-size: 11px;
+        }
+        .facts,
+        .layers {
+          grid-template-columns: 1fr;
+        }
+        .flow {
+          grid-template-columns: 1fr;
+        }
+        .flow article:not(:last-child)::after {
+          content: "↓";
+          right: 50%;
+          top: auto;
+          bottom: -18px;
+        }
+        .diagram {
+          padding: 8px;
+        }
+        h1 {
+          font-size: 27px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <strong>reconcile-rs</strong>
+        <nav>
+          <a href="./">← Playground</a><a href="#cluster">Cluster</a
+          ><a href="#runtime">Runtime</a><a href="#backend">RSOS</a
+          ><a href="#protocol">Protocol</a><a href="#network">Network</a
+          ><a href="#durability">Durability</a>
+        </nav>
+      </div>
+    </header>
+    <main>
+      <h1>Architecture</h1>
+      <p>Embedded replicas · local state · range-based reconciliation</p>
+      <div class="legend">
+        <span>Runtime</span><span class="green">RSOS storage</span
+        ><span class="amber">Reconciliation</span
+        ><span class="purple">Messaging</span>
+      </div>
+      <section id="cluster">
+        <h2>Cluster</h2>
+        <p>
+          Every authoritative replica owns the complete dataset and can
+          originate writes.
+        </p>
+        <div class="diagram">
+          <svg
+            viewBox="0 0 1080 315"
+            role="img"
+            aria-label="Three equal replicas, each containing a runtime, RSOS backend, RBSR protocol and gossip transport"
+          >
+            <defs>
+              <marker
+                id="arrow"
+                markerWidth="8"
+                markerHeight="8"
+                refX="7"
+                refY="4"
+                orient="auto-start-reverse"
+              >
+                <path d="M0 0 L8 4 L0 8" fill="#7890aa" />
+              </marker>
+            </defs>
+            <rect
+              class="neutral"
+              x="15"
+              y="15"
+              width="290"
+              height="250"
+              rx="9"
+            />
+            <rect
+              class="neutral"
+              x="395"
+              y="15"
+              width="290"
+              height="250"
+              rx="9"
+            />
+            <rect
+              class="neutral"
+              x="775"
+              y="15"
+              width="290"
+              height="250"
+              rx="9"
+            />
+            <text class="title" x="35" y="47">Replica A</text>
+            <text class="title" x="415" y="47">Replica B</text>
+            <text class="title" x="795" y="47">Replica C</text>
+            <rect
+              class="runtime"
+              x="30"
+              y="64"
+              width="260"
+              height="52"
+              rx="5"
+            />
+            <rect
+              class="runtime"
+              x="410"
+              y="64"
+              width="260"
+              height="52"
+              rx="5"
+            />
+            <rect
+              class="runtime"
+              x="790"
+              y="64"
+              width="260"
+              height="52"
+              rx="5"
+            />
+            <text x="47" y="86">reconcile-rs runtime</text>
+            <text class="small" x="47" y="105">
+              HLC · LWW · tasks · membership
+            </text>
+            <text x="427" y="86">reconcile-rs runtime</text>
+            <text class="small" x="427" y="105">
+              HLC · LWW · tasks · membership
+            </text>
+            <text x="807" y="86">reconcile-rs runtime</text>
+            <text class="small" x="807" y="105">
+              HLC · LWW · tasks · membership
+            </text>
+            <rect class="store" x="30" y="125" width="125" height="64" rx="5" />
+            <rect
+              class="protocol"
+              x="165"
+              y="125"
+              width="125"
+              height="64"
+              rx="5"
+            />
+            <rect
+              class="store"
+              x="410"
+              y="125"
+              width="125"
+              height="64"
+              rx="5"
+            />
+            <rect
+              class="protocol"
+              x="545"
+              y="125"
+              width="125"
+              height="64"
+              rx="5"
+            />
+            <rect
+              class="store"
+              x="790"
+              y="125"
+              width="125"
+              height="64"
+              rx="5"
+            />
+            <rect
+              class="protocol"
+              x="925"
+              y="125"
+              width="125"
+              height="64"
+              rx="5"
+            />
+            <text x="46" y="150">RSOS</text>
+            <text class="small" x="46" y="172">ordered tree</text>
+            <text x="180" y="150">RBSR</text>
+            <text class="small" x="180" y="172">range repair</text>
+            <text x="426" y="150">RSOS</text>
+            <text class="small" x="426" y="172">ordered tree</text>
+            <text x="560" y="150">RBSR</text>
+            <text class="small" x="560" y="172">range repair</text>
+            <text x="806" y="150">RSOS</text>
+            <text class="small" x="806" y="172">ordered tree</text>
+            <text x="940" y="150">RBSR</text>
+            <text class="small" x="940" y="172">range repair</text>
+            <rect class="wire" x="30" y="201" width="260" height="48" rx="5" />
+            <rect class="wire" x="410" y="201" width="260" height="48" rx="5" />
+            <rect class="wire" x="790" y="201" width="260" height="48" rx="5" />
+            <text x="46" y="230">gossip · Transport</text>
+            <text x="426" y="230">gossip · Transport</text>
+            <text x="806" y="230">gossip · Transport</text>
+            <path
+              class="line"
+              d="M308 225 H392"
+              marker-start="url(#arrow)"
+              marker-end="url(#arrow)"
+            />
+            <path
+              class="line"
+              d="M688 225 H772"
+              marker-start="url(#arrow)"
+              marker-end="url(#arrow)"
+            />
+            <path class="line dash" d="M160 267 V291 H920 V267" />
+            <text class="small" x="380" y="311">
+              Peer-to-peer exchanges · no fixed master · no central RSOS service
+            </text>
+          </svg>
+        </div>
+        <div class="facts">
+          <article class="fact">
+            <h3>Local availability</h3>
+            <p>
+              Reads use local state. Writes do not wait for an agreement with
+              other replicas.
+            </p>
+          </article>
+          <article class="fact">
+            <h3>Eventual convergence</h3>
+            <p>
+              Propagation and anti-entropy repair differences once communication
+              permits it. Partitions can leave conflicting states.
+            </p>
+          </article>
+          <article class="fact">
+            <h3>Replica roles</h3>
+            <p>
+              Authoritative replicas own dated entries. ReadReplicaMap is a
+              value-only sink, outside authoritative tombstone stability.
+            </p>
+          </article>
+        </div>
+      </section>
+      <section id="runtime">
+        <h2>Runtime</h2>
+        <p>
+          The facade composes storage, clocks, merge semantics, reconciliation
+          and platform adapters.
+        </p>
+        <div class="diagram">
+          <svg
+            viewBox="0 0 1080 300"
+            role="img"
+            aria-label="Local write creates a stamped LWW entry, publishes an immutable root and broadcasts; incoming entries merge into the same store"
+          >
+            <rect
+              class="neutral"
+              x="15"
+              y="35"
+              width="155"
+              height="70"
+              rx="6"
+            />
+            <text x="34" y="64">Application</text>
+            <text class="mono" x="34" y="87">insert / remove</text>
+            <path class="line" d="M173 70 H207" />
+            <rect
+              class="runtime"
+              x="210"
+              y="35"
+              width="150"
+              height="70"
+              rx="6"
+            />
+            <text x="228" y="64">HLC clock</text>
+            <text class="small" x="228" y="87">mint a timestamp</text>
+            <path class="line" d="M363 70 H397" />
+            <rect
+              class="runtime"
+              x="400"
+              y="35"
+              width="170"
+              height="70"
+              rx="6"
+            />
+            <text x="418" y="64">LWW entry</text>
+            <text class="small" x="418" y="87">value or tombstone</text>
+            <path class="line" d="M573 70 H607" />
+            <rect class="store" x="610" y="35" width="185" height="70" rx="6" />
+            <text x="628" y="64">RSOS mutation</text>
+            <text class="small" x="628" y="87">new persistent root</text>
+            <path class="line" d="M798 70 H832" />
+            <rect class="store" x="835" y="35" width="225" height="70" rx="6" />
+            <text x="853" y="64">ArcSwap publication</text>
+            <text class="small" x="853" y="87">
+              local read / pinned snapshot
+            </text>
+            <path class="line" d="M490 108 V156 H930 V183" />
+            <text class="small" x="630" y="147">
+              eager propagation · bounded egress
+            </text>
+            <rect class="wire" x="835" y="186" width="225" height="65" rx="6" />
+            <text x="852" y="214">gossip / framing</text>
+            <text class="small" x="852" y="235">authenticated datagrams</text>
+            <rect
+              class="protocol"
+              x="15"
+              y="186"
+              width="195"
+              height="65"
+              rx="6"
+            />
+            <text x="33" y="214">Incoming entries</text>
+            <text class="small" x="33" y="235">observe remote HLC</text>
+            <path class="line" d="M213 218 H260" />
+            <rect
+              class="runtime"
+              x="263"
+              y="186"
+              width="220"
+              height="65"
+              rx="6"
+            />
+            <text x="281" y="214">Deterministic LWW merge</text>
+            <text class="small" x="281" y="235">retain greatest stamp</text>
+            <path class="line" d="M486 218 H700 V108" />
+            <text class="small" x="15" y="286">
+              Background loops: ingress · periodic repair · fragment recovery ·
+              tombstone GC · persistence · discovery
+            </text>
+          </svg>
+        </div>
+        <div class="facts">
+          <article class="fact">
+            <h3>Clock order</h3>
+            <p>
+              Timestamp = HLC physical time + logical counter + NodeId. The node
+              identity supplies a deterministic tie-break.
+            </p>
+          </article>
+          <article class="fact">
+            <h3>Lifecycle</h3>
+            <p>
+              Tokio on native targets; worker-local tasks and timers in
+              browsers. Cancellation stops owned tasks and triggers final
+              persistence handling.
+            </p>
+          </article>
+          <article class="fact">
+            <h3>Observed state</h3>
+            <p>
+              sync_state, counters and immutable snapshots expose activity. An
+              initiated round is not a guarantee of cluster-wide agreement.
+            </p>
+          </article>
+        </div>
+      </section>
+      <section id="backend">
+        <h2>RSOS backend</h2>
+        <p>
+          FingerprintTreeMap: ordered persistent storage with range cardinality
+          and fingerprint aggregates.
+        </p>
+        <div class="diagram">
+          <svg
+            viewBox="0 0 1080 365"
+            role="img"
+            aria-label="Old and new immutable roots share untouched branches while one branch changes; range summaries compose from count and fingerprint"
+          >
+            <rect
+              class="neutral"
+              x="15"
+              y="16"
+              width="260"
+              height="64"
+              rx="6"
+            />
+            <text class="title" x="32" y="43">Pinned reader</text>
+            <text class="small" x="32" y="64">Arc snapshot · old root R₀</text>
+            <rect
+              class="runtime"
+              x="385"
+              y="16"
+              width="260"
+              height="64"
+              rx="6"
+            />
+            <text class="title" x="403" y="43">Current root</text>
+            <text class="small" x="403" y="64">
+              ArcSwap → R₁ after the write
+            </text>
+            <path class="line" d="M145 82 V109" />
+            <rect class="store" x="85" y="112" width="120" height="50" rx="5" />
+            <text x="129" y="143">R₀</text>
+            <path class="line" d="M515 82 V109" />
+            <rect
+              class="changed"
+              x="455"
+              y="112"
+              width="120"
+              height="50"
+              rx="5"
+            />
+            <text x="499" y="143">R₁</text>
+            <path
+              class="line"
+              d="M145 164 V185 H85 V216 M145 185 H270 V216 M515 164 V185 H270 M515 185 H515 V216"
+            />
+            <rect class="store" x="25" y="219" width="120" height="60" rx="5" />
+            <rect
+              class="store"
+              x="210"
+              y="219"
+              width="120"
+              height="60"
+              rx="5"
+            />
+            <rect
+              class="changed"
+              x="455"
+              y="219"
+              width="120"
+              height="60"
+              rx="5"
+            />
+            <text x="42" y="244">Old branch</text>
+            <text class="small" x="42" y="265">retained by R₀</text>
+            <text x="226" y="244">Shared branch</text>
+            <text class="small" x="226" y="265">unchanged</text>
+            <text x="472" y="244">New branch</text>
+            <text class="small" x="472" y="265">changed path</text>
+            <rect
+              class="store"
+              x="710"
+              y="16"
+              width="350"
+              height="264"
+              rx="8"
+            />
+            <text class="title" x="730" y="47">Range aggregate</text>
+            <text class="mono" x="730" y="84">count = Σ child counts</text>
+            <text class="mono" x="730" y="115">
+              fingerprint = Σ fingerprints
+            </text>
+            <text x="730" y="153">Lift key + dated entry</text>
+            <text class="small" x="730" y="176">
+              Keyed BLAKE3-derived fingerprints
+            </text>
+            <text x="730" y="213">Query ordered key intervals</text>
+            <text class="small" x="730" y="236">
+              No network or clock inside RSOS
+            </text>
+            <text class="small" x="730" y="259">
+              reconcile supplies the stamped values
+            </text>
+            <text class="small" x="25" y="316">
+              Schematic branches, not a live tree dump. Readers pin immutable
+              roots; writes publish new roots.
+            </text>
+            <text class="small" x="25" y="341">
+              Primary tree: key → dated entry, including tombstones. Projection
+              tree: key → value state, without timestamps.
+            </text>
+          </svg>
+        </div>
+        <div class="facts">
+          <article class="fact">
+            <h3>Structural sharing</h3>
+            <p>
+              Unchanged nodes are shared through Arc. Existing snapshots stay
+              valid while a writer publishes a newer root.
+            </p>
+          </article>
+          <article class="fact">
+            <h3>Read path</h3>
+            <p>
+              Point reads and snapshots do not hold the writer lock. Writers
+              serialize mutation and root publication.
+            </p>
+          </article>
+          <article class="fact">
+            <h3>Storage semantics</h3>
+            <p>
+              RSOS provides ordering and aggregates. HLC, LWW decisions,
+              replication and tombstone stability belong to its caller.
+            </p>
+          </article>
+        </div>
+      </section>
+      <section id="protocol">
+        <h2>Range reconciliation</h2>
+        <p>
+          RBSR compares range summaries; the runtime transports comparisons and
+          enumerated content.
+        </p>
+        <div class="diagram">
+          <svg
+            viewBox="0 0 1080 265"
+            role="img"
+            aria-label="Equal outer ranges and a different middle range guide recursive refinement or content enumeration"
+          >
+            <text class="title" x="20" y="33">Replica A</text>
+            <text class="title" x="20" y="151">Replica B</text>
+            <rect class="store" x="20" y="49" width="270" height="62" rx="5" />
+            <rect
+              class="changed"
+              x="340"
+              y="49"
+              width="360"
+              height="62"
+              rx="5"
+            />
+            <rect class="store" x="750" y="49" width="310" height="62" rx="5" />
+            <rect class="store" x="20" y="168" width="270" height="62" rx="5" />
+            <rect
+              class="changed"
+              x="340"
+              y="168"
+              width="360"
+              height="62"
+              rx="5"
+            />
+            <rect
+              class="store"
+              x="750"
+              y="168"
+              width="310"
+              height="62"
+              rx="5"
+            />
+            <text class="mono" x="38" y="75">[0, 32) · count 32 · fp X</text>
+            <text class="mono" x="358" y="75">[32, 64) · count 32 · fp Y</text>
+            <text class="mono" x="768" y="75">[64, 128) · count 64 · fp Z</text>
+            <text class="mono" x="38" y="194">[0, 32) · count 32 · fp X</text>
+            <text class="mono" x="358" y="194">
+              [32, 64) · count 32 · fp Y′
+            </text>
+            <text class="mono" x="768" y="194">
+              [64, 128) · count 64 · fp Z
+            </text>
+            <text class="small" x="38" y="98">same summary</text>
+            <text class="small" x="358" y="98">refine or enumerate</text>
+            <text class="small" x="768" y="98">same summary</text>
+            <path class="line" d="M156 114 V165 M520 114 V165 M902 114 V165" />
+            <text class="small" x="20" y="256">
+              Illustration of the comparison mechanism. Actual protocol ranges
+              and policies can differ.
+            </text>
+          </svg>
+        </div>
+        <div class="flow">
+          <article>
+            <span class="number">01</span>
+            <h3>Summarize</h3>
+            <p>
+              Capture an immutable local tree and advertise range count +
+              fingerprint.
+            </p>
+          </article>
+          <article>
+            <span class="number">02</span>
+            <h3>Compare</h3>
+            <p>
+              Matching summaries end that comparison. A differing range needs
+              more work.
+            </p>
+          </article>
+          <article>
+            <span class="number">03</span>
+            <h3>Refine</h3>
+            <p>
+              Split and compare smaller ranges, or enumerate according to
+              policy. Splits must make progress.
+            </p>
+          </article>
+          <article>
+            <span class="number">04</span>
+            <h3>Exchange</h3>
+            <p>
+              The runtime sends entries from differing ranges through bounded,
+              framed messaging.
+            </p>
+          </article>
+          <article>
+            <span class="number">05</span>
+            <h3>Merge / repeat</h3>
+            <p>
+              LWW merges dated entries. Later rounds repair losses and
+              concurrent changes.
+            </p>
+          </article>
+        </div>
+        <div class="limits">
+          Summary equality is a fingerprint-based comparison. The playground
+          reports agreement using exact dated entries. A matching value with a
+          different timestamp is not the same authoritative entry. This diagram
+          is not a bandwidth benchmark.
+        </div>
+      </section>
+      <section id="network">
+        <h2>Network and admission</h2>
+        <p>
+          Authentication and replay validation precede protocol handling and
+          domain mutation.
+        </p>
+        <div class="flow">
+          <article>
+            <span class="number">INGRESS 01</span>
+            <h3>Authenticate</h3>
+            <p>Check the cluster MAC and strict wire version.</p>
+          </article>
+          <article>
+            <span class="number">02</span>
+            <h3>Admit peer</h3>
+            <p>
+              Apply topology / membership capacity rules before allocating
+              protocol state.
+            </p>
+          </article>
+          <article>
+            <span class="number">03</span>
+            <h3>Reject replay</h3>
+            <p>Validate replay stamp / sequence and bounded replay state.</p>
+          </article>
+          <article>
+            <span class="number">04</span>
+            <h3>Reassemble</h3>
+            <p>
+              Process complete frames, fragments or negotiated recovery controls
+              within bounded state.
+            </p>
+          </article>
+          <article>
+            <span class="number">05</span>
+            <h3>Decode / dispatch</h3>
+            <p>
+              Only complete admitted payloads reach reconciliation and merge.
+            </p>
+          </article>
+        </div>
+        <div class="layers">
+          <article>
+            <h3>Framing and repair</h3>
+            <p>
+              Default datagram budget: 1200 bytes including
+              framing/authentication overhead. Selective fragment recovery is
+              capability gated; peers without it retain whole-message
+              anti-entropy fallback. Retained transfer state is bounded by
+              count, bytes and lifetime.
+            </p>
+          </article>
+          <article>
+            <h3>Transport boundary</h3>
+            <p>
+              The current public facade uses SocketAddr endpoints. Native
+              adapters include UDP and in-memory transport; decorators supply
+              impairments. Browser callers supply in-memory/custom transport.
+              UDP binding and DNS return Unsupported in the browser.
+            </p>
+          </article>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Identity / configuration</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>NodeId</td>
+              <td>
+                Writer identity in HLC timestamps and deterministic ordering.
+              </td>
+            </tr>
+            <tr>
+              <td>Transport endpoint</td>
+              <td>
+                Address used for discovery, routing and current live peer
+                participation. Distinct from the clock identity.
+              </td>
+            </tr>
+            <tr>
+              <td>ClusterKey</td>
+              <td>
+                Shared authentication material and derived keyed fingerprint
+                lift. All participating nodes need compatible provisioning.
+              </td>
+            </tr>
+            <tr>
+              <td>Discovery / membership</td>
+              <td>
+                Routing peers and authoritative causal-stability membership are
+                different concerns. Decommissioning changes the stability
+                obligations.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <section id="durability">
+        <h2>Deletion and durability</h2>
+        <p>
+          A deletion is replicated state; persistence is a separate capability.
+        </p>
+        <div class="diagram">
+          <svg
+            viewBox="0 0 1080 175"
+            role="img"
+            aria-label="Deletion creates a tombstone, which propagates and can be reclaimed only after timeout and causal stability"
+          >
+            <rect
+              class="runtime"
+              x="15"
+              y="32"
+              width="185"
+              height="90"
+              rx="6"
+            />
+            <text x="35" y="61">remove / delete_range</text>
+            <text class="small" x="35" y="88">new stamped tombstone</text>
+            <text class="small" x="35" y="107">local value disappears</text>
+            <path class="line" d="M203 77 H240" />
+            <rect
+              class="protocol"
+              x="243"
+              y="32"
+              width="220"
+              height="90"
+              rx="6"
+            />
+            <text x="261" y="61">Propagate / reconcile</text>
+            <text class="small" x="261" y="88">peers merge the tombstone</text>
+            <text class="small" x="261" y="107">acknowledgements tracked</text>
+            <path class="line" d="M466 77 H503" />
+            <rect
+              class="runtime"
+              x="506"
+              y="32"
+              width="260"
+              height="90"
+              rx="6"
+            />
+            <text x="524" y="61">Timeout AND causal stability</text>
+            <text class="small" x="524" y="88">
+              authoritative members must ack
+            </text>
+            <text class="small" x="524" y="107">
+              or be explicitly decommissioned
+            </text>
+            <path class="line" d="M769 77 H806" />
+            <rect class="store" x="809" y="32" width="255" height="90" rx="6" />
+            <text x="829" y="61">Physical reclamation</text>
+            <text class="small" x="829" y="88">
+              remove the retained tombstone
+            </text>
+            <text class="small" x="829" y="107">publish a newer root</text>
+            <text class="small" x="15" y="157">
+              Elapsed time alone does not make an unacknowledged tombstone safe
+              to collect.
+            </text>
+          </svg>
+        </div>
+        <div class="layers">
+          <article>
+            <h3>Optional persistence</h3>
+            <p>
+              Restore values, tombstones and causal-stability state before
+              network participation. The generic Persistence port supports
+              complete state; FileSnapshot can publish incremental generations.
+            </p>
+          </article>
+          <article>
+            <h3>FileSnapshot generations</h3>
+            <p>
+              Open → frozen → committed. An authoritative manifest names an
+              immutable base plus ordered deltas. Publish durable data before
+              the manifest; failed generations remain retryable. Compaction and
+              recovery preserve the same coherent state boundary.
+            </p>
+          </article>
+        </div>
+        <div class="limits">
+          The playground uses real replicas with in-memory storage and a
+          synthetic connectivity gate. It exercises local writes, range
+          deletion, partitions, merge and reconciliation. Persistence and
+          recovery diagrams describe library capabilities; the playground does
+          not exercise disk recovery or provide consensus or exclusive task
+          ownership.
+        </div>
+      </section>
+      <footer>
+        Conceptual diagrams, based on the repository architecture and runtime
+        implementation.
+        <a
+          href="https://github.com/adriendellagaspera/reconcile-rs/blob/demo/swarm-vertical-slice/ARCHITECTURE.md"
+          >Architecture source ↗</a
+        >
+        · <a href="./">Playground ↗</a>
+      </footer>
+    </main>
+  </body>
+</html>
