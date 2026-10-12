@@ -9,11 +9,15 @@
 
 use std::io;
 use std::net::SocketAddr;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use std::sync::Arc;
 
 use async_trait::async_trait;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use socket2::SockRef;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use tokio::net::UdpSocket;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use tracing::{debug, warn};
 
 /// Connectionless datagram I/O over [`SocketAddr`].
@@ -38,9 +42,11 @@ pub trait Transport: Send + Sync + 'static {
 }
 
 /// The default [`Transport`] adapter: a tokio UDP socket.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[derive(Clone, Debug)]
 pub struct UdpTransport(Arc<UdpSocket>);
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 impl UdpTransport {
     /// Wrap an already-bound UDP socket.
     pub fn new(socket: Arc<UdpSocket>) -> Self {
@@ -72,6 +78,7 @@ impl UdpTransport {
 /// The kernel clamps an over-large request rather than failing, so clamping is a `debug`, not a
 /// warning. Linux `getsockopt` reports the doubled value, so a honoured request reads back larger
 /// than asked.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn set_socket_buffers(
     socket: &UdpSocket,
     recv_buffer_size: Option<usize>,
@@ -104,6 +111,7 @@ fn set_socket_buffers(
     }
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[async_trait]
 impl Transport for UdpTransport {
     async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
@@ -118,6 +126,11 @@ impl Transport for UdpTransport {
         self.0.local_addr()
     }
 }
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+mod browser;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub use browser::UdpTransport;
 
 /// An in-process [`Transport`] over a shared [`InMemoryNetwork`]: reliable and FIFO per
 /// sender→receiver pair, so convergence is deterministic on a single-threaded runtime. A datagram

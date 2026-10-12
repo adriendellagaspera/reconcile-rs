@@ -8,7 +8,7 @@
 use std::cmp::max;
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
@@ -154,7 +154,7 @@ fn gcra_allows(tat: Instant, now: Instant, interval: Duration, burst: u32) -> bo
 #[cfg(test)]
 mod tests {
     use std::net::IpAddr;
-    use std::time::{Duration, Instant};
+    use web_time::{Duration, Instant};
 
     use super::{BulkAdmission, BulkAdmissionRejection, PER_PEER_BULK_BURST};
     use crate::replica::pacing::DumpChannel;

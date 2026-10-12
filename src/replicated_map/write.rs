@@ -5,6 +5,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use gossip::runtime as tokio;
+
 use std::hash::Hash;
 use std::ops::RangeBounds;
 use std::time::Duration;

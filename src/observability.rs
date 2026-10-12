@@ -28,7 +28,7 @@ pub(crate) use snapshot::{
 
 #[cfg(feature = "metrics")]
 mod imp {
-    use std::time::Instant;
+    use web_time::Instant;
 
     // `::` prefix: this crate also declares a local `metrics` module (`crate::metrics`, the
     // public metric-name constants below pull in), which would otherwise shadow the `metrics`
@@ -285,7 +285,7 @@ mod imp {
 
 #[cfg(not(feature = "metrics"))]
 mod imp {
-    use std::time::Instant;
+    use web_time::Instant;
 
     #[inline(always)]
     pub(crate) fn timer() -> Option<Instant> {

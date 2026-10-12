@@ -20,9 +20,12 @@
 //! same order of magnitude as the existing per-round tombstone-ack resend rather than a full
 //! bulk-transfer retry.
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use gossip::runtime as tokio;
+
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
-use std::time::Instant;
+use web_time::Instant;
 
 use tracing::trace;
 

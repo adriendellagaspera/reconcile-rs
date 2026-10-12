@@ -15,7 +15,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::net::IpAddr;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 const COMPLETE_TAG: u8 = 0;
 const FRAGMENT_TAG: u8 = 1;

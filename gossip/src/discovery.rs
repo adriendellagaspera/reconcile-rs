@@ -10,6 +10,9 @@
 //! [`RandomProbe`] supplies speculative round targets. [`DnsDiscovery`] supplies an authoritative
 //! peer snapshot suitable for DNS-backed deployments. Discovery changes gossip targets only;
 //! authoritative membership is established by authenticated protocol traffic.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use crate::runtime as tokio;
+
 use std::error::Error as StdError;
 use std::fmt;
 use std::future::Future;
@@ -131,6 +134,7 @@ impl StdError for DnsDiscoveryError {
 pub const DEFAULT_DNS_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Discovers peers by resolving a DNS name to its address records, through the system resolver.
+/// Browser targets return an `Unsupported` resolver error; supply a custom discovery source.
 /// Point it at a Kubernetes **headless** `Service` (`clusterIP: None`): one record per ready pod.
 #[derive(Debug)]
 pub struct DnsDiscovery {
@@ -162,14 +166,30 @@ impl DnsDiscovery {
 
 impl Discovery for DnsDiscovery {
     fn discover(&self) -> DiscoverFuture<'_> {
-        let host = format!("{}:{}", self.name, self.port);
-        Box::pin(async move {
-            let addrs = tokio::time::timeout(self.timeout, tokio::net::lookup_host(host))
-                .await
-                .map_err(DnsDiscoveryError::Timeout)?
-                .map_err(DnsDiscoveryError::Resolve)?;
-            Ok(addrs.map(|sock_addr| sock_addr.ip()).collect())
-        })
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            Box::pin(async {
+                Err(DnsDiscoveryError::Resolve(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    format!(
+                        "system DNS discovery for {}:{} is unavailable in a browser",
+                        self.name, self.port
+                    ),
+                ))
+                .into())
+            })
+        }
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            let host = format!("{}:{}", self.name, self.port);
+            Box::pin(async move {
+                let addrs = tokio::time::timeout(self.timeout, tokio::net::lookup_host(host))
+                    .await
+                    .map_err(DnsDiscoveryError::Timeout)?
+                    .map_err(DnsDiscoveryError::Resolve)?;
+                Ok(addrs.map(|sock_addr| sock_addr.ip()).collect())
+            })
+        }
     }
 
     fn kind(&self) -> DiscoveryKind {

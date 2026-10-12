@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>reconcile-rs</title>
+    <style>
+      :root {
+        font:
+          15px/1.45 system-ui,
+          sans-serif;
+        color: #203047;
+        background: #f5f7fa;
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        max-width: 1250px;
+        margin: auto;
+        padding: 22px;
+      }
+      header,
+      .heading,
+      .replica-head,
+      .foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      header {
+        margin-bottom: 20px;
+      }
+      .brand {
+        font-size: 23px;
+        font-weight: 750;
+        letter-spacing: -0.7px;
+      }
+      nav {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+      }
+      a {
+        color: #284e7b;
+        text-decoration: none;
+      }
+      h1 {
+        font-size: 17px;
+        margin: 0;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 0;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+        border: 1px solid #cbd3de;
+        border-radius: 5px;
+        padding: 7px 12px;
+        background: white;
+        color: inherit;
+      }
+      button:hover {
+        border-color: #557eac;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: wait;
+      }
+      input,
+      select {
+        border: 1px solid #cbd3de;
+        border-radius: 4px;
+        padding: 6px 8px;
+        background: white;
+        min-width: 0;
+      }
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 3px solid #82aadd;
+        outline-offset: 2px;
+      }
+      .primary {
+        background: #274e7e;
+        color: white;
+        border-color: #274e7e;
+      }
+      .toolbar {
+        display: flex;
+        align-items: end;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 14px;
+        background: white;
+        border: 1px solid #d5dce6;
+        border-radius: 7px;
+        margin: 12px 0 7px;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        color: #617086;
+      }
+      label.check {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-bottom: 8px;
+      }
+      input[type="number"] {
+        width: 85px;
+      }
+      #value {
+        width: 150px;
+      }
+      .shortcuts {
+        font-size: 11px;
+        color: #66748a;
+        margin: 0 0 10px;
+      }
+      #feedback,
+      #activity {
+        overflow-wrap: anywhere;
+      }
+      #feedback {
+        min-height: 25px;
+        font-size: 13px;
+        margin: 8px 0 14px;
+        color: #335c85;
+      }
+      #feedback.error {
+        color: #a32525;
+      }
+      #agreement {
+        font-size: 13px;
+        color: #426c58;
+      }
+      .muted,
+      small {
+        color: #66748a;
+      }
+      .heading {
+        margin: 14px 0 10px;
+      }
+      #replicas {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      .replica {
+        background: white;
+        border: 1px solid #d4dce7;
+        border-radius: 7px;
+        overflow: hidden;
+        min-width: 0;
+      }
+      .replica-head {
+        padding: 10px 14px;
+        border-bottom: 1px solid #e4e9ef;
+      }
+      .replica-head strong {
+        font-size: 22px;
+      }
+      .replica-head button {
+        font-size: 12px;
+      }
+      .replica-head .offline {
+        background: #fff0db;
+        border-color: #dabb8e;
+      }
+      .content {
+        padding: 12px 14px;
+      }
+      .counts {
+        font-size: 13px;
+        margin-bottom: 10px;
+      }
+      .bins {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 4px;
+      }
+      .bin {
+        padding: 0;
+        aspect-ratio: 1.6;
+        border: 1px solid #e0e5ec;
+        border-radius: 2px;
+        background: #f3f5f8;
+        position: relative;
+        font:
+          10px ui-monospace,
+          monospace;
+      }
+      .bin.populated {
+        background: #dce9f5;
+        border-color: #a9c1d9;
+      }
+      .bin.diverged {
+        background: #ffe4bb;
+        border-color: #d9a85c;
+      }
+      .bin.deleted {
+        background: repeating-linear-gradient(
+          135deg,
+          #e2e5ec,
+          #e2e5ec 3px,
+          #f5f6f9 3px,
+          #f5f6f9 6px
+        );
+      }
+      .bin.selected {
+        outline: 2px solid #315d8b;
+        outline-offset: -1px;
+      }
+      .bin:focus::after {
+        content: attr(title);
+        position: fixed;
+        bottom: 16px;
+        left: 16px;
+        right: 16px;
+        max-width: 650px;
+        z-index: 4;
+        background: #203047;
+        color: white;
+        padding: 12px;
+        white-space: normal;
+        border-radius: 5px;
+      }
+      .bin-caption {
+        font-size: 11px;
+        color: #66748a;
+        display: flex;
+        justify-content: space-between;
+        margin-top: 5px;
+      }
+      .backend,
+      .runtime {
+        padding: 8px 14px;
+        border-top: 1px solid #e4e9ef;
+        font-size: 12px;
+        background: #f9fafc;
+      }
+      .backend code {
+        float: right;
+      }
+      .runtime {
+        background: white;
+        color: #66748a;
+      }
+      .preview {
+        margin-top: 12px;
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        table-layout: fixed;
+      }
+      .preview th {
+        font-weight: 500;
+        color: #66748a;
+        text-align: left;
+      }
+      .preview td {
+        border-top: 1px solid #eef1f5;
+        padding: 4px 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .preview th:first-child {
+        width: 48px;
+      }
+      .preview th:last-child {
+        width: 62px;
+      }
+      .tombstone {
+        color: #8a6970;
+        font-style: italic;
+      }
+      code {
+        font:
+          12px ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+      }
+      #links {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 12px 0;
+      }
+      .link {
+        flex: 1;
+        min-width: 180px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 2px solid #8eabc8;
+        padding: 0 3px 7px;
+        font-size: 12px;
+      }
+      .link.cut {
+        border-bottom-style: dashed;
+        border-color: #b99462;
+      }
+      .link button {
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+      .link small {
+        display: block;
+        font-size: 10px;
+      }
+      .legend {
+        display: flex;
+        gap: 18px;
+        font-size: 12px;
+        color: #66748a;
+      }
+      .legend span::before {
+        content: "";
+        display: inline-block;
+        width: 11px;
+        height: 11px;
+        margin-right: 5px;
+        background: #dce9f5;
+        border: 1px solid #a9c1d9;
+      }
+      .legend .different::before {
+        background: #ffe4bb;
+        border-color: #d9a85c;
+      }
+      .legend .deleted::before {
+        background: repeating-linear-gradient(
+          135deg,
+          #ddd,
+          #ddd 2px,
+          #fff 2px,
+          #fff 4px
+        );
+      }
+      .table-wrap {
+        overflow: auto;
+        border: 1px solid #d4dce7;
+        border-radius: 6px;
+        background: white;
+        max-height: 225px;
+      }
+      .summaries {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 12px;
+      }
+      .summaries th,
+      .summaries td {
+        padding: 6px 12px;
+        text-align: left;
+        border-bottom: 1px solid #e4e9ef;
+      }
+      .summaries th {
+        color: #66748a;
+        background: #f9fafc;
+        position: sticky;
+        top: 0;
+      }
+      .summaries tr.different {
+        background: #fff5e5;
+      }
+      .foot {
+        margin-top: 12px;
+        align-items: flex-start;
+      }
+      #activity {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        color: #66748a;
+        font-size: 12px;
+        max-height: 100px;
+        overflow: auto;
+      }
+      .foot p {
+        font-size: 12px;
+        color: #66748a;
+        max-width: 390px;
+        margin: 0;
+      }
+      .stamp {
+        color: #66748a;
+        font-size: 10px;
+      }
+      #error {
+        color: #a32525;
+      }
+      @media (max-width: 750px) {
+        main {
+          padding: 14px;
+        }
+        nav {
+          gap: 10px;
+          font-size: 12px;
+        }
+        #replicas {
+          grid-template-columns: 1fr;
+        }
+        .content {
+          padding: 10px 12px;
+        }
+        .preview {
+          margin-top: 8px;
+        }
+        .bins {
+          grid-template-columns: repeat(16, 1fr);
+        }
+        .bin {
+          aspect-ratio: 1;
+        }
+        .toolbar {
+          gap: 8px;
+        }
+        #value {
+          width: 120px;
+        }
+        .foot {
+          display: block;
+        }
+        .foot p {
+          margin-top: 12px;
+        }
+        .heading {
+          flex-wrap: wrap;
+        }
+        #agreement {
+          font-size: 12px;
+        }
+        .summaries th,
+        .summaries td {
+          padding: 6px;
+        }
+        .summaries code {
+          font-size: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="brand">reconcile-rs</div>
+        <nav>
+          <a href="architecture.html">Architecture ↗</a
+          ><button id="heal">Connect all</button
+          ><button id="reset">Reset</button>
+        </nav>
+      </header>
+      <div class="heading">
+        <h1>Replicas</h1>
+        <span id="agreement" role="status">Starting Rust…</span>
+      </div>
+      <form id="operations" class="toolbar">
+        <label
+          >Replica<select id="peer">
+            <option value="0">A</option>
+            <option value="1">B</option>
+            <option value="2">C</option>
+          </select></label
+        >
+        <label
+          >From (inclusive)<input
+            id="start"
+            type="number"
+            min="0"
+            max="1023"
+            value="0"
+            required
+        /></label>
+        <label
+          >To (exclusive)<input
+            id="end"
+            type="number"
+            min="1"
+            max="1024"
+            value="16"
+            required
+        /></label>
+        <label>Value<input id="value" value="alpha" maxlength="256" /></label>
+        <button id="write" class="primary" type="submit">Write range</button
+        ><button id="delete" type="button">Delete range</button
+        ><button id="load" type="button">Load 128 keys</button>
+        <label class="check"
+          ><input id="stream" type="checkbox" />Live writes</label
+        >
+      </form>
+      <p id="feedback" role="status" aria-live="polite">Starting…</p>
+      <p class="shortcuts">
+        A / B / C select replica · W write · D delete · Space connect /
+        disconnect
+      </p>
+      <section id="replicas" aria-label="Replica states"></section>
+      <div id="links" aria-label="Transport links"></div>
+      <div class="legend">
+        <span>Stored</span><span class="different">Divergent range</span
+        ><span class="deleted">Tombstones only</span>
+      </div>
+      <div class="heading">
+        <h2>RSOS range summaries</h2>
+        <small>32 keys per range · count + dated fingerprint</small>
+      </div>
+      <div class="table-wrap">
+        <table class="summaries">
+          <thead>
+            <tr>
+              <th>Range</th>
+              <th>A</th>
+              <th>B</th>
+              <th>C</th>
+            </tr>
+          </thead>
+          <tbody id="ranges"></tbody>
+        </table>
+      </div>
+      <div class="foot">
+        <ul id="activity" aria-label="Recent actions"></ul>
+        <p>
+          Keys 0–1023. Blue = stored entries; amber = different dated content;
+          stripes = tombstones only. Network cuts leave each runtime running.
+          In-memory transport.
+        </p>
+      </div>
+      <p id="error" role="alert"></p>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

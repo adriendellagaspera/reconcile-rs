@@ -6,7 +6,9 @@ timeout_multiplier = 3.0
 minimum_test_timeout = 60
 copy_target = true
 
-exclude_globs = ["benches/**", "examples/**"]
+# Browser-only adapters are compiled out of native mutation runs; the Chromium probe
+# exercises tasks, timers, cancellation, UDP/DNS errors and real replica convergence.
+exclude_globs = ["benches/**", "examples/**", "gossip/src/runtime.rs", "gossip/src/transport/browser.rs"]
 
 # Test-only seams, unavailable feature branches, equivalent mutants, and mutants that cannot
 # terminate or be hit deterministically.

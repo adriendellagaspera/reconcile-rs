@@ -21,7 +21,7 @@ use reconcile::{
     clock::NodeId, replicated_map::Config, transport::UdpTransport, Fingerprint, ReplicatedMap,
 };
 
-use crate::support::{assert_until, bind_udp_pair};
+use crate::support::{assert_until, assert_until_slow, bind_udp_pair};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test() {
@@ -65,7 +65,8 @@ async fn test() {
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
 
-    assert_until!(store2.fingerprint(..) == start_fingerprint);
+    // Bulk UDP delivery can need anti-entropy after dropped datagrams; one sweep is 1 s.
+    assert_until_slow!(store2.fingerprint(..) == start_fingerprint);
 
     assert_eq!(store1.fingerprint(..), start_fingerprint);
 

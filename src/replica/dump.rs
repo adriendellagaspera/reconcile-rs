@@ -7,7 +7,7 @@
 
 use std::hash::Hash;
 use std::net::SocketAddr;
-use std::time::Instant;
+use web_time::Instant;
 
 use rbsr::EnumerationRange;
 use tracing::trace;

@@ -9,6 +9,9 @@
 //! The [`Transport`] decorator itself and its per-node delivery pump. Parameters
 //! (`Link`/`Netem`/`Seed`) live in the parent module.
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use crate::runtime as tokio;
+
 use std::cmp::Ordering;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};

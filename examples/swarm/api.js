@@ -1,0 +1,28 @@
+import { apiBase, simulationMode } from './config.js';
+
+export function endpoint(path, base = apiBase, page = globalThis.location.href) {
+  const origin = new URL(page);
+  const target = base ? new URL(base) : new URL('.', origin);
+  if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash) {
+    throw Error('The lab API must be an HTTP(S) URL without credentials or query parameters.');
+  }
+  if (origin.protocol === 'https:' && target.protocol !== 'https:') {
+    throw Error('The lab API must use HTTPS.');
+  }
+  if (!base && origin.hostname.endsWith('.github.io')) {
+    throw Error('Lab server not configured. Use a WASM build or configure apiBase.');
+  }
+  target.pathname = target.pathname.replace(/\/$/, '') + '/' + path;
+  return target.href;
+}
+
+let localWorker;
+export async function request(path, method = 'GET') {
+  if (simulationMode === 'wasm') {
+    localWorker ??= import('./worker-client.js').then(({ WorkerClient }) => new WorkerClient());
+    return (await localWorker).request(path, method);
+  }
+  const response = await fetch(endpoint(path), { method });
+  if (!response.ok) throw Error(await response.text());
+  return response.json();
+}
