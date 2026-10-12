@@ -18,6 +18,7 @@ mkdir -p target/swarm-pages/pkg
 cp examples/swarm/{index.html,architecture.html,app.js,session.js,api.js,worker-client.js,worker.js} target/swarm-pages/
 printf "export const apiBase = '';\nexport const simulationMode = 'wasm';\n" > target/swarm-pages/config.js
 wasm-bindgen --target web --no-typescript --out-dir target/swarm-pages/pkg target/wasm32-unknown-unknown/release/reconcile_swarm_web.wasm
+# Version browser imports together so workers cannot combine different builds.
 python3 - <<'PYVERSION'
 import pathlib, re, subprocess
 root = pathlib.Path('target/swarm-pages')
