@@ -17,8 +17,8 @@ Construction requires an explicit mode:
   surrounding network already provides the required trust boundary.
 
 A shared cluster key proves membership, not peer identity. Any holder can impersonate another
-holder. The protocol provides no forward secrecy.
-`PeerId` is not an authentication credential: live ingress, replay, and membership remain IP-keyed.
+holder. The protocol provides no forward secrecy. `PeerId` is only a label. Ed25519 proof verification in `peer::identity` is available, but
+the deployed ingress, replay and membership remain keyed by IP.
 
 With the `encryption` feature, `with_encryption()` uses XChaCha20-Poly1305 for payload
 confidentiality. Encryption does not change the shared-secret trust model.
