@@ -257,6 +257,13 @@ pub fn reconcile_gossip::gen_ip::host_net(core::net::ip_addr::IpAddr) -> ipnet::
 pub fn reconcile_gossip::gen_ip::net_of(&[ipnet::ipnet::IpNet], core::net::ip_addr::IpAddr) -> core::option::Option<ipnet::ipnet::IpNet>
 pub fn reconcile_gossip::gen_ip::probe_targets<R: rand::rng::Rng>(&mut R, &[ipnet::ipnet::IpNet]) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub mod reconcile_gossip::peer
+pub mod reconcile_gossip::peer::envelope
+pub enum reconcile_gossip::peer::envelope::EnvelopeError
+pub reconcile_gossip::peer::envelope::EnvelopeError::InnerAuthentication
+pub reconcile_gossip::peer::envelope::EnvelopeError::InnerVersion(u8)
+pub reconcile_gossip::peer::envelope::EnvelopeError::InvalidLength
+pub reconcile_gossip::peer::envelope::EnvelopeError::InvalidMagic
+pub reconcile_gossip::peer::envelope::EnvelopeError::InvalidProof
 pub mod reconcile_gossip::peer::identity
 pub struct reconcile_gossip::peer::identity::PeerAllowlist
 impl reconcile_gossip::peer::identity::PeerAllowlist

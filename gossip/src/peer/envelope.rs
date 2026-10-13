@@ -209,10 +209,7 @@ mod tests {
         assert_eq!(&frame[..4], &IDENTITY_MAGIC);
         assert_eq!(frame[VERSION], IDENTITY_ENVELOPE_VERSION);
         assert_eq!(&frame[ID..SIGNATURE], &signer.peer_id().to_bytes());
-        assert_eq!(
-            &frame[LENGTH..PAYLOAD],
-            &(inner.len() as u32).to_le_bytes()
-        );
+        assert_eq!(&frame[LENGTH..PAYLOAD], &(inner.len() as u32).to_le_bytes());
         assert_eq!(&frame[PAYLOAD..], inner.as_slice());
 
         let allowed = PeerAllowlist::new([signer.peer_id()]);
@@ -222,7 +219,10 @@ mod tests {
         assert_eq!(checked.peer().peer_id(), signer.peer_id());
         let sender: IpAddr = "127.0.0.1".parse().unwrap();
         let replay = ReplayFilter::new(FRESHNESS_WINDOW_DEFAULT, true);
-        let decoded = checked.into_payload().verify_replay(&replay, sender).unwrap();
+        let decoded = checked
+            .into_payload()
+            .verify_replay(&replay, sender)
+            .unwrap();
         assert_eq!(decoded.as_bytes(), b"data");
         assert_eq!(replay.len(), 1);
     }
@@ -255,7 +255,11 @@ mod tests {
         let mut forged = seal(&alice(), b"inner", MTU).unwrap();
         forged[ID..SIGNATURE].copy_from_slice(&bob().peer_id().to_bytes());
         assert!(matches!(
-            open(&PeerAllowlist::new([alice().peer_id(), bob().peer_id()]), &forged, MTU),
+            open(
+                &PeerAllowlist::new([alice().peer_id(), bob().peer_id()]),
+                &forged,
+                MTU
+            ),
             Err(EnvelopeError::InvalidProof)
         ));
     }
@@ -321,7 +325,11 @@ mod tests {
         let signer = alice();
         let allowed = PeerAllowlist::new([signer.peer_id()]);
         let wrong_key = Authenticator::new(Some(ClusterKey::new([0x44; 32])), false).unwrap();
-        let inner = wrong_key.seal(crate::replay::Seq::new(1), crate::replay::Stamp::new(1), b"x");
+        let inner = wrong_key.seal(
+            crate::replay::Seq::new(1),
+            crate::replay::Stamp::new(1),
+            b"x",
+        );
         let signed = seal(&signer, &inner, MTU).unwrap();
         assert!(matches!(
             open(&allowed, &signed, MTU).unwrap().authenticate(&keyed()),
@@ -332,7 +340,9 @@ mod tests {
         let inner = [WIRE_VERSION.wrapping_add(1), 1, 2];
         let signed = seal(&signer, &inner, MTU).unwrap();
         assert!(matches!(
-            open(&allowed, &signed, MTU).unwrap().authenticate(&disabled),
+            open(&allowed, &signed, MTU)
+                .unwrap()
+                .authenticate(&disabled),
             Err(EnvelopeError::InnerVersion(_))
         ));
     }
