@@ -11,8 +11,10 @@
 //! A `PeerId` value **does not authenticate its holder**. A sender-supplied claim must not be
 //! admitted to replay, membership, or causal-GC state without independently verified binding.
 //! Deployed UDP traffic and durable state still use IP addresses. The optional identity proof
-//! verifier authenticates datagram ownership, but is not yet wired into the runtime.
+//! verifier and optional signed envelope authenticate datagram ownership, but are not yet
+//! wired into the runtime.
 
+pub mod envelope;
 pub mod identity;
 
 /// A 256-bit, substrate-independent logical peer identifier.

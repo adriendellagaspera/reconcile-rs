@@ -12,7 +12,7 @@
 //! checks both an explicit allowlist and a signature over the *complete* datagram.
 //! A public key alone, or the cluster-wide MAC key, does not establish this proof.
 //!
-//! This is an independent primitive, **not yet a wire format or an ingress integration**.
+//! This primitive backs the optional `super::envelope` frame, **not live replica ingress**.
 //! After verification, the caller must still enforce the existing datagram freshness,
 //! per-sender replay window, protocol version, resource admission, and membership policy.
 //! The same signed datagram can be replayed unless those checks are performed. In particular,
@@ -68,7 +68,7 @@ impl PeerSigner {
     }
 }
 
-/// An **untrusted** identity claim and detached signature, suitable for a future wire envelope.
+/// An **untrusted** identity claim and detached signature, used by the optional signed envelope.
 ///
 /// Constructing this value does not prove possession of the key. The claim must be checked
 /// against an explicit `PeerAllowlist` over the original complete datagram bytes.
