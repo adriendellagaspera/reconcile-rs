@@ -359,6 +359,26 @@ mod tests {
     }
 
     #[test]
+    fn empty_inner_datagram_is_valid_at_exact_outer_header_size() {
+        let signer = alice();
+        let frame = seal(&signer, b"", IDENTITY_ENVELOPE_OVERHEAD).unwrap();
+        assert_eq!(frame.len(), IDENTITY_ENVELOPE_OVERHEAD);
+        assert_eq!(&frame[LENGTH..PAYLOAD], &0u32.to_le_bytes());
+
+        let allowed = PeerAllowlist::new([signer.peer_id()]);
+        let opened = open(&allowed, &frame, IDENTITY_ENVELOPE_OVERHEAD).unwrap();
+        assert_eq!(opened.peer().peer_id(), signer.peer_id());
+
+        // The outer frame is valid, but an empty inner datagram cannot pass its independent
+        // protocol-version gate. Do not conflate outer framing with inner admission.
+        let disabled = Authenticator::new(None, false).unwrap();
+        assert!(matches!(
+            opened.authenticate(&disabled),
+            Err(EnvelopeError::InnerVersion(0))
+        ));
+    }
+
+    #[test]
     fn truncated_headers_never_panic() {
         let signer = alice();
         let signed = seal(&signer, b"data", MTU).unwrap();
