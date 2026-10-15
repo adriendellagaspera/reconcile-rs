@@ -257,6 +257,58 @@ pub fn reconcile_gossip::gen_ip::host_net(core::net::ip_addr::IpAddr) -> ipnet::
 pub fn reconcile_gossip::gen_ip::net_of(&[ipnet::ipnet::IpNet], core::net::ip_addr::IpAddr) -> core::option::Option<ipnet::ipnet::IpNet>
 pub fn reconcile_gossip::gen_ip::probe_targets<R: rand::rng::Rng>(&mut R, &[ipnet::ipnet::IpNet]) -> alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub mod reconcile_gossip::peer
+pub mod reconcile_gossip::peer::envelope
+pub enum reconcile_gossip::peer::envelope::EnvelopeError
+pub reconcile_gossip::peer::envelope::EnvelopeError::InnerAuthentication
+pub reconcile_gossip::peer::envelope::EnvelopeError::InnerVersion(u8)
+pub reconcile_gossip::peer::envelope::EnvelopeError::InvalidLength
+pub reconcile_gossip::peer::envelope::EnvelopeError::InvalidMagic
+pub reconcile_gossip::peer::envelope::EnvelopeError::InvalidProof
+pub reconcile_gossip::peer::envelope::EnvelopeError::TooLarge
+pub reconcile_gossip::peer::envelope::EnvelopeError::UnsupportedVersion(u8)
+impl core::clone::Clone for reconcile_gossip::peer::envelope::EnvelopeError
+pub fn reconcile_gossip::peer::envelope::EnvelopeError::clone(&self) -> reconcile_gossip::peer::envelope::EnvelopeError
+impl core::cmp::Eq for reconcile_gossip::peer::envelope::EnvelopeError
+impl core::cmp::PartialEq for reconcile_gossip::peer::envelope::EnvelopeError
+pub fn reconcile_gossip::peer::envelope::EnvelopeError::eq(&self, &reconcile_gossip::peer::envelope::EnvelopeError) -> bool
+impl core::fmt::Debug for reconcile_gossip::peer::envelope::EnvelopeError
+pub fn reconcile_gossip::peer::envelope::EnvelopeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile_gossip::peer::envelope::EnvelopeError
+impl core::marker::StructuralPartialEq for reconcile_gossip::peer::envelope::EnvelopeError
+impl core::marker::Freeze for reconcile_gossip::peer::envelope::EnvelopeError
+impl core::marker::Send for reconcile_gossip::peer::envelope::EnvelopeError
+impl core::marker::Sync for reconcile_gossip::peer::envelope::EnvelopeError
+impl core::marker::Unpin for reconcile_gossip::peer::envelope::EnvelopeError
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::envelope::EnvelopeError
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::envelope::EnvelopeError
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::envelope::EnvelopeError
+pub struct reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+impl<'a> reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+pub fn reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>::into_payload(self) -> reconcile_gossip::auth::Payload<'a, reconcile_gossip::auth::Authenticated>
+pub fn reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>::peer(&self) -> reconcile_gossip::peer::identity::VerifiedPeerId
+impl<'a> core::marker::Freeze for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+impl<'a> core::marker::Send for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+impl<'a> core::marker::Sync for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+impl<'a> core::marker::Unpin for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+impl<'a> core::marker::UnsafeUnpin for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+pub struct reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
+impl<'a> reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
+pub fn reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>::authenticate(self, &reconcile_gossip::auth::Authenticator) -> core::result::Result<reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>, reconcile_gossip::peer::envelope::EnvelopeError>
+pub fn reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>::peer(&self) -> reconcile_gossip::peer::identity::VerifiedPeerId
+impl<'a> core::marker::Freeze for reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
+impl<'a> core::marker::Send for reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
+impl<'a> core::marker::Sync for reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
+impl<'a> core::marker::Unpin for reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
+impl<'a> core::marker::UnsafeUnpin for reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
+pub const reconcile_gossip::peer::envelope::IDENTITY_ENVELOPE_OVERHEAD: usize
+pub const reconcile_gossip::peer::envelope::IDENTITY_ENVELOPE_VERSION: u8
+pub const reconcile_gossip::peer::envelope::IDENTITY_MAGIC: [u8; 4]
+pub fn reconcile_gossip::peer::envelope::open<'a>(&reconcile_gossip::peer::identity::PeerAllowlist, &'a [u8], usize) -> core::result::Result<reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>, reconcile_gossip::peer::envelope::EnvelopeError>
+pub fn reconcile_gossip::peer::envelope::seal(&reconcile_gossip::peer::identity::PeerSigner, &[u8], usize) -> core::result::Result<alloc::vec::Vec<u8>, reconcile_gossip::peer::envelope::EnvelopeError>
 pub mod reconcile_gossip::peer::identity
 pub struct reconcile_gossip::peer::identity::PeerAllowlist
 impl reconcile_gossip::peer::identity::PeerAllowlist
