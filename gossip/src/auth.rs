@@ -5,35 +5,15 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Per-datagram authentication/framing. The `reconcile` facade requires either a cluster key or an explicit insecure opt-in.
-//! # Wire layout
-//! Disabled: `version (1 B) || protocol_messages`
-//! MAC mode: `tag (32 B) || seq (8 B LE) || stamp (8 B LE) || version (1 B) || protocol_messages`
-//! Encryption mode: `nonce (24 B) || encrypt(seq (8 B LE) || stamp (8 B LE) || version (1 B) || protocol_messages) || tag (16 B)`
-//! The version byte sits **after** the replay header, not before it: `decode_replay_header`
-//! parses a fixed 16-byte prefix, so putting anything ahead of it would need every existing
-//! authenticated-mode offset recomputed. It always ends up as the first byte `Payload::bytes`
-//! exposes, which is what lets [`Payload::check_version`] treat all three modes uniformly.
-//! The replay header sits inside the authenticated/encrypted region in both cases; the wire
-//! version byte sits inside it too, and — unlike the replay header, which is absent when
-//! disabled — is present on **every** datagram regardless of authentication mode: a
-//! mixed-version cluster must be diagnosable whether or not a cluster key is configured.
-//! The layering carries the security invariants in the types: [`Authenticator`] is the sole
-//! producer of a [`Payload`], and message handling consumes `Payload<`[`Verified`]`>`, obtainable
-//! only from [`Payload::verify_replay`] — so authenticate-before-decode
-//!  and check-replay-before-handle are both compile-time.
-//! [`Payload::check_version`] is the mandatory step between the two: version-checking runs on
-//! authenticated bytes (so a forged version claim is rejected the same way a forged payload is),
-//! but ahead of replay bookkeeping (so a differently-versioned peer never consumes a replay-filter
-//! slot over a datagram this build cannot even interpret).
-//! Split across siblings by concern: `mac` owns the crate-private `Mac` backend trait, its two
-//! `mac-*`-feature-gated implementations, and the `Tag` they produce; `key` owns
-//! [`ClusterKey`]/[`ClusterKeyError`]/[`Keys`] construction and [`Authenticator`]'s own
-//! construction and size accounting; `seal` and `open` each own one direction of the wire
-//! (encrypt+authenticate on send, verify+decrypt on receive); `encryption` (feature `encryption`)
-//! owns the XChaCha20-Poly1305 AEAD primitive both directions call into. This file keeps the
-//! public type definitions (their module location is their `cargo public-api`-visible path — see
-//! ) plus the module doc above every sibling shares.
+//! Datagram authentication and strict wire framing.
+//!
+//! Wire layouts:
+//! - Unauthenticated: `version(1) || protocol_messages`.
+//! - MAC: `tag(32) || seq(8 LE) || stamp(8 LE) || version(1) || protocol_messages`.
+//! - Encryption: `nonce(24) || AEAD(seq(8 LE) || stamp(8 LE) || version(1) || protocol_messages) || tag(16)`.
+//!
+//! Version validation follows authentication and precedes replay-state allocation.
+//! Message handling requires `Payload<Verified>`; authentication alone cannot admit traffic.
 
 use std::borrow::Cow;
 use std::marker::PhantomData;
