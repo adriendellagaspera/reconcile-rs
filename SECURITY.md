@@ -1,55 +1,26 @@
 # Security
 
-Only the latest published release line receives security fixes.
+Only the latest published release line receives security fixes. Report vulnerabilities privately through GitHub **Security → Report a vulnerability**.
 
-Report vulnerabilities privately through GitHub **Security → Report a vulnerability**.
+## Trust and confidentiality
 
-## Trust model
+Each authoritative replica eventually receives **the entire dataset**. Membership and network reachability are security boundaries.
 
-Every authoritative replica can eventually receive the complete dataset. Network membership is
-therefore a trust boundary.
+- `Config::with_cluster_key(key)` enables shared-key authentication, replay protection and a separately keyed range-fingerprint lift. Anyone holding the cluster key can impersonate another holder; there is **no individual peer authentication or forward secrecy** from the PSK.
+- `Config::with_insecure_no_key()` disables authentication. Any reachable host can forge or replay updates and tombstones; timestamp bounding is not authentication. Use only on a trusted underlay.
+- `with_encryption()`, with the `encryption` feature, provides XChaCha20-Poly1305 payload confidentiality, not peer identity or forward secrecy. Without it, protect confidentiality through the underlay.
+- The 256-bit additive range fingerprint uses a keyed lift with a cluster key; this prevents outsider precomputation, **not attacks by an insider** who possesses that key.
+- `PeerId` in the deployed runtime remains an IP-associated label, not authenticated identity. The separate Ed25519 `peer::identity` and signed-envelope primitives require an allowlist but **are not connected to live replica ingress, replay or membership**. Successful envelope signature verification alone does not grant causal membership and does not prevent replay.
 
-Construction requires an explicit mode:
+## Replay and resource admission
 
-- `Config::with_cluster_key(key)` authenticates datagrams, enables replay protection, and derives
-  a separate keyed range-fingerprint lift.
-- `Config::with_insecure_no_key()` disables authentication and is appropriate only when the
-  surrounding network already provides the required trust boundary.
+Authenticated datagrams carry protected sequence/time metadata. Duplicates, stale sequences and out-of-window timestamps are rejected. Replay state outlives transient peer membership and is capped by `Config::max_replay_senders`. At capacity, known senders retain their replay windows; new senders are dropped until stale state expires. Fresh tracked replay history must never be evicted to admit an unknown sender.
 
-A shared cluster key proves membership, not peer identity. Any holder can impersonate another
-holder. The protocol provides no forward secrecy. `PeerId` is only a label. Ed25519 proof verification in `peer::identity` is available, but
-the deployed ingress, replay and membership remain keyed by IP.
+Fragment and selective-recovery state is allocated only **after** authentication, strict version check, topology admission and replay validation. `Config::framing` bounds logical-message size, fragments, per-peer/global retained messages and bytes, expiry, outgoing recovery, missing-range reports and recovery rounds. Transfer content hashes support resumability but are **not** authenticity proofs: assembled contents are checked against the identifier before deserialization, with authority deriving from authenticated datagrams. Invalid recovery controls cannot trigger retransmission; failed recovery falls back to anti-entropy.
 
-With the `encryption` feature, `with_encryption()` uses XChaCha20-Poly1305 for payload
-confidentiality. Encryption does not change the shared-secret trust model.
+## Key management and rotation
 
-## Unauthenticated mode
-
-A host that can reach an unauthenticated protocol port can forge or replay updates and tombstones.
-Remote timestamp bounding limits clock influence but does not authenticate data.
-
-Use unauthenticated mode only on a trusted underlay.
-
-## Replay protection
-
-Authenticated datagrams carry protected sender sequence and time metadata. Receivers reject
-duplicates, stale sequences, and timestamps outside the freshness window. Replay state is retained
-independently of transient peer membership and is bounded by `Config::max_replay_senders`. At that
-bound, already-tracked senders keep their replay history and continue through normal checks; a new
-authenticated sender is dropped until stale replay state ages past the freshness window and is
-purged. Fresh replay state is never evicted to make room.
-
-## Fingerprints
-
-Range reconciliation uses a 256-bit additive fingerprint. A cluster key derives an independent
-keyed lift, preventing an outsider from precomputing a cancelling fingerprint for that cluster.
-
-A holder of the cluster key also knows the lift key. The fingerprint mechanism does not protect
-against a malicious insider holding the shared secret.
-
-## Key rotation
-
-Provision keys outside source control. Rotate cluster-wide in three phases:
+Provision keys securely outside source control. Rotate a shared cluster key in fleet-wide phases:
 
 | phase | configuration | sends with | accepts |
 |---|---|---|---|
@@ -57,64 +28,14 @@ Provision keys outside source control. Rotate cluster-wide in three phases:
 | switch | `with_cluster_key_rotation(new, old)` | new | new + old |
 | retire | `with_cluster_key(new)` | new | new |
 
-Complete each phase across the fleet before starting the next. Nodes using different primary keys
-can authenticate during rotation but derive different range fingerprints, causing redundant
-anti-entropy until primaries match.
-
-The `zeroize` feature wipes cluster-key bytes owned by the library on drop. It cannot wipe copies
-owned by the caller or secret source.
-
-## Fragment reassembly
-
-Fragment state is allocated only after the datagram has passed authentication, wire-version,
-topology-peer admission, and replay checks. A forged or replay-rejected datagram therefore cannot
-consume reassembly memory.
-
-`Config::framing` bounds incomplete state independently of the protocol data structure:
-maximum logical-message size, fragments per message, incomplete transfers per peer, retained bytes
-per peer, total retained bytes, and inactivity TTL. When a capacity must be reclaimed, the oldest
-eligible incomplete transfer is evicted deterministically; the transfer currently being extended is
-never partially evicted to admit its own next fragment. Exact duplicate fragments consume no
-additional retained bytes.
-
-The transfer identifier is a content hash used for resumability, not an authentication primitive.
-Integrity/authority still comes from the authenticated datagram boundary; after completion, the
-reassembled bytes are checked against that content identifier before protocol deserialization.
-
-Selective recovery adds independently bounded sender state only after an authenticated peer has
-advertised support. `Config::framing` bounds retained outbound transfers/bytes per peer and globally,
-missing ranges per report, recovery rounds per transfer, recovery-state TTL, and capability TTL.
-Missing reports and completion acknowledgements pass authentication, version, topology admission and
-replay checks before they are parsed; malformed/out-of-range reports cause no retransmission. A lost,
-stale, rejected, or exhausted control exchange merely falls back to ordinary anti-entropy.
-An idle transfer cannot extend its own retention through recovery requests: the default receiver TTL is 90 seconds and the sender's recoverable-payload TTL is 120 seconds, covering a 30-second contact loss. Periodic NACKs are globally capped at 32 per tick and limited to one per transfer every 3 seconds (after 1 second idle); reports are bounded by the authenticated datagram budget. State expiration and capacity eviction remain authoritative even if retransmission control repeatedly fails.
-For capability-advertising peers with a retained outbound transfer, identical full-message retries are suppressed for 12 seconds after the last full send; the next regular anti-entropy attempt beyond that interval may retry the whole message. This is a retry floor, not a guaranteed 12-second resynchronization deadline.
+Finish each phase across the fleet before proceeding. During a mixed-primary phase, the derived keyed fingerprints differ and may induce redundant reconciliation. The `zeroize` feature clears library-owned key bytes on drop, not caller-owned copies. Provision stable Ed25519 seeds securely for any future signed deployment; it is not currently a runtime mode.
 
 ## Wire compatibility
 
-Wire versions are strict and are not negotiated. Nodes with different wire versions reject each
-other. Incompatible framing changes require a wire-version bump and coordinated cluster upgrade.
-Selective recovery is additive instead: support is advertised inside the pre-existing reserved,
-length-prefixed protocol tag that older same-version peers already ignore, and its new outer control
-tags are emitted only after that advertisement. An older peer therefore continues using the existing
-complete/fragment frames and whole-message retry behavior.
+Wire versions are strict and **not negotiated**: incompatible versions cannot communicate without coordinated upgrades. Selective recovery is an additive capability advertised through the existing reserved protocol tag; it is never sent to peers that have not advertised support. The opt-in signed `RCPE` envelope is a separate format not recognized by existing runtime receivers. It must not be represented as active or automatically downgraded to unsigned traffic.
 
 ## Operations
 
-- Restrict the gossip UDP port to intended participants.
-- Use a cluster key unless the underlay is the authentication boundary.
-- Enable `encryption` when payload confidentiality is not supplied elsewhere.
-- Set causal-peer, authenticated replay-sender, logical-message, reassembly, and outbound-recovery bounds appropriate to the deployment.
-- Coordinate key rotation and wire-version changes across the cluster.
-- The optional Prometheus HTTP endpoint is unauthenticated; restrict its bind address or network
-  reachability.
+Restrict gossip UDP to intended nodes. Use a cluster key unless the network supplies the authentication boundary; enable payload encryption when the network does not supply confidentiality. Size peer, replay-sender, reassembly and recovery bounds for the deployment. Coordinate wire upgrades and key rotation across all nodes. The optional Prometheus HTTP endpoint has no authentication: restrict binding/network access.
 
-## Security scope
-
-Security bugs include authentication or encryption bypasses, replay failures, unauthorized data
-mutation or disclosure outside explicitly insecure mode, and panics reachable from untrusted
-network input.
-
-The documented shared-key authority, lack of per-peer identity/forward secrecy, UDP source-address
-spoofability, and explicitly unauthenticated operation are trust-model limitations rather than
-additional security guarantees.
+Authentication/encryption bypass, replay failures, unauthorized state mutation/disclosure outside explicitly insecure mode, and remotely reachable panics are security issues. Shared-key impersonation, UDP source spoofability, absent per-peer trust in the deployed runtime and explicitly insecure mode are documented limitations, **not** protections.
