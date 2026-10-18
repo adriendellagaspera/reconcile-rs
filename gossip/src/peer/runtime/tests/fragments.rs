@@ -40,9 +40,6 @@ fn signed_fragments_survive_route_changes_and_preserve_identity_bound_recovery()
     let mut assembly = Reassembler::<VerifiedPeerId>::for_identity(limits());
     let (first, second, id) = frames();
 
-    let old_route = (4_u16, 2_u8);
-    let new_route = (7_u16, 9_u8);
-    assert_ne!(old_route, new_route);
     let now = Instant::now();
     let initial = sender.seal(&first).unwrap();
     let (principal, report) = receiver
@@ -185,4 +182,47 @@ fn per_principal_fragment_limits_are_not_bypassed_by_a_route_move() {
         Err(FrameError::ReassemblyCapacity)
     ));
     assert_eq!(assembly.retained_bytes(), 4);
+}
+
+#[tokio::test]
+async fn signed_transfer_completes_when_non_ip_substrate_address_changes() {
+    use crate::substrate::DatagramFabric;
+
+    // These are optical fabric slots (terminal, wavelength), not encoded socket addresses.
+    let old_slot = (4_u16, 2_u8);
+    let new_slot = (4_u16, 9_u8);
+    let receive_slot = (8_u16, 5_u8);
+    let medium = DatagramFabric::new(MTU);
+    let old_port = medium.bind(old_slot);
+    let receive_port = medium.bind(receive_slot);
+
+    let sender = boundary(signer_a(), [], 2);
+    let receiver = boundary(signer_b(), [sender.local_peer()], 2);
+    let mut assembly = Reassembler::<VerifiedPeerId>::for_identity(limits());
+    let (first, second, _) = frames();
+    let mut buffer = vec![0u8; MTU];
+    let now = Instant::now();
+
+    old_port.send_to(&sender.seal(&first).unwrap(), &receive_slot).unwrap();
+    let (n, origin) = receive_port.recv_from(&mut buffer).await.unwrap();
+    assert_eq!(origin, old_slot);
+    let (_, first_report) = receiver
+        .open_frame(&buffer[..n], |_| (false, 0), &mut assembly, now)
+        .unwrap();
+    assert!(matches!(first_report.outcome, Ok(ReceiveOutcome::Pending)));
+
+    let new_port = medium.bind(new_slot);
+    new_port.send_to(&sender.seal(&second).unwrap(), &receive_slot).unwrap();
+    let (n, origin) = receive_port.recv_from(&mut buffer).await.unwrap();
+    assert_eq!(origin, new_slot);
+    let (principal, final_report) = receiver
+        .open_frame(&buffer[..n], |_| (true, 1), &mut assembly, now)
+        .unwrap();
+    assert_eq!(principal.peer_id(), sender.local_peer());
+    match final_report.outcome {
+        Ok(ReceiveOutcome::Complete(plain)) => assert_eq!(plain.as_bytes(), b"abcdefghij"),
+        other => panic!("a new optical route must preserve reassembly: {other:?}"),
+    }
+    assert_eq!(assembly.retained_bytes(), 0);
+    assert_eq!(receiver.replay_senders(), 1);
 }
