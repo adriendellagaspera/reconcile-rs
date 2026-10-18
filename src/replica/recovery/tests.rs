@@ -306,3 +306,83 @@ fn exact_global_recovery_byte_ceiling_accepts_transfer() {
     assert_eq!((report.transfers, report.bytes), (1, 12));
     assert_eq!(book.occupancy(), (1, 12));
 }
+
+#[test]
+fn verified_signers_isolate_recovery_even_with_identical_transfer_id_and_route_migration() {
+    use gossip::auth::{Authenticator, ClusterKey};
+    use gossip::peer::identity::{PeerAllowlist, PeerSigner, VerifiedPeerId};
+    use gossip::peer::runtime::SignedDatagramBoundary;
+    use gossip::replay::FRESHNESS_WINDOW_DEFAULT;
+
+    let alice = PeerSigner::from_seed([0x51; 32]);
+    let bob = PeerSigner::from_seed([0x52; 32]);
+    let verifier = SignedDatagramBoundary::new(
+        Authenticator::new(Some(ClusterKey::new([0x53; 32])), false).unwrap(),
+        PeerSigner::from_seed([0x54; 32]),
+        PeerAllowlist::new([alice.peer_id(), bob.peer_id()]),
+        FRESHNESS_WINDOW_DEFAULT,
+        2,
+        2,
+        1200,
+    )
+    .unwrap();
+    let send = |signer: PeerSigner| {
+        SignedDatagramBoundary::new(
+            Authenticator::new(Some(ClusterKey::new([0x53; 32])), false).unwrap(),
+            signer,
+            PeerAllowlist::new([]),
+            FRESHNESS_WINDOW_DEFAULT,
+            2,
+            2,
+            1200,
+        )
+        .unwrap()
+    };
+    let alice = send(alice);
+    let bob = send(bob);
+    let a_packet = alice.seal(b"entry").unwrap();
+    let b_packet = bob.seal(b"entry").unwrap();
+    let a: VerifiedPeerId = verifier.open(&a_packet, |_| (false, 0)).unwrap().peer();
+    let b: VerifiedPeerId = verifier.open(&b_packet, |_| (false, 1)).unwrap().peer();
+    assert_ne!(a, b);
+
+    let now = Instant::now();
+    let policy = cfg().with_recovery_ttl(Duration::from_secs(30));
+    let mut book = RecoveryBook::<VerifiedPeerId>::for_identity();
+    book.record_capability(a, now, policy, 2);
+    book.record_capability(b, now, policy, 2);
+    assert!(book.supports(a, now, policy));
+    assert!(book.supports(b, now, policy));
+
+    let transfer = [0x56; 32];
+    assert!(book.retain(a, transfer, b"aaaa", now, policy).retained);
+    assert!(book.retain(b, transfer, b"bbbb", now, policy).retained);
+    assert_eq!(book.occupancy(), (2, 8));
+    assert_eq!(
+        book.payload_for_report(a, transfer, now, policy)
+            .unwrap()
+            .payload
+            .as_ref(),
+        b"aaaa"
+    );
+    assert_eq!(
+        book.payload_for_report(b, transfer, now, policy)
+            .unwrap()
+            .payload
+            .as_ref(),
+        b"bbbb"
+    );
+    // The same authenticated identity survives independent re-verification; no retained
+    // state or recovery-round budget is tied to the (separately managed) transport route.
+    let moved = alice.seal(b"after-route-move").unwrap();
+    let peer_after_move = verifier.open(&moved, |_| (true, 2)).unwrap().peer();
+    assert_eq!(peer_after_move, a);
+    assert!(book.complete(peer_after_move, transfer));
+    assert_eq!(book.occupancy(), (1, 4));
+    assert!(book.payload_for_report(a, transfer, now, policy).is_none());
+    assert!(book
+        .payload_for_report(b, transfer, now, policy)
+        .is_none_or(|payload| payload.payload.as_ref() == b"bbbb"));
+    assert!(book.complete(b, transfer));
+    assert_eq!(book.occupancy(), (0, 0));
+}

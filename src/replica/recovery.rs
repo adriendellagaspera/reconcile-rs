@@ -8,6 +8,7 @@
 //! Capability discovery and bounded sender-side selective-recovery state.
 
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -32,11 +33,16 @@ struct OutboundTransfer {
 ///
 /// Receiver missing ranges themselves are derived from the existing bounded `Reassembler`; this
 /// structure only retains sender payloads that a capable peer may request again.
-#[derive(Default)]
-pub(crate) struct RecoveryBook {
-    capabilities: HashMap<IpAddr, Instant>,
-    outbound: HashMap<(IpAddr, [u8; 32]), OutboundTransfer>,
+pub(crate) struct RecoveryBook<P = IpAddr> {
+    capabilities: HashMap<P, Instant>,
+    outbound: HashMap<(P, [u8; 32]), OutboundTransfer>,
     total_bytes: usize,
+}
+
+impl Default for RecoveryBook<IpAddr> {
+    fn default() -> Self {
+        Self::for_identity()
+    }
 }
 
 /// Result of retaining one outbound transfer.
@@ -68,10 +74,21 @@ pub(crate) struct RecoveryPayload {
     pub(crate) exhausted_after_this_round: bool,
 }
 
-impl RecoveryBook {
+impl<P: Copy + Eq + Hash + Ord> RecoveryBook<P> {
+    /// New empty sender recovery book keyed by a single authenticated peer identity type.
+    /// The legacy UDP runtime uses `RecoveryBook::default()`; signed mode uses
+    /// `RecoveryBook::<VerifiedPeerId>::for_identity()` with no IP address translation.
+    pub(crate) fn for_identity() -> Self {
+        Self {
+            capabilities: HashMap::new(),
+            outbound: HashMap::new(),
+            total_bytes: 0,
+        }
+    }
+
     pub(crate) fn record_capability(
         &mut self,
-        peer: IpAddr,
+        peer: P,
         now: Instant,
         cfg: FramingConfig,
         max_peers: usize,
@@ -85,7 +102,7 @@ impl RecoveryBook {
         }
     }
 
-    pub(crate) fn supports(&mut self, peer: IpAddr, now: Instant, cfg: FramingConfig) -> bool {
+    pub(crate) fn supports(&mut self, peer: P, now: Instant, cfg: FramingConfig) -> bool {
         if !cfg.selective_recovery {
             return false;
         }
@@ -95,7 +112,7 @@ impl RecoveryBook {
 
     pub(crate) fn retain(
         &mut self,
-        peer: IpAddr,
+        peer: P,
         transfer_id: [u8; 32],
         payload: &[u8],
         now: Instant,
@@ -186,7 +203,7 @@ impl RecoveryBook {
 
     pub(crate) fn payload_for_report(
         &mut self,
-        peer: IpAddr,
+        peer: P,
         transfer_id: [u8; 32],
         now: Instant,
         cfg: FramingConfig,
@@ -205,11 +222,11 @@ impl RecoveryBook {
         })
     }
 
-    pub(crate) fn complete(&mut self, peer: IpAddr, transfer_id: [u8; 32]) -> bool {
+    pub(crate) fn complete(&mut self, peer: P, transfer_id: [u8; 32]) -> bool {
         self.remove((peer, transfer_id)).is_some()
     }
 
-    pub(crate) fn forget(&mut self, peer: IpAddr, transfer_id: [u8; 32]) -> bool {
+    pub(crate) fn forget(&mut self, peer: P, transfer_id: [u8; 32]) -> bool {
         self.remove((peer, transfer_id)).is_some()
     }
 
@@ -249,11 +266,11 @@ impl RecoveryBook {
         count
     }
 
-    fn peer_transfer_count(&self, peer: IpAddr) -> usize {
+    fn peer_transfer_count(&self, peer: P) -> usize {
         self.outbound.keys().filter(|(p, _)| *p == peer).count()
     }
 
-    fn peer_bytes(&self, peer: IpAddr) -> usize {
+    fn peer_bytes(&self, peer: P) -> usize {
         self.outbound
             .iter()
             .filter(|((p, _), _)| *p == peer)
@@ -261,7 +278,7 @@ impl RecoveryBook {
             .sum()
     }
 
-    fn oldest(&self, peer: Option<IpAddr>) -> Option<(IpAddr, [u8; 32])> {
+    fn oldest(&self, peer: Option<P>) -> Option<(P, [u8; 32])> {
         self.outbound
             .iter()
             .filter(|((p, _), _)| peer.is_none_or(|wanted| *p == wanted))
@@ -269,7 +286,7 @@ impl RecoveryBook {
             .map(|(&key, _)| key)
     }
 
-    fn remove(&mut self, key: (IpAddr, [u8; 32])) -> Option<OutboundTransfer> {
+    fn remove(&mut self, key: (P, [u8; 32])) -> Option<OutboundTransfer> {
         let removed = self.outbound.remove(&key)?;
         self.total_bytes = self.total_bytes.saturating_sub(removed.payload.len());
         Some(removed)
