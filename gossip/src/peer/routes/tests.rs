@@ -413,7 +413,10 @@ fn route_capacity_and_pending_replacement_respect_identity_budget() {
         routes
             .receive(&bob, &other, (3, 3), |_| (false, 0), &mut frames, now)
             .unwrap(),
-        SignedRouteReceive::Probing { challenge: None, .. }
+        SignedRouteReceive::Probing {
+            challenge: None,
+            ..
+        }
     ));
     assert_eq!(routes.pending.len(), 1);
     assert!(!routes.pending.contains_key(&charlie_id));
@@ -424,7 +427,10 @@ fn route_capacity_and_pending_replacement_respect_identity_budget() {
         routes
             .receive(&bob, &retry, (1, 1), |_| (false, 0), &mut frames, now)
             .unwrap(),
-        SignedRouteReceive::Probing { challenge: None, .. }
+        SignedRouteReceive::Probing {
+            challenge: None,
+            ..
+        }
     ));
     assert_eq!(routes.pending.get(&alice_id).unwrap().address, (1, 1));
 
@@ -446,9 +452,19 @@ fn route_capacity_and_pending_replacement_respect_identity_budget() {
     let other_retry = charlie.seal(&frame(b"retry")).unwrap();
     assert!(matches!(
         routes
-            .receive(&bob, &other_retry, (3, 3), |_| (false, 0), &mut frames, after_ttl)
+            .receive(
+                &bob,
+                &other_retry,
+                (3, 3),
+                |_| (false, 0),
+                &mut frames,
+                after_ttl
+            )
             .unwrap(),
-        SignedRouteReceive::Probing { challenge: Some(_), .. }
+        SignedRouteReceive::Probing {
+            challenge: Some(_),
+            ..
+        }
     ));
     assert_eq!(routes.pending.len(), 1);
     assert!(routes.pending.contains_key(&charlie_id));
@@ -465,7 +481,10 @@ fn exact_challenge_deadline_is_expired_and_zero_capacity_disables_admission() {
         routes
             .receive(&bob, &packet, (1, 1), |_| (false, 0), &mut frames, now)
             .unwrap(),
-        SignedRouteReceive::Probing { challenge: None, .. }
+        SignedRouteReceive::Probing {
+            challenge: None,
+            ..
+        }
     ));
     assert!(routes.is_empty());
     assert!(routes.pending.is_empty());
@@ -476,7 +495,10 @@ fn exact_challenge_deadline_is_expired_and_zero_capacity_disables_admission() {
         routes
             .receive(&bob, &packet, (1, 1), |_| (false, 0), &mut frames, now)
             .unwrap(),
-        SignedRouteReceive::Probing { challenge: Some(_), .. }
+        SignedRouteReceive::Probing {
+            challenge: Some(_),
+            ..
+        }
     ));
     let nonce = routes.pending.get(&alice.local_peer()).unwrap().nonce;
     let reply = alice
