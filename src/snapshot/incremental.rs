@@ -24,9 +24,9 @@ use super::FileSnapshot;
 mod storage;
 
 use storage::{
-    cleanup_after_full_materialization, decode, decode_version, encode, encode_version, invalid,
-    publish_manifest, publish_manifest_version, read_manifest, read_manifest_version,
-    read_segment_bytes, store_dir, write_encoded_segment, write_segment, write_segment_version,
+    cleanup_after_full_materialization, decode_version, encode_version, invalid,
+    publish_manifest_version, read_manifest_version, read_segment_bytes, store_dir,
+    write_encoded_segment, write_segment_version,
 };
 
 #[cfg(test)]
