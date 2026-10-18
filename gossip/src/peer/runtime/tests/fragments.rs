@@ -203,7 +203,9 @@ async fn signed_transfer_completes_when_non_ip_substrate_address_changes() {
     let mut buffer = vec![0u8; MTU];
     let now = Instant::now();
 
-    old_port.send_to(&sender.seal(&first).unwrap(), &receive_slot).unwrap();
+    old_port
+        .send_to(&sender.seal(&first).unwrap(), &receive_slot)
+        .unwrap();
     let (n, origin) = receive_port.recv_from(&mut buffer).await.unwrap();
     assert_eq!(origin, old_slot);
     let (_, first_report) = receiver
@@ -212,7 +214,9 @@ async fn signed_transfer_completes_when_non_ip_substrate_address_changes() {
     assert!(matches!(first_report.outcome, Ok(ReceiveOutcome::Pending)));
 
     let new_port = medium.bind(new_slot);
-    new_port.send_to(&sender.seal(&second).unwrap(), &receive_slot).unwrap();
+    new_port
+        .send_to(&sender.seal(&second).unwrap(), &receive_slot)
+        .unwrap();
     let (n, origin) = receive_port.recv_from(&mut buffer).await.unwrap();
     assert_eq!(origin, new_slot);
     let (principal, final_report) = receiver
