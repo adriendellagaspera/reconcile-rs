@@ -340,19 +340,10 @@ fn verified_signers_isolate_recovery_even_with_identical_transfer_id_and_route_m
     };
     let alice = send(alice);
     let bob = send(bob);
-    let first_route = (1_u16, 2_u8);
-    let second_route = (1_u16, 7_u8);
-    assert_ne!(first_route, second_route);
     let a_packet = alice.seal(b"entry").unwrap();
     let b_packet = bob.seal(b"entry").unwrap();
-    let a: VerifiedPeerId = verifier
-        .open(&a_packet, |_| (false, 0))
-        .unwrap()
-        .peer();
-    let b: VerifiedPeerId = verifier
-        .open(&b_packet, |_| (false, 1))
-        .unwrap()
-        .peer();
+    let a: VerifiedPeerId = verifier.open(&a_packet, |_| (false, 0)).unwrap().peer();
+    let b: VerifiedPeerId = verifier.open(&b_packet, |_| (false, 1)).unwrap().peer();
     assert_ne!(a, b);
 
     let now = Instant::now();
@@ -381,18 +372,17 @@ fn verified_signers_isolate_recovery_even_with_identical_transfer_id_and_route_m
             .as_ref(),
         b"bbbb"
     );
-    // A recovered datagram sourced from another optical terminal still authenticates
-    // to `a`; no retained state or recovery-round budget is tied to that terminal.
+    // The same authenticated identity survives independent re-verification; no retained
+    // state or recovery-round budget is tied to the (separately managed) transport route.
     let moved = alice.seal(b"after-route-move").unwrap();
-    let peer_after_move = verifier
-        .open(&moved, |_| (true, 2))
-        .unwrap()
-        .peer();
+    let peer_after_move = verifier.open(&moved, |_| (true, 2)).unwrap().peer();
     assert_eq!(peer_after_move, a);
     assert!(book.complete(peer_after_move, transfer));
     assert_eq!(book.occupancy(), (1, 4));
     assert!(book.payload_for_report(a, transfer, now, policy).is_none());
-    assert!(book.payload_for_report(b, transfer, now, policy).is_none_or(|payload| payload.payload.as_ref() == b"bbbb"));
+    assert!(book
+        .payload_for_report(b, transfer, now, policy)
+        .is_none_or(|payload| payload.payload.as_ref() == b"bbbb"));
     assert!(book.complete(b, transfer));
     assert_eq!(book.occupancy(), (0, 0));
 }
