@@ -17,6 +17,7 @@
 pub mod envelope;
 pub mod identity;
 pub mod runtime;
+pub mod routes;
 
 use serde::{Deserialize, Serialize};
 
