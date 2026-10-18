@@ -109,13 +109,6 @@ fn a_signed_frame_cannot_dispatch_or_redirect_until_return_route_is_proven() {
     assert!(routes.route(alice.local_peer()).is_none());
 
     // The same nonce signed afresh is accepted only from the challenge's exact source route.
-    let (_, nonce) = parse_control(&alice
-        .open(&challenge.bytes, |_| (false, 0))
-        .err()
-        .map(|_| Vec::<u8>::new())
-        .unwrap_or_default())
-        .unwrap_or((bob.local_peer(), [0; 32]));
-    let _ = nonce;
     // The route reply already consumed replay admission at the wrong endpoint; resend a
     // *newly signed* reply under the same nonce, extracted from the challenge by its recipient.
     let probe = routes.pending.get(&alice.local_peer()).unwrap();
