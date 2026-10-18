@@ -391,6 +391,46 @@ impl core::marker::Unpin for reconcile_gossip::peer::identity::VerifiedPeerId
 impl core::marker::UnsafeUnpin for reconcile_gossip::peer::identity::VerifiedPeerId
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::identity::VerifiedPeerId
 impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::identity::VerifiedPeerId
+pub mod reconcile_gossip::peer::runtime
+pub enum reconcile_gossip::peer::runtime::SignedDatagramError
+pub reconcile_gossip::peer::runtime::SignedDatagramError::Envelope(reconcile_gossip::peer::envelope::EnvelopeError)
+pub reconcile_gossip::peer::runtime::SignedDatagramError::MissingInnerAuthentication
+pub reconcile_gossip::peer::runtime::SignedDatagramError::MtuTooSmall
+pub reconcile_gossip::peer::runtime::SignedDatagramError::PeerCap
+pub reconcile_gossip::peer::runtime::SignedDatagramError::PeerCap::current: usize
+pub reconcile_gossip::peer::runtime::SignedDatagramError::PeerCap::maximum: usize
+pub reconcile_gossip::peer::runtime::SignedDatagramError::Replay
+impl core::clone::Clone for reconcile_gossip::peer::runtime::SignedDatagramError
+pub fn reconcile_gossip::peer::runtime::SignedDatagramError::clone(&self) -> reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::cmp::Eq for reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::cmp::PartialEq for reconcile_gossip::peer::runtime::SignedDatagramError
+pub fn reconcile_gossip::peer::runtime::SignedDatagramError::eq(&self, &reconcile_gossip::peer::runtime::SignedDatagramError) -> bool
+impl core::fmt::Debug for reconcile_gossip::peer::runtime::SignedDatagramError
+pub fn reconcile_gossip::peer::runtime::SignedDatagramError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::marker::StructuralPartialEq for reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::marker::Freeze for reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::marker::Send for reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::marker::Sync for reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::marker::Unpin for reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::runtime::SignedDatagramError
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::runtime::SignedDatagramError
+pub struct reconcile_gossip::peer::runtime::SignedDatagramBoundary
+impl reconcile_gossip::peer::runtime::SignedDatagramBoundary
+pub fn reconcile_gossip::peer::runtime::SignedDatagramBoundary::local_peer(&self) -> reconcile_gossip::peer::PeerId
+pub fn reconcile_gossip::peer::runtime::SignedDatagramBoundary::new(reconcile_gossip::auth::Authenticator, reconcile_gossip::peer::identity::PeerSigner, reconcile_gossip::peer::identity::PeerAllowlist, core::time::Duration, usize, usize, usize) -> core::result::Result<Self, reconcile_gossip::peer::runtime::SignedDatagramError>
+pub fn reconcile_gossip::peer::runtime::SignedDatagramBoundary::open<'a>(&self, &'a [u8], impl core::ops::function::FnOnce(reconcile_gossip::peer::PeerId) -> (bool, usize)) -> core::result::Result<reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>, reconcile_gossip::peer::runtime::SignedDatagramError>
+pub fn reconcile_gossip::peer::runtime::SignedDatagramBoundary::payload_budget(&self) -> usize
+pub fn reconcile_gossip::peer::runtime::SignedDatagramBoundary::replay_senders(&self) -> usize
+pub fn reconcile_gossip::peer::runtime::SignedDatagramBoundary::seal(&self, &[u8]) -> core::result::Result<alloc::vec::Vec<u8>, reconcile_gossip::peer::runtime::SignedDatagramError>
+impl !core::marker::Freeze for reconcile_gossip::peer::runtime::SignedDatagramBoundary
+impl core::marker::Send for reconcile_gossip::peer::runtime::SignedDatagramBoundary
+impl core::marker::Sync for reconcile_gossip::peer::runtime::SignedDatagramBoundary
+impl core::marker::Unpin for reconcile_gossip::peer::runtime::SignedDatagramBoundary
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::runtime::SignedDatagramBoundary
+impl !core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::runtime::SignedDatagramBoundary
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::runtime::SignedDatagramBoundary
 pub struct reconcile_gossip::peer::PeerId(_)
 impl reconcile_gossip::peer::PeerId
 pub const fn reconcile_gossip::peer::PeerId::from_bytes([u8; 32]) -> Self
