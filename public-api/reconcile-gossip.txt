@@ -395,6 +395,71 @@ impl core::marker::Unpin for reconcile_gossip::peer::identity::VerifiedPeerId
 impl core::marker::UnsafeUnpin for reconcile_gossip::peer::identity::VerifiedPeerId
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::identity::VerifiedPeerId
 impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::identity::VerifiedPeerId
+pub mod reconcile_gossip::peer::routes
+pub enum reconcile_gossip::peer::routes::SignedRouteError
+pub reconcile_gossip::peer::routes::SignedRouteError::NoConfirmedRoute
+pub reconcile_gossip::peer::routes::SignedRouteError::Signed(reconcile_gossip::peer::runtime::SignedDatagramError)
+impl core::clone::Clone for reconcile_gossip::peer::routes::SignedRouteError
+pub fn reconcile_gossip::peer::routes::SignedRouteError::clone(&self) -> reconcile_gossip::peer::routes::SignedRouteError
+impl core::cmp::Eq for reconcile_gossip::peer::routes::SignedRouteError
+impl core::cmp::PartialEq for reconcile_gossip::peer::routes::SignedRouteError
+pub fn reconcile_gossip::peer::routes::SignedRouteError::eq(&self, &reconcile_gossip::peer::routes::SignedRouteError) -> bool
+impl core::convert::From<reconcile_gossip::peer::runtime::SignedDatagramError> for reconcile_gossip::peer::routes::SignedRouteError
+pub fn reconcile_gossip::peer::routes::SignedRouteError::from(reconcile_gossip::peer::runtime::SignedDatagramError) -> Self
+impl core::fmt::Debug for reconcile_gossip::peer::routes::SignedRouteError
+pub fn reconcile_gossip::peer::routes::SignedRouteError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile_gossip::peer::routes::SignedRouteError
+impl core::marker::StructuralPartialEq for reconcile_gossip::peer::routes::SignedRouteError
+impl core::marker::Freeze for reconcile_gossip::peer::routes::SignedRouteError
+impl core::marker::Send for reconcile_gossip::peer::routes::SignedRouteError
+impl core::marker::Sync for reconcile_gossip::peer::routes::SignedRouteError
+impl core::marker::Unpin for reconcile_gossip::peer::routes::SignedRouteError
+impl core::marker::UnsafeUnpin for reconcile_gossip::peer::routes::SignedRouteError
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::routes::SignedRouteError
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::routes::SignedRouteError
+pub enum reconcile_gossip::peer::routes::SignedRouteReceive<'a, A>
+pub reconcile_gossip::peer::routes::SignedRouteReceive::Confirmed(reconcile_gossip::peer::identity::VerifiedPeerId)
+pub reconcile_gossip::peer::routes::SignedRouteReceive::Framed
+pub reconcile_gossip::peer::routes::SignedRouteReceive::Framed::peer: reconcile_gossip::peer::identity::VerifiedPeerId
+pub reconcile_gossip::peer::routes::SignedRouteReceive::Framed::report: crate::framing::ReceiveReport<'a>
+pub reconcile_gossip::peer::routes::SignedRouteReceive::Ignored
+pub reconcile_gossip::peer::routes::SignedRouteReceive::Probing
+pub reconcile_gossip::peer::routes::SignedRouteReceive::Probing::challenge: core::option::Option<reconcile_gossip::peer::routes::RoutedDatagram<A>>
+pub reconcile_gossip::peer::routes::SignedRouteReceive::Probing::peer: reconcile_gossip::peer::identity::VerifiedPeerId
+pub reconcile_gossip::peer::routes::SignedRouteReceive::Reply(reconcile_gossip::peer::routes::RoutedDatagram<A>)
+impl<'a, A> core::marker::Freeze for reconcile_gossip::peer::routes::SignedRouteReceive<'a, A> where core::option::Option<reconcile_gossip::peer::routes::RoutedDatagram<A>>: core::marker::Freeze, reconcile_gossip::peer::routes::RoutedDatagram<A>: core::marker::Freeze
+impl<'a, A> core::marker::Send for reconcile_gossip::peer::routes::SignedRouteReceive<'a, A> where core::option::Option<reconcile_gossip::peer::routes::RoutedDatagram<A>>: core::marker::Send, reconcile_gossip::peer::routes::RoutedDatagram<A>: core::marker::Send
+impl<'a, A> core::marker::Sync for reconcile_gossip::peer::routes::SignedRouteReceive<'a, A> where core::option::Option<reconcile_gossip::peer::routes::RoutedDatagram<A>>: core::marker::Sync, reconcile_gossip::peer::routes::RoutedDatagram<A>: core::marker::Sync
+impl<'a, A> core::marker::Unpin for reconcile_gossip::peer::routes::SignedRouteReceive<'a, A> where core::option::Option<reconcile_gossip::peer::routes::RoutedDatagram<A>>: core::marker::Unpin, reconcile_gossip::peer::routes::RoutedDatagram<A>: core::marker::Unpin
+impl<'a, A> core::marker::UnsafeUnpin for reconcile_gossip::peer::routes::SignedRouteReceive<'a, A> where core::option::Option<reconcile_gossip::peer::routes::RoutedDatagram<A>>: core::marker::UnsafeUnpin, reconcile_gossip::peer::routes::RoutedDatagram<A>: core::marker::UnsafeUnpin
+impl<'a, A> core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::routes::SignedRouteReceive<'a, A> where core::option::Option<reconcile_gossip::peer::routes::RoutedDatagram<A>>: core::panic::unwind_safe::RefUnwindSafe, reconcile_gossip::peer::routes::RoutedDatagram<A>: core::panic::unwind_safe::RefUnwindSafe
+impl<'a, A> core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::routes::SignedRouteReceive<'a, A> where core::option::Option<reconcile_gossip::peer::routes::RoutedDatagram<A>>: core::panic::unwind_safe::UnwindSafe, reconcile_gossip::peer::routes::RoutedDatagram<A>: core::panic::unwind_safe::UnwindSafe
+pub struct reconcile_gossip::peer::routes::RoutedDatagram<A>
+pub reconcile_gossip::peer::routes::RoutedDatagram::bytes: alloc::vec::Vec<u8>
+pub reconcile_gossip::peer::routes::RoutedDatagram::destination: A
+impl<A> core::marker::Freeze for reconcile_gossip::peer::routes::RoutedDatagram<A> where A: core::marker::Freeze
+impl<A> core::marker::Send for reconcile_gossip::peer::routes::RoutedDatagram<A> where A: core::marker::Send
+impl<A> core::marker::Sync for reconcile_gossip::peer::routes::RoutedDatagram<A> where A: core::marker::Sync
+impl<A> core::marker::Unpin for reconcile_gossip::peer::routes::RoutedDatagram<A> where A: core::marker::Unpin
+impl<A> core::marker::UnsafeUnpin for reconcile_gossip::peer::routes::RoutedDatagram<A> where A: core::marker::UnsafeUnpin
+impl<A> core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::routes::RoutedDatagram<A> where A: core::panic::unwind_safe::RefUnwindSafe
+impl<A> core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::routes::RoutedDatagram<A> where A: core::panic::unwind_safe::UnwindSafe
+pub struct reconcile_gossip::peer::routes::SignedPeerRoutes<A>
+impl<A: core::clone::Clone + core::cmp::Eq> reconcile_gossip::peer::routes::SignedPeerRoutes<A>
+pub fn reconcile_gossip::peer::routes::SignedPeerRoutes<A>::decommission(&mut self, reconcile_gossip::peer::PeerId)
+pub fn reconcile_gossip::peer::routes::SignedPeerRoutes<A>::is_empty(&self) -> bool
+pub fn reconcile_gossip::peer::routes::SignedPeerRoutes<A>::len(&self) -> usize
+pub fn reconcile_gossip::peer::routes::SignedPeerRoutes<A>::new(usize, core::time::Duration) -> Self
+pub fn reconcile_gossip::peer::routes::SignedPeerRoutes<A>::receive<'a>(&mut self, &reconcile_gossip::peer::runtime::SignedDatagramBoundary, &'a [u8], A, impl core::ops::function::FnOnce(reconcile_gossip::peer::PeerId) -> (bool, usize), &mut Reassembler<reconcile_gossip::peer::identity::VerifiedPeerId>, std::time::Instant) -> core::result::Result<reconcile_gossip::peer::routes::SignedRouteReceive<'a, A>, reconcile_gossip::peer::routes::SignedRouteError>
+pub fn reconcile_gossip::peer::routes::SignedPeerRoutes<A>::route(&self, reconcile_gossip::peer::PeerId) -> core::option::Option<&A>
+pub fn reconcile_gossip::peer::routes::SignedPeerRoutes<A>::seal_to(&self, &reconcile_gossip::peer::runtime::SignedDatagramBoundary, reconcile_gossip::peer::PeerId, &[u8]) -> core::result::Result<reconcile_gossip::peer::routes::RoutedDatagram<A>, reconcile_gossip::peer::routes::SignedRouteError>
+impl<A> core::marker::Freeze for reconcile_gossip::peer::routes::SignedPeerRoutes<A> where std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, A>: core::marker::Freeze, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, Pending<A>>: core::marker::Freeze
+impl<A> core::marker::Send for reconcile_gossip::peer::routes::SignedPeerRoutes<A> where std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, A>: core::marker::Send, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, Pending<A>>: core::marker::Send
+impl<A> core::marker::Sync for reconcile_gossip::peer::routes::SignedPeerRoutes<A> where std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, A>: core::marker::Sync, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, Pending<A>>: core::marker::Sync
+impl<A> core::marker::Unpin for reconcile_gossip::peer::routes::SignedPeerRoutes<A> where std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, A>: core::marker::Unpin, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, Pending<A>>: core::marker::Unpin
+impl<A> core::marker::UnsafeUnpin for reconcile_gossip::peer::routes::SignedPeerRoutes<A> where std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, A>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, Pending<A>>: core::marker::UnsafeUnpin
+impl<A> core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::routes::SignedPeerRoutes<A> where std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, A>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, Pending<A>>: core::panic::unwind_safe::RefUnwindSafe
+impl<A> core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::routes::SignedPeerRoutes<A> where std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, A>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, Pending<A>>: core::panic::unwind_safe::UnwindSafe
 pub mod reconcile_gossip::peer::runtime
 pub enum reconcile_gossip::peer::runtime::SignedDatagramError
 pub reconcile_gossip::peer::runtime::SignedDatagramError::Envelope(reconcile_gossip::peer::envelope::EnvelopeError)
@@ -409,6 +474,8 @@ pub fn reconcile_gossip::peer::runtime::SignedDatagramError::clone(&self) -> rec
 impl core::cmp::Eq for reconcile_gossip::peer::runtime::SignedDatagramError
 impl core::cmp::PartialEq for reconcile_gossip::peer::runtime::SignedDatagramError
 pub fn reconcile_gossip::peer::runtime::SignedDatagramError::eq(&self, &reconcile_gossip::peer::runtime::SignedDatagramError) -> bool
+impl core::convert::From<reconcile_gossip::peer::runtime::SignedDatagramError> for reconcile_gossip::peer::routes::SignedRouteError
+pub fn reconcile_gossip::peer::routes::SignedRouteError::from(reconcile_gossip::peer::runtime::SignedDatagramError) -> Self
 impl core::fmt::Debug for reconcile_gossip::peer::runtime::SignedDatagramError
 pub fn reconcile_gossip::peer::runtime::SignedDatagramError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for reconcile_gossip::peer::runtime::SignedDatagramError
