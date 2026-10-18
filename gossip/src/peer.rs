@@ -17,6 +17,8 @@
 pub mod envelope;
 pub mod identity;
 
+use serde::{Deserialize, Serialize};
+
 /// A 256-bit, substrate-independent logical peer identifier.
 ///
 /// Equality and hashing depend only on these bytes, never on an IP address, port, or datalink
@@ -26,7 +28,7 @@ pub mod identity;
 /// `PeerId` is a *label*, not a credential or verification result. In particular, a cluster-wide
 /// shared MAC key cannot distinguish the individual nodes that claim these bytes. Callers must
 /// not treat `PeerId::from_bytes` as evidence of authentication.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct PeerId([u8; 32]);
 
 impl PeerId {
