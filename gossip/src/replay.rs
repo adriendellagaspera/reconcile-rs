@@ -88,7 +88,7 @@ pub struct ReplayFilter {
 /// signed envelope admission additionally requires a real inner replay header. Sender state
 /// follows the verified identity across endpoint changes and is never evicted while fresh.
 ///
-/// This is opt-in groundwork for #279; the live UDP runtime still uses `ReplayFilter`
+/// This is opt-in groundwork; the live UDP runtime still uses `ReplayFilter`
 /// keyed by `IpAddr`. It does not establish causal membership or trusted routing.
 #[derive(Debug)]
 pub struct VerifiedPeerReplayFilter {
