@@ -16,7 +16,8 @@ use std::net::IpAddr;
 
 use super::mac::{ClusterMac, Mac};
 use super::{Authenticated, Authenticator, Payload, Verified, VERSION_LEN};
-use crate::replay::{ReplayFilter, Seq, Stamp, REPLAY_HEADER_LEN};
+use crate::peer::identity::VerifiedPeerId;
+use crate::replay::{ReplayFilter, Seq, Stamp, VerifiedPeerReplayFilter, REPLAY_HEADER_LEN};
 
 /// Parse a replay header from the front of a byte slice.
 ///
@@ -66,6 +67,24 @@ impl<'a> Payload<'a, Authenticated> {
         self,
         filter: &ReplayFilter,
         sender: IpAddr,
+    ) -> Option<Payload<'a, Verified>> {
+        if !filter.check_and_record(sender, self.seq, self.stamp) {
+            return None;
+        }
+        Some(Payload {
+            bytes: self.bytes,
+            seq: self.seq,
+            stamp: self.stamp,
+            _state: PhantomData,
+        })
+    }
+
+    /// Internal signed-envelope replay gate; only use after the allowlisted outer proof and
+    /// inner authentication/version have been bound to the *same* payload.
+    pub(crate) fn verify_replay_from_signed_envelope(
+        self,
+        filter: &VerifiedPeerReplayFilter,
+        sender: VerifiedPeerId,
     ) -> Option<Payload<'a, Verified>> {
         if !filter.check_and_record(sender, self.seq, self.stamp) {
             return None;
