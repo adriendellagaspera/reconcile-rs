@@ -90,7 +90,6 @@ impl ReplayFilter {
     }
 }
 
-
 impl VerifiedPeerReplayFilter {
     /// Create an always-enabled replay filter for individually verified signers.
     pub fn new(freshness_window: Duration) -> Self {
@@ -117,12 +116,7 @@ impl VerifiedPeerReplayFilter {
     }
 
     /// Internal gate: only the already-signature-verified envelope may supply this identity.
-    pub(crate) fn check_and_record(
-        &self,
-        peer: VerifiedPeerId,
-        seq: Seq,
-        stamp: Stamp,
-    ) -> bool {
+    pub(crate) fn check_and_record(&self, peer: VerifiedPeerId, seq: Seq, stamp: Stamp) -> bool {
         check_and_record_sender(
             &mut self.peers.lock(),
             peer,
