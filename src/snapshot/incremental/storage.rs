@@ -37,18 +37,34 @@ pub(super) fn manifest_path(backend: &FileSnapshot) -> PathBuf {
 }
 
 pub(super) fn encode<T: Serialize>(magic: [u8; 4], value: &T) -> io::Result<Vec<u8>> {
+    encode_version(magic, value, FORMAT_VERSION)
+}
+
+pub(super) fn encode_version<T: Serialize>(
+    magic: [u8; 4],
+    value: &T,
+    format_version: u32,
+) -> io::Result<Vec<u8>> {
     let body =
         bincode::serialize(value).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
     let digest = blake3::hash(&body);
     let mut bytes = Vec::with_capacity(HEADER_LEN + body.len() + OBJECT_CHECKSUM_LEN);
     bytes.extend_from_slice(&magic);
-    bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&format_version.to_le_bytes());
     bytes.extend_from_slice(&body);
     bytes.extend_from_slice(digest.as_bytes());
     Ok(bytes)
 }
 
 pub(super) fn decode<T: DeserializeOwned>(bytes: &[u8], expected_magic: [u8; 4]) -> io::Result<T> {
+    decode_version(bytes, expected_magic, FORMAT_VERSION)
+}
+
+pub(super) fn decode_version<T: DeserializeOwned>(
+    bytes: &[u8],
+    expected_magic: [u8; 4],
+    expected_version: u32,
+) -> io::Result<T> {
     if bytes.len() < HEADER_LEN + OBJECT_CHECKSUM_LEN {
         return Err(invalid(format!(
             "incremental snapshot object is {} bytes, shorter than its header plus checksum",
@@ -63,9 +79,9 @@ pub(super) fn decode<T: DeserializeOwned>(bytes: &[u8], expected_magic: [u8; 4])
         )));
     }
     let version = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-    if version != FORMAT_VERSION {
+    if version != expected_version {
         return Err(invalid(format!(
-            "incremental snapshot format version {version} is unsupported (expected {FORMAT_VERSION})"
+            "incremental snapshot format version {version} is unsupported (expected {expected_version})"
         )));
     }
     let checksum_offset = bytes.len() - OBJECT_CHECKSUM_LEN;
@@ -103,13 +119,20 @@ pub(super) fn segment_file_name(kind: &str, generation: u64) -> String {
 }
 
 pub(super) fn read_manifest(backend: &FileSnapshot) -> io::Result<Option<Manifest>> {
+    read_manifest_version(backend, FORMAT_VERSION)
+}
+
+pub(super) fn read_manifest_version(
+    backend: &FileSnapshot,
+    format_version: u32,
+) -> io::Result<Option<Manifest>> {
     let path = manifest_path(backend);
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(err),
     };
-    let manifest: Manifest = decode(&bytes, MANIFEST_MAGIC)?;
+    let manifest: Manifest = decode_version(&bytes, MANIFEST_MAGIC, format_version)?;
     validate_manifest(&manifest)?;
     Ok(Some(manifest))
 }
@@ -184,13 +207,32 @@ pub(super) fn write_segment<T: Serialize>(
     generation: u64,
     value: &T,
 ) -> io::Result<u64> {
-    let bytes = encode(magic, value)?;
+    write_segment_version(dir, magic, kind, generation, value, FORMAT_VERSION)
+}
+
+pub(super) fn write_segment_version<T: Serialize>(
+    dir: &Path,
+    magic: [u8; 4],
+    kind: &str,
+    generation: u64,
+    value: &T,
+    format_version: u32,
+) -> io::Result<u64> {
+    let bytes = encode_version(magic, value, format_version)?;
     write_encoded_segment(dir, kind, generation, &bytes)
 }
 
 pub(super) fn publish_manifest(backend: &FileSnapshot, manifest: &Manifest) -> io::Result<()> {
+    publish_manifest_version(backend, manifest, FORMAT_VERSION)
+}
+
+pub(super) fn publish_manifest_version(
+    backend: &FileSnapshot,
+    manifest: &Manifest,
+    format_version: u32,
+) -> io::Result<()> {
     validate_manifest(manifest)?;
-    let bytes = encode(MANIFEST_MAGIC, manifest)?;
+    let bytes = encode_version(MANIFEST_MAGIC, manifest, format_version)?;
     write_atomic(&manifest_path(backend), &bytes)
 }
 
