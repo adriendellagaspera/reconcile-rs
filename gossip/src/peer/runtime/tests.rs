@@ -50,21 +50,31 @@ fn signed_exchange_checks_identity_without_binding_replay_to_source_address() {
     let source_two = (8_u16, 2_u8);
     assert_ne!(source_one, source_two);
 
-    let accepted = b.open(&first, |peer| {
-        assert_eq!(peer, a.local_peer());
-        (false, 0)
-    }).unwrap();
+    let accepted = b
+        .open(&first, |peer| {
+            assert_eq!(peer, a.local_peer());
+            (false, 0)
+        })
+        .unwrap();
     assert_eq!(accepted.peer().peer_id(), a.local_peer());
     assert_eq!(accepted.into_payload().as_bytes(), b"dated-1");
 
-    assert_eq!(b.open(&first, |_| (true, 1)).err(), Some(SignedDatagramError::Replay));
+    assert_eq!(
+        b.open(&first, |_| (true, 1)).err(),
+        Some(SignedDatagramError::Replay)
+    );
     assert_eq!(b.replay_senders(), 1);
     let second = a.seal(b"dated-after-route-change").unwrap();
-    let accepted = b.open(&second, |peer| {
-        assert_eq!(peer, a.local_peer());
-        (true, 1)
-    }).unwrap();
-    assert_eq!(accepted.into_payload().as_bytes(), b"dated-after-route-change");
+    let accepted = b
+        .open(&second, |peer| {
+            assert_eq!(peer, a.local_peer());
+            (true, 1)
+        })
+        .unwrap();
+    assert_eq!(
+        accepted.into_payload().as_bytes(),
+        b"dated-after-route-change"
+    );
     assert_eq!(b.replay_senders(), 1);
 }
 
@@ -74,7 +84,10 @@ fn unknown_signer_unsigned_frames_and_tampering_never_consult_member_state() {
     let b = boundary(signer_b(), [], 1);
     let signed_b = b.seal(b"unlisted").unwrap();
     assert_eq!(
-        a.open(&signed_b, |_| panic!("untrusted claim must not consult membership")).err(),
+        a.open(&signed_b, |_| panic!(
+            "untrusted claim must not consult membership"
+        ))
+        .err(),
         Some(SignedDatagramError::Envelope(EnvelopeError::InvalidProof))
     );
 
@@ -84,7 +97,10 @@ fn unknown_signer_unsigned_frames_and_tampering_never_consult_member_state() {
         b"legacy",
     );
     assert_eq!(
-        a.open(&unsigned_inner, |_| panic!("unsigned frame must not touch topology")).err(),
+        a.open(&unsigned_inner, |_| panic!(
+            "unsigned frame must not touch topology"
+        ))
+        .err(),
         Some(SignedDatagramError::Envelope(EnvelopeError::InvalidLength))
     );
 
@@ -93,7 +109,11 @@ fn unknown_signer_unsigned_frames_and_tampering_never_consult_member_state() {
     forged[envelope::IDENTITY_ENVELOPE_OVERHEAD] ^= 1;
     let receiver = boundary(signer_b(), [signer_a().peer_id()], 1);
     assert_eq!(
-        receiver.open(&forged, |_| panic!("forged datagram must not reach membership")).err(),
+        receiver
+            .open(&forged, |_| panic!(
+                "forged datagram must not reach membership"
+            ))
+            .err(),
         Some(SignedDatagramError::Envelope(EnvelopeError::InvalidProof))
     );
     assert_eq!(receiver.replay_senders(), 0);
@@ -107,12 +127,18 @@ fn peer_cap_is_checked_before_allocating_replay_state() {
     let packet = a.seal(b"dated").unwrap();
     assert_eq!(
         b.open(&packet, |_| (false, 1)).err(),
-        Some(SignedDatagramError::PeerCap { current: 1, maximum: 1 })
+        Some(SignedDatagramError::PeerCap {
+            current: 1,
+            maximum: 1
+        })
     );
     assert_eq!(b.replay_senders(), 0);
     assert!(b.open(&packet, |_| (true, 1)).is_ok());
     assert_eq!(b.replay_senders(), 1);
-    assert_eq!(b.open(&packet, |_| (true, 1)).err(), Some(SignedDatagramError::Replay));
+    assert_eq!(
+        b.open(&packet, |_| (true, 1)).err(),
+        Some(SignedDatagramError::Replay)
+    );
 }
 
 #[test]
@@ -140,7 +166,14 @@ fn outer_mtu_budget_is_respected_on_send_and_receive() {
     let raw = vec![0x37; a.payload_budget()];
     let maximum = a.seal(&raw).unwrap();
     assert_eq!(maximum.len(), MTU);
-    assert_eq!(recipient.open(&maximum, |_| (false, 0)).unwrap().into_payload().as_bytes(), raw);
+    assert_eq!(
+        recipient
+            .open(&maximum, |_| (false, 0))
+            .unwrap()
+            .into_payload()
+            .as_bytes(),
+        raw
+    );
 
     assert_eq!(
         a.seal(&vec![0x37; a.payload_budget() + 1]).err(),
@@ -174,8 +207,14 @@ fn invalid_inner_mac_precedes_peer_cap_and_replay() {
     let valid_signature_bad_inner_mac = envelope::seal(&signer, &incorrect_inner, MTU).unwrap();
     let receiver = boundary(signer_b(), [signer.peer_id()], 1);
     assert_eq!(
-        receiver.open(&valid_signature_bad_inner_mac, |_| panic!("inner MAC rejected first")).err(),
-        Some(SignedDatagramError::Envelope(EnvelopeError::InnerAuthentication))
+        receiver
+            .open(&valid_signature_bad_inner_mac, |_| panic!(
+                "inner MAC rejected first"
+            ))
+            .err(),
+        Some(SignedDatagramError::Envelope(
+            EnvelopeError::InnerAuthentication
+        ))
     );
     assert_eq!(receiver.replay_senders(), 0);
 }
