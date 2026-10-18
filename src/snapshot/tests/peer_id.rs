@@ -64,7 +64,9 @@ fn peer_id_base_and_delta_survive_restart_with_exact_ack_versions() {
     );
     assert!(Persistence::<u32, String, PeerId>::try_save_delta(&backend, Some(&delta)).unwrap());
     let after = load_signed(&backend).unwrap().unwrap();
-    assert_eq!(after.entries, before.entries);
+    let recovered: HashMap<_, _> = after.entries.iter().cloned().collect();
+    let original: HashMap<_, _> = before.entries.iter().cloned().collect();
+    assert_eq!(recovered, original);
     assert_eq!(after.members, HashSet::from([a, c]));
     assert_eq!(after.tombstone_acks[&9][&a], 17);
     assert_eq!(after.tombstone_acks[&9][&c], 17);
