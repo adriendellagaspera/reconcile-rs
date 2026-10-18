@@ -315,7 +315,10 @@ mod tests {
         let frozen = tracker.freeze().unwrap();
         let delta = frozen.persistence_delta();
         assert_eq!(delta.members.get(&signer), Some(&true));
-        assert_eq!(delta.ack_peers.get(&7).and_then(|acks| acks.get(&signer)), Some(&Some(42)));
+        assert_eq!(
+            delta.ack_peers.get(&7).and_then(|acks| acks.get(&signer)),
+            Some(&Some(42))
+        );
 
         // An uncommitted generation must be retried unchanged after an interrupted write.
         let retry = tracker.freeze().unwrap();
