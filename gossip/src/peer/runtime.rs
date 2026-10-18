@@ -31,7 +31,12 @@ pub enum SignedDatagramError {
     /// Signature, allowlist, framing, MAC or wire-version check failed.
     Envelope(EnvelopeError),
     /// New signers are refused at the authoritative topology capacity limit.
-    PeerCap { current: usize, maximum: usize },
+    PeerCap {
+        /// Number of authoritative members currently admitted.
+        current: usize,
+        /// Maximum number of authoritative members.
+        maximum: usize,
+    },
     /// The signed identity's replay window rejects a duplicate, stale, or excessive sender.
     Replay,
 }
