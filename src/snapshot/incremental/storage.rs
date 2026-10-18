@@ -38,11 +38,6 @@ pub(super) fn manifest_path(backend: &FileSnapshot) -> PathBuf {
     store_dir(backend).join(MANIFEST_FILE)
 }
 
-#[cfg(test)]
-pub(super) fn encode<T: Serialize>(magic: [u8; 4], value: &T) -> io::Result<Vec<u8>> {
-    encode_version(magic, value, FORMAT_VERSION)
-}
-
 pub(super) fn encode_version<T: Serialize>(
     magic: [u8; 4],
     value: &T,
