@@ -14,6 +14,7 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::hash::Hash;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
@@ -172,13 +173,17 @@ struct PeerState {
     retained_bytes: usize,
 }
 
-/// Bounded, content-addressed incomplete-transfer state.
+/// Bounded, content-addressed incomplete-transfer state, keyed by transport-independent peer identity.
+///
+/// The default `IpAddr` preserves legacy UDP behavior. A signed runtime uses
+/// [`crate::peer::identity::VerifiedPeerId`] so fragment quotas, expiry and selective recovery
+/// follow an authenticated signer across endpoint changes.
 ///
 /// The input type makes authentication/version/replay checking a prerequisite for allocation.
 #[derive(Debug)]
-pub struct Reassembler {
+pub struct Reassembler<P = IpAddr> {
     limits: ReassemblyLimits,
-    peers: HashMap<IpAddr, PeerState>,
+    peers: HashMap<P, PeerState>,
     total_retained_bytes: usize,
 }
 
