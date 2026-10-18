@@ -23,6 +23,7 @@ use chrono::Utc;
 use parking_lot::Mutex;
 
 use peer_state::PeerState;
+use crate::peer::identity::VerifiedPeerId;
 
 mod bitmap;
 mod filter;
@@ -78,6 +79,21 @@ pub struct ReplayFilter {
     /// Hard ceiling on distinct authenticated sender IPs retained at once. Existing senders keep
     /// their replay history at capacity; a new sender is admitted only after stale state has been
     /// purged. `usize::MAX` preserves the standalone gossip crate's historical default.
+    max_senders: usize,
+}
+
+/// Replay state for cryptographically verified, allowlisted signing peers.
+///
+/// This filter never disables replay, even if the inner cluster authenticator is keyless;
+/// signed envelope admission additionally requires a real inner replay header. Sender state
+/// follows the verified identity across endpoint changes and is never evicted while fresh.
+///
+/// This is opt-in groundwork for #279; the live UDP runtime still uses `ReplayFilter`
+/// keyed by `IpAddr`. It does not establish causal membership or trusted routing.
+#[derive(Debug)]
+pub struct VerifiedPeerReplayFilter {
+    peers: Mutex<HashMap<VerifiedPeerId, PeerState>>,
+    freshness_window: Duration,
     max_senders: usize,
 }
 
