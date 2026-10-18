@@ -13,13 +13,15 @@
 //! Replay state remains independent of peer decommissioning.
 
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::net::IpAddr;
 use std::time::Duration;
 
 use parking_lot::Mutex;
 
 use super::peer_state::PeerState;
-use super::{ReplayFilter, Seq, Stamp};
+use super::{ReplayFilter, Seq, Stamp, VerifiedPeerReplayFilter};
+use crate::peer::identity::VerifiedPeerId;
 
 impl ReplayFilter {
     /// Build an empty filter. `enabled` mirrors the owning
@@ -63,31 +65,15 @@ impl ReplayFilter {
         stamp: Stamp,
         now: Stamp,
     ) -> bool {
-        if !stamp.is_fresh(now, self.freshness_window) {
-            return false;
-        }
-
-        let mut map = self.peers.lock();
-
-        let window_ms = self.freshness_window.as_millis() as u64;
-        if let Some(state) = map.get_mut(&sender) {
-            if state.stamp_at_max().age_relative_to(now) <= window_ms {
-                return state.accept(seq, stamp);
-            }
-            // No replayable stamp can belong to this expired window.
-            map.remove(&sender);
-        }
-
-        if map.len() >= self.max_senders {
-            // Only a new sender at capacity pays for reclaiming unrelated stale entries.
-            map.retain(|_, s| s.stamp_at_max().age_relative_to(now) <= window_ms);
-            if map.len() >= self.max_senders {
-                return false;
-            }
-        }
-
-        map.insert(sender, PeerState::new(seq, stamp));
-        true
+        check_and_record_sender(
+            &mut self.peers.lock(),
+            sender,
+            seq,
+            stamp,
+            now,
+            self.freshness_window,
+            self.max_senders,
+        )
     }
 
     /// Number of peers currently tracked. For test assertions; the `reconcile_internal_testing` gate sits
@@ -102,4 +88,83 @@ impl ReplayFilter {
     pub fn evict(&self, peer: IpAddr) {
         self.peers.lock().remove(&peer);
     }
+}
+
+
+impl VerifiedPeerReplayFilter {
+    /// Create an always-enabled replay filter for individually verified signers.
+    pub fn new(freshness_window: Duration) -> Self {
+        Self {
+            peers: Mutex::new(HashMap::new()),
+            freshness_window,
+            max_senders: usize::MAX,
+        }
+    }
+
+    /// Bound the number of distinct verified peer identities retained concurrently.
+    ///
+    /// Fresh sender state is never evicted to make room for another signer.
+    #[must_use]
+    pub fn with_max_senders(mut self, max_senders: usize) -> Self {
+        self.max_senders = max_senders;
+        self
+    }
+
+    /// Number of authenticated signer replay windows retained.
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.peers.lock().len()
+    }
+
+    /// Internal gate: only the already-signature-verified envelope may supply this identity.
+    pub(crate) fn check_and_record(
+        &self,
+        peer: VerifiedPeerId,
+        seq: Seq,
+        stamp: Stamp,
+    ) -> bool {
+        check_and_record_sender(
+            &mut self.peers.lock(),
+            peer,
+            seq,
+            stamp,
+            Stamp::now(),
+            self.freshness_window,
+            self.max_senders,
+        )
+    }
+}
+
+// The legacy and signed filters deliberately share the same acceptance policy and bound.
+fn check_and_record_sender<K: Eq + Hash>(
+    map: &mut HashMap<K, PeerState>,
+    sender: K,
+    seq: Seq,
+    stamp: Stamp,
+    now: Stamp,
+    freshness_window: Duration,
+    max_senders: usize,
+) -> bool {
+    if !stamp.is_fresh(now, freshness_window) {
+        return false;
+    }
+
+    let window_ms = freshness_window.as_millis() as u64;
+    if let Some(state) = map.get_mut(&sender) {
+        if state.stamp_at_max().age_relative_to(now) <= window_ms {
+            return state.accept(seq, stamp);
+        }
+        // The expired sender's old replay window cannot authorize a new datagram.
+        map.remove(&sender);
+    }
+
+    if map.len() >= max_senders {
+        map.retain(|_, s| s.stamp_at_max().age_relative_to(now) <= window_ms);
+        if map.len() >= max_senders {
+            return false;
+        }
+    }
+
+    map.insert(sender, PeerState::new(seq, stamp));
+    true
 }
