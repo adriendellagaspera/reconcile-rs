@@ -32,8 +32,8 @@ exclude_re = [
     "observability/framing\\.rs:.*replace imp::describe with \\(\\)",
     # These mutations cannot make progress: eviction loops repeatedly select a transfer that is
     # never removed (or a fabricated id), so cargo-mutants can only time them out.
-    "gossip/src/framing/reassembly\\.rs:.*replace Reassembler::remove_transfer with \\(\\)",
-    "gossip/src/framing/reassembly\\.rs:.*replace Reassembler::oldest_for_peer -> Option.* with Some",
+    "gossip/src/framing/reassembly\\.rs:.*replace Reassembler.*remove_transfer with \\(\\)",
+    "gossip/src/framing/reassembly\\.rs:.*replace Reassembler.*oldest_for_peer -> Option.* with Some",
     "snapshot/incremental/storage\\.rs:[0-9]+:[0-9]+: replace != with == in cleanup_after_full_materialization",
     "snapshot/incremental/storage\\.rs:[0-9]+:[0-9]+: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with false in cleanup_after_full_materialization",
     "snapshot/incremental/storage\\.rs:[0-9]+:[0-9]+: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with true in cleanup_after_full_materialization",
