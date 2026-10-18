@@ -12,13 +12,15 @@
 //! authenticates packets, **not** routes or authoritative causal membership. A caller must
 //! still parse a complete dated message before recording a member or tombstone ACK.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use crate::framing::{Reassembler, ReceiveReport};
 
 use crate::auth::Authenticator;
 use crate::replay::{SenderCounter, VerifiedPeerReplayFilter};
 
 use super::envelope::{self, EnvelopeError, ReplayCheckedEnvelope, IDENTITY_ENVELOPE_OVERHEAD};
-use super::identity::{PeerAllowlist, PeerSigner};
+use super::identity::{PeerAllowlist, PeerSigner, VerifiedPeerId};
 use super::PeerId;
 
 /// Why a signed datagram could not be admitted or emitted.
@@ -147,6 +149,29 @@ impl SignedDatagramBoundary {
         verified
             .verify_replay(&self.replay)
             .ok_or(SignedDatagramError::Replay)
+    }
+
+    /// Authenticate and reassemble a signed application fragment under its verified signer.
+    ///
+    /// Incomplete transfers, memory quotas and retransmission requests are keyed by the
+    /// cryptographically proven identity rather than a source IP. A transport-route change
+    /// therefore neither loses in-flight fragments nor resets the replay window. The caller
+    /// must still validate the complete logical protocol message before granting membership,
+    /// and must separately validate routes for outbound control messages.
+    ///
+    /// # Errors
+    /// Signature, allowlist, MAC/version, peer-cap or replay admission failed; in that case
+    /// the reassembler is not touched. Frame errors are returned in the receive report.
+    pub fn open_frame<'a>(
+        &self,
+        datagram: &'a [u8],
+        peer_state: impl FnOnce(PeerId) -> (bool, usize),
+        reassembler: &mut Reassembler<VerifiedPeerId>,
+        now: Instant,
+    ) -> Result<(VerifiedPeerId, ReceiveReport<'a>), SignedDatagramError> {
+        let checked = self.open(datagram, peer_state)?;
+        let peer = checked.peer();
+        Ok((peer, reassembler.accept(peer, checked.into_payload(), now)))
     }
 
     /// Number of tracked *signing identities*, not source endpoints.
