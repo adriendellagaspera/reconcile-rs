@@ -40,7 +40,9 @@ fn all_members_acknowledged<K: Eq + Hash, P: Eq + Hash>(
     let Some(key_acks) = tombstone_acks.get(key) else {
         return false;
     };
-    members.iter().all(|peer| key_acks.get(peer) == Some(&version))
+    members
+        .iter()
+        .all(|peer| key_acks.get(peer) == Some(&version))
 }
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
@@ -177,22 +179,57 @@ mod tests {
         let members = HashSet::from([a, b]);
         let key = 7_u32;
         let mut acknowledgments = HashMap::new();
-        assert!(!all_members_acknowledged(&members, &acknowledgments, &key, 42));
+        assert!(!all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
 
         acknowledgments.insert(key, HashMap::from([(a, 42_u64)]));
-        assert!(!all_members_acknowledged(&members, &acknowledgments, &key, 42));
+        assert!(!all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
         acknowledgments.get_mut(&key).unwrap().insert(b, 41);
-        assert!(!all_members_acknowledged(&members, &acknowledgments, &key, 42));
+        assert!(!all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
         acknowledgments.get_mut(&key).unwrap().insert(b, 42);
-        assert!(all_members_acknowledged(&members, &acknowledgments, &key, 42));
-        assert!(!all_members_acknowledged(&members, &acknowledgments, &key, 43));
+        assert!(all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
+        assert!(!all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            43
+        ));
 
         // Route updates must not alter the causal membership or ACK bookkeeping.
         let mut routes = HashMap::from([(a, (3_u16, 2_u8))]);
         routes.insert(a, (3, 7));
-        assert!(all_members_acknowledged(&members, &acknowledgments, &key, 42));
+        assert!(all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
         assert_eq!(routes.len(), 1);
-        assert!(all_members_acknowledged::<u32, PeerId>(&HashSet::new(), &HashMap::new(), &key, 42));
+        assert!(all_members_acknowledged::<u32, PeerId>(
+            &HashSet::new(),
+            &HashMap::new(),
+            &key,
+            42
+        ));
     }
 
     #[test]
