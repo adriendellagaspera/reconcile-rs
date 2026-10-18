@@ -14,7 +14,8 @@
 //! This does not change the live UDP ingress or legacy wire version. Signature
 //! verification does not constitute replay or causal-membership admission.
 
-use crate::auth::{Authenticated, Authenticator, Payload};
+use crate::auth::{Authenticated, Authenticator, Payload, Verified};
+use crate::replay::VerifiedPeerReplayFilter;
 
 use super::identity::{PeerAllowlist, PeerProof, PeerSigner, VerifiedPeerId};
 use super::PeerId;
@@ -155,6 +156,7 @@ impl<'a> VerifiedEnvelope<'a> {
         Ok(AuthenticatedEnvelope {
             peer: self.peer,
             payload,
+            has_inner_replay_header: !matches!(authenticator, Authenticator::Disabled),
         })
     }
 }
@@ -163,6 +165,7 @@ impl<'a> VerifiedEnvelope<'a> {
 pub struct AuthenticatedEnvelope<'a> {
     peer: VerifiedPeerId,
     payload: Payload<'a, Authenticated>,
+    has_inner_replay_header: bool,
 }
 
 impl<'a> AuthenticatedEnvelope<'a> {
@@ -173,6 +176,48 @@ impl<'a> AuthenticatedEnvelope<'a> {
 
     /// Return the existing authenticated payload, still requiring replay/admission checks.
     pub fn into_payload(self) -> Payload<'a, Authenticated> {
+        self.payload
+    }
+
+    /// Check freshness, sequence and sender capacity under the verified signing identity.
+    ///
+    /// This *consumes* the signed and inner-authenticated envelope, preserving the binding
+    /// between signer and payload. It never accepts a caller-supplied identity or source
+    /// endpoint. Missing inner replay metadata (keyless mode) fails closed, even though
+    /// signature verification alone succeeded. This does not grant causal membership.
+    pub fn verify_replay(
+        self,
+        filter: &VerifiedPeerReplayFilter,
+    ) -> Option<ReplayCheckedEnvelope<'a>> {
+        if !self.has_inner_replay_header {
+            return None;
+        }
+        let payload = self
+            .payload
+            .verify_replay_from_signed_envelope(filter, self.peer)?;
+        Some(ReplayCheckedEnvelope {
+            peer: self.peer,
+            payload,
+        })
+    }
+}
+
+/// An allowlisted, signed payload whose inner authentication, version and replay checks passed.
+///
+/// This does not authorize a route or an authoritative causal-stability member.
+pub struct ReplayCheckedEnvelope<'a> {
+    peer: VerifiedPeerId,
+    payload: Payload<'a, Verified>,
+}
+
+impl<'a> ReplayCheckedEnvelope<'a> {
+    /// Identity bound to the checked payload independently of its source endpoint.
+    pub fn peer(&self) -> VerifiedPeerId {
+        self.peer
+    }
+
+    /// Forward the replay-checked payload to a separately policy-gated dispatcher.
+    pub fn into_payload(self) -> Payload<'a, Verified> {
         self.payload
     }
 }
