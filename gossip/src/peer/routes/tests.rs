@@ -64,7 +64,9 @@ fn a_signed_frame_cannot_dispatch_or_redirect_until_return_route_is_proven() {
 
     assert!(routes.is_empty());
     assert_eq!(
-        routes.seal_to(&bob, alice.local_peer(), &frame(b"blocked")).err(),
+        routes
+            .seal_to(&bob, alice.local_peer(), &frame(b"blocked"))
+            .err(),
         Some(SignedRouteError::NoConfirmedRoute)
     );
     let first = alice.seal(&frame(b"not-dispatched")).unwrap();
@@ -102,7 +104,14 @@ fn a_signed_frame_cannot_dispatch_or_redirect_until_return_route_is_proven() {
     assert_eq!(reply.destination, bob_addr);
     assert!(matches!(
         routes
-            .receive(&bob, &reply.bytes, relocated, |_| (false, 0), &mut bob_frames, now)
+            .receive(
+                &bob,
+                &reply.bytes,
+                relocated,
+                |_| (false, 0),
+                &mut bob_frames,
+                now
+            )
             .unwrap(),
         SignedRouteReceive::Ignored
     ));
@@ -166,7 +175,14 @@ fn a_signed_frame_cannot_dispatch_or_redirect_until_return_route_is_proven() {
     };
     assert!(matches!(
         routes
-            .receive(&bob, &reply.bytes, relocated, |_| (true, 1), &mut bob_frames, now)
+            .receive(
+                &bob,
+                &reply.bytes,
+                relocated,
+                |_| (true, 1),
+                &mut bob_frames,
+                now
+            )
             .unwrap(),
         SignedRouteReceive::Confirmed(_)
     ));
@@ -178,7 +194,9 @@ fn a_signed_frame_cannot_dispatch_or_redirect_until_return_route_is_proven() {
     routes.decommission(alice.local_peer());
     assert!(routes.is_empty());
     assert_eq!(
-        routes.seal_to(&bob, alice.local_peer(), &frame(b"denied")).err(),
+        routes
+            .seal_to(&bob, alice.local_peer(), &frame(b"denied"))
+            .err(),
         Some(SignedRouteError::NoConfirmedRoute)
     );
 }
@@ -202,7 +220,9 @@ fn malformed_or_expired_route_proof_cannot_promote_an_address() {
         routes
             .receive(
                 &bob,
-                &alice.seal(&encode_control(RESPONSE, bob.local_peer(), [0; 32])).unwrap(),
+                &alice
+                    .seal(&encode_control(RESPONSE, bob.local_peer(), [0; 32]))
+                    .unwrap(),
                 source,
                 |_| (false, 0),
                 &mut receiver,
@@ -211,11 +231,13 @@ fn malformed_or_expired_route_proof_cannot_promote_an_address() {
             .unwrap(),
         SignedRouteReceive::Ignored
     ));
-    let alice_reply = alice.seal(&encode_control(
-        RESPONSE,
-        bob.local_peer(),
-        routes.pending.get(&alice.local_peer()).unwrap().nonce,
-    )).unwrap();
+    let alice_reply = alice
+        .seal(&encode_control(
+            RESPONSE,
+            bob.local_peer(),
+            routes.pending.get(&alice.local_peer()).unwrap().nonce,
+        ))
+        .unwrap();
     assert!(matches!(
         routes
             .receive(
@@ -282,41 +304,83 @@ async fn signed_routes_forward_over_non_ip_fabric_after_probe_confirmation() {
     let mut buffer = vec![0; MTU];
     let now = Instant::now();
 
-    alice_port.send_to(&alice.seal(&frame(b"initial")).unwrap(), &b).unwrap();
+    alice_port
+        .send_to(&alice.seal(&frame(b"initial")).unwrap(), &b)
+        .unwrap();
     let (n, observed) = bob_port.recv_from(&mut buffer).await.unwrap();
     assert_eq!(observed, a);
     let challenge = match bob_routes
-        .receive(&bob, &buffer[..n], observed, |_| (false, 0), &mut bob_frames, now)
+        .receive(
+            &bob,
+            &buffer[..n],
+            observed,
+            |_| (false, 0),
+            &mut bob_frames,
+            now,
+        )
         .unwrap()
     {
         SignedRouteReceive::Probing { challenge, .. } => challenge.unwrap(),
         _ => panic!("must probe source first"),
     };
-    bob_port.send_to(&challenge.bytes, &challenge.destination).unwrap();
+    bob_port
+        .send_to(&challenge.bytes, &challenge.destination)
+        .unwrap();
     let (n, observed) = alice_port.recv_from(&mut buffer).await.unwrap();
     assert_eq!(observed, b);
     let reply = match alice_routes
-        .receive(&alice, &buffer[..n], observed, |_| (false, 0), &mut alice_frames, now)
+        .receive(
+            &alice,
+            &buffer[..n],
+            observed,
+            |_| (false, 0),
+            &mut alice_frames,
+            now,
+        )
         .unwrap()
     {
         SignedRouteReceive::Reply(reply) => reply,
         _ => panic!("expected reply"),
     };
-    alice_port.send_to(&reply.bytes, &reply.destination).unwrap();
+    alice_port
+        .send_to(&reply.bytes, &reply.destination)
+        .unwrap();
     let (n, observed) = bob_port.recv_from(&mut buffer).await.unwrap();
     assert!(matches!(
-        bob_routes.receive(&bob, &buffer[..n], observed, |_| (false, 0), &mut bob_frames, now).unwrap(),
+        bob_routes
+            .receive(
+                &bob,
+                &buffer[..n],
+                observed,
+                |_| (false, 0),
+                &mut bob_frames,
+                now
+            )
+            .unwrap(),
         SignedRouteReceive::Confirmed(_)
     ));
 
-    let encoded = bob_routes.seal_to(&bob, alice.local_peer(), &frame(b"delivered")).unwrap();
+    let encoded = bob_routes
+        .seal_to(&bob, alice.local_peer(), &frame(b"delivered"))
+        .unwrap();
     assert_eq!(encoded.destination, a);
-    bob_port.send_to(&encoded.bytes, &encoded.destination).unwrap();
+    bob_port
+        .send_to(&encoded.bytes, &encoded.destination)
+        .unwrap();
     let (n, observed) = alice_port.recv_from(&mut buffer).await.unwrap();
     assert_eq!(observed, b);
     // A received data from B but has not confirmed the reverse route. It must not dispatch it.
     assert!(matches!(
-        alice_routes.receive(&alice, &buffer[..n], observed, |_| (false, 0), &mut alice_frames, now).unwrap(),
+        alice_routes
+            .receive(
+                &alice,
+                &buffer[..n],
+                observed,
+                |_| (false, 0),
+                &mut alice_frames,
+                now
+            )
+            .unwrap(),
         SignedRouteReceive::Probing { .. }
     ));
 }
