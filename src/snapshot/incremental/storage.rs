@@ -36,6 +36,7 @@ pub(super) fn manifest_path(backend: &FileSnapshot) -> PathBuf {
     store_dir(backend).join(MANIFEST_FILE)
 }
 
+#[cfg(test)]
 pub(super) fn encode<T: Serialize>(magic: [u8; 4], value: &T) -> io::Result<Vec<u8>> {
     encode_version(magic, value, FORMAT_VERSION)
 }
@@ -56,6 +57,7 @@ pub(super) fn encode_version<T: Serialize>(
     Ok(bytes)
 }
 
+#[cfg(test)]
 pub(super) fn decode<T: DeserializeOwned>(bytes: &[u8], expected_magic: [u8; 4]) -> io::Result<T> {
     decode_version(bytes, expected_magic, FORMAT_VERSION)
 }
@@ -118,6 +120,7 @@ pub(super) fn segment_file_name(kind: &str, generation: u64) -> String {
     format!("{kind}-{generation:020}.bin")
 }
 
+#[cfg(test)]
 pub(super) fn read_manifest(backend: &FileSnapshot) -> io::Result<Option<Manifest>> {
     read_manifest_version(backend, FORMAT_VERSION)
 }
@@ -200,6 +203,7 @@ pub(super) fn write_encoded_segment(
     Ok(bytes.len() as u64)
 }
 
+#[cfg(test)]
 pub(super) fn write_segment<T: Serialize>(
     dir: &Path,
     magic: [u8; 4],
@@ -222,6 +226,7 @@ pub(super) fn write_segment_version<T: Serialize>(
     write_encoded_segment(dir, kind, generation, &bytes)
 }
 
+#[cfg(test)]
 pub(super) fn publish_manifest(backend: &FileSnapshot, manifest: &Manifest) -> io::Result<()> {
     publish_manifest_version(backend, manifest, FORMAT_VERSION)
 }
