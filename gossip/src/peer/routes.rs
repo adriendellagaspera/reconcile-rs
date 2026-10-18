@@ -18,7 +18,10 @@ use std::time::{Duration, Instant};
 
 use rand::{rngs::OsRng, Rng};
 
-use crate::framing::{Reassembler, ReceiveReport};
+use crate::framing::{
+    max_missing_ranges_for_budget, parse_recovery_control, Reassembler, ReceiveReport,
+    RecoveryControl, COMPLETION_ACK_TAG, MISSING_REPORT_TAG,
+};
 use crate::peer::identity::VerifiedPeerId;
 use crate::peer::runtime::{SignedDatagramBoundary, SignedDatagramError};
 use crate::peer::PeerId;
@@ -55,6 +58,13 @@ pub enum SignedRouteReceive<'a, A> {
     Reply(RoutedDatagram<A>),
     /// The exact outstanding challenge was returned by the expected signer and source route.
     Confirmed(VerifiedPeerId),
+    /// Authenticated recovery control from a returnability-confirmed signer.
+    Recovery {
+        /// Individually verified signer owning the retained transfer.
+        peer: VerifiedPeerId,
+        /// Bounded, validated request or completion acknowledgement.
+        control: RecoveryControl,
+    },
     /// Malformed, misdirected, expired or unsolicited route-control frame.
     Ignored,
 }
@@ -74,6 +84,11 @@ impl From<SignedDatagramError> for SignedRouteError {
     }
 }
 
+struct Confirmed<A> {
+    route: A,
+    signer: VerifiedPeerId,
+}
+
 struct Pending<A> {
     address: A,
     nonce: [u8; 32],
@@ -87,7 +102,7 @@ struct Pending<A> {
 /// can promote a route. Existing routes are kept usable while a replacement is challenged.
 /// All expiration times are monotonic; explicit decommission removes both route and challenge.
 pub struct SignedPeerRoutes<A> {
-    confirmed: HashMap<PeerId, A>,
+    confirmed: HashMap<PeerId, Confirmed<A>>,
     pending: HashMap<PeerId, Pending<A>>,
     max_peers: usize,
     challenge_ttl: Duration,
@@ -107,7 +122,15 @@ impl<A: Clone + Eq> SignedPeerRoutes<A> {
 
     /// Look up only a challenge-confirmed endpoint. A mere signed observation is never returned.
     pub fn route(&self, peer: PeerId) -> Option<&A> {
-        self.confirmed.get(&peer)
+        self.confirmed.get(&peer).map(|confirmed| &confirmed.route)
+    }
+
+    /// Confirmed principals, ordered by stable signer identity for deterministic fan-out.
+    /// These are authenticated identities, not inferred from the endpoint address.
+    pub fn confirmed_peers(&self) -> Vec<VerifiedPeerId> {
+        let mut peers: Vec<_> = self.confirmed.values().map(|entry| entry.signer).collect();
+        peers.sort();
+        peers
     }
 
     /// Number of independently confirmed signers, not addresses.
@@ -197,11 +220,28 @@ impl<A: Clone + Eq> SignedPeerRoutes<A> {
                     return Ok(SignedRouteReceive::Ignored);
                 }
                 self.pending.remove(&id);
-                self.confirmed.insert(id, source);
+                self.confirmed.insert(
+                    id,
+                    Confirmed {
+                        route: source,
+                        signer: peer,
+                    },
+                );
                 Ok(SignedRouteReceive::Confirmed(peer))
             }
             _ => {
-                if self.confirmed.get(&peer.peer_id()) == Some(&source) {
+                if self.route(peer.peer_id()) == Some(&source) {
+                    if matches!(
+                        frame.first(),
+                        Some(&MISSING_REPORT_TAG | &COMPLETION_ACK_TAG)
+                    ) {
+                        let max_ranges =
+                            max_missing_ranges_for_budget(boundary.payload_budget(), 0, 64);
+                        return Ok(match parse_recovery_control(frame, max_ranges) {
+                            Ok(Some(control)) => SignedRouteReceive::Recovery { peer, control },
+                            _ => SignedRouteReceive::Ignored,
+                        });
+                    }
                     let report = reassembler.accept(peer, bytes, now);
                     return Ok(SignedRouteReceive::Framed { peer, report });
                 }
