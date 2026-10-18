@@ -19,9 +19,9 @@ exclude_re = [
     # Snapshot-policy survivors below only change metric/descriptor reporting. They do not alter
     # publication, retained files, recovery, or compaction decisions, and this repository has no
     # global metrics-recorder test harness that can observe those side effects deterministically.
-    "snapshot/incremental\\.rs:263:56: replace > with < in save_full",
-    "snapshot/incremental\\.rs:263:56: replace > with >= in save_full",
-    "snapshot/incremental\\.rs:263:56: replace > with == in save_full",
+    "snapshot/incremental\\.rs:[0-9]+:[0-9]+: replace > with < in save_full_for",
+    "snapshot/incremental\\.rs:[0-9]+:[0-9]+: replace > with >= in save_full_for",
+    "snapshot/incremental\\.rs:[0-9]+:[0-9]+: replace > with == in save_full_for",
     "observability/snapshot\\.rs:18:9: replace imp::record_snapshot_full with \\(\\)",
     "observability/snapshot\\.rs:28:9: replace imp::record_snapshot_delta with \\(\\)",
     "observability/snapshot\\.rs:35:9: replace imp::record_snapshot_cleanup_failure with \\(\\)",
@@ -34,11 +34,11 @@ exclude_re = [
     # never removed (or a fabricated id), so cargo-mutants can only time them out.
     "gossip/src/framing/reassembly\\.rs:.*replace Reassembler::remove_transfer with \\(\\)",
     "gossip/src/framing/reassembly\\.rs:.*replace Reassembler::oldest_for_peer -> Option.* with Some",
-    "snapshot/incremental/storage\\.rs:216:54: replace != with == in cleanup_after_full_materialization",
-    "snapshot/incremental/storage\\.rs:222:21: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with false in cleanup_after_full_materialization",
-    "snapshot/incremental/storage\\.rs:222:21: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with true in cleanup_after_full_materialization",
-    "snapshot/incremental/storage\\.rs:222:32: replace == with != in cleanup_after_full_materialization",
-    "snapshot/incremental/storage\\.rs:226:67: replace != with == in cleanup_after_full_materialization",
+    "snapshot/incremental/storage\\.rs:[0-9]+:[0-9]+: replace != with == in cleanup_after_full_materialization",
+    "snapshot/incremental/storage\\.rs:[0-9]+:[0-9]+: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with false in cleanup_after_full_materialization",
+    "snapshot/incremental/storage\\.rs:[0-9]+:[0-9]+: replace match guard err.kind\\(\\) == io::ErrorKind::NotFound with true in cleanup_after_full_materialization",
+    "snapshot/incremental/storage\\.rs:[0-9]+:[0-9]+: replace == with != in cleanup_after_full_materialization",
+    "snapshot/incremental/storage\\.rs:[0-9]+:[0-9]+: replace != with == in cleanup_after_full_materialization",
 ]
 
 skip_calls = ["with_capacity", "reserve"]
