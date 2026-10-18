@@ -226,7 +226,9 @@ impl<'a> ReplayCheckedEnvelope<'a> {
 mod tests {
     use super::*;
     use crate::auth::{ClusterKey, WIRE_VERSION};
-    use crate::replay::{ReplayFilter, SenderCounter, FRESHNESS_WINDOW_DEFAULT};
+    use crate::replay::{
+        ReplayFilter, SenderCounter, Seq, Stamp, VerifiedPeerReplayFilter, FRESHNESS_WINDOW_DEFAULT,
+    };
     use std::net::IpAddr;
 
     const MTU: usize = 1200;
@@ -435,4 +437,145 @@ mod tests {
             ));
         }
     }
+
+    fn signed_payload(
+        signer: &PeerSigner,
+        auth: &Authenticator,
+        seq: u64,
+        stamp: u64,
+        data: &[u8],
+    ) -> Vec<u8> {
+        let inner = auth.seal(Seq::new(seq), Stamp::new(stamp), data);
+        seal(signer, &inner, MTU).unwrap()
+    }
+
+    fn open_signed<'a>(
+        allowlist: &PeerAllowlist,
+        auth: &Authenticator,
+        frame: &'a [u8],
+    ) -> AuthenticatedEnvelope<'a> {
+        open(allowlist, frame, MTU)
+            .unwrap()
+            .authenticate(auth)
+            .unwrap()
+    }
+
+    #[test]
+    fn replay_follows_verified_peer_across_unrelated_source_endpoints() {
+        let signer = alice();
+        let auth = keyed();
+        let allowlist = PeerAllowlist::new([signer.peer_id()]);
+        let filter = VerifiedPeerReplayFilter::new(FRESHNESS_WINDOW_DEFAULT);
+        let stamp = chrono::Utc::now().timestamp_millis() as u64;
+        let frame = signed_payload(&signer, &auth, 1, stamp, b"payload");
+        // The radio/optical source slot is deliberately not an input to replay admission.
+        let old_slot = (3_u16, 2_u8);
+        let moved_slot = (7_u16, 1_u8);
+        assert_ne!(old_slot, moved_slot);
+
+        let checked = open_signed(&allowlist, &auth, &frame)
+            .verify_replay(&filter)
+            .unwrap();
+        assert_eq!(checked.peer().peer_id(), signer.peer_id());
+        assert_eq!(checked.into_payload().as_bytes(), b"payload");
+        assert_eq!(filter.len(), 1);
+        assert!(open_signed(&allowlist, &auth, &frame)
+            .verify_replay(&filter)
+            .is_none());
+
+        let next = signed_payload(&signer, &auth, 2, stamp, b"after relocation");
+        let checked = open_signed(&allowlist, &auth, &next)
+            .verify_replay(&filter)
+            .unwrap();
+        assert_eq!(checked.into_payload().as_bytes(), b"after relocation");
+        assert_eq!(filter.len(), 1);
+    }
+
+    #[test]
+    fn independent_signed_peers_share_a_bounded_replay_budget() {
+        let a = alice();
+        let b = bob();
+        let c = PeerSigner::from_seed([0x33; 32]);
+        let auth = keyed();
+        let allowlist = PeerAllowlist::new([a.peer_id(), b.peer_id(), c.peer_id()]);
+        let filter = VerifiedPeerReplayFilter::new(FRESHNESS_WINDOW_DEFAULT).with_max_senders(2);
+        let stamp = chrono::Utc::now().timestamp_millis() as u64;
+
+        for signer in [&a, &b] {
+            let frame = signed_payload(signer, &auth, 1, stamp, b"first");
+            assert!(open_signed(&allowlist, &auth, &frame)
+                .verify_replay(&filter)
+                .is_some());
+        }
+        assert_eq!(filter.len(), 2);
+
+        let newcomer = signed_payload(&c, &auth, 1, stamp, b"third");
+        assert!(open_signed(&allowlist, &auth, &newcomer)
+            .verify_replay(&filter)
+            .is_none());
+        assert_eq!(filter.len(), 2);
+
+        let a_next = signed_payload(&a, &auth, 2, stamp, b"second");
+        assert!(open_signed(&allowlist, &auth, &a_next)
+            .verify_replay(&filter)
+            .is_some());
+        assert!(open_signed(&allowlist, &auth, &a_next)
+            .verify_replay(&filter)
+            .is_none());
+
+        let zero = VerifiedPeerReplayFilter::new(FRESHNESS_WINDOW_DEFAULT).with_max_senders(0);
+        assert!(open_signed(&allowlist, &auth, &newcomer)
+            .verify_replay(&zero)
+            .is_none());
+        assert_eq!(zero.len(), 0);
+    }
+
+    #[test]
+    fn forged_unknown_stale_or_wrong_key_envelopes_never_allocate_replay_state() {
+        let signer = alice();
+        let auth = keyed();
+        let allowlist = PeerAllowlist::new([signer.peer_id()]);
+        let filter = VerifiedPeerReplayFilter::new(FRESHNESS_WINDOW_DEFAULT);
+        let stamp = chrono::Utc::now().timestamp_millis() as u64;
+        let legitimate = signed_payload(&signer, &auth, 1, stamp, b"ok");
+        let forged = signed_payload(&bob(), &auth, 1, stamp, b"unlisted");
+        assert!(matches!(open(&allowlist, &forged, MTU), Err(EnvelopeError::InvalidProof)));
+        let mut claim_changed = legitimate.clone();
+        claim_changed[ID..SIGNATURE].copy_from_slice(&bob().peer_id().to_bytes());
+        assert!(matches!(
+            open(&allowlist, &claim_changed, MTU),
+            Err(EnvelopeError::InvalidProof)
+        ));
+        let different_key = Authenticator::new(
+            Some(ClusterKey::new([0x78; 32])),
+            false,
+        ).unwrap();
+        assert!(matches!(
+            open(&allowlist, &legitimate, MTU)
+                .unwrap()
+                .authenticate(&different_key),
+            Err(EnvelopeError::InnerAuthentication)
+        ));
+        let stale = signed_payload(&signer, &auth, 1, 1, b"too old");
+        assert!(open_signed(&allowlist, &auth, &stale)
+            .verify_replay(&filter)
+            .is_none());
+        assert_eq!(filter.len(), 0);
+    }
+
+    #[test]
+    fn signed_replay_never_uses_the_keyless_inner_auth_bypass() {
+        let signer = alice();
+        let allowlist = PeerAllowlist::new([signer.peer_id()]);
+        let keyless = Authenticator::new(None, false).unwrap();
+        let frame = seal(&signer, &[WIRE_VERSION, 42], MTU).unwrap();
+        let filter = VerifiedPeerReplayFilter::new(FRESHNESS_WINDOW_DEFAULT);
+        let checked_inner = open(&allowlist, &frame, MTU)
+            .unwrap()
+            .authenticate(&keyless)
+            .unwrap();
+        assert!(checked_inner.verify_replay(&filter).is_none());
+        assert_eq!(filter.len(), 0);
+    }
+
 }
