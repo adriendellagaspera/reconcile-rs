@@ -27,24 +27,29 @@ use crate::entry::Entry;
 pub type DatedEntries<K, V> = Vec<(K, Entry<Timestamp, V>)>;
 
 /// Everything a replicated map needs to survive a restart without behaving like a fresh replica.
+///
+/// `P` is the causal-member identity: the default `IpAddr` preserves the current UDP runtime,
+/// while a signed runtime can persist stable `PeerId`s without inventing synthetic IP routes.
+/// Do not admit raw self-asserted `PeerId`s into the authoritative membership set; admission
+/// requires verified, authorized transport identity. Disk compatibility is a separate contract.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(
-    serialize = "K: Serialize, V: Serialize",
-    deserialize = "K: Deserialize<'de> + Eq + std::hash::Hash, V: Deserialize<'de>"
+    serialize = "K: Serialize, V: Serialize, P: Serialize",
+    deserialize = "K: Deserialize<'de> + Eq + std::hash::Hash, V: Deserialize<'de>, P: Deserialize<'de> + Eq + std::hash::Hash"
 ))]
 #[non_exhaustive]
-pub struct PersistedState<K, V> {
+pub struct PersistedState<K, V, P = IpAddr> {
     /// Every key with its dated value. A `None` payload is a tombstone.
     pub entries: DatedEntries<K, V>,
     /// Every peer this node has ever communicated with (causal-stability membership).
-    pub members: HashSet<IpAddr>,
+    pub members: HashSet<P>,
     /// Per-tombstone acknowledgments: `key -> (peer -> version token of the tombstone it holds)`.
-    pub tombstone_acks: HashMap<K, HashMap<IpAddr, u64>>,
+    pub tombstone_acks: HashMap<K, HashMap<P, u64>>,
 }
 
 // Not `#[derive(Default)]`: a derive would add `K: Default, V: Default` bounds neither field
 // actually needs (an empty `Vec`/`HashSet`/`HashMap` needs none of that on its element types).
-impl<K, V> Default for PersistedState<K, V> {
+impl<K, V, P> Default for PersistedState<K, V, P> {
     fn default() -> Self {
         PersistedState {
             entries: DatedEntries::default(),
@@ -54,15 +59,15 @@ impl<K, V> Default for PersistedState<K, V> {
     }
 }
 
-impl<K, V> PersistedState<K, V> {
+impl<K, V, P> PersistedState<K, V, P> {
     /// Build a state from its three fields — `#[non_exhaustive]` blocks the struct-literal form
     /// outside this crate, even with every field named, so this is the constructor callers reach
     /// for instead.
     #[must_use]
     pub fn new(
         entries: DatedEntries<K, V>,
-        members: HashSet<IpAddr>,
-        tombstone_acks: HashMap<K, HashMap<IpAddr, u64>>,
+        members: HashSet<P>,
+        tombstone_acks: HashMap<K, HashMap<P, u64>>,
     ) -> Self {
         PersistedState {
             entries,
@@ -75,7 +80,7 @@ impl<K, V> PersistedState<K, V> {
 /// Entries alone, with `members` and `tombstone_acks` empty — the common case in tests and any
 /// fresh construction where causal-stability membership and tombstone acks haven't been observed
 /// yet. Reach for [`PersistedState::new`] instead when either needs a real value.
-impl<K, V> From<DatedEntries<K, V>> for PersistedState<K, V> {
+impl<K, V, P> From<DatedEntries<K, V>> for PersistedState<K, V, P> {
     fn from(entries: DatedEntries<K, V>) -> Self {
         PersistedState {
             entries,
@@ -91,22 +96,22 @@ impl<K, V> From<DatedEntries<K, V>> for PersistedState<K, V> {
 #[doc(hidden)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(
-    serialize = "K: Serialize, V: Serialize",
-    deserialize = "K: Deserialize<'de> + Eq + std::hash::Hash, V: Deserialize<'de>"
+    serialize = "K: Serialize, V: Serialize, P: Serialize",
+    deserialize = "K: Deserialize<'de> + Eq + std::hash::Hash, V: Deserialize<'de>, P: Deserialize<'de> + Eq + std::hash::Hash"
 ))]
-pub struct PersistenceDelta<K, V> {
+pub struct PersistenceDelta<K, V, P = IpAddr> {
     pub(crate) entries: HashMap<K, Option<Entry<Timestamp, V>>>,
-    pub(crate) members: HashMap<IpAddr, bool>,
+    pub(crate) members: HashMap<P, bool>,
     pub(crate) ack_key_clears: HashSet<K>,
-    pub(crate) ack_peers: HashMap<K, HashMap<IpAddr, Option<u64>>>,
+    pub(crate) ack_peers: HashMap<K, HashMap<P, Option<u64>>>,
 }
 
-impl<K, V> PersistenceDelta<K, V> {
+impl<K, V, P> PersistenceDelta<K, V, P> {
     pub(crate) fn new(
         entries: HashMap<K, Option<Entry<Timestamp, V>>>,
-        members: HashMap<IpAddr, bool>,
+        members: HashMap<P, bool>,
         ack_key_clears: HashSet<K>,
-        ack_peers: HashMap<K, HashMap<IpAddr, Option<u64>>>,
+        ack_peers: HashMap<K, HashMap<P, Option<u64>>>,
     ) -> Self {
         Self {
             entries,
@@ -120,7 +125,7 @@ impl<K, V> PersistenceDelta<K, V> {
 /// A pluggable durable backend for a replicated map.
 /// Held behind an [`Arc`](std::sync::Arc) and snapshotted from a background task, hence
 /// `Send + Sync + 'static`.
-pub trait Persistence<K, V>: Send + Sync + 'static {
+pub trait Persistence<K, V, P = IpAddr>: Send + Sync + 'static {
     /// Load the previously saved state, or `Ok(None)` if nothing was ever saved.
     /// # Call context
     /// Called synchronously and inline, once, from `reconcile::ReplicatedMap::with_persistence` —
@@ -128,14 +133,14 @@ pub trait Persistence<K, V>: Send + Sync + 'static {
     /// method's own doctest). A slow or blocking implementation stalls whichever thread runs that
     /// call; nothing else is running yet for it to hold up. `O(state size)` — the trait offers no
     /// incremental load, so a large snapshot is read and deserialized in full, every time.
-    fn load(&self) -> io::Result<Option<PersistedState<K, V>>>;
+    fn load(&self) -> io::Result<Option<PersistedState<K, V, P>>>;
     /// Durably save the given state, atomically replacing any previous snapshot.
     /// # Call context
     /// Called synchronously and inline — never via `spawn_blocking`. The default generation hook
     /// delegates here with the complete state, so existing backends keep their historical
     /// `O(state size)` behavior unchanged. `state` is one coherent durable generation; a write
     /// published after that generation was frozen remains pending for the next save.
-    fn save(&self, state: &PersistedState<K, V>) -> io::Result<()>;
+    fn save(&self, state: &PersistedState<K, V, P>) -> io::Result<()>;
 
     /// Try to durably commit a coherent generation from its coalesced delta without requiring a
     /// materialized full state. Return `Ok(true)` only when the generation is durably handled;
@@ -144,7 +149,7 @@ pub trait Persistence<K, V>: Send + Sync + 'static {
     /// The default preserves historical behavior for every existing backend by always requesting
     /// the full-state fallback.
     #[doc(hidden)]
-    fn try_save_delta(&self, delta: Option<&PersistenceDelta<K, V>>) -> io::Result<bool> {
+    fn try_save_delta(&self, delta: Option<&PersistenceDelta<K, V, P>>) -> io::Result<bool> {
         let _ = delta;
         Ok(false)
     }
@@ -152,11 +157,11 @@ pub trait Persistence<K, V>: Send + Sync + 'static {
 
 /// The **default** backend: the latest snapshot in RAM, so **a restart loses everything**. Use
 /// `reconcile::FileSnapshot` when a restart must recover.
-pub struct InMemoryPersistence<K, V> {
-    state: Mutex<Option<PersistedState<K, V>>>,
+pub struct InMemoryPersistence<K, V, P = IpAddr> {
+    state: Mutex<Option<PersistedState<K, V, P>>>,
 }
 
-impl<K, V> Default for InMemoryPersistence<K, V> {
+impl<K, V, P> Default for InMemoryPersistence<K, V, P> {
     fn default() -> Self {
         InMemoryPersistence {
             state: Mutex::new(None),
@@ -164,29 +169,30 @@ impl<K, V> Default for InMemoryPersistence<K, V> {
     }
 }
 
-impl<K, V> InMemoryPersistence<K, V> {
+impl<K, V, P> InMemoryPersistence<K, V, P> {
     /// Create an empty in-memory backend.
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-impl<K, V> Persistence<K, V> for InMemoryPersistence<K, V>
+impl<K, V, P> Persistence<K, V, P> for InMemoryPersistence<K, V, P>
 where
     K: Clone + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
+    P: Clone + Send + Sync + 'static,
 {
     /// Returns the last saved state, or `Ok(None)`.
     /// # Panics
     /// If the internal mutex is poisoned.
-    fn load(&self) -> io::Result<Option<PersistedState<K, V>>> {
+    fn load(&self) -> io::Result<Option<PersistedState<K, V, P>>> {
         Ok(self.state.lock().unwrap().clone())
     }
 
     /// Replaces the in-memory snapshot with `state`.
     /// # Panics
     /// If the internal mutex is poisoned.
-    fn save(&self, state: &PersistedState<K, V>) -> io::Result<()> {
+    fn save(&self, state: &PersistedState<K, V, P>) -> io::Result<()> {
         *self.state.lock().unwrap() = Some(state.clone());
         Ok(())
     }
@@ -290,5 +296,50 @@ mod tests {
 
         let loaded = backend.load().unwrap().unwrap();
         assert_eq!(loaded.entries[0].1.value(), Some(&"second".to_string()));
+    }
+    #[test]
+    fn signed_peer_ids_round_trip_in_memory_and_through_bincode() {
+        use crate::PeerId;
+
+        let a = PeerId::from_bytes([0x11; 32]);
+        let b = PeerId::from_bytes([0x22; 32]);
+        let members = HashSet::from([a, b]);
+        let acks = HashMap::from([(7_u32, HashMap::from([(a, 42_u64)]))]);
+        let state =
+            PersistedState::<u32, String, PeerId>::new(vec![], members.clone(), acks.clone());
+        let backend = InMemoryPersistence::<u32, String, PeerId>::new();
+        backend.save(&state).unwrap();
+        let loaded = backend.load().unwrap().unwrap();
+        assert_eq!(loaded.members, members);
+        assert_eq!(loaded.tombstone_acks, acks);
+
+        let encoded = bincode::serialize(&state).unwrap();
+        let decoded: PersistedState<u32, String, PeerId> = bincode::deserialize(&encoded).unwrap();
+        assert_eq!(decoded.members, members);
+        assert_eq!(decoded.tombstone_acks, acks);
+        // The serialized state stores stable logical IDs; substrate routing is independent.
+        let old_route = (1_u16, 3_u8);
+        let new_route = (1_u16, 7_u8);
+        assert_ne!(old_route, new_route);
+        assert!(decoded.members.contains(&a));
+        assert_eq!(decoded.tombstone_acks[&7_u32][&a], 42);
+    }
+
+    #[test]
+    fn delta_types_support_signed_peer_ids_without_ip_address_translation() {
+        use crate::PeerId;
+
+        let a = PeerId::from_bytes([0x77; 32]);
+        let delta: PersistenceDelta<u32, String, PeerId> = PersistenceDelta::new(
+            HashMap::new(),
+            HashMap::from([(a, true)]),
+            HashSet::new(),
+            HashMap::from([(9_u32, HashMap::from([(a, Some(123_u64))]))]),
+        );
+        assert_eq!(delta.members.get(&a), Some(&true));
+        assert_eq!(
+            delta.ack_peers.get(&9).and_then(|peers| peers.get(&a)),
+            Some(&Some(123))
+        );
     }
 }

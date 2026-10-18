@@ -5,6 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -23,6 +24,25 @@ use super::Replica;
 /// a newer one.
 pub(crate) fn version_hash<V: Serialize>(value: &V) -> u64 {
     rsos::digest(value).0[0]
+}
+
+/// Identity-agnostic causal GC predicate. Membership identities must have been admitted by the
+/// owning runtime's authentication policy; the predicate never infers identities from routes.
+fn all_members_acknowledged<K: Eq + Hash, P: Eq + Hash>(
+    members: &HashSet<P>,
+    tombstone_acks: &HashMap<K, HashMap<P, u64>>,
+    key: &K,
+    version: u64,
+) -> bool {
+    if members.is_empty() {
+        return true;
+    }
+    let Some(key_acks) = tombstone_acks.get(key) else {
+        return false;
+    };
+    members
+        .iter()
+        .all(|peer| key_acks.get(peer) == Some(&version))
 }
 
 impl<K: Key + Hash, V: Value> Replica<K, V> {
@@ -75,17 +95,12 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Whether the tombstone for `key` at this version has been acknowledged by every member and
     /// is safe to collect. With no members known, GC is allowed.
     pub(crate) fn is_tombstone_stable(&self, key: &K, version: u64) -> bool {
-        let members = self.members.read();
-        if members.is_empty() {
-            return true;
-        }
-        let acks = self.tombstone_acks.read();
-        let Some(key_acks) = acks.get(key) else {
-            return false;
-        };
-        members
-            .iter()
-            .all(|peer| key_acks.get(peer) == Some(&version))
+        all_members_acknowledged(
+            &self.members.read(),
+            &self.tombstone_acks.read(),
+            key,
+            version,
+        )
     }
 
     /// Drop the acknowledgment bookkeeping for a key once its tombstone has been collected.
@@ -155,6 +170,68 @@ mod tests {
     /// Pins the exact formula (`rsos::digest`'s low limb), not just "some function of the
     /// value" — a mutant hardcoding a constant return has no other caller in this crate that
     /// would catch it (every existing test only compares `version_hash` against itself).
+    #[test]
+    fn stable_peer_ids_gate_gc_without_transport_endpoint_keys() {
+        use crate::PeerId;
+
+        let a = PeerId::from_bytes([0x41; 32]);
+        let b = PeerId::from_bytes([0x42; 32]);
+        let members = HashSet::from([a, b]);
+        let key = 7_u32;
+        let mut acknowledgments = HashMap::new();
+        assert!(!all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
+
+        acknowledgments.insert(key, HashMap::from([(a, 42_u64)]));
+        assert!(!all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
+        acknowledgments.get_mut(&key).unwrap().insert(b, 41);
+        assert!(!all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
+        acknowledgments.get_mut(&key).unwrap().insert(b, 42);
+        assert!(all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
+        assert!(!all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            43
+        ));
+
+        // Route updates must not alter the causal membership or ACK bookkeeping.
+        let mut routes = HashMap::from([(a, (3_u16, 2_u8))]);
+        routes.insert(a, (3, 7));
+        assert!(all_members_acknowledged(
+            &members,
+            &acknowledgments,
+            &key,
+            42
+        ));
+        assert_eq!(routes.len(), 1);
+        assert!(all_members_acknowledged::<u32, PeerId>(
+            &HashSet::new(),
+            &HashMap::new(),
+            &key,
+            42
+        ));
+    }
+
     #[test]
     fn version_hash_matches_the_digest_low_limb() {
         assert_eq!(version_hash(&42u32), rsos::digest(&42u32).0[0]);

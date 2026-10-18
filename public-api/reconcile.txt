@@ -77,55 +77,55 @@ impl core::marker::Unpin for reconcile::FileSnapshot
 impl core::marker::UnsafeUnpin for reconcile::FileSnapshot
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::FileSnapshot
 impl core::panic::unwind_safe::UnwindSafe for reconcile::FileSnapshot
-pub struct reconcile::persistence::InMemoryPersistence<K, V>
-impl<K, V> reconcile::persistence::InMemoryPersistence<K, V>
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::new() -> Self
-impl<K, V> core::default::Default for reconcile::persistence::InMemoryPersistence<K, V>
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::default() -> Self
-impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-impl<K, V> !core::marker::Freeze for reconcile::persistence::InMemoryPersistence<K, V>
-impl<K, V> core::marker::Send for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Send
-impl<K, V> core::marker::Sync for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::UnsafeUnpin
-impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::RefUnwindSafe
-impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::UnwindSafe
-#[non_exhaustive] pub struct reconcile::persistence::PersistedState<K, V>
+pub struct reconcile::persistence::InMemoryPersistence<K, V, P>
+impl<K, V, P> reconcile::persistence::InMemoryPersistence<K, V, P>
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::new() -> Self
+impl<K, V, P> core::default::Default for reconcile::persistence::InMemoryPersistence<K, V, P>
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::default() -> Self
+impl<K, V, P> reconcile::persistence::Persistence<K, V, P> for reconcile::persistence::InMemoryPersistence<K, V, P> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, P: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::save(&self, &reconcile::persistence::PersistedState<K, V, P>) -> core::io::error::Result<()>
+impl<K, V, P> !core::marker::Freeze for reconcile::persistence::InMemoryPersistence<K, V, P>
+impl<K, V, P> core::marker::Send for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::marker::Send
+impl<K, V, P> core::marker::Sync for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::marker::Sync
+impl<K, V, P> core::marker::Unpin for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::marker::Unpin
+impl<K, V, P> core::marker::UnsafeUnpin for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::marker::UnsafeUnpin
+impl<K, V, P> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V, P> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::panic::unwind_safe::UnwindSafe
+#[non_exhaustive] pub struct reconcile::persistence::PersistedState<K, V, P>
 pub reconcile::persistence::PersistedState::entries: reconcile::persistence::DatedEntries<K, V>
-pub reconcile::persistence::PersistedState::members: std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>
-pub reconcile::persistence::PersistedState::tombstone_acks: std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>
-impl<K, V> reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::new(reconcile::persistence::DatedEntries<K, V>, std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>) -> Self
-impl<'de, K, V> serde::de::Deserialize<'de> for reconcile::persistence::PersistedState<K, V> where K: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash, V: serde::de::Deserialize<'de>
-pub fn reconcile::persistence::PersistedState<K, V>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde::de::Deserializer>::Error> where __D: serde::de::Deserializer<'de>
-impl<K, V> core::convert::From<alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>> for reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::from(reconcile::persistence::DatedEntries<K, V>) -> Self
-impl<K, V> core::default::Default for reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::default() -> Self
-impl<K, V> serde::ser::Serialize for reconcile::persistence::PersistedState<K, V> where K: serde::ser::Serialize, V: serde::ser::Serialize
-pub fn reconcile::persistence::PersistedState<K, V>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde::ser::Serializer>::Ok, <__S as serde::ser::Serializer>::Error> where __S: serde::ser::Serializer
-impl<K: core::clone::Clone, V: core::clone::Clone> core::clone::Clone for reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::clone(&self) -> reconcile::persistence::PersistedState<K, V>
-impl<K: core::fmt::Debug, V: core::fmt::Debug> core::fmt::Debug for reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<K, V> core::marker::Freeze for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Freeze, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Freeze
-impl<K, V> core::marker::Send for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Send, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Send
-impl<K, V> core::marker::Sync for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Sync, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Unpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::UnsafeUnpin
-impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::RefUnwindSafe
-impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::UnwindSafe
-pub trait reconcile::persistence::Persistence<K, V>: core::marker::Send + core::marker::Sync + 'static
-pub fn reconcile::persistence::Persistence::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
-pub fn reconcile::persistence::Persistence::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+pub reconcile::persistence::PersistedState::members: std::collections::hash::set::HashSet<P>
+pub reconcile::persistence::PersistedState::tombstone_acks: std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>
+impl<K, V, P> reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::new(reconcile::persistence::DatedEntries<K, V>, std::collections::hash::set::HashSet<P>, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>) -> Self
+impl<'de, K, V, P> serde::de::Deserialize<'de> for reconcile::persistence::PersistedState<K, V, P> where K: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash, V: serde::de::Deserialize<'de>, P: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash
+pub fn reconcile::persistence::PersistedState<K, V, P>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde::de::Deserializer>::Error> where __D: serde::de::Deserializer<'de>
+impl<K, V, P> core::convert::From<alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>> for reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::from(reconcile::persistence::DatedEntries<K, V>) -> Self
+impl<K, V, P> core::default::Default for reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::default() -> Self
+impl<K, V, P> serde::ser::Serialize for reconcile::persistence::PersistedState<K, V, P> where K: serde::ser::Serialize, V: serde::ser::Serialize, P: serde::ser::Serialize
+pub fn reconcile::persistence::PersistedState<K, V, P>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde::ser::Serializer>::Ok, <__S as serde::ser::Serializer>::Error> where __S: serde::ser::Serializer
+impl<K: core::clone::Clone, V: core::clone::Clone, P: core::clone::Clone> core::clone::Clone for reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::clone(&self) -> reconcile::persistence::PersistedState<K, V, P>
+impl<K: core::fmt::Debug, V: core::fmt::Debug, P: core::fmt::Debug> core::fmt::Debug for reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<K, V, P> core::marker::Freeze for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Freeze, std::collections::hash::set::HashSet<P>: core::marker::Freeze, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::Freeze
+impl<K, V, P> core::marker::Send for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Send, std::collections::hash::set::HashSet<P>: core::marker::Send, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::Send
+impl<K, V, P> core::marker::Sync for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Sync, std::collections::hash::set::HashSet<P>: core::marker::Sync, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::Sync
+impl<K, V, P> core::marker::Unpin for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Unpin, std::collections::hash::set::HashSet<P>: core::marker::Unpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::Unpin
+impl<K, V, P> core::marker::UnsafeUnpin for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::UnsafeUnpin, std::collections::hash::set::HashSet<P>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::UnsafeUnpin
+impl<K, V, P> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::set::HashSet<P>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V, P> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::set::HashSet<P>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::panic::unwind_safe::UnwindSafe
+pub trait reconcile::persistence::Persistence<K, V, P>: core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::Persistence::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>
+pub fn reconcile::persistence::Persistence::save(&self, &reconcile::persistence::PersistedState<K, V, P>) -> core::io::error::Result<()>
+impl<K, V, P> reconcile::persistence::Persistence<K, V, P> for reconcile::persistence::InMemoryPersistence<K, V, P> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, P: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::save(&self, &reconcile::persistence::PersistedState<K, V, P>) -> core::io::error::Result<()>
 impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
 pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
 pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
 pub type reconcile::persistence::DatedEntries<K, V> = alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>
 pub mod reconcile::read_replica_map
 pub struct reconcile::read_replica_map::ReadReplicaMap<K, V>
@@ -701,46 +701,46 @@ impl core::marker::Unpin for reconcile::FileSnapshot
 impl core::marker::UnsafeUnpin for reconcile::FileSnapshot
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile::FileSnapshot
 impl core::panic::unwind_safe::UnwindSafe for reconcile::FileSnapshot
-pub struct reconcile::InMemoryPersistence<K, V>
-impl<K, V> reconcile::persistence::InMemoryPersistence<K, V>
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::new() -> Self
-impl<K, V> core::default::Default for reconcile::persistence::InMemoryPersistence<K, V>
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::default() -> Self
-impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-impl<K, V> !core::marker::Freeze for reconcile::persistence::InMemoryPersistence<K, V>
-impl<K, V> core::marker::Send for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Send
-impl<K, V> core::marker::Sync for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::marker::UnsafeUnpin
-impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::RefUnwindSafe
-impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::InMemoryPersistence<K, V> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V>>>: core::panic::unwind_safe::UnwindSafe
-#[non_exhaustive] pub struct reconcile::PersistedState<K, V>
+pub struct reconcile::InMemoryPersistence<K, V, P>
+impl<K, V, P> reconcile::persistence::InMemoryPersistence<K, V, P>
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::new() -> Self
+impl<K, V, P> core::default::Default for reconcile::persistence::InMemoryPersistence<K, V, P>
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::default() -> Self
+impl<K, V, P> reconcile::persistence::Persistence<K, V, P> for reconcile::persistence::InMemoryPersistence<K, V, P> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, P: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::save(&self, &reconcile::persistence::PersistedState<K, V, P>) -> core::io::error::Result<()>
+impl<K, V, P> !core::marker::Freeze for reconcile::persistence::InMemoryPersistence<K, V, P>
+impl<K, V, P> core::marker::Send for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::marker::Send
+impl<K, V, P> core::marker::Sync for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::marker::Sync
+impl<K, V, P> core::marker::Unpin for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::marker::Unpin
+impl<K, V, P> core::marker::UnsafeUnpin for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::marker::UnsafeUnpin
+impl<K, V, P> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V, P> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::InMemoryPersistence<K, V, P> where std::sync::poison::mutex::Mutex<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>: core::panic::unwind_safe::UnwindSafe
+#[non_exhaustive] pub struct reconcile::PersistedState<K, V, P>
 pub reconcile::PersistedState::entries: reconcile::persistence::DatedEntries<K, V>
-pub reconcile::PersistedState::members: std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>
-pub reconcile::PersistedState::tombstone_acks: std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>
-impl<K, V> reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::new(reconcile::persistence::DatedEntries<K, V>, std::collections::hash::set::HashSet<core::net::ip_addr::IpAddr>, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>) -> Self
-impl<'de, K, V> serde::de::Deserialize<'de> for reconcile::persistence::PersistedState<K, V> where K: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash, V: serde::de::Deserialize<'de>
-pub fn reconcile::persistence::PersistedState<K, V>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde::de::Deserializer>::Error> where __D: serde::de::Deserializer<'de>
-impl<K, V> core::convert::From<alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>> for reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::from(reconcile::persistence::DatedEntries<K, V>) -> Self
-impl<K, V> core::default::Default for reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::default() -> Self
-impl<K, V> serde::ser::Serialize for reconcile::persistence::PersistedState<K, V> where K: serde::ser::Serialize, V: serde::ser::Serialize
-pub fn reconcile::persistence::PersistedState<K, V>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde::ser::Serializer>::Ok, <__S as serde::ser::Serializer>::Error> where __S: serde::ser::Serializer
-impl<K: core::clone::Clone, V: core::clone::Clone> core::clone::Clone for reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::clone(&self) -> reconcile::persistence::PersistedState<K, V>
-impl<K: core::fmt::Debug, V: core::fmt::Debug> core::fmt::Debug for reconcile::persistence::PersistedState<K, V>
-pub fn reconcile::persistence::PersistedState<K, V>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<K, V> core::marker::Freeze for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Freeze, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Freeze
-impl<K, V> core::marker::Send for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Send, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Send
-impl<K, V> core::marker::Sync for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Sync, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Sync
-impl<K, V> core::marker::Unpin for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Unpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::Unpin
-impl<K, V> core::marker::UnsafeUnpin for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::marker::UnsafeUnpin
-impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::RefUnwindSafe
-impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::PersistedState<K, V> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<core::net::ip_addr::IpAddr, u64>>: core::panic::unwind_safe::UnwindSafe
+pub reconcile::PersistedState::members: std::collections::hash::set::HashSet<P>
+pub reconcile::PersistedState::tombstone_acks: std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>
+impl<K, V, P> reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::new(reconcile::persistence::DatedEntries<K, V>, std::collections::hash::set::HashSet<P>, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>) -> Self
+impl<'de, K, V, P> serde::de::Deserialize<'de> for reconcile::persistence::PersistedState<K, V, P> where K: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash, V: serde::de::Deserialize<'de>, P: serde::de::Deserialize<'de> + core::cmp::Eq + core::hash::Hash
+pub fn reconcile::persistence::PersistedState<K, V, P>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde::de::Deserializer>::Error> where __D: serde::de::Deserializer<'de>
+impl<K, V, P> core::convert::From<alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>> for reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::from(reconcile::persistence::DatedEntries<K, V>) -> Self
+impl<K, V, P> core::default::Default for reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::default() -> Self
+impl<K, V, P> serde::ser::Serialize for reconcile::persistence::PersistedState<K, V, P> where K: serde::ser::Serialize, V: serde::ser::Serialize, P: serde::ser::Serialize
+pub fn reconcile::persistence::PersistedState<K, V, P>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde::ser::Serializer>::Ok, <__S as serde::ser::Serializer>::Error> where __S: serde::ser::Serializer
+impl<K: core::clone::Clone, V: core::clone::Clone, P: core::clone::Clone> core::clone::Clone for reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::clone(&self) -> reconcile::persistence::PersistedState<K, V, P>
+impl<K: core::fmt::Debug, V: core::fmt::Debug, P: core::fmt::Debug> core::fmt::Debug for reconcile::persistence::PersistedState<K, V, P>
+pub fn reconcile::persistence::PersistedState<K, V, P>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<K, V, P> core::marker::Freeze for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Freeze, std::collections::hash::set::HashSet<P>: core::marker::Freeze, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::Freeze
+impl<K, V, P> core::marker::Send for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Send, std::collections::hash::set::HashSet<P>: core::marker::Send, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::Send
+impl<K, V, P> core::marker::Sync for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Sync, std::collections::hash::set::HashSet<P>: core::marker::Sync, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::Sync
+impl<K, V, P> core::marker::Unpin for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::Unpin, std::collections::hash::set::HashSet<P>: core::marker::Unpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::Unpin
+impl<K, V, P> core::marker::UnsafeUnpin for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::marker::UnsafeUnpin, std::collections::hash::set::HashSet<P>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::marker::UnsafeUnpin
+impl<K, V, P> core::panic::unwind_safe::RefUnwindSafe for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::set::HashSet<P>: core::panic::unwind_safe::RefUnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::panic::unwind_safe::RefUnwindSafe
+impl<K, V, P> core::panic::unwind_safe::UnwindSafe for reconcile::persistence::PersistedState<K, V, P> where alloc::vec::Vec<(K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>)>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::set::HashSet<P>: core::panic::unwind_safe::UnwindSafe, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<P, u64>>: core::panic::unwind_safe::UnwindSafe
 pub struct reconcile::ReadReplicaMap<K, V>
 impl<K: reconcile::bounds::Key, V: reconcile::bounds::Value> reconcile::read_replica_map::ReadReplicaMap<K, V>
 pub fn reconcile::read_replica_map::ReadReplicaMap<K, V>::contains_key(&self, &K) -> bool
@@ -970,14 +970,14 @@ impl<K, V> core::panic::unwind_safe::RefUnwindSafe for reconcile::value_ref::Val
 impl<K, V> core::panic::unwind_safe::UnwindSafe for reconcile::value_ref::ValueRef<K, V> where Snapshot<K, V>: core::panic::unwind_safe::UnwindSafe
 pub trait reconcile::Key: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
 impl<T> reconcile::bounds::Key for T where T: core::clone::Clone + core::fmt::Debug + core::cmp::Ord + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
-pub trait reconcile::Persistence<K, V>: core::marker::Send + core::marker::Sync + 'static
-pub fn reconcile::Persistence::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
-pub fn reconcile::Persistence::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
+pub trait reconcile::Persistence<K, V, P>: core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::Persistence::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>
+pub fn reconcile::Persistence::save(&self, &reconcile::persistence::PersistedState<K, V, P>) -> core::io::error::Result<()>
+impl<K, V, P> reconcile::persistence::Persistence<K, V, P> for reconcile::persistence::InMemoryPersistence<K, V, P> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, P: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>
+pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::save(&self, &reconcile::persistence::PersistedState<K, V, P>) -> core::io::error::Result<()>
 impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
 pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
 pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
-impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::persistence::InMemoryPersistence<K, V> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
-pub fn reconcile::persistence::InMemoryPersistence<K, V>::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
 pub trait reconcile::Value: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
 impl<T> reconcile::bounds::Value for T where T: core::clone::Clone + core::fmt::Debug + core::marker::Send + core::marker::Sync + serde::ser::Serialize + serde::de::DeserializeOwned + 'static

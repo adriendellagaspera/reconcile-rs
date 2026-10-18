@@ -23,24 +23,25 @@ pub(crate) enum EntryDelta<V> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct SnapshotGeneration<K, V> {
+pub(crate) struct SnapshotGeneration<K, V, P = IpAddr> {
     pub(crate) id: u64,
     pub(crate) entries: HashMap<K, EntryDelta<V>>,
-    pub(crate) members: HashMap<IpAddr, bool>,
+    pub(crate) members: HashMap<P, bool>,
     pub(crate) ack_key_clears: HashSet<K>,
-    pub(crate) ack_peers: HashMap<K, HashMap<IpAddr, Option<u64>>>,
+    pub(crate) ack_peers: HashMap<K, HashMap<P, Option<u64>>>,
     pub(crate) raw_changes: usize,
 }
 
-impl<K, V> SnapshotGeneration<K, V> {
+impl<K, V, P> SnapshotGeneration<K, V, P> {
     fn is_empty(&self) -> bool {
         self.raw_changes == 0
     }
 
-    pub(crate) fn persistence_delta(&self) -> PersistenceDelta<K, V>
+    pub(crate) fn persistence_delta(&self) -> PersistenceDelta<K, V, P>
     where
         K: Clone + Eq + Hash,
         V: Clone,
+        P: Clone,
     {
         let entries = self
             .entries
@@ -62,7 +63,7 @@ impl<K, V> SnapshotGeneration<K, V> {
     }
 }
 
-impl<K, V> Default for SnapshotGeneration<K, V> {
+impl<K, V, P> Default for SnapshotGeneration<K, V, P> {
     fn default() -> Self {
         Self {
             id: 0,
@@ -75,14 +76,14 @@ impl<K, V> Default for SnapshotGeneration<K, V> {
     }
 }
 
-struct GenerationState<K, V> {
+struct GenerationState<K, V, P = IpAddr> {
     next_id: u64,
-    open: SnapshotGeneration<K, V>,
-    frozen: Option<Arc<SnapshotGeneration<K, V>>>,
+    open: SnapshotGeneration<K, V, P>,
+    frozen: Option<Arc<SnapshotGeneration<K, V, P>>>,
     tracking_enabled: bool,
 }
 
-impl<K, V> Default for GenerationState<K, V> {
+impl<K, V, P> Default for GenerationState<K, V, P> {
     fn default() -> Self {
         Self {
             next_id: 1,
@@ -96,11 +97,11 @@ impl<K, V> Default for GenerationState<K, V> {
 /// Bounded two-generation journal: at most one immutable retryable generation plus the current
 /// open generation. All durable mutation sinks take mutation() before changing runtime state;
 /// freeze() takes the same mutex, making the cut atomic.
-pub(crate) struct GenerationTracker<K, V> {
-    state: Mutex<GenerationState<K, V>>,
+pub(crate) struct GenerationTracker<K, V, P = IpAddr> {
+    state: Mutex<GenerationState<K, V, P>>,
 }
 
-impl<K, V> Default for GenerationTracker<K, V> {
+impl<K, V, P> Default for GenerationTracker<K, V, P> {
     fn default() -> Self {
         Self {
             state: Mutex::new(GenerationState::default()),
@@ -108,14 +109,14 @@ impl<K, V> Default for GenerationTracker<K, V> {
     }
 }
 
-impl<K: Eq + Hash, V> GenerationTracker<K, V> {
-    pub(crate) fn mutation(&self) -> GenerationMutation<'_, K, V> {
+impl<K: Eq + Hash, V, P> GenerationTracker<K, V, P> {
+    pub(crate) fn mutation(&self) -> GenerationMutation<'_, K, V, P> {
         GenerationMutation {
             state: self.state.lock(),
         }
     }
 
-    pub(crate) fn freeze(&self) -> Option<Arc<SnapshotGeneration<K, V>>> {
+    pub(crate) fn freeze(&self) -> Option<Arc<SnapshotGeneration<K, V, P>>> {
         let mut state = self.state.lock();
         if let Some(frozen) = &state.frozen {
             return Some(frozen.clone());
@@ -159,11 +160,11 @@ impl<K: Eq + Hash, V> GenerationTracker<K, V> {
     }
 }
 
-pub(crate) struct GenerationMutation<'a, K, V> {
-    state: MutexGuard<'a, GenerationState<K, V>>,
+pub(crate) struct GenerationMutation<'a, K, V, P = IpAddr> {
+    state: MutexGuard<'a, GenerationState<K, V, P>>,
 }
 
-impl<K: Eq + Hash + Clone, V> GenerationMutation<'_, K, V> {
+impl<K: Eq + Hash + Clone, V, P: Eq + Hash> GenerationMutation<'_, K, V, P> {
     fn enabled(&self) -> bool {
         self.state.tracking_enabled
     }
@@ -190,7 +191,7 @@ impl<K: Eq + Hash + Clone, V> GenerationMutation<'_, K, V> {
         self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
     }
 
-    pub(crate) fn record_member(&mut self, peer: IpAddr, present: bool) {
+    pub(crate) fn record_member(&mut self, peer: P, present: bool) {
         if !self.enabled() {
             return;
         }
@@ -198,7 +199,7 @@ impl<K: Eq + Hash + Clone, V> GenerationMutation<'_, K, V> {
         self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
     }
 
-    pub(crate) fn record_ack(&mut self, key: K, peer: IpAddr, version: Option<u64>) {
+    pub(crate) fn record_ack(&mut self, key: K, peer: P, version: Option<u64>) {
         if !self.enabled() {
             return;
         }
@@ -297,6 +298,33 @@ mod tests {
             frozen.ack_peers.get(&7).and_then(|acks| acks.get(&peer)),
             Some(&Some(11))
         );
+    }
+
+    #[test]
+    fn signed_peer_ack_generations_preserve_exact_versions_across_freeze() {
+        use crate::PeerId;
+
+        let signer = PeerId::from_bytes([0x5a; 32]);
+        let tracker = GenerationTracker::<u64, u64, PeerId>::default();
+        {
+            let mut journal = tracker.mutation();
+            journal.record_member(signer, true);
+            journal.record_ack(7, signer, Some(41));
+            journal.record_ack(7, signer, Some(42));
+        }
+        let frozen = tracker.freeze().unwrap();
+        let delta = frozen.persistence_delta();
+        assert_eq!(delta.members.get(&signer), Some(&true));
+        assert_eq!(
+            delta.ack_peers.get(&7).and_then(|acks| acks.get(&signer)),
+            Some(&Some(42))
+        );
+
+        // An uncommitted generation must be retried unchanged after an interrupted write.
+        let retry = tracker.freeze().unwrap();
+        assert!(Arc::ptr_eq(&frozen, &retry));
+        assert!(tracker.commit(frozen.id));
+        assert!(tracker.freeze().is_none());
     }
 
     #[test]
