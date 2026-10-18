@@ -539,17 +539,17 @@ mod tests {
         let stamp = chrono::Utc::now().timestamp_millis() as u64;
         let legitimate = signed_payload(&signer, &auth, 1, stamp, b"ok");
         let forged = signed_payload(&bob(), &auth, 1, stamp, b"unlisted");
-        assert!(matches!(open(&allowlist, &forged, MTU), Err(EnvelopeError::InvalidProof)));
+        assert!(matches!(
+            open(&allowlist, &forged, MTU),
+            Err(EnvelopeError::InvalidProof)
+        ));
         let mut claim_changed = legitimate.clone();
         claim_changed[ID..SIGNATURE].copy_from_slice(&bob().peer_id().to_bytes());
         assert!(matches!(
             open(&allowlist, &claim_changed, MTU),
             Err(EnvelopeError::InvalidProof)
         ));
-        let different_key = Authenticator::new(
-            Some(ClusterKey::new([0x78; 32])),
-            false,
-        ).unwrap();
+        let different_key = Authenticator::new(Some(ClusterKey::new([0x78; 32])), false).unwrap();
         assert!(matches!(
             open(&allowlist, &legitimate, MTU)
                 .unwrap()
@@ -577,5 +577,4 @@ mod tests {
         assert!(checked_inner.verify_replay(&filter).is_none());
         assert_eq!(filter.len(), 0);
     }
-
 }
