@@ -8,7 +8,7 @@
 use super::*;
 use crate::auth::{ClusterKey, WIRE_VERSION};
 use crate::peer::envelope;
-use crate::replay::FRESHNESS_WINDOW_DEFAULT;
+use crate::replay::{SenderCounter, FRESHNESS_WINDOW_DEFAULT};
 
 const MTU: usize = 1200;
 
@@ -79,13 +79,13 @@ fn unknown_signer_unsigned_frames_and_tampering_never_consult_member_state() {
     );
 
     let unsigned_inner = key().seal(
-        crate::replay::Seq::new(1),
-        crate::replay::Stamp::now(),
+        SenderCounter::new().next_seq(),
+        SenderCounter::new().next_stamp(),
         b"legacy",
     );
     assert_eq!(
         a.open(&unsigned_inner, |_| panic!("unsigned frame must not touch topology")).err(),
-        Some(SignedDatagramError::Envelope(EnvelopeError::InvalidMagic))
+        Some(SignedDatagramError::Envelope(EnvelopeError::InvalidLength))
     );
 
     let signed_a = a.seal(b"payload").unwrap();
@@ -160,18 +160,17 @@ fn outer_mtu_budget_is_respected_on_send_and_receive() {
 }
 
 #[test]
-fn strict_inner_version_check_precedes_peer_cap_and_replay() {
+fn invalid_inner_mac_precedes_peer_cap_and_replay() {
     let signer = signer_a();
     let inner = key().seal(
-        crate::replay::Seq::new(1),
-        crate::replay::Stamp::now(),
+        SenderCounter::new().next_seq(),
+        SenderCounter::new().next_stamp(),
         b"data",
     );
     let mut incorrect_inner = inner.clone();
     let offset = crate::auth::TAG_LEN + crate::replay::REPLAY_HEADER_LEN;
     incorrect_inner[offset] = WIRE_VERSION.wrapping_add(1);
-    // Re-sign a newly MAC-authenticated frame is not enough to make a wrong version valid:
-    // construct the old inner version with a raw MAC matching its protected bytes.
+    // Re-signing cannot repair a modified inner wire version without a matching MAC.
     let valid_signature_bad_inner_mac = envelope::seal(&signer, &incorrect_inner, MTU).unwrap();
     let receiver = boundary(signer_b(), [signer.peer_id()], 1);
     assert_eq!(
