@@ -137,8 +137,6 @@ where
     }
 }
 
-
- 
 /// The signed identity schema uses version 2; IP snapshots remain version 1.
 /// This is a distinct persisted *identity* layout, not a backward-compatible migration.
 impl<K, V> Persistence<K, V, PeerId> for FileSnapshot
@@ -147,9 +145,7 @@ where
     V: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     fn load(&self) -> io::Result<Option<PersistedState<K, V, PeerId>>> {
-        if let Some(state) =
-            incremental::load_for(self, incremental::PEER_ID_FORMAT_VERSION)?
-        {
+        if let Some(state) = incremental::load_for(self, incremental::PEER_ID_FORMAT_VERSION)? {
             return Ok(Some(state));
         }
         let bytes = match fs::read(&self.path) {
@@ -170,6 +166,7 @@ where
 }
 
 #[cfg(test)]
+#[path = "snapshot/tests/peer_id.rs"]
 mod peer_id_tests;
 
 #[cfg(test)]
