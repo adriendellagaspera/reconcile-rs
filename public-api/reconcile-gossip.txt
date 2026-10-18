@@ -286,6 +286,7 @@ pub struct reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
 impl<'a> reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
 pub fn reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>::into_payload(self) -> reconcile_gossip::auth::Payload<'a, reconcile_gossip::auth::Authenticated>
 pub fn reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>::peer(&self) -> reconcile_gossip::peer::identity::VerifiedPeerId
+pub fn reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>::verify_replay(self, &reconcile_gossip::replay::VerifiedPeerReplayFilter) -> core::option::Option<reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>>
 impl<'a> core::marker::Freeze for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
 impl<'a> core::marker::Send for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
 impl<'a> core::marker::Sync for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
@@ -293,6 +294,17 @@ impl<'a> core::marker::Unpin for reconcile_gossip::peer::envelope::Authenticated
 impl<'a> core::marker::UnsafeUnpin for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>
+pub struct reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>
+impl<'a> reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>
+pub fn reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>::into_payload(self) -> reconcile_gossip::auth::Payload<'a, reconcile_gossip::auth::Verified>
+pub fn reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>::peer(&self) -> reconcile_gossip::peer::identity::VerifiedPeerId
+impl<'a> core::marker::Freeze for reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>
+impl<'a> core::marker::Send for reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>
+impl<'a> core::marker::Sync for reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>
+impl<'a> core::marker::Unpin for reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>
+impl<'a> core::marker::UnsafeUnpin for reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for reconcile_gossip::peer::envelope::ReplayCheckedEnvelope<'a>
 pub struct reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
 impl<'a> reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>
 pub fn reconcile_gossip::peer::envelope::VerifiedEnvelope<'a>::authenticate(self, &reconcile_gossip::auth::Authenticator) -> core::result::Result<reconcile_gossip::peer::envelope::AuthenticatedEnvelope<'a>, reconcile_gossip::peer::envelope::EnvelopeError>
@@ -506,6 +518,20 @@ impl core::marker::Unpin for reconcile_gossip::replay::Stamp
 impl core::marker::UnsafeUnpin for reconcile_gossip::replay::Stamp
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::replay::Stamp
 impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::replay::Stamp
+pub struct reconcile_gossip::replay::VerifiedPeerReplayFilter
+impl reconcile_gossip::replay::VerifiedPeerReplayFilter
+pub fn reconcile_gossip::replay::VerifiedPeerReplayFilter::len(&self) -> usize
+pub fn reconcile_gossip::replay::VerifiedPeerReplayFilter::new(core::time::Duration) -> Self
+pub fn reconcile_gossip::replay::VerifiedPeerReplayFilter::with_max_senders(self, usize) -> Self
+impl core::fmt::Debug for reconcile_gossip::replay::VerifiedPeerReplayFilter
+pub fn reconcile_gossip::replay::VerifiedPeerReplayFilter::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for reconcile_gossip::replay::VerifiedPeerReplayFilter
+impl core::marker::Send for reconcile_gossip::replay::VerifiedPeerReplayFilter
+impl core::marker::Sync for reconcile_gossip::replay::VerifiedPeerReplayFilter
+impl core::marker::Unpin for reconcile_gossip::replay::VerifiedPeerReplayFilter
+impl core::marker::UnsafeUnpin for reconcile_gossip::replay::VerifiedPeerReplayFilter
+impl !core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::replay::VerifiedPeerReplayFilter
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::replay::VerifiedPeerReplayFilter
 pub const reconcile_gossip::replay::FRESHNESS_WINDOW_DEFAULT: core::time::Duration
 pub const reconcile_gossip::replay::REPLAY_HEADER_LEN: usize
 pub mod reconcile_gossip::transport
