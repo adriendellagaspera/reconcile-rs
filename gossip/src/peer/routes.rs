@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::OsRng, Rng};
 
 use crate::framing::{Reassembler, ReceiveReport};
 use crate::peer::identity::VerifiedPeerId;
@@ -235,8 +235,7 @@ impl<A: Clone + Eq> SignedPeerRoutes<A> {
         {
             return Ok(None);
         }
-        let mut nonce = [0u8; 32];
-        OsRng.fill_bytes(&mut nonce);
+        let nonce: [u8; 32] = OsRng.gen();
         let bytes = boundary.seal(&encode_control(CHALLENGE, id, nonce))?;
         self.pending.insert(
             id,
