@@ -217,12 +217,14 @@ fn malformed_or_expired_route_proof_cannot_promote_an_address() {
         SignedRouteReceive::Probing { challenge, .. } => challenge.unwrap(),
         _ => panic!("expected probe"),
     };
+    let mut incorrect_nonce = routes.pending.get(&alice.local_peer()).unwrap().nonce;
+    incorrect_nonce[0] ^= 1;
     assert!(matches!(
         routes
             .receive(
                 &bob,
                 &alice
-                    .seal(&encode_control(RESPONSE, bob.local_peer(), [0; 32]))
+                    .seal(&encode_control(RESPONSE, bob.local_peer(), incorrect_nonce))
                     .unwrap(),
                 source,
                 |_| (false, 0),
