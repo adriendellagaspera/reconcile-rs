@@ -384,3 +384,117 @@ async fn signed_routes_forward_over_non_ip_fabric_after_probe_confirmation() {
         SignedRouteReceive::Probing { .. }
     ));
 }
+
+#[test]
+fn route_capacity_and_pending_replacement_respect_identity_budget() {
+    let alice_id = PeerSigner::from_seed([0x11; 32]).peer_id();
+    let charlie = PeerSigner::from_seed([0x33; 32]);
+    let charlie_id = charlie.peer_id();
+    let bob = boundary(0x22, &[alice_id, charlie_id]);
+    let alice = boundary(0x11, &[bob.local_peer()]);
+    let charlie = boundary(0x33, &[bob.local_peer()]);
+    let mut routes = SignedPeerRoutes::<Slot>::new(1, Duration::from_secs(2));
+    let mut frames = Reassembler::<VerifiedPeerId>::for_identity(limits());
+    let now = Instant::now();
+    let packet = alice.seal(&frame(b"first")).unwrap();
+    let first = match routes
+        .receive(&bob, &packet, (1, 1), |_| (false, 0), &mut frames, now)
+        .unwrap()
+    {
+        SignedRouteReceive::Probing { challenge, .. } => challenge.unwrap(),
+        _ => panic!("first identity must receive a challenge"),
+    };
+    assert_eq!(routes.pending.len(), 1);
+    assert_eq!(routes.pending.get(&alice_id).unwrap().address, (1, 1));
+
+    // A second signer cannot consume the last slot while the first challenge is live.
+    let other = charlie.seal(&frame(b"other")).unwrap();
+    assert!(matches!(
+        routes
+            .receive(&bob, &other, (3, 3), |_| (false, 0), &mut frames, now)
+            .unwrap(),
+        SignedRouteReceive::Probing { challenge: None, .. }
+    ));
+    assert_eq!(routes.pending.len(), 1);
+    assert!(!routes.pending.contains_key(&charlie_id));
+
+    // A retransmission from the same route does not change the nonce or emit a challenge.
+    let retry = alice.seal(&frame(b"retry")).unwrap();
+    assert!(matches!(
+        routes
+            .receive(&bob, &retry, (1, 1), |_| (false, 0), &mut frames, now)
+            .unwrap(),
+        SignedRouteReceive::Probing { challenge: None, .. }
+    ));
+    assert_eq!(routes.pending.get(&alice_id).unwrap().address, (1, 1));
+
+    // The same signer may challenge a different candidate, replacing its own pending slot.
+    let moved = alice.seal(&frame(b"move")).unwrap();
+    let second = match routes
+        .receive(&bob, &moved, (1, 2), |_| (false, 0), &mut frames, now)
+        .unwrap()
+    {
+        SignedRouteReceive::Probing { challenge, .. } => challenge.unwrap(),
+        _ => panic!("same signer must be able to replace its pending route"),
+    };
+    assert_eq!(second.destination, (1, 2));
+    assert_ne!(second.bytes, first.bytes);
+    assert_eq!(routes.pending.len(), 1);
+
+    // A second signer is admitted once the previous challenge expires.
+    let after_ttl = now + Duration::from_secs(3);
+    let other_retry = charlie.seal(&frame(b"retry")).unwrap();
+    assert!(matches!(
+        routes
+            .receive(&bob, &other_retry, (3, 3), |_| (false, 0), &mut frames, after_ttl)
+            .unwrap(),
+        SignedRouteReceive::Probing { challenge: Some(_), .. }
+    ));
+    assert_eq!(routes.pending.len(), 1);
+    assert!(routes.pending.contains_key(&charlie_id));
+}
+
+#[test]
+fn exact_challenge_deadline_is_expired_and_zero_capacity_disables_admission() {
+    let (alice, bob) = endpoints();
+    let now = Instant::now();
+    let mut routes = SignedPeerRoutes::<Slot>::new(0, Duration::from_millis(100));
+    let mut frames = Reassembler::<VerifiedPeerId>::for_identity(limits());
+    let packet = alice.seal(&frame(b"hello")).unwrap();
+    assert!(matches!(
+        routes
+            .receive(&bob, &packet, (1, 1), |_| (false, 0), &mut frames, now)
+            .unwrap(),
+        SignedRouteReceive::Probing { challenge: None, .. }
+    ));
+    assert!(routes.is_empty());
+    assert!(routes.pending.is_empty());
+
+    let mut routes = SignedPeerRoutes::<Slot>::new(1, Duration::from_millis(100));
+    let packet = alice.seal(&frame(b"challenge")).unwrap();
+    assert!(matches!(
+        routes
+            .receive(&bob, &packet, (1, 1), |_| (false, 0), &mut frames, now)
+            .unwrap(),
+        SignedRouteReceive::Probing { challenge: Some(_), .. }
+    ));
+    let nonce = routes.pending.get(&alice.local_peer()).unwrap().nonce;
+    let reply = alice
+        .seal(&encode_control(RESPONSE, bob.local_peer(), nonce))
+        .unwrap();
+    assert!(matches!(
+        routes
+            .receive(
+                &bob,
+                &reply,
+                (1, 1),
+                |_| (false, 0),
+                &mut frames,
+                now + Duration::from_millis(100)
+            )
+            .unwrap(),
+        SignedRouteReceive::Ignored
+    ));
+    assert!(routes.is_empty());
+    assert!(routes.route(alice.local_peer()).is_none());
+}
