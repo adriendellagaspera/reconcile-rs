@@ -37,7 +37,7 @@ fn frames() -> (Vec<u8>, Vec<u8>, [u8; 32]) {
 fn signed_fragments_survive_route_changes_and_preserve_identity_bound_recovery() {
     let sender = boundary(signer_a(), [], 2);
     let receiver = boundary(signer_b(), [sender.local_peer()], 2);
-    let mut assembly = Reassembler::new(limits());
+    let mut assembly = Reassembler::<VerifiedPeerId>::for_identity(limits());
     let (first, second, id) = frames();
 
     let old_route = (4_u16, 2_u8);
@@ -66,7 +66,12 @@ fn signed_fragments_survive_route_changes_and_preserve_identity_bound_recovery()
 
     let next = sender.seal(&second).unwrap();
     let (same_principal, report) = receiver
-        .open_frame(&next, |_| (true, 1), &mut assembly, now + Duration::from_millis(220))
+        .open_frame(
+            &next,
+            |_| (true, 1),
+            &mut assembly,
+            now + Duration::from_millis(220),
+        )
         .unwrap();
     assert_eq!(same_principal, principal);
     match report.outcome {
@@ -76,7 +81,9 @@ fn signed_fragments_survive_route_changes_and_preserve_identity_bound_recovery()
     assert_eq!(assembly.retained_bytes(), 0);
     assert_eq!(receiver.replay_senders(), 1);
     assert_eq!(
-        receiver.open_frame(&initial, |_| (true, 1), &mut assembly, now).err(),
+        receiver
+            .open_frame(&initial, |_| (true, 1), &mut assembly, now)
+            .err(),
         Some(SignedDatagramError::Replay)
     );
 }
@@ -96,7 +103,7 @@ fn distinct_verified_signers_do_not_share_fragment_transfers_or_quotas() {
     )
     .unwrap();
     let (first, second, id) = frames();
-    let mut assembly = Reassembler::new(limits());
+    let mut assembly = Reassembler::<VerifiedPeerId>::for_identity(limits());
     let now = Instant::now();
 
     let a1 = alice.seal(&first).unwrap();
@@ -137,7 +144,7 @@ fn untrusted_signed_packet_never_allocates_fragment_state() {
     let receiving = boundary(signer_b(), [], 1);
     let (first, _, _) = frames();
     let signed = unauthorized.seal(&first).unwrap();
-    let mut assembly = Reassembler::new(limits());
+    let mut assembly = Reassembler::<VerifiedPeerId>::for_identity(limits());
     assert_eq!(
         receiving
             .open_frame(
@@ -159,7 +166,7 @@ fn per_principal_fragment_limits_are_not_bypassed_by_a_route_move() {
     let receiver = boundary(signer_b(), [sender.local_peer()], 1);
     let mut small = limits();
     small.max_reassembly_bytes_per_peer = 4;
-    let mut assembly = Reassembler::new(small);
+    let mut assembly = Reassembler::<VerifiedPeerId>::for_identity(small);
     let (first, second, _) = frames();
     let now = Instant::now();
 
