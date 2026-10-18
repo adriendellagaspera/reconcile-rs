@@ -67,6 +67,9 @@ impl core::clone::Clone for reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::clone(&self) -> reconcile::FileSnapshot
 impl core::fmt::Debug for reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<K, V> reconcile::persistence::Persistence<K, V, reconcile_gossip::peer::PeerId> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, reconcile_gossip::peer::PeerId>>>
+pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V, reconcile_gossip::peer::PeerId>) -> core::io::error::Result<()>
 impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
 pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
 pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
@@ -123,6 +126,9 @@ pub fn reconcile::persistence::Persistence::save(&self, &reconcile::persistence:
 impl<K, V, P> reconcile::persistence::Persistence<K, V, P> for reconcile::persistence::InMemoryPersistence<K, V, P> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, P: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
 pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>
 pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::save(&self, &reconcile::persistence::PersistedState<K, V, P>) -> core::io::error::Result<()>
+impl<K, V> reconcile::persistence::Persistence<K, V, reconcile_gossip::peer::PeerId> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, reconcile_gossip::peer::PeerId>>>
+pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V, reconcile_gossip::peer::PeerId>) -> core::io::error::Result<()>
 impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
 pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
 pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
@@ -691,6 +697,9 @@ impl core::clone::Clone for reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::clone(&self) -> reconcile::FileSnapshot
 impl core::fmt::Debug for reconcile::FileSnapshot
 pub fn reconcile::FileSnapshot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<K, V> reconcile::persistence::Persistence<K, V, reconcile_gossip::peer::PeerId> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, reconcile_gossip::peer::PeerId>>>
+pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V, reconcile_gossip::peer::PeerId>) -> core::io::error::Result<()>
 impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
 pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
 pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
@@ -976,6 +985,9 @@ pub fn reconcile::Persistence::save(&self, &reconcile::persistence::PersistedSta
 impl<K, V, P> reconcile::persistence::Persistence<K, V, P> for reconcile::persistence::InMemoryPersistence<K, V, P> where K: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, V: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static, P: core::clone::Clone + core::marker::Send + core::marker::Sync + 'static
 pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, P>>>
 pub fn reconcile::persistence::InMemoryPersistence<K, V, P>::save(&self, &reconcile::persistence::PersistedState<K, V, P>) -> core::io::error::Result<()>
+impl<K, V> reconcile::persistence::Persistence<K, V, reconcile_gossip::peer::PeerId> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V, reconcile_gossip::peer::PeerId>>>
+pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V, reconcile_gossip::peer::PeerId>) -> core::io::error::Result<()>
 impl<K, V> reconcile::persistence::Persistence<K, V> for reconcile::FileSnapshot where K: serde::ser::Serialize + serde::de::DeserializeOwned + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + 'static, V: serde::ser::Serialize + serde::de::DeserializeOwned + core::marker::Send + core::marker::Sync + 'static
 pub fn reconcile::FileSnapshot::load(&self) -> core::io::error::Result<core::option::Option<reconcile::persistence::PersistedState<K, V>>>
 pub fn reconcile::FileSnapshot::save(&self, &reconcile::persistence::PersistedState<K, V>) -> core::io::error::Result<()>
