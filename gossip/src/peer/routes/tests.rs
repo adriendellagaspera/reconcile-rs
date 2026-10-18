@@ -524,3 +524,5 @@ fn exact_challenge_deadline_is_expired_and_zero_capacity_disables_admission() {
     assert!(routes.is_empty());
     assert!(routes.route(alice.local_peer()).is_none());
 }
+
+mod recovery;
