@@ -305,11 +305,8 @@ mod tests {
         let b = PeerId::from_bytes([0x22; 32]);
         let members = HashSet::from([a, b]);
         let acks = HashMap::from([(7_u32, HashMap::from([(a, 42_u64)]))]);
-        let state = PersistedState::<u32, String, PeerId>::new(
-            vec![],
-            members.clone(),
-            acks.clone(),
-        );
+        let state =
+            PersistedState::<u32, String, PeerId>::new(vec![], members.clone(), acks.clone());
         let backend = InMemoryPersistence::<u32, String, PeerId>::new();
         backend.save(&state).unwrap();
         let loaded = backend.load().unwrap().unwrap();
@@ -317,8 +314,7 @@ mod tests {
         assert_eq!(loaded.tombstone_acks, acks);
 
         let encoded = bincode::serialize(&state).unwrap();
-        let decoded: PersistedState<u32, String, PeerId> =
-            bincode::deserialize(&encoded).unwrap();
+        let decoded: PersistedState<u32, String, PeerId> = bincode::deserialize(&encoded).unwrap();
         assert_eq!(decoded.members, members);
         assert_eq!(decoded.tombstone_acks, acks);
         // The serialized state stores stable logical IDs; substrate routing is independent.
@@ -341,7 +337,9 @@ mod tests {
             HashMap::from([(9_u32, HashMap::from([(a, Some(123_u64))]))]),
         );
         assert_eq!(delta.members.get(&a), Some(&true));
-        assert_eq!(delta.ack_peers.get(&9).and_then(|peers| peers.get(&a)), Some(&Some(123)));
+        assert_eq!(
+            delta.ack_peers.get(&9).and_then(|peers| peers.get(&a)),
+            Some(&Some(123))
+        );
     }
-
 }
