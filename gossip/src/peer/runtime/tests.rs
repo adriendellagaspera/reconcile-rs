@@ -80,7 +80,7 @@ fn signed_exchange_checks_identity_without_binding_replay_to_source_address() {
 
 #[test]
 fn unknown_signer_unsigned_frames_and_tampering_never_consult_member_state() {
-    let a = boundary(signer_a(), [signer_b().peer_id()], 1);
+    let a = boundary(signer_a(), [], 1);
     let b = boundary(signer_b(), [], 1);
     let signed_b = b.seal(b"unlisted").unwrap();
     assert_eq!(
