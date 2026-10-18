@@ -22,6 +22,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::persistence::{PersistedState, Persistence, PersistenceDelta};
+use crate::PeerId;
 
 mod incremental;
 
@@ -42,6 +43,18 @@ fn decode_snapshot<K, V>(bytes: &[u8]) -> io::Result<PersistedState<K, V>>
 where
     K: DeserializeOwned + Eq + std::hash::Hash,
     V: DeserializeOwned,
+{
+    decode_snapshot_for::<K, V, std::net::IpAddr>(bytes, SNAPSHOT_FORMAT_VERSION)
+}
+
+fn decode_snapshot_for<K, V, P>(
+    bytes: &[u8],
+    expected_version: u32,
+) -> io::Result<PersistedState<K, V, P>>
+where
+    K: DeserializeOwned + Eq + std::hash::Hash,
+    V: DeserializeOwned,
+    P: DeserializeOwned + Eq + std::hash::Hash,
 {
     if bytes.len() < SNAPSHOT_HEADER_LEN {
         return Err(io::Error::new(
@@ -65,17 +78,17 @@ where
         ));
     }
     let version = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
-    if version != SNAPSHOT_FORMAT_VERSION {
+    if version != expected_version {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
                 "snapshot format version {version} is not supported by this build (expected \
-                 {SNAPSHOT_FORMAT_VERSION}); it was written by a different reconcile version and \
+                 {expected_version}); it was written by a different reconcile version and \
                  must be migrated or discarded"
             ),
         ));
     }
-    bincode::deserialize::<PersistedState<K, V>>(body)
+    bincode::deserialize::<PersistedState<K, V, P>>(body)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
 }
 
@@ -123,6 +136,41 @@ where
         incremental::try_save_delta(self, delta)
     }
 }
+
+
+ 
+/// The signed identity schema uses version 2; IP snapshots remain version 1.
+/// This is a distinct persisted *identity* layout, not a backward-compatible migration.
+impl<K, V> Persistence<K, V, PeerId> for FileSnapshot
+where
+    K: Serialize + DeserializeOwned + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Serialize + DeserializeOwned + Send + Sync + 'static,
+{
+    fn load(&self) -> io::Result<Option<PersistedState<K, V, PeerId>>> {
+        if let Some(state) =
+            incremental::load_for(self, incremental::PEER_ID_FORMAT_VERSION)?
+        {
+            return Ok(Some(state));
+        }
+        let bytes = match fs::read(&self.path) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err),
+        };
+        decode_snapshot_for(&bytes, incremental::PEER_ID_FORMAT_VERSION).map(Some)
+    }
+
+    fn save(&self, state: &PersistedState<K, V, PeerId>) -> io::Result<()> {
+        incremental::save_full_for(self, state, incremental::PEER_ID_FORMAT_VERSION)
+    }
+
+    fn try_save_delta(&self, delta: Option<&PersistenceDelta<K, V, PeerId>>) -> io::Result<bool> {
+        incremental::try_save_delta_for(self, delta, incremental::PEER_ID_FORMAT_VERSION)
+    }
+}
+
+#[cfg(test)]
+mod peer_id_tests;
 
 #[cfg(test)]
 mod tests;
