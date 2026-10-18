@@ -22,8 +22,8 @@ use std::time::Duration;
 use chrono::Utc;
 use parking_lot::Mutex;
 
-use peer_state::PeerState;
 use crate::peer::identity::VerifiedPeerId;
+use peer_state::PeerState;
 
 mod bitmap;
 mod filter;
