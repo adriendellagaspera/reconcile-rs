@@ -16,9 +16,19 @@ struct FragmentInput<'a> {
     bytes: &'a [u8],
 }
 
-impl<P: Copy + Eq + Hash + Ord> Reassembler<P> {
-    /// Create an empty receiver with explicit memory/state limits.
+impl Reassembler<IpAddr> {
+    /// Create the legacy IP-keyed receiver with explicit limits.
     pub fn new(limits: ReassemblyLimits) -> Self {
+        Reassembler::for_identity(limits)
+    }
+}
+
+impl<P: Copy + Eq + Hash + Ord> Reassembler<P> {
+    /// Create a receiver keyed by the chosen authenticated peer identity.
+    ///
+    /// Legacy callers use `Reassembler::new` for IP; signed callers explicitly select a
+    /// `VerifiedPeerId` key so in-flight fragments follow the signer across route changes.
+    pub fn for_identity(limits: ReassemblyLimits) -> Self {
         Reassembler {
             limits,
             peers: HashMap::new(),
