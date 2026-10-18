@@ -48,7 +48,14 @@ fn signed_recovery_controls_require_a_confirmed_principal_and_source_route() {
     };
     assert!(matches!(
         routes
-            .receive(&bob, &reply.bytes, original, |_| (false, 0), &mut frames, now)
+            .receive(
+                &bob,
+                &reply.bytes,
+                original,
+                |_| (false, 0),
+                &mut frames,
+                now
+            )
             .unwrap(),
         SignedRouteReceive::Confirmed(_)
     ));
@@ -81,9 +88,19 @@ fn signed_recovery_controls_require_a_confirmed_principal_and_source_route() {
     let moved_control = alice.seal(&missing).unwrap();
     assert!(matches!(
         routes
-            .receive(&bob, &moved_control, moved, |_| (false, 0), &mut frames, now)
+            .receive(
+                &bob,
+                &moved_control,
+                moved,
+                |_| (false, 0),
+                &mut frames,
+                now
+            )
             .unwrap(),
-        SignedRouteReceive::Probing { challenge: Some(_), .. }
+        SignedRouteReceive::Probing {
+            challenge: Some(_),
+            ..
+        }
     ));
     assert_eq!(routes.route(alice.local_peer()), Some(&original));
     assert_eq!(routes.confirmed_peers().len(), 1);
