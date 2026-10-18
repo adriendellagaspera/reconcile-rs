@@ -182,3 +182,56 @@ fn corrupt_committed_peer_id_delta_does_not_reset_causal_history() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("checksum"));
 }
+
+#[test]
+fn missing_signed_snapshot_is_not_an_error_but_unreadable_source_is() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = FileSnapshot::new(dir.path().join("absent.bin"));
+    assert!(
+        load_signed(&missing).unwrap().is_none(),
+        "a genuinely absent snapshot must allow a fresh replica"
+    );
+
+    // A directory is an existing but unreadable snapshot file on all supported platforms.
+    // It must not be mistaken for a missing snapshot and silently drop causal state.
+    let unreadable = FileSnapshot::new(dir.path());
+    let err = load_signed(&unreadable).unwrap_err();
+    assert_ne!(err.kind(), io::ErrorKind::NotFound);
+}
+
+#[test]
+fn signed_delta_before_first_base_requires_materialization_without_erasing_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = FileSnapshot::new(dir.path().join("absent.bin"));
+    assert!(
+        load_signed(&backend).unwrap().is_none(),
+        "the new store initially has no state"
+    );
+    assert!(
+        !Persistence::<u32, String, PeerId>::try_save_delta(&backend, None).unwrap(),
+        "clean state without a base must request a full snapshot"
+    );
+
+    let member = PeerId::from_bytes([0x55; 32]);
+    let delta = PersistenceDelta::new(
+        HashMap::new(),
+        HashMap::from([(member, true)]),
+        HashSet::new(),
+        HashMap::from([(9, HashMap::from([(member, Some(17))]))]),
+    );
+    assert!(
+        !Persistence::<u32, String, PeerId>::try_save_delta(&backend, Some(&delta)).unwrap(),
+        "a dirty state without a base must also require a full snapshot"
+    );
+    assert!(!incremental::paths(&backend).1.exists());
+
+    let state = signed_state();
+    Persistence::<u32, String, PeerId>::save(&backend, &state).unwrap();
+    assert!(
+        Persistence::<u32, String, PeerId>::try_save_delta(&backend, None).unwrap(),
+        "a clean generation with a committed base must be a no-op"
+    );
+    let restored = load_signed(&backend).unwrap().unwrap();
+    assert_eq!(restored.members, state.members);
+    assert_eq!(restored.tombstone_acks, state.tombstone_acks);
+}
