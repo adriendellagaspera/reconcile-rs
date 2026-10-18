@@ -297,4 +297,51 @@ mod tests {
         let loaded = backend.load().unwrap().unwrap();
         assert_eq!(loaded.entries[0].1.value(), Some(&"second".to_string()));
     }
+    #[test]
+    fn signed_peer_ids_round_trip_in_memory_and_through_bincode() {
+        use crate::PeerId;
+
+        let a = PeerId::from_bytes([0x11; 32]);
+        let b = PeerId::from_bytes([0x22; 32]);
+        let members = HashSet::from([a, b]);
+        let acks = HashMap::from([(7_u32, HashMap::from([(a, 42_u64)]))]);
+        let state = PersistedState::<u32, String, PeerId>::new(
+            vec![],
+            members.clone(),
+            acks.clone(),
+        );
+        let backend = InMemoryPersistence::<u32, String, PeerId>::new();
+        backend.save(&state).unwrap();
+        let loaded = backend.load().unwrap().unwrap();
+        assert_eq!(loaded.members, members);
+        assert_eq!(loaded.tombstone_acks, acks);
+
+        let encoded = bincode::serialize(&state).unwrap();
+        let decoded: PersistedState<u32, String, PeerId> =
+            bincode::deserialize(&encoded).unwrap();
+        assert_eq!(decoded.members, members);
+        assert_eq!(decoded.tombstone_acks, acks);
+        // The serialized state stores stable logical IDs; substrate routing is independent.
+        let old_route = (1_u16, 3_u8);
+        let new_route = (1_u16, 7_u8);
+        assert_ne!(old_route, new_route);
+        assert!(decoded.members.contains(&a));
+        assert_eq!(decoded.tombstone_acks[&7_u32][&a], 42);
+    }
+
+    #[test]
+    fn delta_types_support_signed_peer_ids_without_ip_address_translation() {
+        use crate::PeerId;
+
+        let a = PeerId::from_bytes([0x77; 32]);
+        let delta: PersistenceDelta<u32, String, PeerId> = PersistenceDelta::new(
+            HashMap::new(),
+            HashMap::from([(a, true)]),
+            HashSet::new(),
+            HashMap::from([(9_u32, HashMap::from([(a, Some(123_u64))]))]),
+        );
+        assert_eq!(delta.members.get(&a), Some(&true));
+        assert_eq!(delta.ack_peers.get(&9).and_then(|peers| peers.get(&a)), Some(&Some(123)));
+    }
+
 }
