@@ -218,3 +218,5 @@ fn invalid_inner_mac_precedes_peer_cap_and_replay() {
     );
     assert_eq!(receiver.replay_senders(), 0);
 }
+
+mod fragments;
