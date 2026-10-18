@@ -136,7 +136,10 @@ impl<A: Clone + Eq> SignedPeerRoutes<A> {
         peer: PeerId,
         frame: &[u8],
     ) -> Result<RoutedDatagram<A>, SignedRouteError> {
-        let destination = self.route(peer).ok_or(SignedRouteError::NoConfirmedRoute)?.clone();
+        let destination = self
+            .route(peer)
+            .ok_or(SignedRouteError::NoConfirmedRoute)?
+            .clone();
         Ok(RoutedDatagram {
             destination,
             bytes: boundary.seal(frame)?,
@@ -219,7 +222,11 @@ impl<A: Clone + Eq> SignedPeerRoutes<A> {
             now.saturating_duration_since(candidate.issued) < self.challenge_ttl
         });
         let id = peer.peer_id();
-        if self.pending.get(&id).is_some_and(|candidate| candidate.address == source) {
+        if self
+            .pending
+            .get(&id)
+            .is_some_and(|candidate| candidate.address == source)
+        {
             return Ok(None);
         }
         if !self.pending.contains_key(&id)
@@ -231,12 +238,18 @@ impl<A: Clone + Eq> SignedPeerRoutes<A> {
         let mut nonce = [0u8; 32];
         OsRng.fill_bytes(&mut nonce);
         let bytes = boundary.seal(&encode_control(CHALLENGE, id, nonce))?;
-        self.pending.insert(id, Pending {
-            address: source.clone(),
-            nonce,
-            issued: now,
-        });
-        Ok(Some(RoutedDatagram { destination: source, bytes }))
+        self.pending.insert(
+            id,
+            Pending {
+                address: source.clone(),
+                nonce,
+                issued: now,
+            },
+        );
+        Ok(Some(RoutedDatagram {
+            destination: source,
+            bytes,
+        }))
     }
 }
 
