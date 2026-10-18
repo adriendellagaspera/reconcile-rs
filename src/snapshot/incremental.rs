@@ -24,8 +24,9 @@ use super::FileSnapshot;
 mod storage;
 
 use storage::{
-    cleanup_after_full_materialization, decode, encode, invalid, publish_manifest, read_manifest,
-    read_segment_bytes, store_dir, write_encoded_segment, write_segment,
+    cleanup_after_full_materialization, decode, decode_version, encode, encode_version, invalid,
+    publish_manifest, publish_manifest_version, read_manifest, read_manifest_version,
+    read_segment_bytes, store_dir, write_encoded_segment, write_segment, write_segment_version,
 };
 
 #[cfg(test)]
@@ -34,6 +35,7 @@ pub(super) fn paths(backend: &FileSnapshot) -> (std::path::PathBuf, std::path::P
 }
 
 const FORMAT_VERSION: u32 = 1;
+pub(super) const PEER_ID_FORMAT_VERSION: u32 = 2;
 const HEADER_LEN: usize = 8;
 const BASE_MAGIC: [u8; 4] = *b"RCNB";
 const DELTA_MAGIC: [u8; 4] = *b"RCND";
@@ -70,45 +72,46 @@ fn should_materialize(manifest: &Manifest, candidate_delta_bytes: u64) -> bool {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(bound(
-    serialize = "K: Serialize, V: Serialize",
-    deserialize = "K: Deserialize<'de> + Eq + Hash, V: Deserialize<'de>"
+    serialize = "K: Serialize, V: Serialize, P: Serialize",
+    deserialize = "K: Deserialize<'de> + Eq + Hash, V: Deserialize<'de>, P: Deserialize<'de> + Eq + Hash"
 ))]
-struct BaseSegment<K, V> {
+struct BaseSegment<K, V, P = IpAddr> {
     generation: u64,
-    state: PersistedState<K, V>,
+    state: PersistedState<K, V, P>,
 }
 
 #[derive(Serialize)]
-struct BaseSegmentWrite<'a, K, V> {
+struct BaseSegmentWrite<'a, K, V, P = IpAddr> {
     generation: u64,
-    state: &'a PersistedState<K, V>,
+    state: &'a PersistedState<K, V, P>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(bound(
-    serialize = "K: Serialize, V: Serialize",
-    deserialize = "K: Deserialize<'de> + Eq + Hash, V: Deserialize<'de>"
+    serialize = "K: Serialize, V: Serialize, P: Serialize",
+    deserialize = "K: Deserialize<'de> + Eq + Hash, V: Deserialize<'de>, P: Deserialize<'de> + Eq + Hash"
 ))]
-struct DeltaSegment<K, V> {
+struct DeltaSegment<K, V, P = IpAddr> {
     from_generation: u64,
     to_generation: u64,
-    delta: PersistenceDelta<K, V>,
+    delta: PersistenceDelta<K, V, P>,
 }
 
 #[derive(Serialize)]
-struct DeltaSegmentWrite<'a, K, V> {
+struct DeltaSegmentWrite<'a, K, V, P = IpAddr> {
     from_generation: u64,
     to_generation: u64,
-    delta: &'a PersistenceDelta<K, V>,
+    delta: &'a PersistenceDelta<K, V, P>,
 }
 
-fn apply_delta<K, V>(
+fn apply_delta<K, V, P>(
     entries: &mut HashMap<K, Entry<Timestamp, V>>,
-    members: &mut HashSet<IpAddr>,
-    tombstone_acks: &mut HashMap<K, HashMap<IpAddr, u64>>,
-    delta: PersistenceDelta<K, V>,
+    members: &mut HashSet<P>,
+    tombstone_acks: &mut HashMap<K, HashMap<P, u64>>,
+    delta: PersistenceDelta<K, V, P>,
 ) where
     K: Eq + Hash,
+    P: Eq + Hash,
 {
     for (key, entry) in delta.entries {
         match entry {
@@ -168,8 +171,20 @@ where
     K: DeserializeOwned + Eq + Hash,
     V: DeserializeOwned,
 {
+    load_for::<K, V, IpAddr>(backend, FORMAT_VERSION)
+}
+
+pub(super) fn load_for<K, V, P>(
+    backend: &FileSnapshot,
+    format_version: u32,
+) -> io::Result<Option<PersistedState<K, V, P>>>
+where
+    K: DeserializeOwned + Eq + Hash,
+    V: DeserializeOwned,
+    P: DeserializeOwned + Eq + Hash,
+{
     let recovery_start = observability::timer();
-    let Some(manifest) = read_manifest(backend)? else {
+    let Some(manifest) = read_manifest_version(backend, format_version)? else {
         return Ok(None);
     };
     let dir = store_dir(backend);
@@ -180,7 +195,7 @@ where
         manifest.base_generation,
         Some(manifest.base_bytes),
     )?;
-    let base: BaseSegment<K, V> = decode(&base_bytes, BASE_MAGIC)?;
+    let base: BaseSegment<K, V, P> = decode_version(&base_bytes, BASE_MAGIC, format_version)?;
     if base.generation != manifest.base_generation {
         return Err(invalid(format!(
             "base segment generation {} does not match manifest generation {}",
@@ -203,7 +218,7 @@ where
     for generation in manifest.base_generation.saturating_add(1)..=manifest.current_generation {
         let bytes = read_segment_bytes(&dir, "delta", generation, None)?;
         observed_delta_bytes = observed_delta_bytes.saturating_add(bytes.len() as u64);
-        let segment: DeltaSegment<K, V> = decode(&bytes, DELTA_MAGIC)?;
+        let segment: DeltaSegment<K, V, P> = decode_version(&bytes, DELTA_MAGIC, format_version)?;
         let expected_from = generation.saturating_sub(1);
         if segment.from_generation != expected_from || segment.to_generation != generation {
             return Err(invalid(format!(
@@ -242,7 +257,20 @@ where
     K: Serialize,
     V: Serialize,
 {
-    let previous = read_manifest(backend)?;
+    save_full_for(backend, state, FORMAT_VERSION)
+}
+
+pub(super) fn save_full_for<K, V, P>(
+    backend: &FileSnapshot,
+    state: &PersistedState<K, V, P>,
+    format_version: u32,
+) -> io::Result<()>
+where
+    K: Serialize,
+    V: Serialize,
+    P: Serialize,
+{
+    let previous = read_manifest_version(backend, format_version)?;
     let generation = previous
         .as_ref()
         .map_or(1, |manifest| manifest.current_generation.saturating_add(1));
@@ -250,14 +278,21 @@ where
     fs::create_dir_all(&dir)?;
 
     let base = BaseSegmentWrite { generation, state };
-    let base_bytes = write_segment(&dir, BASE_MAGIC, "base", generation, &base)?;
+    let base_bytes = write_segment_version(
+        &dir,
+        BASE_MAGIC,
+        "base",
+        generation,
+        &base,
+        format_version,
+    )?;
     let manifest = Manifest {
         base_generation: generation,
         base_bytes,
         current_generation: generation,
         delta_bytes: 0,
     };
-    publish_manifest(backend, &manifest)?;
+    publish_manifest_version(backend, &manifest, format_version)?;
     let compaction = previous
         .as_ref()
         .is_some_and(|previous| previous.delta_count() > 0);
@@ -278,7 +313,20 @@ where
     K: Eq + Hash + Serialize + DeserializeOwned,
     V: Serialize + DeserializeOwned,
 {
-    let Some(mut manifest) = read_manifest(backend)? else {
+    try_save_delta_for(backend, delta, FORMAT_VERSION)
+}
+
+pub(super) fn try_save_delta_for<K, V, P>(
+    backend: &FileSnapshot,
+    delta: Option<&PersistenceDelta<K, V, P>>,
+    format_version: u32,
+) -> io::Result<bool>
+where
+    K: Eq + Hash + Serialize + DeserializeOwned,
+    V: Serialize + DeserializeOwned,
+    P: Serialize + DeserializeOwned + Eq + Hash,
+{
+    let Some(mut manifest) = read_manifest_version(backend, format_version)? else {
         return Ok(false);
     };
     let Some(delta) = delta else {
@@ -292,7 +340,7 @@ where
         to_generation,
         delta,
     };
-    let encoded = encode(DELTA_MAGIC, &segment)?;
+    let encoded = encode_version(DELTA_MAGIC, &segment, format_version)?;
     if should_materialize(&manifest, encoded.len() as u64) {
         return Ok(false);
     }
@@ -301,7 +349,7 @@ where
     let bytes = write_encoded_segment(&dir, "delta", to_generation, &encoded)?;
     manifest.current_generation = to_generation;
     manifest.delta_bytes = manifest.delta_bytes.saturating_add(bytes);
-    publish_manifest(backend, &manifest)?;
+    publish_manifest_version(backend, &manifest, format_version)?;
     observability::record_snapshot_delta(manifest.segment_count(), manifest.segment_bytes());
     Ok(true)
 }
