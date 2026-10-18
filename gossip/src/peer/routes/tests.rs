@@ -130,6 +130,7 @@ fn a_signed_frame_cannot_dispatch_or_redirect_until_return_route_is_proven() {
     assert!(matches!(confirmed, SignedRouteReceive::Confirmed(_)));
     assert_eq!(routes.route(alice.local_peer()), Some(&old));
     assert_eq!(routes.len(), 1);
+    assert!(!routes.is_empty());
     let outgoing = routes
         .seal_to(&bob, alice.local_peer(), &frame(b"return"))
         .unwrap();
@@ -447,8 +448,9 @@ fn route_capacity_and_pending_replacement_respect_identity_budget() {
     assert_ne!(second.bytes, first.bytes);
     assert_eq!(routes.pending.len(), 1);
 
-    // A second signer is admitted once the previous challenge expires.
-    let after_ttl = now + Duration::from_secs(3);
+    // At the *exact* TTL the previous challenge must expire and free its slot.
+    // This distinguishes strict < from <= at the expiration boundary.
+    let after_ttl = now + Duration::from_secs(2);
     let other_retry = charlie.seal(&frame(b"retry")).unwrap();
     assert!(matches!(
         routes
