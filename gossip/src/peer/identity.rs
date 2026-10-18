@@ -100,7 +100,7 @@ impl PeerProof {
 /// This is only a proof of ownership for the supplied datagram bytes. It does not prove that
 /// those bytes are fresh, that their sequence is new, or that the peer is eligible for causal
 /// membership. Unlike `PeerId`, the verified wrapper has no public unchecked constructor.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct VerifiedPeerId(PeerId);
 
 impl VerifiedPeerId {

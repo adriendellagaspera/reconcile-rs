@@ -16,9 +16,19 @@ struct FragmentInput<'a> {
     bytes: &'a [u8],
 }
 
-impl Reassembler {
-    /// Create an empty receiver with explicit memory/state limits.
+impl Reassembler<IpAddr> {
+    /// Create the legacy IP-keyed receiver with explicit limits.
     pub fn new(limits: ReassemblyLimits) -> Self {
+        Reassembler::for_identity(limits)
+    }
+}
+
+impl<P: Copy + Eq + Hash + Ord> Reassembler<P> {
+    /// Create a receiver keyed by the chosen authenticated peer identity.
+    ///
+    /// Legacy callers use `Reassembler::new` for IP; signed callers explicitly select a
+    /// `VerifiedPeerId` key so in-flight fragments follow the signer across route changes.
+    pub fn for_identity(limits: ReassemblyLimits) -> Self {
         Reassembler {
             limits,
             peers: HashMap::new(),
@@ -52,7 +62,7 @@ impl Reassembler {
     /// Accept one authenticated/replay-checked outer frame from a peer.
     pub fn accept<'a>(
         &mut self,
-        peer: IpAddr,
+        peer: P,
         payload: Payload<'a, Verified>,
         now: Instant,
     ) -> ReceiveReport<'a> {
@@ -144,7 +154,7 @@ impl Reassembler {
 
     fn accept_fragment<'a>(
         &mut self,
-        peer: IpAddr,
+        peer: P,
         fragment: FragmentInput<'_>,
         now: Instant,
         evicted: &mut usize,
@@ -241,7 +251,7 @@ impl Reassembler {
 
     fn make_transfer_slot(
         &mut self,
-        peer: IpAddr,
+        peer: P,
         protected_id: [u8; 32],
         incoming_bytes: usize,
         evicted: &mut usize,
@@ -268,7 +278,7 @@ impl Reassembler {
 
     fn make_byte_room(
         &mut self,
-        peer: IpAddr,
+        peer: P,
         protected_id: [u8; 32],
         incoming_bytes: usize,
         evicted: &mut usize,
@@ -298,7 +308,7 @@ impl Reassembler {
         Ok(())
     }
 
-    fn oldest_for_peer(&self, peer: IpAddr, exclude: Option<[u8; 32]>) -> Option<[u8; 32]> {
+    fn oldest_for_peer(&self, peer: P, exclude: Option<[u8; 32]>) -> Option<[u8; 32]> {
         self.peers
             .get(&peer)?
             .transfers
@@ -310,7 +320,7 @@ impl Reassembler {
             .map(|(_, id)| id)
     }
 
-    fn oldest_global(&self, exclude: Option<(IpAddr, [u8; 32])>) -> Option<(IpAddr, [u8; 32])> {
+    fn oldest_global(&self, exclude: Option<(P, [u8; 32])>) -> Option<(P, [u8; 32])> {
         self.peers
             .iter()
             .flat_map(|(&peer, state)| {
@@ -322,7 +332,7 @@ impl Reassembler {
             .map(|(_, peer, id)| (peer, id))
     }
 
-    fn remove_transfer(&mut self, peer: IpAddr, id: [u8; 32]) {
+    fn remove_transfer(&mut self, peer: P, id: [u8; 32]) {
         let mut remove_peer = false;
         if let Some(state) = self.peers.get_mut(&peer) {
             if let Some(transfer) = state.transfers.remove(&id) {

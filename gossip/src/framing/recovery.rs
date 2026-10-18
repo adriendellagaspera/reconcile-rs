@@ -7,6 +7,7 @@
 
 //! Selective-recovery control framing layered beside complete/fragment data frames.
 
+use std::hash::Hash;
 use std::net::IpAddr;
 
 use super::{Reassembler, FRAGMENT_HEADER_LEN, FRAGMENT_TAG};
@@ -219,9 +220,9 @@ fn validate_ranges(ranges: &[(u32, u32)]) -> Result<(), RecoveryControlError> {
 }
 
 /// One bounded request for the missing bytes of an authenticated incomplete transfer.
-pub struct MissingRequest {
-    /// IP identity of the peer that supplied the retained authenticated fragments.
-    pub peer: IpAddr,
+pub struct MissingRequest<P = IpAddr> {
+    /// Authenticated identity that owns the incomplete transfer, independent of its route.
+    pub peer: P,
     /// Stable content-derived transfer ID.
     pub transfer_id: [u8; 32],
     /// Bounded, sorted missing byte ranges.
@@ -250,14 +251,14 @@ fn missing_ranges_for_transfer(transfer: &super::Transfer, max_ranges: usize) ->
     ranges
 }
 
-impl Reassembler {
+impl<P: Copy + Eq + Hash + Ord> Reassembler<P> {
     /// Return up to `max_ranges` currently missing byte ranges for one incomplete transfer.
     ///
     /// The ranges are derived from already-authenticated retained fragments; no additional
     /// receiver-side recovery state is allocated.
     pub fn missing_ranges(
         &self,
-        peer: IpAddr,
+        peer: P,
         transfer_id: [u8; 32],
         max_ranges: usize,
     ) -> Vec<(u32, u32)> {
@@ -278,7 +279,7 @@ impl Reassembler {
     /// the terminal fragment repeatedly arrive. Shares the timer with periodic idle retries.
     pub fn missing_ranges_if_due(
         &mut self,
-        peer: IpAddr,
+        peer: P,
         transfer_id: [u8; 32],
         now: std::time::Instant,
         retry_interval: std::time::Duration,
@@ -319,7 +320,7 @@ impl Reassembler {
         retry_interval: std::time::Duration,
         max_ranges: usize,
         max_reports: usize,
-    ) -> Vec<MissingRequest> {
+    ) -> Vec<MissingRequest<P>> {
         // Each independent zero budget is a cheap exit and a separate invariant.
         if max_ranges == 0 {
             return Vec::new();
