@@ -283,14 +283,8 @@ where
     fs::create_dir_all(&dir)?;
 
     let base = BaseSegmentWrite { generation, state };
-    let base_bytes = write_segment_version(
-        &dir,
-        BASE_MAGIC,
-        "base",
-        generation,
-        &base,
-        format_version,
-    )?;
+    let base_bytes =
+        write_segment_version(&dir, BASE_MAGIC, "base", generation, &base, format_version)?;
     let manifest = Manifest {
         base_generation: generation,
         base_bytes,
