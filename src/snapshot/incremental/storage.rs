@@ -14,7 +14,9 @@ use serde::Serialize;
 
 use crate::observability;
 
-use super::{FileSnapshot, Manifest, FORMAT_VERSION, HEADER_LEN, MANIFEST_FILE, MANIFEST_MAGIC};
+use super::{FileSnapshot, Manifest, HEADER_LEN, MANIFEST_FILE, MANIFEST_MAGIC};
+#[cfg(test)]
+use super::FORMAT_VERSION;
 
 pub(super) const OBJECT_CHECKSUM_LEN: usize = 32;
 
