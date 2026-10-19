@@ -95,7 +95,7 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         Ok(outgoing)
     }
 
-    pub(super) fn ensure_entry_fits(&self, key: &K, entry: &Entry<Timestamp, V>) -> io::Result<()> {
+    pub(crate) fn ensure_entry_fits(&self, key: &K, entry: &Entry<Timestamp, V>) -> io::Result<()> {
         let bytes = serialize(&SignedMessage::Update(key.clone(), entry.clone()))?;
         self.required_fragments(bytes.len())?;
         Ok(())
