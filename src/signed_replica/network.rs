@@ -11,9 +11,8 @@
 use super::*;
 
 use gossip::framing::{
-    max_missing_ranges_for_budget, transfer_id, write_complete,
-    write_completion_ack, write_fragment, write_missing_report, ReceiveOutcome, RecoveryControl,
-    FRAGMENT_HEADER_LEN,
+    max_missing_ranges_for_budget, transfer_id, write_complete, write_completion_ack,
+    write_fragment, write_missing_report, ReceiveOutcome, RecoveryControl, FRAGMENT_HEADER_LEN,
 };
 use gossip::peer::routes::SignedRouteReceive;
 use serde::{Deserialize, Serialize};
