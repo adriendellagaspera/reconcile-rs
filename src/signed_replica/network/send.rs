@@ -22,8 +22,14 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         let message: SignedMessage<K, V> = SignedMessage::Hello;
         let mut frame = Vec::new();
         write_complete(&serialize(&message)?, &mut frame);
-        let bytes = self.boundary.seal(&frame).map_err(|err| invalid(format!("{err:?}")))?;
-        Ok(RoutedDatagram { destination: endpoint, bytes })
+        let bytes = self
+            .boundary
+            .seal(&frame)
+            .map_err(|err| invalid(format!("{err:?}")))?;
+        Ok(RoutedDatagram {
+            destination: endpoint,
+            bytes,
+        })
     }
 
     /// Progress anti-entropy on confirmed signed routes and request missing fragment ranges.
@@ -50,12 +56,21 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         peers.rotate_left(self.next_peer_index % peer_count);
         let mut visited = 0;
         for peer in peers {
-            if !self.authorities.contains(&peer.peer_id()) && !self.readers.contains(&peer.peer_id()) {
+            if !self.authorities.contains(&peer.peer_id())
+                && !self.readers.contains(&peer.peer_id())
+            {
                 visited += 1;
                 continue;
             }
-            let cursor = self.outbound_cursors.get(&peer.peer_id()).cloned().flatten();
-            let next = self.entries.iter().find(|(k, _)| cursor.as_ref().is_none_or(|last| *k > last));
+            let cursor = self
+                .outbound_cursors
+                .get(&peer.peer_id())
+                .cloned()
+                .flatten();
+            let next = self
+                .entries
+                .iter()
+                .find(|(k, _)| cursor.as_ref().is_none_or(|last| *k > last));
             // Wrap to the oldest key for continuous anti-entropy, including lost ACK recovery.
             let next = next.or_else(|| self.entries.iter().next());
             let Some((key, entry)) = next else {
@@ -66,7 +81,9 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
             let frames = self.required_fragments(encoded.len())?;
             if outgoing.len().saturating_add(frames) > MAX_FRAMES_PER_TICK {
                 if visited == 0 && outgoing.is_empty() {
-                    return Err(invalid("one encoded signed record exceeds the per-tick datagram cap"));
+                    return Err(invalid(
+                        "one encoded signed record exceeds the per-tick datagram cap",
+                    ));
                 }
                 break;
             }
@@ -78,11 +95,7 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         Ok(outgoing)
     }
 
-    pub(super) fn ensure_entry_fits(
-        &self,
-        key: &K,
-        entry: &Entry<Timestamp, V>,
-    ) -> io::Result<()> {
+    pub(super) fn ensure_entry_fits(&self, key: &K, entry: &Entry<Timestamp, V>) -> io::Result<()> {
         let bytes = serialize(&SignedMessage::Update(key.clone(), entry.clone()))?;
         self.required_fragments(bytes.len())?;
         Ok(())
@@ -96,7 +109,8 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         if logical_bytes.saturating_add(gossip::framing::COMPLETE_HEADER_LEN) <= budget {
             return Ok(1);
         }
-        let chunk = budget.checked_sub(FRAGMENT_HEADER_LEN)
+        let chunk = budget
+            .checked_sub(FRAGMENT_HEADER_LEN)
             .filter(|n| *n > 0)
             .ok_or_else(|| invalid("signed fragment headers exceed transport budget"))?;
         let count = logical_bytes.div_ceil(chunk);
@@ -134,7 +148,8 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         let chunk = self.boundary.payload_budget() - FRAGMENT_HEADER_LEN;
         let transfer = transfer_id(bytes);
         if self.framing.selective_recovery {
-            self.recovery.retain(peer, transfer, bytes, now, self.framing);
+            self.recovery
+                .retain(peer, transfer, bytes, now, self.framing);
         }
         for (index, slice) in bytes.chunks(chunk).enumerate() {
             write_fragment(transfer, bytes.len(), index * chunk, slice, &mut frame)
@@ -149,7 +164,8 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         peer: VerifiedPeerId,
         frame: &[u8],
     ) -> io::Result<RoutedDatagram<A>> {
-        self.routes.seal_to(&self.boundary, peer.peer_id(), frame)
+        self.routes
+            .seal_to(&self.boundary, peer.peer_id(), frame)
             .map_err(|err| invalid(format!("{err:?}")))
     }
 
@@ -189,7 +205,10 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         ranges: &[(u32, u32)],
         now: Instant,
     ) -> io::Result<Vec<RoutedDatagram<A>>> {
-        let Some(transfer) = self.recovery.payload_for_report(peer, id, now, self.framing) else {
+        let Some(transfer) = self
+            .recovery
+            .payload_for_report(peer, id, now, self.framing)
+        else {
             return Ok(Vec::new());
         };
         let bytes = transfer.payload;
