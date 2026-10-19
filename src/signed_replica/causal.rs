@@ -60,26 +60,13 @@ where
         self.entries.insert(key, entry);
     }
 
-    pub(super) fn admit_authority(&mut self, peer: VerifiedPeerId) -> bool {
-        let id = peer.peer_id();
-        if !self.authorities.contains(&id) || id == self.peer_id() {
-            return false;
-        }
-        if self.members.insert(id) {
-            self.generations.mutation().record_member(id, true);
-            true
-        } else {
-            false
-        }
-    }
-
     pub(super) fn apply_remote_entry(
         &mut self,
         peer: VerifiedPeerId,
         key: K,
         remote: Entry<Timestamp, V>,
     ) -> Option<u64> {
-        if !self.authorities.contains(&peer.peer_id()) || peer.peer_id() == self.peer_id() {
+        if !self.authorities.contains(&peer.peer_id()) {
             return None;
         }
         self.clock.observe(remote.stamp);
@@ -102,7 +89,7 @@ where
 
     pub(super) fn accept_ack(&mut self, peer: VerifiedPeerId, key: K, version: u64) {
         let id = peer.peer_id();
-        if !self.members.contains(&id) || !self.authorities.contains(&id) {
+        if !self.members.contains(&id) {
             return;
         }
         let Some(entry) = self.entries.get(&key) else {
@@ -131,9 +118,9 @@ where
         self.tombstone_acks.clone()
     }
 
-    /// True when every admitted, authoritative member acknowledged this exact tombstone version.
+    /// True only when every provisioned authoritative member acknowledged this exact tombstone.
     ///
-    /// An empty known membership allows GC, matching the historical replica's semantics.
+    /// The configured roster is installed as blockers at construction, including offline peers.
     /// Operators must still enforce their tombstone retention period before collection.
     pub fn is_tombstone_stable(&self, key: &K) -> bool {
         let Some(entry) = self.entries.get(key) else {
