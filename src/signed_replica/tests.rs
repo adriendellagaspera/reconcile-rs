@@ -244,3 +244,151 @@ fn signed_v2_snapshot_reloads_causal_blockers_and_rejects_v1_or_roster_drift() {
     .unwrap();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 }
+
+#[test]
+fn missing_signed_fragment_recovers_by_verified_peer_id_after_selective_nack() {
+    let a_id = signer(61).peer_id();
+    let b_id = signer(62).peer_id();
+    let now = Instant::now();
+    let a_addr = (11, 3);
+    let b_addr = (12, 8);
+    let mut a = make(61, SignedConfig::new([b_id]), memory());
+    let mut b = make(62, SignedConfig::new([a_id]), memory());
+    connect(&mut a, a_addr, &mut b, b_addr, now);
+
+    let large = "large-bounded-value".repeat(500);
+    a.insert(13, large.clone()).unwrap();
+    let frames = a.reconcile(now).unwrap();
+    assert!(frames.len() >= 3, "large dated record should require signed fragmentation");
+    let lost = frames.len() / 2;
+    for (i, frame) in frames.into_iter().enumerate() {
+        if i != lost {
+            assert_eq!(frame.destination, b_addr);
+            assert!(b.receive(a_addr, &frame.bytes, now).unwrap().is_empty());
+        }
+    }
+    assert!(b.get(&13).is_none());
+
+    let requests = b.reconcile(now + Duration::from_secs(3)).unwrap();
+    assert!(!requests.is_empty(), "incomplete signed transfer should issue bounded NACKs");
+    for request in requests {
+        assert_eq!(request.destination, a_addr);
+        let missing_frames = a.receive(b_addr, &request.bytes, now + Duration::from_secs(3)).unwrap();
+        assert!(!missing_frames.is_empty(), "sender retains requested data under verified identity");
+        for frame in missing_frames {
+            assert_eq!(frame.destination, b_addr);
+            let acks = b.receive(a_addr, &frame.bytes, now + Duration::from_secs(3)).unwrap();
+            for ack in acks {
+                assert_eq!(ack.destination, a_addr);
+                a.receive(b_addr, &ack.bytes, now + Duration::from_secs(3)).unwrap();
+            }
+        }
+    }
+    assert_eq!(b.get(&13).map(String::as_str), Some(large.as_str()));
+    assert_eq!(b.members(), HashSet::from([a_id]));
+}
+
+#[test]
+fn signed_read_only_sender_cannot_inject_a_dated_entry_even_with_a_confirmed_route() {
+    use crate::signed_replica::network::{serialize, SignedMessage};
+
+    let authority_id = signer(71).peer_id();
+    let reader_id = signer(72).peer_id();
+    let mut config = SignedConfig::new([]);
+    config.readers.insert(reader_id);
+    let mut reader_config = SignedConfig::new([authority_id]);
+    reader_config.read_only = true;
+    let mut authority = make(71, config, memory());
+    let mut reader = make(72, reader_config, memory());
+    let now = Instant::now();
+    let author_addr = (31, 2);
+    let reader_addr = (32, 2);
+    connect(&mut authority, author_addr, &mut reader, reader_addr, now);
+
+    let rogue = SignedMessage::<u64, String>::Update(
+        999,
+        Entry::present(reader.clock.now(), "injected".into()),
+    );
+    let mut frame = Vec::new();
+    gossip::framing::write_complete(&serialize(&rogue).unwrap(), &mut frame);
+    let signed_by_reader = reader.boundary.seal(&frame).unwrap();
+    let replies = authority.receive(reader_addr, &signed_by_reader, now).unwrap();
+    assert!(replies.is_empty());
+    assert!(authority.get(&999).is_none());
+    assert!(authority.members().is_empty());
+    assert!(authority.tombstone_ack_snapshot().is_empty());
+
+    // The normal crypto boundary rejects raw, unsigned application bytes entirely.
+    assert!(authority.receive(reader_addr, &frame, now).unwrap().is_empty());
+    assert!(authority.members().is_empty());
+}
+
+#[test]
+fn version_exact_ack_bookkeeping_survives_v2_incremental_snapshot_and_reboot() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ack-v2.snapshot");
+    let a_id = signer(81).peer_id();
+    let b_id = signer(82).peer_id();
+    let a_backend: Backend = Arc::new(FileSnapshot::new(&path));
+    let mut a = make(81, SignedConfig::new([b_id]), a_backend.clone());
+    let mut b = make(82, SignedConfig::new([a_id]), memory());
+    let now = Instant::now();
+    connect(&mut a, (41, 1), &mut b, (42, 1), now);
+
+    a.remove(123).unwrap();
+    a.snapshot_now().unwrap();
+    assert!(!a.is_tombstone_stable(&123));
+    deliver(&mut a, (41, 1), &mut b, (42, 1), now);
+    let exact = a.acknowledged_version(&123, b_id).unwrap();
+    assert!(a.is_tombstone_stable(&123));
+    a.snapshot_now().unwrap();
+    drop(a);
+
+    let mut reloaded = make(81, SignedConfig::new([b_id]), a_backend);
+    assert_eq!(reloaded.acknowledged_version(&123, b_id), Some(exact));
+    assert_eq!(reloaded.members(), HashSet::from([b_id]));
+    assert!(reloaded.is_tombstone_stable(&123));
+    assert!(reloaded.collect_if_stable(&123));
+    reloaded.snapshot_now().unwrap();
+}
+
+#[test]
+fn failed_signed_persistence_write_retries_the_exact_uncommitted_generation() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct FlakyBackend {
+        inner: InMemoryPersistence<u64, String, PeerId>,
+        fail_once: AtomicBool,
+    }
+
+    impl Persistence<u64, String, PeerId> for FlakyBackend {
+        fn load(&self) -> io::Result<Option<PersistedState<u64, String, PeerId>>> {
+            Persistence::load(&self.inner)
+        }
+
+        fn save(&self, state: &PersistedState<u64, String, PeerId>) -> io::Result<()> {
+            if self.fail_once.swap(false, Ordering::SeqCst) {
+                return Err(io::Error::other("simulated interrupted snapshot write"));
+            }
+            Persistence::save(&self.inner, state)
+        }
+    }
+
+    let peer = signer(92).peer_id();
+    let backend: Backend = Arc::new(FlakyBackend {
+        inner: InMemoryPersistence::new(),
+        fail_once: AtomicBool::new(true),
+    });
+    let mut store = make(91, SignedConfig::new([peer]), backend.clone());
+    store.insert(44, "kept".into()).unwrap();
+    store.remove(45).unwrap();
+    assert_eq!(store.snapshot_now().unwrap_err().kind(), io::ErrorKind::Other);
+    let frozen = store.generations.freeze().unwrap();
+    assert!(frozen.entries.contains_key(&44));
+    assert!(frozen.entries.contains_key(&45));
+    assert!(store.snapshot_now().is_ok());
+    let restored = make(91, SignedConfig::new([peer]), backend);
+    assert_eq!(restored.get(&44).map(String::as_str), Some("kept"));
+    assert!(restored.is_tombstone(&45));
+    assert!(!restored.is_tombstone_stable(&45));
+}
