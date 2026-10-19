@@ -236,7 +236,7 @@ impl<A: Clone + Eq> SignedPeerRoutes<A> {
                         Some(&MISSING_REPORT_TAG | &COMPLETION_ACK_TAG)
                     ) {
                         let max_ranges =
-                            max_missing_ranges_for_budget(boundary.payload_budget(), 0, 64);
+                            max_missing_ranges_for_budget(boundary.payload_budget(), 0, u16::MAX as usize);
                         return Ok(match parse_recovery_control(frame, max_ranges) {
                             Ok(Some(control)) => SignedRouteReceive::Recovery { peer, control },
                             _ => SignedRouteReceive::Ignored,
