@@ -145,6 +145,14 @@ where
                 "signed local and remote authoritative/read-only identities must be disjoint",
             ));
         }
+        if config.max_peers < config.authorities.len()
+            || config.max_replay_senders < config.authorities.len() + config.readers.len()
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "signed peer and replay limits must accommodate the provisioned allowlist",
+            ));
+        }
         let authenticator = Authenticator::new(Some(cluster_key), false)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("{err:?}")))?;
         let allowlist = PeerAllowlist::new(
@@ -177,7 +185,21 @@ where
             ));
         }
 
-        let saved = persistence.load()?.unwrap_or_default();
+        let loaded = persistence.load()?;
+        let had_snapshot = loaded.is_some();
+        let saved = loaded.unwrap_or_default();
+        if had_snapshot
+            && (if config.read_only {
+                !saved.members.is_empty() || !saved.tombstone_acks.is_empty()
+            } else {
+                saved.members != config.authorities
+            })
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "signed durable membership differs from provisioned authorities; an explicit coordinated reset or persisted decommission is required",
+            ));
+        }
         if !saved.members.is_subset(&config.authorities)
             || saved.tombstone_acks.values().any(|acks| {
                 acks.keys().any(|peer| !config.authorities.contains(peer))
@@ -198,15 +220,30 @@ where
                 ));
             }
         }
+        // Every configured authority is a causal blocker from the outset, even if it has
+        // never been reachable. Otherwise an offline member could later resurrect an
+        // already-collected deletion. A read-only replica has no causal members.
+        let members = if config.read_only {
+            HashSet::new()
+        } else {
+            config.authorities.clone()
+        };
+        let generations = GenerationTracker::default();
+        if !had_snapshot {
+            let mut gen = generations.mutation();
+            for id in &members {
+                gen.record_member(*id, true);
+            }
+        }
         Ok(Self {
             boundary,
             routes: SignedPeerRoutes::new(config.max_peers, config.challenge_ttl),
             reassembler: Reassembler::for_identity(config.framing.reassembly_limits()),
             recovery: RecoveryBook::for_identity(),
             entries,
-            members: saved.members,
+            members,
             tombstone_acks: saved.tombstone_acks,
-            generations: GenerationTracker::default(),
+            generations,
             persistence,
             clock,
             authorities: config.authorities,
