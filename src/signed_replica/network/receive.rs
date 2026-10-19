@@ -6,6 +6,7 @@
 // except according to those terms.
 
 use super::*;
+use bincode::Options;
 
 /// The signed ingress path is deliberately *separate* from legacy `Replica::run`.
 /// Neither cluster-wide PSK proofs nor a source IP can grant signed causal membership.
@@ -84,10 +85,12 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
                 let bytes = payload.as_bytes();
                 // Each frame carries exactly one tagged typed message. Two complete messages,
                 // or a partial/truncated trailing message, must not result in partial effects.
-                let decoded = match gossip::bincode::decode_stream::<SignedMessage<K, V>>(bytes, 2)
+                let message = match bincode::DefaultOptions::new()
+                    .reject_trailing_bytes()
+                    .deserialize::<SignedMessage<K, V>>(bytes)
                 {
-                    Ok(decoded) if decoded.len() == 1 => decoded,
-                    _ => return Ok(Vec::new()),
+                    Ok(message) => message,
+                    Err(_) => return Ok(Vec::new()),
                 };
                 let mut responses = Vec::new();
                 if was_fragment {
@@ -95,10 +98,6 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
                     write_completion_ack(transfer_id(bytes), &mut frame);
                     responses.push(self.routed_frame(peer, &frame)?);
                 }
-                let message = decoded
-                    .into_iter()
-                    .next()
-                    .expect("exactly one parsed message");
                 if let Some(reply) = self.handle_verified_message(peer, message, now)? {
                     responses.extend(reply);
                 }
