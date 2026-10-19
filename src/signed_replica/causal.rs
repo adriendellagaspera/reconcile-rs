@@ -121,7 +121,9 @@ where
 
     /// Inspect the last accepted exact-version ACK for an authoritative peer.
     pub fn acknowledged_version(&self, key: &K, peer: PeerId) -> Option<u64> {
-        self.tombstone_acks.get(key).and_then(|acks| acks.get(&peer).copied())
+        self.tombstone_acks
+            .get(key)
+            .and_then(|acks| acks.get(&peer).copied())
     }
 
     /// Snapshot the causal ACK matrix, keyed exclusively by verified principal identities.
@@ -141,12 +143,9 @@ where
             return false;
         }
         let version = version_hash(entry);
-        self.members.iter().all(|id| {
-            self.tombstone_acks
-                .get(key)
-                .and_then(|acks| acks.get(id))
-                == Some(&version)
-        })
+        self.members
+            .iter()
+            .all(|id| self.tombstone_acks.get(key).and_then(|acks| acks.get(id)) == Some(&version))
     }
 
     /// Collect a tombstone only if every authoritative member has ACKed its exact version.
@@ -198,7 +197,9 @@ where
     /// Propagates backend errors without retiring a failed generation.
     pub fn snapshot_now(&mut self) -> io::Result<()> {
         let frozen = self.generations.freeze();
-        let delta = frozen.as_ref().map(|generation| generation.persistence_delta());
+        let delta = frozen
+            .as_ref()
+            .map(|generation| generation.persistence_delta());
         if !self.persistence.try_save_delta(delta.as_ref())? {
             self.persistence.save(&PersistedState::new(
                 self.entries
