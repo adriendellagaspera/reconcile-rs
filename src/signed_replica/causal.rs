@@ -119,6 +119,16 @@ where
         }
     }
 
+    /// Inspect the last accepted exact-version ACK for an authoritative peer.
+    pub fn acknowledged_version(&self, key: &K, peer: PeerId) -> Option<u64> {
+        self.tombstone_acks.get(key).and_then(|acks| acks.get(&peer).copied())
+    }
+
+    /// Snapshot the causal ACK matrix, keyed exclusively by verified principal identities.
+    pub fn tombstone_ack_snapshot(&self) -> HashMap<K, HashMap<PeerId, u64>> {
+        self.tombstone_acks.clone()
+    }
+
     /// True when every admitted, authoritative member acknowledged this exact tombstone version.
     ///
     /// An empty known membership allows GC, matching the historical replica's semantics.
