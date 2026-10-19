@@ -111,7 +111,7 @@ where
         if !entry.is_tombstone() || version_hash(entry) != version {
             return;
         }
-        let mut acks = self.tombstone_acks.entry(key.clone()).or_default();
+        let acks = self.tombstone_acks.entry(key.clone()).or_default();
         if acks.insert(id, version) != Some(version) {
             self.generations
                 .mutation()
