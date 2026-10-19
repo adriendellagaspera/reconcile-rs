@@ -678,6 +678,61 @@ impl<K> core::marker::Unpin for reconcile::replicated_set::ReplicatedSet<K> wher
 impl<K> core::marker::UnsafeUnpin for reconcile::replicated_set::ReplicatedSet<K> where reconcile::replicated_map::ReplicatedMap<K, ()>: core::marker::UnsafeUnpin
 impl<K> !core::panic::unwind_safe::RefUnwindSafe for reconcile::replicated_set::ReplicatedSet<K>
 impl<K> !core::panic::unwind_safe::UnwindSafe for reconcile::replicated_set::ReplicatedSet<K>
+pub mod reconcile::signed_replica
+pub use reconcile::signed_replica::PeerSigner
+pub use reconcile::signed_replica::RoutedDatagram
+pub struct reconcile::signed_replica::SignedConfig
+pub reconcile::signed_replica::SignedConfig::authorities: std::collections::hash::set::HashSet<reconcile_gossip::peer::PeerId>
+pub reconcile::signed_replica::SignedConfig::challenge_ttl: core::time::Duration
+pub reconcile::signed_replica::SignedConfig::framing: reconcile::replicated_map::FramingConfig
+pub reconcile::signed_replica::SignedConfig::freshness_window: core::time::Duration
+pub reconcile::signed_replica::SignedConfig::max_peers: usize
+pub reconcile::signed_replica::SignedConfig::max_replay_senders: usize
+pub reconcile::signed_replica::SignedConfig::read_only: bool
+pub reconcile::signed_replica::SignedConfig::readers: std::collections::hash::set::HashSet<reconcile_gossip::peer::PeerId>
+impl reconcile::signed_replica::SignedConfig
+pub fn reconcile::signed_replica::SignedConfig::new(impl core::iter::traits::collect::IntoIterator<Item = reconcile_gossip::peer::PeerId>) -> Self
+impl core::clone::Clone for reconcile::signed_replica::SignedConfig
+pub fn reconcile::signed_replica::SignedConfig::clone(&self) -> reconcile::signed_replica::SignedConfig
+impl core::fmt::Debug for reconcile::signed_replica::SignedConfig
+pub fn reconcile::signed_replica::SignedConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for reconcile::signed_replica::SignedConfig
+impl core::marker::Send for reconcile::signed_replica::SignedConfig
+impl core::marker::Sync for reconcile::signed_replica::SignedConfig
+impl core::marker::Unpin for reconcile::signed_replica::SignedConfig
+impl core::marker::UnsafeUnpin for reconcile::signed_replica::SignedConfig
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile::signed_replica::SignedConfig
+impl core::panic::unwind_safe::UnwindSafe for reconcile::signed_replica::SignedConfig
+pub struct reconcile::signed_replica::SignedReplica<K, V, A> where K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value, A: core::clone::Clone + core::cmp::Eq
+impl<K, V, A> reconcile::signed_replica::SignedReplica<K, V, A> where K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value, A: core::clone::Clone + core::cmp::Eq
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::acknowledged_version(&self, &K, reconcile_gossip::peer::PeerId) -> core::option::Option<u64>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::collect_if_stable(&mut self, &K) -> bool
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::decommission(&mut self, reconcile_gossip::peer::PeerId) -> bool
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::insert(&mut self, K, V) -> core::io::error::Result<()>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::is_tombstone_stable(&self, &K) -> bool
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::remove(&mut self, K) -> core::io::error::Result<()>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::snapshot_now(&mut self) -> core::io::error::Result<()>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::tombstone_ack_snapshot(&self) -> std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, u64>>
+impl<K, V, A> reconcile::signed_replica::SignedReplica<K, V, A> where K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value, A: core::clone::Clone + core::cmp::Eq
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::get(&self, &K) -> core::option::Option<&V>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::is_empty(&self) -> bool
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::is_tombstone(&self, &K) -> bool
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::len(&self) -> usize
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::members(&self) -> std::collections::hash::set::HashSet<reconcile_gossip::peer::PeerId>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::new(reconcile::signed_replica::SignedConfig, reconcile_gossip::auth::ClusterKey, reconcile_gossip::peer::identity::PeerSigner, alloc::sync::Arc<dyn lww_register::clock::Clock>, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V, reconcile_gossip::peer::PeerId>>) -> core::io::error::Result<Self>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::peer_id(&self) -> reconcile_gossip::peer::PeerId
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value, A: core::clone::Clone + core::cmp::Eq> reconcile::signed_replica::SignedReplica<K, V, A>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::probe(&self, A) -> core::io::error::Result<reconcile_gossip::peer::routes::RoutedDatagram<A>>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::reconcile(&mut self, std::time::Instant) -> core::io::error::Result<alloc::vec::Vec<reconcile_gossip::peer::routes::RoutedDatagram<A>>>
+impl<K: reconcile::bounds::Key + core::hash::Hash, V: reconcile::bounds::Value, A: core::clone::Clone + core::cmp::Eq> reconcile::signed_replica::SignedReplica<K, V, A>
+pub fn reconcile::signed_replica::SignedReplica<K, V, A>::receive(&mut self, A, &[u8], std::time::Instant) -> core::io::error::Result<alloc::vec::Vec<reconcile_gossip::peer::routes::RoutedDatagram<A>>>
+impl<K, V, A> !core::marker::Freeze for reconcile::signed_replica::SignedReplica<K, V, A>
+impl<K, V, A> core::marker::Send for reconcile::signed_replica::SignedReplica<K, V, A> where reconcile_gossip::peer::routes::SignedPeerRoutes<A>: core::marker::Send, alloc::collections::btree::map::BTreeMap<K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>>: core::marker::Send, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, u64>>: core::marker::Send, GenerationTracker<K, V, reconcile_gossip::peer::PeerId>: core::marker::Send, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V, reconcile_gossip::peer::PeerId>>: core::marker::Send, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, core::option::Option<K>>: core::marker::Send
+impl<K, V, A> core::marker::Sync for reconcile::signed_replica::SignedReplica<K, V, A> where reconcile_gossip::peer::routes::SignedPeerRoutes<A>: core::marker::Sync, alloc::collections::btree::map::BTreeMap<K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>>: core::marker::Sync, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, u64>>: core::marker::Sync, GenerationTracker<K, V, reconcile_gossip::peer::PeerId>: core::marker::Sync, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V, reconcile_gossip::peer::PeerId>>: core::marker::Sync, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, core::option::Option<K>>: core::marker::Sync
+impl<K, V, A> core::marker::Unpin for reconcile::signed_replica::SignedReplica<K, V, A> where reconcile_gossip::peer::routes::SignedPeerRoutes<A>: core::marker::Unpin, alloc::collections::btree::map::BTreeMap<K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>>: core::marker::Unpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, u64>>: core::marker::Unpin, GenerationTracker<K, V, reconcile_gossip::peer::PeerId>: core::marker::Unpin, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V, reconcile_gossip::peer::PeerId>>: core::marker::Unpin, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, core::option::Option<K>>: core::marker::Unpin
+impl<K, V, A> core::marker::UnsafeUnpin for reconcile::signed_replica::SignedReplica<K, V, A> where reconcile_gossip::peer::routes::SignedPeerRoutes<A>: core::marker::UnsafeUnpin, alloc::collections::btree::map::BTreeMap<K, lww_register::entry::Entry<lww_register::clock::Timestamp, V>>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<K, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, u64>>: core::marker::UnsafeUnpin, GenerationTracker<K, V, reconcile_gossip::peer::PeerId>: core::marker::UnsafeUnpin, alloc::sync::Arc<dyn reconcile::persistence::Persistence<K, V, reconcile_gossip::peer::PeerId>>: core::marker::UnsafeUnpin, std::collections::hash::map::HashMap<reconcile_gossip::peer::PeerId, core::option::Option<K>>: core::marker::UnsafeUnpin
+impl<K, V, A> !core::panic::unwind_safe::RefUnwindSafe for reconcile::signed_replica::SignedReplica<K, V, A>
+impl<K, V, A> !core::panic::unwind_safe::UnwindSafe for reconcile::signed_replica::SignedReplica<K, V, A>
 pub mod reconcile::value_ref
 pub struct reconcile::value_ref::ValueRef<K, V>(_)
 impl<K, V> core::ops::deref::Deref for reconcile::value_ref::ValueRef<K, V>
