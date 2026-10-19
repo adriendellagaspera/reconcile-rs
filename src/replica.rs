@@ -324,7 +324,6 @@ mod dispatch;
 mod dump;
 mod framed_send;
 mod gc;
-pub(crate) use gc::version_hash;
 mod generation;
 pub(crate) use generation::GenerationTracker;
 mod inbound;
