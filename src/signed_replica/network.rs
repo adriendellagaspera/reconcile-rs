@@ -33,7 +33,9 @@ fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
-pub(super) fn serialize<K: Serialize, V: Serialize>(message: &SignedMessage<K, V>) -> io::Result<Vec<u8>> {
+pub(super) fn serialize<K: Serialize, V: Serialize>(
+    message: &SignedMessage<K, V>,
+) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     gossip::bincode::encode(message, &mut bytes).map_err(|err| invalid(err.to_string()))?;
     Ok(bytes)
