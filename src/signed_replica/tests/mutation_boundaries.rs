@@ -80,17 +80,16 @@ fn signed_message_length_limit_is_inclusive_and_fragment_count_has_exact_bounds(
     let mut at_limit = make(154, cfg.clone(), memory());
     at_limit.insert(17, value.clone()).unwrap();
 
-    cfg.framing = cfg
-        .framing
-        .with_max_fragments_per_message(fragments - 1);
+    cfg.framing = cfg.framing.with_max_fragments_per_message(fragments - 1);
     let mut above_fragment_limit = make(154, cfg.clone(), memory());
     assert_eq!(
-        above_fragment_limit.insert(17, value.clone()).unwrap_err().kind(),
+        above_fragment_limit
+            .insert(17, value.clone())
+            .unwrap_err()
+            .kind(),
         io::ErrorKind::InvalidData
     );
-    cfg.framing = cfg
-        .framing
-        .with_max_fragments_per_message(fragments);
+    cfg.framing = cfg.framing.with_max_fragments_per_message(fragments);
     cfg.max_frames_per_tick = fragments - 1;
     let mut above_tick_limit = make(154, cfg, memory());
     assert_eq!(
@@ -125,7 +124,10 @@ fn multiple_dated_keys_advance_in_order_without_repeating_the_previous_cursor() 
         let frames = a.reconcile(now).unwrap();
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].destination, (32, 2));
-        assert!(b.receive((31, 1), &frames[0].bytes, now).unwrap().is_empty());
+        assert!(b
+            .receive((31, 1), &frames[0].bytes, now)
+            .unwrap()
+            .is_empty());
     }
     assert_eq!(b.len(), 3);
 }
