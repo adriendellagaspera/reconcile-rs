@@ -12,7 +12,7 @@ use super::*;
 
 use gossip::framing::{
     fragment_payload_capacity, max_missing_ranges_for_budget, transfer_id, write_complete,
-    write_fragment, write_missing_report, write_completion_ack, ReceiveOutcome, RecoveryControl,
+    write_completion_ack, write_fragment, write_missing_report, ReceiveOutcome, RecoveryControl,
     FRAGMENT_HEADER_LEN,
 };
 use gossip::peer::routes::SignedRouteReceive;
@@ -34,12 +34,9 @@ fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
-fn serialize<K: Serialize, V: Serialize>(
-    message: &SignedMessage<K, V>,
-) -> io::Result<Vec<u8>> {
+fn serialize<K: Serialize, V: Serialize>(message: &SignedMessage<K, V>) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
-    gossip::bincode::encode(message, &mut bytes)
-        .map_err(|err| invalid(err.to_string()))?;
+    gossip::bincode::encode(message, &mut bytes).map_err(|err| invalid(err.to_string()))?;
     Ok(bytes)
 }
 
