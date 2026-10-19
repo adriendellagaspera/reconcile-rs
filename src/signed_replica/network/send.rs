@@ -7,10 +7,6 @@
 
 use super::*;
 
-/// Cap the total outbound work in a single caller-driven reconciliation tick. A large
-/// transfer may consume the whole tick; round-robin peer selection prevents starvation.
-const MAX_FRAMES_PER_TICK: usize = 8_192;
-
 impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
     /// Send a cryptographically signed hello to a *provisioned* substrate endpoint.
     /// This does not treat the supplied address as a peer identity or confirmed route.
@@ -48,20 +44,19 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
             return Ok(outgoing);
         }
 
+        if outgoing.len() >= self.max_frames_per_tick {
+            return Ok(outgoing);
+        }
         let mut peers = self.routes.confirmed_peers();
         if peers.is_empty() || self.entries.is_empty() {
             return Ok(outgoing);
         }
         let peer_count = peers.len();
         peers.rotate_left(self.next_peer_index % peer_count);
-        let mut visited = 0;
+        // Advance one position per call, including when the previous tick served everyone;
+        // otherwise rotation by peer_count would always leave the same peer first.
+        self.next_peer_index = self.next_peer_index.wrapping_add(1);
         for peer in peers {
-            if !self.authorities.contains(&peer.peer_id())
-                && !self.readers.contains(&peer.peer_id())
-            {
-                visited += 1;
-                continue;
-            }
             let cursor = self
                 .outbound_cursors
                 .get(&peer.peer_id())
@@ -79,19 +74,12 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
             let (key, entry) = (key.clone(), entry.clone());
             let encoded = serialize(&SignedMessage::Update(key.clone(), entry))?;
             let frames = self.required_fragments(encoded.len())?;
-            if outgoing.len().saturating_add(frames) > MAX_FRAMES_PER_TICK {
-                if visited == 0 && outgoing.is_empty() {
-                    return Err(invalid(
-                        "one encoded signed record exceeds the per-tick datagram cap",
-                    ));
-                }
+            if outgoing.len().saturating_add(frames) > self.max_frames_per_tick {
                 break;
             }
             outgoing.extend(self.send_encoded(peer, &encoded, now)?);
             self.outbound_cursors.insert(peer.peer_id(), Some(key));
-            visited += 1;
         }
-        self.next_peer_index = self.next_peer_index.wrapping_add(visited);
         Ok(outgoing)
     }
 
@@ -114,7 +102,7 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
             .filter(|n| *n > 0)
             .ok_or_else(|| invalid("signed fragment headers exceed transport budget"))?;
         let count = logical_bytes.div_ceil(chunk);
-        if count > self.framing.max_fragments_per_message || count > MAX_FRAMES_PER_TICK {
+        if count > self.framing.max_fragments_per_message || count > self.max_frames_per_tick {
             return Err(invalid("signed record exceeds bounded fragment count"));
         }
         Ok(count)
@@ -194,6 +182,9 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
             write_missing_report(request.transfer_id, &request.ranges, &mut frame)
                 .map_err(|err| invalid(err.to_string()))?;
             out.push(self.routed_frame(request.peer, &frame)?);
+            if out.len() >= self.max_frames_per_tick {
+                break;
+            }
         }
         Ok(out)
     }
@@ -225,7 +216,7 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
                 write_fragment(id, bytes.len(), start + index * chunk, slice, &mut frame)
                     .map_err(|err| invalid(err.to_string()))?;
                 out.push(self.routed_frame(peer, &frame)?);
-                if out.len() >= MAX_FRAMES_PER_TICK {
+                if out.len() >= self.max_frames_per_tick {
                     return Ok(out);
                 }
             }
