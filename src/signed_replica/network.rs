@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 /// The signed runtime's dated protocol. Legacy SocketAddr runtime frames are *not* accepted:
 /// both Ed25519 and the inner MAC/wire-version boundary are always required first.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-enum SignedMessage<K, V> {
+pub(super) enum SignedMessage<K, V> {
     /// Initiate a signed, route-confirmed exchange; never grants causal membership by itself.
     Hello,
     /// Authoritative dated LWW record; a reader never gets to originate this variant.
@@ -33,7 +33,7 @@ fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
-fn serialize<K: Serialize, V: Serialize>(message: &SignedMessage<K, V>) -> io::Result<Vec<u8>> {
+pub(super) fn serialize<K: Serialize, V: Serialize>(message: &SignedMessage<K, V>) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     gossip::bincode::encode(message, &mut bytes).map_err(|err| invalid(err.to_string()))?;
     Ok(bytes)
