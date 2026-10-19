@@ -333,7 +333,6 @@ mod pending_dump;
 mod read;
 mod reconciliation;
 mod recovery;
-pub(crate) use recovery::RecoveryBook;
 mod recovery_send;
 mod repair;
 mod run;
