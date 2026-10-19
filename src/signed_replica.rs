@@ -114,6 +114,7 @@ where
     read_only: bool,
     framing: FramingConfig,
     outbound_cursors: HashMap<PeerId, Option<K>>,
+    pending_ack_cursors: HashMap<PeerId, Option<K>>,
     next_peer_index: usize,
     max_peer_cap: usize,
 }
@@ -256,6 +257,7 @@ where
             read_only: config.read_only,
             framing: config.framing,
             outbound_cursors: HashMap::new(),
+            pending_ack_cursors: HashMap::new(),
             next_peer_index: 0,
             max_peer_cap: config.max_peers,
         })
@@ -266,7 +268,8 @@ where
         self.boundary.local_peer()
     }
 
-    /// A clone of the monotonic, authoritative, authenticated causal membership.
+    /// Authenticated signers that have completed a dated protocol exchange. The trusted
+    /// configured authoritative roster independently gates GC even before first contact.
     pub fn members(&self) -> HashSet<PeerId> {
         self.members.clone()
     }
