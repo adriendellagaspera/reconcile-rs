@@ -32,6 +32,8 @@ pub mod read_replica_map;
 pub mod read_replica_set;
 pub mod replicated_map;
 pub mod replicated_set;
+/// Opt-in signed-only runtime with verified identity-keyed causal state and v2 durability.
+pub mod signed_replica;
 pub(crate) mod snapshot;
 pub mod value_ref;
 
