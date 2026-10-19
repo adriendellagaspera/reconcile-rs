@@ -65,10 +65,14 @@ fn deliver(
 ) {
     for outgoing in sender.reconcile(now).unwrap() {
         assert_eq!(outgoing.destination, recipient_addr);
-        let responses = recipient.receive(sender_addr, &outgoing.bytes, now).unwrap();
+        let responses = recipient
+            .receive(sender_addr, &outgoing.bytes, now)
+            .unwrap();
         for response in responses {
             assert_eq!(response.destination, sender_addr);
-            let final_responses = sender.receive(recipient_addr, &response.bytes, now).unwrap();
+            let final_responses = sender
+                .receive(recipient_addr, &response.bytes, now)
+                .unwrap();
             assert!(final_responses.is_empty());
         }
     }
@@ -171,8 +175,14 @@ fn readers_get_values_but_cannot_write_ack_or_join_causal_membership() {
     connect(&mut a, (1, 5), &mut reader, (2, 6), now);
     assert_eq!(a.members().len(), 0);
     assert!(reader.members().is_empty());
-    assert_eq!(reader.insert(77, "fake".into()).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
-    assert_eq!(reader.remove(77).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(
+        reader.insert(77, "fake".into()).unwrap_err().kind(),
+        io::ErrorKind::PermissionDenied
+    );
+    assert_eq!(
+        reader.remove(77).unwrap_err().kind(),
+        io::ErrorKind::PermissionDenied
+    );
 
     a.insert(77, "authored".into()).unwrap();
     deliver(&mut a, (1, 5), &mut reader, (2, 6), now);
@@ -208,9 +218,14 @@ fn signed_v2_snapshot_reloads_causal_blockers_and_rejects_v1_or_roster_drift() {
 
     let drift_backend: Backend = Arc::new(FileSnapshot::new(&path));
     let err = SignedReplica::<u64, String, Slot>::new(
-        SignedConfig::new([]), key(), signer(51),
-        Arc::new(HlcClock::new(NodeId::new(51))), drift_backend
-    ).err().unwrap();
+        SignedConfig::new([]),
+        key(),
+        signer(51),
+        Arc::new(HlcClock::new(NodeId::new(51))),
+        drift_backend,
+    )
+    .err()
+    .unwrap();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
     let old_path = dir.path().join("old.snapshot");
@@ -219,8 +234,13 @@ fn signed_v2_snapshot_reloads_causal_blockers_and_rejects_v1_or_roster_drift() {
     Persistence::<u64, String, IpAddr>::save(&legacy, &old_state).unwrap();
     let signed_backend: Backend = Arc::new(FileSnapshot::new(&old_path));
     let err = SignedReplica::<u64, String, Slot>::new(
-        SignedConfig::new([other]), key(), signer(51),
-        Arc::new(HlcClock::new(NodeId::new(51))), signed_backend
-    ).err().unwrap();
+        SignedConfig::new([other]),
+        key(),
+        signer(51),
+        Arc::new(HlcClock::new(NodeId::new(51))),
+        signed_backend,
+    )
+    .err()
+    .unwrap();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 }
