@@ -239,7 +239,10 @@ where
         }
         Ok(Self {
             boundary,
-            routes: SignedPeerRoutes::new(config.max_peers, config.challenge_ttl),
+            routes: SignedPeerRoutes::new(
+                config.max_peers.saturating_add(config.readers.len()),
+                config.challenge_ttl,
+            ),
             reassembler: Reassembler::for_identity(config.framing.reassembly_limits()),
             recovery: RecoveryBook::for_identity(),
             entries,
