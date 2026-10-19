@@ -51,22 +51,24 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         };
         match inbound {
             SignedRouteReceive::Ignored => Ok(Vec::new()),
-            SignedRouteReceive::Probing { challenge, .. } => {
-                Ok(challenge.into_iter().collect())
-            }
+            SignedRouteReceive::Probing { challenge, .. } => Ok(challenge.into_iter().collect()),
             SignedRouteReceive::Reply(response) => Ok(vec![response]),
             SignedRouteReceive::Confirmed(peer) => {
-                self.recovery.record_capability(peer, now, self.framing, max);
+                self.recovery
+                    .record_capability(peer, now, self.framing, max);
                 Ok(Vec::new())
             }
             SignedRouteReceive::Recovery { peer, control } => {
-                if !self.authorities.contains(&peer.peer_id()) && !self.readers.contains(&peer.peer_id()) {
+                if !self.authorities.contains(&peer.peer_id())
+                    && !self.readers.contains(&peer.peer_id())
+                {
                     return Ok(Vec::new());
                 }
                 match control {
-                    RecoveryControl::Missing { transfer_id, ranges } => {
-                        self.resend_missing(peer, transfer_id, &ranges, now)
-                    }
+                    RecoveryControl::Missing {
+                        transfer_id,
+                        ranges,
+                    } => self.resend_missing(peer, transfer_id, &ranges, now),
                     RecoveryControl::CompleteAck { transfer_id } => {
                         self.recovery.complete(peer, transfer_id);
                         Ok(Vec::new())
@@ -82,7 +84,8 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
                 let bytes = payload.as_bytes();
                 // Each frame carries exactly one tagged typed message. Two complete messages,
                 // or a partial/truncated trailing message, must not result in partial effects.
-                let decoded = match gossip::bincode::decode_stream::<SignedMessage<K, V>>(bytes, 2) {
+                let decoded = match gossip::bincode::decode_stream::<SignedMessage<K, V>>(bytes, 2)
+                {
                     Ok(decoded) if decoded.len() == 1 => decoded,
                     _ => return Ok(Vec::new()),
                 };
@@ -92,7 +95,10 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
                     write_completion_ack(transfer_id(bytes), &mut frame);
                     responses.push(self.routed_frame(peer, &frame)?);
                 }
-                let message = decoded.into_iter().next().expect("exactly one parsed message");
+                let message = decoded
+                    .into_iter()
+                    .next()
+                    .expect("exactly one parsed message");
                 if let Some(reply) = self.handle_verified_message(peer, message, now)? {
                     responses.extend(reply);
                 }
