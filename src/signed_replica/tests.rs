@@ -259,7 +259,10 @@ fn missing_signed_fragment_recovers_by_verified_peer_id_after_selective_nack() {
     let large = "large-bounded-value".repeat(500);
     a.insert(13, large.clone()).unwrap();
     let frames = a.reconcile(now).unwrap();
-    assert!(frames.len() >= 3, "large dated record should require signed fragmentation");
+    assert!(
+        frames.len() >= 3,
+        "large dated record should require signed fragmentation"
+    );
     let lost = frames.len() / 2;
     for (i, frame) in frames.into_iter().enumerate() {
         if i != lost {
@@ -270,17 +273,28 @@ fn missing_signed_fragment_recovers_by_verified_peer_id_after_selective_nack() {
     assert!(b.get(&13).is_none());
 
     let requests = b.reconcile(now + Duration::from_secs(3)).unwrap();
-    assert!(!requests.is_empty(), "incomplete signed transfer should issue bounded NACKs");
+    assert!(
+        !requests.is_empty(),
+        "incomplete signed transfer should issue bounded NACKs"
+    );
     for request in requests {
         assert_eq!(request.destination, a_addr);
-        let missing_frames = a.receive(b_addr, &request.bytes, now + Duration::from_secs(3)).unwrap();
-        assert!(!missing_frames.is_empty(), "sender retains requested data under verified identity");
+        let missing_frames = a
+            .receive(b_addr, &request.bytes, now + Duration::from_secs(3))
+            .unwrap();
+        assert!(
+            !missing_frames.is_empty(),
+            "sender retains requested data under verified identity"
+        );
         for frame in missing_frames {
             assert_eq!(frame.destination, b_addr);
-            let acks = b.receive(a_addr, &frame.bytes, now + Duration::from_secs(3)).unwrap();
+            let acks = b
+                .receive(a_addr, &frame.bytes, now + Duration::from_secs(3))
+                .unwrap();
             for ack in acks {
                 assert_eq!(ack.destination, a_addr);
-                a.receive(b_addr, &ack.bytes, now + Duration::from_secs(3)).unwrap();
+                a.receive(b_addr, &ack.bytes, now + Duration::from_secs(3))
+                    .unwrap();
             }
         }
     }
@@ -312,14 +326,19 @@ fn signed_read_only_sender_cannot_inject_a_dated_entry_even_with_a_confirmed_rou
     let mut frame = Vec::new();
     gossip::framing::write_complete(&serialize(&rogue).unwrap(), &mut frame);
     let signed_by_reader = reader.boundary.seal(&frame).unwrap();
-    let replies = authority.receive(reader_addr, &signed_by_reader, now).unwrap();
+    let replies = authority
+        .receive(reader_addr, &signed_by_reader, now)
+        .unwrap();
     assert!(replies.is_empty());
     assert!(authority.get(&999).is_none());
     assert!(authority.members().is_empty());
     assert!(authority.tombstone_ack_snapshot().is_empty());
 
     // The normal crypto boundary rejects raw, unsigned application bytes entirely.
-    assert!(authority.receive(reader_addr, &frame, now).unwrap().is_empty());
+    assert!(authority
+        .receive(reader_addr, &frame, now)
+        .unwrap()
+        .is_empty());
     assert!(authority.members().is_empty());
 }
 
@@ -382,7 +401,10 @@ fn failed_signed_persistence_write_retries_the_exact_uncommitted_generation() {
     let mut store = make(91, SignedConfig::new([peer]), backend.clone());
     store.insert(44, "kept".into()).unwrap();
     store.remove(45).unwrap();
-    assert_eq!(store.snapshot_now().unwrap_err().kind(), io::ErrorKind::Other);
+    assert_eq!(
+        store.snapshot_now().unwrap_err().kind(),
+        io::ErrorKind::Other
+    );
     let frozen = store.generations.freeze().unwrap();
     assert!(frozen.entries.contains_key(&44));
     assert!(frozen.entries.contains_key(&45));
