@@ -686,6 +686,7 @@ pub reconcile::signed_replica::SignedConfig::authorities: std::collections::hash
 pub reconcile::signed_replica::SignedConfig::challenge_ttl: core::time::Duration
 pub reconcile::signed_replica::SignedConfig::framing: reconcile::replicated_map::FramingConfig
 pub reconcile::signed_replica::SignedConfig::freshness_window: core::time::Duration
+pub reconcile::signed_replica::SignedConfig::max_frames_per_tick: usize
 pub reconcile::signed_replica::SignedConfig::max_peers: usize
 pub reconcile::signed_replica::SignedConfig::max_replay_senders: usize
 pub reconcile::signed_replica::SignedConfig::read_only: bool
