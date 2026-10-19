@@ -46,7 +46,8 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         if peers.is_empty() || self.entries.is_empty() {
             return Ok(outgoing);
         }
-        peers.rotate_left(self.next_peer_index % peers.len());
+        let peer_count = peers.len();
+        peers.rotate_left(self.next_peer_index % peer_count);
         let mut visited = 0;
         for peer in peers {
             if !self.authorities.contains(&peer.peer_id()) && !self.readers.contains(&peer.peer_id()) {
