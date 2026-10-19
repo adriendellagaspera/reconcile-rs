@@ -414,3 +414,5 @@ fn failed_signed_persistence_write_retries_the_exact_uncommitted_generation() {
     assert!(restored.is_tombstone(&45));
     assert!(!restored.is_tombstone_stable(&45));
 }
+
+mod advanced;
