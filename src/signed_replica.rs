@@ -157,9 +157,8 @@ where
         }
         let authenticator = Authenticator::new(Some(cluster_key), false)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("{err:?}")))?;
-        let allowlist = PeerAllowlist::new(
-            config.authorities.iter().chain(&config.readers).copied(),
-        );
+        let allowlist =
+            PeerAllowlist::new(config.authorities.iter().chain(&config.readers).copied());
         let boundary = SignedDatagramBoundary::new(
             authenticator,
             signer,
@@ -203,9 +202,10 @@ where
             ));
         }
         if !saved.members.is_subset(&config.authorities)
-            || saved.tombstone_acks.values().any(|acks| {
-                acks.keys().any(|peer| !config.authorities.contains(peer))
-            })
+            || saved
+                .tombstone_acks
+                .values()
+                .any(|acks| acks.keys().any(|peer| !config.authorities.contains(peer)))
         {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
