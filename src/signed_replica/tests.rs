@@ -100,7 +100,7 @@ fn two_signed_authorities_converge_and_ack_the_exact_tombstone() {
     deliver(&mut a, a_addr, &mut b, b_addr, now);
     assert!(b.is_tombstone(&7));
     assert!(a.is_tombstone_stable(&7));
-    assert!(a.acknowledged_version(&7, b_id).is_none_or(|_| false) == false || a.is_tombstone_stable(&7));
+    assert!(a.acknowledged_version(&7, b_id).is_some());
     assert!(a.collect_if_stable(&7));
     assert!(!a.is_tombstone(&7));
 }
