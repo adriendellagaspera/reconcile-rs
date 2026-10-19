@@ -100,7 +100,11 @@ to reinitialize incompatible history intentionally.
 - The new signed actor is an intentionally bounded **baseline**, not a
   drop-in high-throughput successor to RSOS/RBSR. Each `reconcile` call
   currently sends at most one dated entry per confirmed peer, with
-  round-robin progress and a cap on fragment work. Convergence of large
+  round-robin progress and a cap on fragment work. `SignedConfig::max_frames_per_tick`
+  defaults to 8192 (valid range 1–8192); keep it large enough for the
+  largest permitted record after signed-MTU fragmentation. A record requiring
+  more frames than the configured tick budget is rejected before insertion.
+  Convergence of large
   datasets depends strongly on the caller's cadence. Benchmark workload
   size, contact interruptions and time to converge; do not assume legacy
   range-reconciliation throughput or optimize out the causal GC barrier.
