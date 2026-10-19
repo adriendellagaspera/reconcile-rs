@@ -114,6 +114,8 @@ where
     read_only: bool,
     framing: FramingConfig,
     outbound_cursors: HashMap<PeerId, Option<K>>,
+    next_peer_index: usize,
+    max_peer_cap: usize,
 }
 
 impl<K, V, A> SignedReplica<K, V, A>
@@ -251,6 +253,8 @@ where
             read_only: config.read_only,
             framing: config.framing,
             outbound_cursors: HashMap::new(),
+            next_peer_index: 0,
+            max_peer_cap: config.max_peers,
         })
     }
 
