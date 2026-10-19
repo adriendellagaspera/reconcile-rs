@@ -98,10 +98,8 @@ fn signer_not_on_the_allowlist_is_rejected_despite_a_valid_cluster_mac() {
         1200,
     )
     .unwrap();
-    let fabricated = SignedMessage::Update(
-        321_u64,
-        Entry::present(b.clock.now(), "forged".to_owned()),
-    );
+    let fabricated =
+        SignedMessage::Update(321_u64, Entry::present(b.clock.now(), "forged".to_owned()));
     let mut frame = Vec::new();
     gossip::framing::write_complete(&serialize(&fabricated).unwrap(), &mut frame);
     let signed = intruder.seal(&frame).unwrap();
