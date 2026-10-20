@@ -8,12 +8,16 @@
 Embedded, fully replicated, eventually consistent key-value storage for Rust. Each authoritative
 node holds the whole dataset and serves reads locally. Writes are sent to peers over UDP;
 range-based reconciliation repairs missed updates, and concurrent writes to the same key
-resolve by last-write-wins ordering.
+resolve by last-write-wins ordering. An **opt-in** signed-only `SignedReplica` actor additionally
+supports stable, verified Ed25519 `PeerId` causal membership over application-owned datagram
+substrates; it is not an automatic replacement for the legacy UDP runtime.
 
 Use it when every node can keep the working set in memory and your application can tolerate
 eventual consistency. It does not provide sharding or strongly consistent writes. Persistence
 is optional; see the [API documentation][docs-url] for the supported configuration and the
-[security guide](SECURITY.md) before joining nodes across a network.
+[security guide](SECURITY.md) before joining nodes across a network. The signed-only
+mode has a [coordinated v2 upgrade guide](UPGRADE-PEERID.md): it does not convert legacy
+snapshots or allow a mixed signed/legacy cluster.
 
 ## Try it
 
