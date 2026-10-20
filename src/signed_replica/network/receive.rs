@@ -60,11 +60,8 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
                 Ok(Vec::new())
             }
             SignedRouteReceive::Recovery { peer, control } => {
-                if !self.authorities.contains(&peer.peer_id())
-                    && !self.readers.contains(&peer.peer_id())
-                {
-                    return Ok(Vec::new());
-                }
+                // The signed boundary and confirmed-route directory have already
+                // authenticated and admitted the signer. Decommission revokes both.
                 match control {
                     RecoveryControl::Missing {
                         transfer_id,
@@ -118,10 +115,8 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
                 if !self.authorities.contains(&peer.peer_id()) {
                     return Ok(None);
                 }
-                // Read-only replicas may consume authoritative data but never emit dated ACKs.
-                if !self.read_only {
-                    self.admit_authority(peer);
-                }
+                // Only provisioned authorities may send dated updates. Readers consume
+                // these values but never add another signer to their empty causal roster.
                 let ack_version = self.apply_remote_entry(peer, key.clone(), entry);
                 if self.read_only {
                     return Ok(None);
@@ -136,10 +131,9 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
                 }
             }
             SignedMessage::Ack(key, version) => {
-                if !self.read_only && self.authorities.contains(&peer.peer_id()) {
-                    self.admit_authority(peer);
-                    self.accept_ack(peer, key, version);
-                }
+                // accept_ack enforces exact version and provisioned membership. A reader
+                // has no members, and a decommissioned signer is not in the roster.
+                self.accept_ack(peer, key, version);
                 Ok(None)
             }
         }
