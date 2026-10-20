@@ -287,7 +287,10 @@ fn local_entries_without_any_confirmed_route_never_try_zero_peer_rotation() {
     store.insert(77, "not-yet-connected".into()).unwrap();
     assert!(store.routes.confirmed_peers().is_empty());
     assert!(store.reconcile(Instant::now()).unwrap().is_empty());
-    assert_eq!(store.get(&77).map(String::as_str), Some("not-yet-connected"));
+    assert_eq!(
+        store.get(&77).map(String::as_str),
+        Some("not-yet-connected")
+    );
 }
 
 #[test]
@@ -307,7 +310,9 @@ fn several_incomplete_signed_transfers_obey_the_missing_report_tick_cap() {
     connect(&mut sender, a_addr, &mut receiver, b_addr, now);
 
     for key in [15, 25] {
-        sender.insert(key, "multiple-missing-reports".repeat(100)).unwrap();
+        sender
+            .insert(key, "multiple-missing-reports".repeat(100))
+            .unwrap();
     }
     for _ in 0..2 {
         let frames = sender.reconcile(now).unwrap();
@@ -315,7 +320,10 @@ fn several_incomplete_signed_transfers_obey_the_missing_report_tick_cap() {
         let missing = frames.len() / 2;
         for (index, frame) in frames.into_iter().enumerate() {
             if index != missing {
-                assert!(receiver.receive(a_addr, &frame.bytes, now).unwrap().is_empty());
+                assert!(receiver
+                    .receive(a_addr, &frame.bytes, now)
+                    .unwrap()
+                    .is_empty());
             }
         }
     }
