@@ -61,6 +61,9 @@ migration command, mixed-version bridge or downgrade rollback. To adopt v2:
    signed `probe` / `receive` return-route handshakes in **both** directions;
    call `reconcile` periodically for anti-entropy and missing-fragment retry.
    The legacy `UdpTransport` is not automatically selected for this actor.
+   Returning a `RoutedDatagram<A>` does not mean it was delivered: the caller
+   must submit its bytes to the correct substrate destination, handle send
+   failures, and feed received datagrams back into the actor.
 6. Use `Persistence<K,V,PeerId>` (for example `FileSnapshot`) and **fail
    startup** if its load fails. V2 loads must reject old v1 shapes and corrupt
    or incomplete committed generations with `InvalidData`. Never replace a
