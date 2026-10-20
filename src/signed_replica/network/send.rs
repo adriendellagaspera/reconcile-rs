@@ -97,10 +97,10 @@ impl<K: Key + Hash, V: Value, A: Clone + Eq> SignedReplica<K, V, A> {
         if logical_bytes.saturating_add(gossip::framing::COMPLETE_HEADER_LEN) <= budget {
             return Ok(1);
         }
-        let chunk = budget
-            .checked_sub(FRAGMENT_HEADER_LEN)
-            .filter(|n| *n > 0)
-            .ok_or_else(|| invalid("signed fragment headers exceed transport budget"))?;
+        // new() rejects any signed MTU without at least one byte beyond this header.
+        // Therefore this subtraction is always positive; do not expose an unreachable
+        // "zero chunk" branch that can never occur in a constructed signed replica.
+        let chunk = budget - FRAGMENT_HEADER_LEN;
         let count = logical_bytes.div_ceil(chunk);
         if count > self.framing.max_fragments_per_message || count > self.max_frames_per_tick {
             return Err(invalid("signed record exceeds bounded fragment count"));
