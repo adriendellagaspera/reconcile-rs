@@ -38,6 +38,18 @@ Start with the [API documentation][docs-url] for construction, reads, writes and
 The [architecture](ARCHITECTURE.md) explains how the replicas reconcile; the
 [benchmark guide](benches/README.md) describes the reproducible workload.
 
+## Signed-only runtime (v0.x breaking)
+
+For identity-keyed membership and tombstone ACKs over arbitrary datagram substrates,
+use the opt-in `signed_replica::SignedReplica`. It authenticates an explicitly
+provisioned Ed25519 `PeerId`, confirms routes with a signed challenge, and persists
+causal state in the incompatible v2 `FileSnapshot` schema. This is a caller-driven
+runtime; the historical `ReplicatedMap` still uses the legacy IP/UDP path.
+
+**Do not mix runtimes or reuse v1 on-disk snapshots.** A coordinated fresh-cluster
+reset is required when switching from the historical storage format. See the
+[signed runtime v0 upgrade and operations notes](SIGNED-RUNTIME-v0.md) before enabling it.
+
 Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under either
 [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
 

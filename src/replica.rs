@@ -325,6 +325,7 @@ mod dump;
 mod framed_send;
 mod gc;
 mod generation;
+pub(crate) use generation::GenerationTracker;
 mod inbound;
 mod membership;
 mod pacing;
