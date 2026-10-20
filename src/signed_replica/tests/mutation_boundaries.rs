@@ -218,7 +218,11 @@ fn multi_fragment_missing_span_is_retransmitted_at_the_exact_nonzero_offsets() {
             }
         }
     }
-    assert_eq!(total_retransmitted, missing.len(), "NACK retry must retransmit only the missing full-size fragment chunks");
+    assert_eq!(
+        total_retransmitted,
+        missing.len(),
+        "NACK retry must retransmit only the missing full-size fragment chunks"
+    );
     assert_eq!(b.get(&123).map(String::as_str), Some(value.as_str()));
 }
 
@@ -256,7 +260,10 @@ fn signed_frame_headers_cover_every_byte_at_exact_nonoverlapping_offsets() {
         let metadata = fragment_metadata(payload.as_bytes())
             .expect("a multi-fragment record must carry a valid fragment header");
         assert_eq!(metadata.offset, index * chunk);
-        assert_eq!(metadata.payload_len, (metadata.total_len - metadata.offset).min(chunk));
+        assert_eq!(
+            metadata.payload_len,
+            (metadata.total_len - metadata.offset).min(chunk)
+        );
         assert!(metadata.payload_len > 0);
         if let Some(total) = observed_total {
             assert_eq!(metadata.total_len, total);
