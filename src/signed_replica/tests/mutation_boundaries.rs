@@ -279,3 +279,52 @@ fn signed_frame_headers_cover_every_byte_at_exact_nonoverlapping_offsets() {
     }
     assert_eq!(Some(covered), observed_total);
 }
+
+#[test]
+fn local_entries_without_any_confirmed_route_never_try_zero_peer_rotation() {
+    let remote = signer(194).peer_id();
+    let mut store = make(193, SignedConfig::new([remote]), memory());
+    store.insert(77, "not-yet-connected".into()).unwrap();
+    assert!(store.routes.confirmed_peers().is_empty());
+    assert!(store.reconcile(Instant::now()).unwrap().is_empty());
+    assert_eq!(store.get(&77).map(String::as_str), Some("not-yet-connected"));
+}
+
+#[test]
+fn several_incomplete_signed_transfers_obey_the_missing_report_tick_cap() {
+    let a_id = signer(195).peer_id();
+    let b_id = signer(196).peer_id();
+    let mut sender_config = SignedConfig::new([b_id]);
+    sender_config.framing = sender_config.framing.with_datagram_payload_budget(300);
+    let mut receiver_config = SignedConfig::new([a_id]);
+    receiver_config.framing = receiver_config.framing.with_datagram_payload_budget(300);
+    receiver_config.max_frames_per_tick = 1;
+    let now = Instant::now();
+    let a_addr = (63, 1);
+    let b_addr = (64, 2);
+    let mut sender = make(195, sender_config, memory());
+    let mut receiver = make(196, receiver_config, memory());
+    connect(&mut sender, a_addr, &mut receiver, b_addr, now);
+
+    for key in [15, 25] {
+        sender.insert(key, "multiple-missing-reports".repeat(100)).unwrap();
+    }
+    for _ in 0..2 {
+        let frames = sender.reconcile(now).unwrap();
+        assert!(frames.len() >= 4);
+        let missing = frames.len() / 2;
+        for (index, frame) in frames.into_iter().enumerate() {
+            if index != missing {
+                assert!(receiver.receive(a_addr, &frame.bytes, now).unwrap().is_empty());
+            }
+        }
+    }
+    assert!(receiver.reassembler.retained_bytes() > 0);
+    assert!(receiver.get(&15).is_none());
+    assert!(receiver.get(&25).is_none());
+    // Both outstanding transfers are eligible for a NACK. The receiver's one-frame
+    // tick budget still allows only one signed request per invocation.
+    let requests = receiver.reconcile(now + Duration::from_secs(3)).unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].destination, a_addr);
+}
