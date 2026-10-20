@@ -218,6 +218,57 @@ fn multi_fragment_missing_span_is_retransmitted_at_the_exact_nonzero_offsets() {
             }
         }
     }
-    assert!(total_retransmitted >= 3);
+    assert_eq!(total_retransmitted, missing.len(), "NACK retry must retransmit only the missing full-size fragment chunks");
     assert_eq!(b.get(&123).map(String::as_str), Some(value.as_str()));
+}
+
+#[test]
+fn signed_frame_headers_cover_every_byte_at_exact_nonoverlapping_offsets() {
+    use gossip::framing::{fragment_metadata, FRAGMENT_HEADER_LEN};
+
+    let a_id = signer(191).peer_id();
+    let b_id = signer(192).peer_id();
+    let mut cfg_a = SignedConfig::new([b_id]);
+    let mut cfg_b = SignedConfig::new([a_id]);
+    cfg_a.framing = cfg_a.framing.with_datagram_payload_budget(300);
+    cfg_b.framing = cfg_b.framing.with_datagram_payload_budget(300);
+    let now = Instant::now();
+    let mut a = make(191, cfg_a, memory());
+    let mut b = make(192, cfg_b, memory());
+    connect(&mut a, (61, 1), &mut b, (62, 2), now);
+
+    let text = "signed-fragment-offset".repeat(175);
+    a.insert(345, text).unwrap();
+    let frames = a.reconcile(now).unwrap();
+    assert!(frames.len() >= 4);
+    let chunk = a.boundary.payload_budget() - FRAGMENT_HEADER_LEN;
+    let mut observed_total = None;
+    let mut observed_transfer = None;
+    let mut covered = 0;
+    for (index, routed) in frames.iter().enumerate() {
+        assert_eq!(routed.destination, (62, 2));
+        let checked = b
+            .boundary
+            .open(&routed.bytes, |_| (true, 1))
+            .expect("each outgoing fragment must authenticate under the same verified signer");
+        assert_eq!(checked.peer().peer_id(), a_id);
+        let payload = checked.into_payload();
+        let metadata = fragment_metadata(payload.as_bytes())
+            .expect("a multi-fragment record must carry a valid fragment header");
+        assert_eq!(metadata.offset, index * chunk);
+        assert_eq!(metadata.payload_len, (metadata.total_len - metadata.offset).min(chunk));
+        assert!(metadata.payload_len > 0);
+        if let Some(total) = observed_total {
+            assert_eq!(metadata.total_len, total);
+        } else {
+            observed_total = Some(metadata.total_len);
+        }
+        if let Some(id) = observed_transfer {
+            assert_eq!(metadata.transfer_id, id);
+        } else {
+            observed_transfer = Some(metadata.transfer_id);
+        }
+        covered += metadata.payload_len;
+    }
+    assert_eq!(Some(covered), observed_total);
 }
