@@ -7,8 +7,8 @@
 
 //! Seeded network emulation for [`Transport`](crate::Transport).
 //!
-//! The `netem` feature provides deterministic per-link delay, jitter, loss, and reordering for
-//! tests and benchmarks. Impairment is applied on send: dropped datagrams still return success,
+//! The `network-emulation` feature provides deterministic per-link delay, jitter, loss, and
+//! reordering for tests and benchmarks. Impairment is applied on send: dropped datagrams still return success,
 //! delayed datagrams are queued for later delivery, and each directed link has its own seeded
 //! pseudo-random stream.
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ use rand::Rng;
 
 mod transport;
 
-pub use transport::{Impairments, NetemTransport};
+pub use transport::{EmulatedTransport, Impairments};
 
 /// A probability in `[0, 1]`.
 /// Saturating rather than fallible, as `rbsr::FanOut::new` is: an out-of-range or NaN input is
@@ -194,18 +194,32 @@ impl Link {
     }
 }
 
+/// Substrate-specific conditions and reproducible randomness for a directed link.
+///
+/// Endpoints are routing metadata, not peer identities. Choose a stable seed for each directed
+/// `(source, destination)` pair without relying on Rust's unspecified default hash algorithm.
+/// The seed initializes that link's independent PRNG on its first send; subsequent sends advance
+/// the same stream even when another link is used between them. Link conditions are read on every
+/// send, allowing a policy with synchronized state to model an outage or a changing link.
+/// Implementations must return promptly: policy lookup runs synchronously on the sending task.
+/// No session, stream, or IP addressing is required.
+pub trait LinkPolicy<A>: Send + Sync + 'static {
+    /// Return this send's link conditions and the seed used to initialize its directed stream.
+    fn link(&self, source: &A, destination: &A) -> (Link, Seed);
+}
+
 /// One node's view of the network: a default link to every peer, plus per-destination overrides.
 #[derive(Clone, Debug)]
-pub struct Netem {
+pub struct IpLinkPolicy {
     default_link: Link,
     per_destination: HashMap<IpAddr, Link>,
     seed: Seed,
 }
 
-impl Netem {
+impl IpLinkPolicy {
     /// The same `link` to every destination.
-    pub fn uniform(link: Link, seed: Seed) -> Netem {
-        Netem {
+    pub fn uniform(link: Link, seed: Seed) -> IpLinkPolicy {
+        IpLinkPolicy {
             default_link: link,
             per_destination: HashMap::new(),
             seed,
@@ -214,7 +228,7 @@ impl Netem {
 
     /// Override the link to one destination — the seam an asymmetric or geographic topology is
     /// built from (a node with two far peers and six near ones is six calls).
-    pub fn with_link_to(mut self, destination: IpAddr, link: Link) -> Netem {
+    pub fn with_link_to(mut self, destination: IpAddr, link: Link) -> IpLinkPolicy {
         self.per_destination.insert(destination, link);
         self
     }
@@ -224,6 +238,15 @@ impl Netem {
             .get(&destination.ip())
             .copied()
             .unwrap_or(self.default_link)
+    }
+}
+
+impl LinkPolicy<SocketAddr> for IpLinkPolicy {
+    fn link(&self, source: &SocketAddr, destination: &SocketAddr) -> (Link, Seed) {
+        (
+            self.link_to(destination),
+            Seed::new(stream_seed(self.seed, *source, *destination)),
+        )
     }
 }
 

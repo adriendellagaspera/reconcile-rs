@@ -10,6 +10,8 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use gossip::emulation::{EmulatedTransport, Link, LinkPolicy, Rtt, Seed};
+
 use crate::clock::{HlcClock, NodeId};
 use crate::persistence::InMemoryPersistence;
 use crate::signed_replica::{PeerSigner, RoutedDatagram, SignedConfig, SignedReplica};
@@ -20,6 +22,15 @@ use crate::{ClusterKey, InMemoryNetwork, PeerId, Transport};
 struct OpticalSlot {
     terminal: String,
     wavelength: u8,
+}
+
+struct OpticalPolicy;
+
+impl LinkPolicy<OpticalSlot> for OpticalPolicy {
+    fn link(&self, source: &OpticalSlot, destination: &OpticalSlot) -> (Link, Seed) {
+        let seed = u64::from(source.wavelength) * 256 + u64::from(destination.wavelength);
+        (Link::at(Rtt::from_millis(2.0)), Seed::new(seed))
+    }
 }
 
 type Replica = SignedReplica<u64, String, OpticalSlot>;
@@ -110,8 +121,9 @@ async fn connect(
 #[tokio::test]
 async fn signed_replication_survives_non_ip_outage_and_route_move() {
     let network = InMemoryNetwork::with_datagram_limit(NonZeroUsize::new(MTU).unwrap());
-    let a_port = network.bind(slot("surface", 3));
-    let b_port = network.bind(slot("vehicle", 7));
+    let a_inner = Arc::new(network.bind(slot("surface", 3)));
+    let a_port = EmulatedTransport::new(a_inner.clone(), OpticalPolicy);
+    let b_port = EmulatedTransport::new(Arc::new(network.bind(slot("vehicle", 7))), OpticalPolicy);
     let a_id = PeerSigner::from_seed([11; 32]).peer_id();
     let b_id = PeerSigner::from_seed([12; 32]).peer_id();
     let mut a = replica(11, b_id);
@@ -142,7 +154,7 @@ async fn signed_replication_survives_non_ip_outage_and_route_move() {
     assert!(b.get(&7).is_some());
 
     // Restore the same signer at a different endpoint; returnability must be proved again.
-    let b_port = network.bind(slot("vehicle", 19));
+    let b_port = EmulatedTransport::new(Arc::new(network.bind(slot("vehicle", 19))), OpticalPolicy);
     connect(&mut a, &a_port, &mut b, &b_port, now).await;
     let frames = a.reconcile(now).unwrap();
     assert!(!frames.is_empty());
@@ -152,9 +164,10 @@ async fn signed_replication_survives_non_ip_outage_and_route_move() {
     assert!(b.is_tombstone(&7));
     assert!(a.acknowledged_version(&7, b_id).is_some());
     assert!(a.collect_if_stable(&7));
-
+    // The substrate rejects oversize datagrams before queueing them. The decorator's
+    // asynchronous pump treats substrate errors as loss, rather than reporting delivery.
     assert_eq!(
-        a_port
+        a_inner
             .send_to(&vec![0; MTU + 1], &b_port.local_addr().unwrap())
             .await
             .unwrap_err()

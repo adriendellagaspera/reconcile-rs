@@ -5,7 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! End-to-end application-framing regressions over the deterministic Netem transport.
+//! End-to-end application-framing regressions over the deterministic emulated transport.
 
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use gossip::netem::{Link, Netem, NetemTransport, Probability, Rtt, Seed};
+use gossip::emulation::{EmulatedTransport, IpLinkPolicy, Link, Probability, Rtt, Seed};
 use reconcile::{
     replicated_map::{Config, DEFAULT_DATAGRAM_PAYLOAD_BUDGET},
     InMemoryNetwork, InMemoryTransport, ReadReplicaMap, ReplicatedMap, Transport,
@@ -59,19 +59,19 @@ fn endpoint(
     link: Link,
     seed: u64,
 ) -> (
-    Arc<RecordingTransport<NetemTransport<InMemoryTransport>>>,
+    Arc<RecordingTransport<EmulatedTransport<InMemoryTransport>>>,
     Arc<AtomicUsize>,
-    gossip::netem::Impairments,
+    gossip::emulation::Impairments,
 ) {
-    let netem = NetemTransport::new(
+    let emulation = EmulatedTransport::new(
         Arc::new(network.bind(addr)),
-        Netem::uniform(link, Seed::new(seed)),
+        IpLinkPolicy::uniform(link, Seed::new(seed)),
     );
-    let impairments = netem.impairments();
+    let impairments = emulation.impairments();
     let max_datagram = Arc::new(AtomicUsize::new(0));
     (
         Arc::new(RecordingTransport {
-            inner: netem,
+            inner: emulation,
             max_datagram: Arc::clone(&max_datagram),
         }),
         max_datagram,

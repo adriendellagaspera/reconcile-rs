@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use gossip::netem::{Link, Netem, NetemTransport, Probability, Rtt, Seed};
+use gossip::emulation::{EmulatedTransport, IpLinkPolicy, Link, Probability, Rtt, Seed};
 use reconcile::{
     replicated_map::{Config, FramingConfig},
     InMemoryNetwork, InMemoryTransport, ReplicatedMap, Transport,
@@ -205,23 +205,23 @@ async fn run_case(profile: Profile, datagram_payload_budget: usize, value_len: u
     let a_inner: Arc<InMemoryTransport> = Arc::new(network.bind(SocketAddr::new(A_IP, PORT)));
     let b_inner: Arc<InMemoryTransport> = Arc::new(network.bind(SocketAddr::new(B_IP, PORT)));
 
-    let a_netem = NetemTransport::new(
+    let a_emulated = EmulatedTransport::new(
         a_inner,
-        Netem::uniform(link(profile), Seed::new(0x2630_0001)),
+        IpLinkPolicy::uniform(link(profile), Seed::new(0x2630_0001)),
     );
-    let b_netem = NetemTransport::new(
+    let b_emulated = EmulatedTransport::new(
         b_inner,
-        Netem::uniform(link(profile), Seed::new(0x2630_0002)),
+        IpLinkPolicy::uniform(link(profile), Seed::new(0x2630_0002)),
     );
-    let a_impairments = a_netem.impairments();
-    let b_impairments = b_netem.impairments();
+    let a_impairments = a_emulated.impairments();
+    let b_impairments = b_emulated.impairments();
     let a_traffic = Traffic::default();
     let b_traffic = Traffic::default();
 
     let a = ReplicatedMap::<u64, Vec<u8>>::new_with_transport(
         config(A_IP, datagram_payload_budget),
         Arc::new(CountingTransport {
-            inner: a_netem,
+            inner: a_emulated,
             traffic: a_traffic.clone(),
         }),
     )
@@ -229,7 +229,7 @@ async fn run_case(profile: Profile, datagram_payload_budget: usize, value_len: u
     let b = ReplicatedMap::<u64, Vec<u8>>::new_with_transport(
         config(B_IP, datagram_payload_budget),
         Arc::new(CountingTransport {
-            inner: b_netem,
+            inner: b_emulated,
             traffic: b_traffic.clone(),
         }),
     )
