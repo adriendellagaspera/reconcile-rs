@@ -7,8 +7,10 @@
 
 //! The [`Transport`] port and its [`UdpTransport`]/[`InMemoryTransport`] adapters.
 
+use std::hash::Hash;
 use std::io;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -16,25 +18,32 @@ use socket2::SockRef;
 use tokio::net::UdpSocket;
 use tracing::{debug, warn};
 
-/// Connectionless datagram I/O over [`SocketAddr`].
+/// Connectionless datagram I/O over an opaque substrate endpoint `A`.
+///
+/// Endpoints are untrusted routing metadata, never authenticated peer identities. No IP,
+/// connection, reliable delivery, ordering, or independent streams are required. `SocketAddr`
+/// is the default for the legacy runtime and UDP; signed replicas can use any endpoint type.
+/// Receive consumes one message and may truncate it to the supplied buffer. A successful send
+/// reports the bytes accepted by the substrate, not an acknowledgement by the remote peer.
+/// Callers must size receive buffers for their substrate and enforce their protocol MTU.
 /// # Implementing your own
-/// every type this trait's signature names — `io::Result`, `SocketAddr`, the
-/// `#[async_trait]` macro itself — is either `std` or re-exported from this crate (or
-/// `reconcile`), so an external implementation never has to independently depend on
+/// All supporting types (`io::Result` and the `#[async_trait]` macro) are either from
+/// `std` or re-exported from this crate (or `reconcile`). An external implementation
+/// chooses its endpoint type and never has to independently depend on
 /// `async-trait` and match its version to this crate's:
 // async-trait lowers these async methods to boxed Future return types that are already
 // must-use; current Clippy otherwise reports double_must_use on the macro expansion.
 #[allow(clippy::double_must_use)]
 #[async_trait]
-pub trait Transport: Send + Sync + 'static {
+pub trait Transport<A: Send + Sync + 'static = SocketAddr>: Send + Sync + 'static {
     /// Receive one datagram into `buf`, returning the number of bytes read and the sender address.
-    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)>;
+    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, A)>;
 
     /// Send one datagram to `dst`, returning the number of bytes written.
-    async fn send_to(&self, buf: &[u8], dst: &SocketAddr) -> io::Result<usize>;
+    async fn send_to(&self, buf: &[u8], dst: &A) -> io::Result<usize>;
 
     /// The local address this transport is bound to.
-    fn local_addr(&self) -> io::Result<SocketAddr>;
+    fn local_addr(&self) -> io::Result<A>;
 }
 
 /// The default [`Transport`] adapter: a tokio UDP socket.
@@ -129,22 +138,47 @@ mod in_memory {
     use super::*;
     use crate::substrate::{DatagramFabric, DatagramPort};
 
-    /// A shared in-process datagram fabric. Addresses retain the historical socket-shaped API;
-    /// the underlying message fabric itself is generic over the address type.
-    #[derive(Clone, Default, Debug)]
-    pub struct InMemoryNetwork {
-        fabric: DatagramFabric<SocketAddr>,
+    /// A shared in-process datagram fabric over opaque substrate endpoints.
+    /// The default endpoint type preserves the legacy socket-addressed API. Pending messages
+    /// use unbounded in-process queues; the optional limit bounds individual datagrams only.
+    ///
+    /// ```
+    /// use reconcile_gossip::InMemoryNetwork;
+    /// let network = InMemoryNetwork::<String>::new();
+    /// let port = network.bind("optical-slot-a".into());
+    /// ```
+    #[derive(Clone, Debug)]
+    pub struct InMemoryNetwork<A = SocketAddr> {
+        fabric: DatagramFabric<A>,
     }
 
-    impl InMemoryNetwork {
+    impl<A> Default for InMemoryNetwork<A> {
+        fn default() -> Self {
+            Self {
+                fabric: DatagramFabric::default(),
+            }
+        }
+    }
+
+    impl<A> InMemoryNetwork<A> {
         /// An empty fabric with no bound transports. Equivalent to [`Default::default`].
         pub fn new() -> Self {
             InMemoryNetwork::default()
         }
 
+        /// Construct a fabric that rejects sends exceeding `limit` bytes, including wire
+        /// authentication and framing overhead. Receive buffers may still truncate messages.
+        pub fn with_datagram_limit(limit: NonZeroUsize) -> Self {
+            Self {
+                fabric: DatagramFabric::new(limit.get()),
+            }
+        }
+    }
+
+    impl<A: Clone + Eq + Hash> InMemoryNetwork<A> {
         /// Bind a transport at `addr`. A datagram sent to `addr` by any peer on this network is
         /// delivered to the returned transport's [`recv_from`](Transport::recv_from).
-        pub fn bind(&self, addr: SocketAddr) -> InMemoryTransport {
+        pub fn bind(&self, addr: A) -> InMemoryTransport<A> {
             InMemoryTransport {
                 port: self.fabric.bind(addr),
             }
@@ -153,21 +187,21 @@ mod in_memory {
 
     /// One endpoint on an [`InMemoryNetwork`].
     #[derive(Debug)]
-    pub struct InMemoryTransport {
-        port: DatagramPort<SocketAddr>,
+    pub struct InMemoryTransport<A = SocketAddr> {
+        port: DatagramPort<A>,
     }
 
     #[async_trait]
-    impl Transport for InMemoryTransport {
-        async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
+    impl<A: Clone + Eq + Hash + Send + Sync + 'static> Transport<A> for InMemoryTransport<A> {
+        async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, A)> {
             self.port.recv_from(buf).await
         }
 
-        async fn send_to(&self, buf: &[u8], dst: &SocketAddr) -> io::Result<usize> {
+        async fn send_to(&self, buf: &[u8], dst: &A) -> io::Result<usize> {
             self.port.send_to(buf, dst)
         }
 
-        fn local_addr(&self) -> io::Result<SocketAddr> {
+        fn local_addr(&self) -> io::Result<A> {
             Ok(self.port.local_addr())
         }
     }

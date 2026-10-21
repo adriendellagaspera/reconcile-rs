@@ -10,7 +10,8 @@
 //!
 //! This crate owns datagram transport, wire encoding, authentication, replay protection, peer
 //! discovery, and optional network emulation. It does not depend on the replicated-value domain:
-//! payloads are bytes. The current runtime still addresses peers by IP.
+//! payloads are bytes. Transport endpoints are generic; the legacy runtime uses IP while the
+//! opt-in signed runtime separates substrate addresses from verified peer identities.
 //!
 //! Applications should normally depend on
 //! [`reconcile`](https://crates.io/crates/reconcile), which re-exports the supported API.

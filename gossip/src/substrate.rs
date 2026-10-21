@@ -9,8 +9,7 @@
 //! Address-agnostic, datagram-only in-process fabric.
 //!
 //! Addresses are opaque to the fabric: neither routing nor delivery requires IP, a port number,
-//! or a session. This is an internal primitive used by the legacy socket-addressed
-//! `InMemoryTransport` and by non-IP tests, not yet the public runtime transport boundary.
+//! or a session. This internal primitive backs the public endpoint-generic `InMemoryTransport`.
 //! Sender addresses are untrusted metadata, never authenticated logical peer identities.
 
 use std::collections::HashMap;
