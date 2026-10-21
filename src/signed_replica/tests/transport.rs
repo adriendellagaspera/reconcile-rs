@@ -175,3 +175,5 @@ async fn signed_replication_survives_non_ip_outage_and_route_move() {
         std::io::ErrorKind::InvalidInput
     );
 }
+
+mod discovery;

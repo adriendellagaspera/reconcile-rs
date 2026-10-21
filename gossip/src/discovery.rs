@@ -5,7 +5,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Dynamic peer discovery behind [`Discovery`].
+//! Legacy IP peer discovery behind [`Discovery`].
+//! For substrate-neutral signed discovery, use [`EndpointDiscovery`] and [`EndpointDiscoveryState`].
 //!
 //! [`RandomProbe`] supplies speculative round targets. [`DnsDiscovery`] supplies an authoritative
 //! peer snapshot suitable for DNS-backed deployments. Discovery changes gossip targets only;
@@ -263,3 +264,8 @@ mod tests {
         assert!(net.contains(&addrs[0]), "{net} should contain {}", addrs[0]);
     }
 }
+
+mod endpoints;
+pub use endpoints::{
+    EndpointDiscovery, EndpointDiscoveryConfig, EndpointDiscoveryFuture, EndpointDiscoveryState,
+};

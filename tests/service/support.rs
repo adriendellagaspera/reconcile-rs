@@ -71,7 +71,20 @@ pub(crate) async fn bind_udp_pair(
         );
         let port = a.local_addr().expect("bound UDP address").port();
         match tokio::net::UdpSocket::bind(SocketAddr::new(second, port)).await {
-            Ok(b) => return (port, a, Arc::new(b)),
+            Ok(b) => {
+                // Injected transports leave socket tuning to the caller. Match production
+                // receive buffers so bulk startup does not overrun inherited UDP queues.
+                if let Some(bytes) = reconcile::replicated_map::Config::default().recv_buffer_size {
+                    for socket in [a.as_ref(), &b] {
+                        if let Err(error) =
+                            socket2::SockRef::from(socket).set_recv_buffer_size(bytes)
+                        {
+                            eprintln!("test UDP receive buffer request failed: {error}");
+                        }
+                    }
+                }
+                return (port, a, Arc::new(b));
+            }
             Err(error) if error.kind() == ErrorKind::AddrInUse => continue,
             Err(error) => panic!("bind second UDP endpoint: {error}"),
         }

@@ -88,7 +88,7 @@ impl SignedConfig {
 
 /// A single-writer signed LWW replica with verified-principal causal stability.
 ///
-/// This is an I/O-independent actor: `bootstrap` and `reconcile` return signed datagrams
+/// This is an I/O-independent actor: `probe`, `probe_discovered` and `reconcile` return datagrams
 /// for the caller's physical transport, and `receive` processes one incoming datagram. All
 /// application messages are authenticated, versioned, replay-protected and route-confirmed.
 /// The retained dataset fits in memory on each authoritative node. Writes are eventually
@@ -300,6 +300,7 @@ where
 }
 
 mod causal;
+mod discovery;
 mod network;
 
 #[cfg(test)]

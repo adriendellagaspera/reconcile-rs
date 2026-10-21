@@ -222,6 +222,36 @@ impl core::marker::Unpin for reconcile_gossip::discovery::DnsDiscovery
 impl core::marker::UnsafeUnpin for reconcile_gossip::discovery::DnsDiscovery
 impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::discovery::DnsDiscovery
 impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::discovery::DnsDiscovery
+pub struct reconcile_gossip::discovery::EndpointDiscoveryConfig
+impl reconcile_gossip::discovery::EndpointDiscoveryConfig
+pub fn reconcile_gossip::discovery::EndpointDiscoveryConfig::new(core::num::nonzero::NonZeroUsize, core::num::nonzero::NonZeroUsize, core::time::Duration, core::time::Duration) -> core::io::error::Result<Self>
+impl core::clone::Clone for reconcile_gossip::discovery::EndpointDiscoveryConfig
+pub fn reconcile_gossip::discovery::EndpointDiscoveryConfig::clone(&self) -> reconcile_gossip::discovery::EndpointDiscoveryConfig
+impl core::default::Default for reconcile_gossip::discovery::EndpointDiscoveryConfig
+pub fn reconcile_gossip::discovery::EndpointDiscoveryConfig::default() -> Self
+impl core::fmt::Debug for reconcile_gossip::discovery::EndpointDiscoveryConfig
+pub fn reconcile_gossip::discovery::EndpointDiscoveryConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for reconcile_gossip::discovery::EndpointDiscoveryConfig
+impl core::marker::Freeze for reconcile_gossip::discovery::EndpointDiscoveryConfig
+impl core::marker::Send for reconcile_gossip::discovery::EndpointDiscoveryConfig
+impl core::marker::Sync for reconcile_gossip::discovery::EndpointDiscoveryConfig
+impl core::marker::Unpin for reconcile_gossip::discovery::EndpointDiscoveryConfig
+impl core::marker::UnsafeUnpin for reconcile_gossip::discovery::EndpointDiscoveryConfig
+impl core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::discovery::EndpointDiscoveryConfig
+impl core::panic::unwind_safe::UnwindSafe for reconcile_gossip::discovery::EndpointDiscoveryConfig
+pub struct reconcile_gossip::discovery::EndpointDiscoveryState<A>
+impl<A: core::clone::Clone + core::cmp::Eq> reconcile_gossip::discovery::EndpointDiscoveryState<A>
+pub fn reconcile_gossip::discovery::EndpointDiscoveryState<A>::candidate_count(&self) -> usize
+pub fn reconcile_gossip::discovery::EndpointDiscoveryState<A>::new(reconcile_gossip::discovery::EndpointDiscoveryConfig) -> Self
+pub fn reconcile_gossip::discovery::EndpointDiscoveryState<A>::next_probes(&mut self, std::time::Instant) -> alloc::vec::Vec<A>
+pub async fn reconcile_gossip::discovery::EndpointDiscoveryState<A>::refresh(&mut self, &dyn reconcile_gossip::discovery::EndpointDiscovery<A>) -> core::io::error::Result<()> where A: 'static
+impl<A> core::marker::Freeze for reconcile_gossip::discovery::EndpointDiscoveryState<A> where alloc::vec::Vec<A>: core::marker::Freeze
+impl<A> core::marker::Send for reconcile_gossip::discovery::EndpointDiscoveryState<A> where alloc::vec::Vec<A>: core::marker::Send
+impl<A> core::marker::Sync for reconcile_gossip::discovery::EndpointDiscoveryState<A> where alloc::vec::Vec<A>: core::marker::Sync
+impl<A> core::marker::Unpin for reconcile_gossip::discovery::EndpointDiscoveryState<A> where alloc::vec::Vec<A>: core::marker::Unpin
+impl<A> core::marker::UnsafeUnpin for reconcile_gossip::discovery::EndpointDiscoveryState<A> where alloc::vec::Vec<A>: core::marker::UnsafeUnpin
+impl<A> core::panic::unwind_safe::RefUnwindSafe for reconcile_gossip::discovery::EndpointDiscoveryState<A> where alloc::vec::Vec<A>: core::panic::unwind_safe::RefUnwindSafe
+impl<A> core::panic::unwind_safe::UnwindSafe for reconcile_gossip::discovery::EndpointDiscoveryState<A> where alloc::vec::Vec<A>: core::panic::unwind_safe::UnwindSafe
 pub struct reconcile_gossip::discovery::RandomProbe
 impl reconcile_gossip::discovery::RandomProbe
 pub fn reconcile_gossip::discovery::RandomProbe::new(alloc::sync::Arc<parking_lot::rwlock::RwLock<alloc::vec::Vec<ipnet::ipnet::IpNet>>>, alloc::sync::Arc<parking_lot::rwlock::RwLock<rand::rngs::std::StdRng>>) -> Self
@@ -247,8 +277,11 @@ pub fn reconcile_gossip::discovery::DnsDiscovery::kind(&self) -> reconcile_gossi
 impl reconcile_gossip::discovery::Discovery for reconcile_gossip::discovery::RandomProbe
 pub fn reconcile_gossip::discovery::RandomProbe::discover(&self) -> reconcile_gossip::discovery::DiscoverFuture<'_>
 pub fn reconcile_gossip::discovery::RandomProbe::kind(&self) -> reconcile_gossip::discovery::DiscoveryKind
+pub trait reconcile_gossip::discovery::EndpointDiscovery<A>: core::marker::Send + core::marker::Sync + 'static
+pub fn reconcile_gossip::discovery::EndpointDiscovery::discover(&self, core::num::nonzero::NonZeroUsize) -> reconcile_gossip::discovery::EndpointDiscoveryFuture<'_, A>
 pub type reconcile_gossip::discovery::DiscoverFuture<'a> = core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<alloc::vec::Vec<core::net::ip_addr::IpAddr>, reconcile_gossip::discovery::DiscoveryError>> + core::marker::Send + 'a)>>
 pub type reconcile_gossip::discovery::DiscoveryError = alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>
+pub type reconcile_gossip::discovery::EndpointDiscoveryFuture<'a, A> = core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<alloc::vec::Vec<A>, reconcile_gossip::discovery::DiscoveryError>> + core::marker::Send + 'a)>>
 pub mod reconcile_gossip::gen_ip
 pub fn reconcile_gossip::gen_ip::gen_ip<R: rand::rng::Rng>(&mut R, ipnet::ipnet::IpNet) -> core::net::ip_addr::IpAddr
 pub fn reconcile_gossip::gen_ip::gen_ipv4<R: rand::rng::Rng>(&mut R, ipnet::ipnet::Ipv4Net) -> core::net::ip_addr::Ipv4Addr
