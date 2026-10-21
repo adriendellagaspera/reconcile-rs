@@ -10,7 +10,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gossip::netem::{Link, LinkPolicy, NetemTransport, Rtt, Seed};
+use gossip::emulation::{EmulatedTransport, Link, LinkPolicy, Rtt, Seed};
 
 use crate::clock::{HlcClock, NodeId};
 use crate::persistence::InMemoryPersistence;
@@ -122,8 +122,8 @@ async fn connect(
 async fn signed_replication_survives_non_ip_outage_and_route_move() {
     let network = InMemoryNetwork::with_datagram_limit(NonZeroUsize::new(MTU).unwrap());
     let a_inner = Arc::new(network.bind(slot("surface", 3)));
-    let a_port = NetemTransport::new(a_inner.clone(), OpticalPolicy);
-    let b_port = NetemTransport::new(Arc::new(network.bind(slot("vehicle", 7))), OpticalPolicy);
+    let a_port = EmulatedTransport::new(a_inner.clone(), OpticalPolicy);
+    let b_port = EmulatedTransport::new(Arc::new(network.bind(slot("vehicle", 7))), OpticalPolicy);
     let a_id = PeerSigner::from_seed([11; 32]).peer_id();
     let b_id = PeerSigner::from_seed([12; 32]).peer_id();
     let mut a = replica(11, b_id);
@@ -154,7 +154,7 @@ async fn signed_replication_survives_non_ip_outage_and_route_move() {
     assert!(b.get(&7).is_some());
 
     // Restore the same signer at a different endpoint; returnability must be proved again.
-    let b_port = NetemTransport::new(Arc::new(network.bind(slot("vehicle", 19))), OpticalPolicy);
+    let b_port = EmulatedTransport::new(Arc::new(network.bind(slot("vehicle", 19))), OpticalPolicy);
     connect(&mut a, &a_port, &mut b, &b_port, now).await;
     let frames = a.reconcile(now).unwrap();
     assert!(!frames.is_empty());

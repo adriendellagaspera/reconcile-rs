@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use gossip::netem::{Link, LinkPolicy, NetemTransport, Probability, Seed};
+use gossip::emulation::{EmulatedTransport, Link, LinkPolicy, Probability, Seed};
 use reconcile::{InMemoryNetwork, Transport};
 
 // Owns its label and is deliberately not Copy or convertible to an IP address.
@@ -43,7 +43,7 @@ impl LinkPolicy<Slot> for OpticalPolicy {
 
 async fn loss_trace(source: &str, destination: &str, interleave: bool) -> Vec<u32> {
     let network = InMemoryNetwork::<Slot>::new();
-    let sender = NetemTransport::new(
+    let sender = EmulatedTransport::new(
         Arc::new(network.bind(slot(source))),
         OpticalPolicy {
             outage: Arc::new(AtomicBool::new(false)),
@@ -99,7 +99,7 @@ async fn opaque_directed_link_loss_is_reproducible_and_independent() {
 async fn opaque_policy_can_change_link_conditions_without_rebinding() {
     let network = InMemoryNetwork::<Slot>::new();
     let outage = Arc::new(AtomicBool::new(true));
-    let sender = NetemTransport::new(
+    let sender = EmulatedTransport::new(
         Arc::new(network.bind(slot("surface"))),
         OpticalPolicy {
             outage: outage.clone(),

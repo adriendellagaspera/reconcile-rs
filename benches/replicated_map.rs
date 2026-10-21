@@ -25,7 +25,7 @@ mod imp {
         NodeId, PhysicalTime, ReplicatedMap, State, Timestamp, Transport,
     };
 
-    use gossip::netem::{Link, Netem, NetemTransport, Rtt, Seed};
+    use gossip::emulation::{EmulatedTransport, IpLinkPolicy, Link, Rtt, Seed};
 
     // In-memory cost of a dated replica (`FingerprintTreeMap<K, Entry<Timestamp, V>>`) against
     // the value-only one (`FingerprintTreeMap<K, State<V>>`).
@@ -318,7 +318,7 @@ mod imp {
 
     // RTT sweep for `service_reconcile_rtt`: the same grid `system.rs`'s injected-RTT lane
     // sweeps (`rtt_sweep` there — duplicated here rather than shared: each bench binary is a
-    // separate compilation unit, and no target here imports another's. `gossip:netem` itself is
+    // separate compilation unit, and no target here imports another's. `gossip:emulation` itself is
     // genuinely shared, being a library module rather than a per-binary `mod`.)
     fn rtt_sweep() -> Vec<Rtt> {
         [0.0, 0.1, 1.0, 10.0, 50.0]
@@ -479,15 +479,15 @@ mod imp {
     }
 
     // The refinement chain, timed, over an injected-RTT link: composes
-    // `ReplicatedMap:new_with_transport`, `gossip:netem:NetemTransport` and the existing `rtt_sweep`
+    // `ReplicatedMap:new_with_transport`, `gossip:emulation:EmulatedTransport` and the existing `rtt_sweep`
     // (`system.rs`'s, duplicated above) with `service_reconcile`'s own divergence mechanism — the
     // only one that exercises refinement rather than the outer-range mismatch `cold_sync_rtt`
     // builds.
     // One peer loads the `n`-entry corpus and seeds the other, which starts empty and pulls the
     // whole dataset via cold-sync (`cold_sync_rtt`'s own bootstrap, proven reliable across this
-    // same `n` × `NetemTransport` × RTT matrix) — loading both peers independently and assuming
+    // same `n` × `EmulatedTransport` × RTT matrix) — loading both peers independently and assuming
     // they already match at the root does not converge reliably at larger `n` under nonzero RTT: a
-    // `NetemTransport` queue/pump artifact under high datagram volume, not a protocol issue.
+    // `EmulatedTransport` queue/pump artifact under high datagram volume, not a protocol issue.
     // `reconcile_interval` is fixed far longer than any sample, so every round below is the one
     // `start_reconciliation` explicitly triggers, never a background tick.
     // Per sample: `just_remove` the `d` chosen keys on the initiator (a genuine content
@@ -571,17 +571,17 @@ mod imp {
                         let network = InMemoryNetwork::new();
                         let received1 = Arc::new(AtomicU64::new(0));
                         let transport1 = RecvCountingTransport {
-                            inner: NetemTransport::new(
+                            inner: EmulatedTransport::new(
                                 Arc::new(network.bind(SocketAddr::new(addr1, port))),
-                                Netem::uniform(link, Seed::DEFAULT),
+                                IpLinkPolicy::uniform(link, Seed::DEFAULT),
                             ),
                             received: Arc::clone(&received1),
                         };
                         let received2 = Arc::new(AtomicU64::new(0));
                         let transport2 = RecvCountingTransport {
-                            inner: NetemTransport::new(
+                            inner: EmulatedTransport::new(
                                 Arc::new(network.bind(SocketAddr::new(addr2, port))),
-                                Netem::uniform(link, Seed::DEFAULT),
+                                IpLinkPolicy::uniform(link, Seed::DEFAULT),
                             ),
                             received: Arc::clone(&received2),
                         };
@@ -598,7 +598,7 @@ mod imp {
                         // Only `store1` is pre-loaded; `store2` starts empty and pulls the whole
                         // corpus via cold-sync — see `service_reconcile_rtt`'s docs for why
                         // (`cold_sync_rtt`'s own bootstrap, proven reliable across this same `n` ×
-                        // `NetemTransport` × RTT matrix).
+                        // `EmulatedTransport` × RTT matrix).
                         store1.insert_bulk(&key_values);
                         store1.seed_peer(addr2);
                         store2.seed_peer(addr1);

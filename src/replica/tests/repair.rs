@@ -23,7 +23,7 @@ use crate::transport::{InMemoryNetwork, Transport};
 /// Drops exactly the first `remaining` outbound datagrams *addressed to `target`*, then passes
 /// every later one (to `target` or anyone else) through unmodified -- a deterministic stand-in
 /// for "the network lost this node's first attempt to reach this one peer".
-/// `.claude/rules/tests.md` requires determinism, which rules out a probabilistic `netem` lane
+/// `.claude/rules/tests.md` requires determinism, which rules out a probabilistic network-emulation lane
 /// for pinning down "exactly one datagram, gone" -- and matching on `target` specifically (rather
 /// than "whichever send happens first") is what makes this immune to `start_reconciliation`'s
 /// `targets: HashSet<IpAddr>` iterating in an unspecified order: a discovery probe's send to some

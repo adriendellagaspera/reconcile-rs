@@ -7,8 +7,8 @@
 
 //! Seeded network emulation for [`Transport`](crate::Transport).
 //!
-//! The `netem` feature provides deterministic per-link delay, jitter, loss, and reordering for
-//! tests and benchmarks. Impairment is applied on send: dropped datagrams still return success,
+//! The `network-emulation` feature provides deterministic per-link delay, jitter, loss, and
+//! reordering for tests and benchmarks. Impairment is applied on send: dropped datagrams still return success,
 //! delayed datagrams are queued for later delivery, and each directed link has its own seeded
 //! pseudo-random stream.
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ use rand::Rng;
 
 mod transport;
 
-pub use transport::{Impairments, NetemTransport};
+pub use transport::{EmulatedTransport, Impairments};
 
 /// A probability in `[0, 1]`.
 /// Saturating rather than fallible, as `rbsr::FanOut::new` is: an out-of-range or NaN input is
@@ -210,16 +210,16 @@ pub trait LinkPolicy<A>: Send + Sync + 'static {
 
 /// One node's view of the network: a default link to every peer, plus per-destination overrides.
 #[derive(Clone, Debug)]
-pub struct Netem {
+pub struct IpLinkPolicy {
     default_link: Link,
     per_destination: HashMap<IpAddr, Link>,
     seed: Seed,
 }
 
-impl Netem {
+impl IpLinkPolicy {
     /// The same `link` to every destination.
-    pub fn uniform(link: Link, seed: Seed) -> Netem {
-        Netem {
+    pub fn uniform(link: Link, seed: Seed) -> IpLinkPolicy {
+        IpLinkPolicy {
             default_link: link,
             per_destination: HashMap::new(),
             seed,
@@ -228,7 +228,7 @@ impl Netem {
 
     /// Override the link to one destination — the seam an asymmetric or geographic topology is
     /// built from (a node with two far peers and six near ones is six calls).
-    pub fn with_link_to(mut self, destination: IpAddr, link: Link) -> Netem {
+    pub fn with_link_to(mut self, destination: IpAddr, link: Link) -> IpLinkPolicy {
         self.per_destination.insert(destination, link);
         self
     }
@@ -241,7 +241,7 @@ impl Netem {
     }
 }
 
-impl LinkPolicy<SocketAddr> for Netem {
+impl LinkPolicy<SocketAddr> for IpLinkPolicy {
     fn link(&self, source: &SocketAddr, destination: &SocketAddr) -> (Link, Seed) {
         (
             self.link_to(destination),

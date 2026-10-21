@@ -4,7 +4,7 @@
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. You may not use this file except according to those terms.
 
-//! Runtime Netem controls for selective fragment recovery and mixed-capability fallback.
+//! Runtime network-emulation controls for selective fragment recovery and mixed-capability fallback.
 
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use gossip::netem::{Link, Netem, NetemTransport, Probability, Rtt, Seed};
+use gossip::emulation::{EmulatedTransport, IpLinkPolicy, Link, Probability, Rtt, Seed};
 use reconcile::{
     replicated_map::Config, InMemoryNetwork, InMemoryTransport, ReplicatedMap, Transport,
 };
@@ -55,25 +55,25 @@ fn config(ip: IpAddr, selective: bool) -> Config {
     config
 }
 
-type CountedEndpoint = Arc<Counted<NetemTransport<InMemoryTransport>>>;
+type CountedEndpoint = Arc<Counted<EmulatedTransport<InMemoryTransport>>>;
 type EndpointStats = (
     CountedEndpoint,
     Arc<AtomicUsize>,
     Arc<AtomicUsize>,
-    gossip::netem::Impairments,
+    gossip::emulation::Impairments,
 );
 
 fn endpoint(network: &InMemoryNetwork, addr: SocketAddr, link: Link, seed: u64) -> EndpointStats {
-    let netem = NetemTransport::new(
+    let emulation = EmulatedTransport::new(
         Arc::new(network.bind(addr)),
-        Netem::uniform(link, Seed::new(seed)),
+        IpLinkPolicy::uniform(link, Seed::new(seed)),
     );
-    let impairments = netem.impairments();
+    let impairments = emulation.impairments();
     let bytes = Arc::new(AtomicUsize::new(0));
     let largest = Arc::new(AtomicUsize::new(0));
     (
         Arc::new(Counted {
-            inner: netem,
+            inner: emulation,
             bytes: Arc::clone(&bytes),
             largest: Arc::clone(&largest),
         }),
@@ -128,7 +128,7 @@ async fn exercise(
         }
     })
     .await
-    .expect("Netem fragmented transfer must converge");
+    .expect("Emulated fragmented transfer must converge");
 
     let bytes = source_bytes.load(Ordering::Relaxed) + destination_bytes.load(Ordering::Relaxed);
     assert!(source_max.load(Ordering::Relaxed) <= 1200);
@@ -166,7 +166,7 @@ async fn selective_recovery_has_negligible_clean_path_wire_overhead() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn selective_recovery_reduces_wire_under_matched_netem_loss() {
+async fn selective_recovery_reduces_wire_under_matched_emulated_loss() {
     let selective = exercise(true, true, 150.0, 5.0).await;
     let legacy = exercise(false, false, 150.0, 5.0).await;
     assert!(

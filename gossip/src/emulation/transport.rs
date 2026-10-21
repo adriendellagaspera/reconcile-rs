@@ -7,7 +7,7 @@
 // except according to those terms.
 
 //! The [`Transport`] decorator itself and its per-node delivery pump. Parameters
-//! (`Link`/`Netem`/`Seed`) live in the parent module.
+//! (`Link`/`IpLinkPolicy`/`Seed`) live in the parent module.
 
 use std::cmp::Ordering;
 use std::cmp::Reverse;
@@ -26,7 +26,7 @@ use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-use super::{LinkPolicy, Netem};
+use super::{IpLinkPolicy, LinkPolicy};
 use crate::Transport;
 
 /// Tokio's timer resolution: [`tokio::time::sleep`] rounds up to the next millisecond. The pump
@@ -63,7 +63,7 @@ impl<A> PartialEq for Pending<A> {
 
 impl<A> Eq for Pending<A> {}
 
-/// The in-flight queue, shared between [`NetemTransport::send_to`] and the pump task.
+/// The in-flight queue, shared between [`EmulatedTransport::send_to`] and the pump task.
 struct InFlight<A> {
     /// `Reverse`, so the [`BinaryHeap`] pops the *earliest* due datagram.
     queue: Mutex<BinaryHeap<Reverse<Pending<A>>>>,
@@ -112,12 +112,12 @@ impl Impairments {
 /// A [`Transport`] decorator that delays, drops and reorders what the wrapped one sends.
 ///
 /// Construct inside a Tokio runtime: it spawns the per-node delivery pump, which is aborted when
-/// the transport drops. `Netem` preserves IP policy and seeded streams by default. Custom
+/// the transport drops. `IpLinkPolicy` preserves IP policy and seeded streams by default. Custom
 /// [`LinkPolicy`] implementations select link conditions and reproducible seeds for opaque
 /// endpoints. Pending messages use unbounded queues, as does the in-memory transport.
-pub struct NetemTransport<T, A = SocketAddr, P = Netem> {
+pub struct EmulatedTransport<T, A = SocketAddr, P = IpLinkPolicy> {
     inner: Arc<T>,
-    netem: P,
+    policy: P,
     local: A,
     /// One PRNG per directed link, created on first use and advanced in send order.
     streams: Mutex<HashMap<A, StdRng>>,
@@ -127,27 +127,27 @@ pub struct NetemTransport<T, A = SocketAddr, P = Netem> {
     pump: JoinHandle<()>,
 }
 
-impl<T, A, P> NetemTransport<T, A, P>
+impl<T, A, P> EmulatedTransport<T, A, P>
 where
     T: Transport<A>,
     A: Clone + Eq + Hash + Send + Sync + 'static,
     P: LinkPolicy<A>,
 {
-    /// Wrap `inner` in `netem`.
+    /// Wrap `inner` with network conditions selected by `policy`.
     ///
     /// # Panics
     ///
     /// If called outside a Tokio runtime, or if `inner` has no local address (neither is reachable
     /// from the benchmarks, which bind an `InMemoryTransport` first).
-    pub fn new(inner: Arc<T>, netem: P) -> Self {
+    pub fn new(inner: Arc<T>, policy: P) -> Self {
         let local = inner
             .local_addr()
-            .expect("a netem-wrapped transport must already be bound");
+            .expect("an emulated transport must already be bound");
         let in_flight = Arc::new(InFlight::default());
         let pump = tokio::spawn(pump(Arc::clone(&inner), Arc::clone(&in_flight)));
-        NetemTransport {
+        EmulatedTransport {
             inner,
-            netem,
+            policy,
             local,
             streams: Mutex::new(HashMap::new()),
             in_flight,
@@ -163,7 +163,7 @@ where
     }
 }
 
-impl<T, A, P> Drop for NetemTransport<T, A, P> {
+impl<T, A, P> Drop for EmulatedTransport<T, A, P> {
     fn drop(&mut self) {
         // The pump owns an `Arc` of the wrapped transport and outlives nothing: a benchmark that
         // rebuilds its cluster once per iteration would otherwise accumulate one live task per
@@ -173,7 +173,7 @@ impl<T, A, P> Drop for NetemTransport<T, A, P> {
 }
 
 #[async_trait::async_trait]
-impl<T, A, P> Transport<A> for NetemTransport<T, A, P>
+impl<T, A, P> Transport<A> for EmulatedTransport<T, A, P>
 where
     T: Transport<A>,
     A: Clone + Eq + Hash + Send + Sync + 'static,
@@ -186,7 +186,7 @@ where
     }
 
     async fn send_to(&self, buf: &[u8], destination: &A) -> io::Result<usize> {
-        let (link, seed) = self.netem.link(&self.local, destination);
+        let (link, seed) = self.policy.link(&self.local, destination);
         let delay = {
             let mut streams = self.streams.lock();
             let stream = streams

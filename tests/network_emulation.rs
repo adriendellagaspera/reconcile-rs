@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Tests for `gossip::netem`, the seeded delay/loss/reordering `Transport` decorator the `*_rtt`
+//! Tests for `gossip::emulation`, the seeded delay/loss/reordering `Transport` decorator the `*_rtt`
 //! benchmark lanes are built on.
 //!
 //! A benchmark's own instrument earns the same tests as the code it measures: a decorator that
@@ -23,7 +23,9 @@ use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
 
-use gossip::netem::{Impairments, Link, Netem, NetemTransport, Probability, Rtt, Seed};
+use gossip::emulation::{
+    EmulatedTransport, Impairments, IpLinkPolicy, Link, Probability, Rtt, Seed,
+};
 use reconcile::{
     replicated_map::Config, InMemoryNetwork, InMemoryTransport, ReplicatedMap, Transport,
 };
@@ -41,23 +43,23 @@ fn fresh_addr(last: u8, port: u16) -> SocketAddr {
     SocketAddr::new(ip, port)
 }
 
-/// One in-process network with a netem-wrapped sender and a bare receiver on it. The network is
+/// One in-process network with a emulation-wrapped sender and a bare receiver on it. The network is
 /// exposed so a test can bind further endpoints.
 struct Fixture {
     network: InMemoryNetwork,
-    sender: NetemTransport<InMemoryTransport>,
+    sender: EmulatedTransport<InMemoryTransport>,
     receiver: InMemoryTransport,
     destination: SocketAddr,
 }
 
 impl Fixture {
-    fn new(netem: Netem, port: u16) -> Fixture {
-        Fixture::between(netem, fresh_addr(1, port), fresh_addr(2, port))
+    fn new(emulation: IpLinkPolicy, port: u16) -> Fixture {
+        Fixture::between(emulation, fresh_addr(1, port), fresh_addr(2, port))
     }
 
-    fn between(netem: Netem, source: SocketAddr, destination: SocketAddr) -> Fixture {
+    fn between(emulation: IpLinkPolicy, source: SocketAddr, destination: SocketAddr) -> Fixture {
         let network = InMemoryNetwork::new();
-        let sender = NetemTransport::new(Arc::new(network.bind(source)), netem);
+        let sender = EmulatedTransport::new(Arc::new(network.bind(source)), emulation);
         let receiver = network.bind(destination);
         Fixture {
             network,
@@ -109,7 +111,7 @@ fn an_out_of_range_probability_saturates_instead_of_existing() {
 
 #[tokio::test]
 async fn a_perfect_link_delivers_every_datagram_in_order() {
-    let fixture = Fixture::new(Netem::uniform(Link::PERFECT, Seed::DEFAULT), 7_001);
+    let fixture = Fixture::new(IpLinkPolicy::uniform(Link::PERFECT, Seed::DEFAULT), 7_001);
     for i in 0..16u8 {
         fixture.send(&[i]).await;
     }
@@ -124,7 +126,7 @@ async fn a_perfect_link_delivers_every_datagram_in_order() {
 #[tokio::test]
 async fn delivery_waits_out_the_injected_one_way_delay() {
     let rtt = Rtt::from_millis(20.0);
-    let fixture = Fixture::new(Netem::uniform(Link::at(rtt), Seed::DEFAULT), 7_002);
+    let fixture = Fixture::new(IpLinkPolicy::uniform(Link::at(rtt), Seed::DEFAULT), 7_002);
     let start = Instant::now();
     fixture.send(b"slow").await;
     // The delay is propagation, not back-pressure: the send returns before the datagram lands.
@@ -145,7 +147,7 @@ async fn delivery_waits_out_the_injected_one_way_delay() {
 #[tokio::test]
 async fn a_sub_millisecond_delay_is_not_rounded_up_to_the_timer_resolution() {
     let rtt = Rtt::from_millis(0.1);
-    let fixture = Fixture::new(Netem::uniform(Link::at(rtt), Seed::DEFAULT), 7_003);
+    let fixture = Fixture::new(IpLinkPolicy::uniform(Link::at(rtt), Seed::DEFAULT), 7_003);
     let start = Instant::now();
     for i in 0..20u8 {
         fixture.send(&[i]).await;
@@ -172,7 +174,7 @@ async fn jitter_swings_the_delay_around_the_configured_one() {
     const DATAGRAMS: u32 = 12;
     let delay = Rtt::from_millis(10.0).one_way();
     let fixture = Fixture::new(
-        Netem::uniform(
+        IpLinkPolicy::uniform(
             Link::at(Rtt::from_millis(10.0)).with_jitter(delay),
             Seed::DEFAULT,
         ),
@@ -202,11 +204,11 @@ async fn jitter_swings_the_delay_around_the_configured_one() {
 #[tokio::test]
 async fn loss_drops_datagrams_at_about_the_configured_rate() {
     const DATAGRAMS: u64 = 4_000;
-    let netem = Netem::uniform(
+    let emulation = IpLinkPolicy::uniform(
         Link::PERFECT.with_loss(Probability::percent(10.0)),
         Seed::DEFAULT,
     );
-    let fixture = Fixture::new(netem, 7_004);
+    let fixture = Fixture::new(emulation, 7_004);
     for _ in 0..DATAGRAMS {
         fixture.send(b"maybe").await;
     }
@@ -230,8 +232,9 @@ async fn a_replayed_seed_replays_the_same_losses() {
         "127.5.0.2:7005".parse().unwrap(),
     );
     async fn dropped(seed: Seed, source: SocketAddr, destination: SocketAddr) -> u64 {
-        let netem = Netem::uniform(Link::PERFECT.with_loss(Probability::percent(25.0)), seed);
-        let fixture = Fixture::between(netem, source, destination);
+        let emulation =
+            IpLinkPolicy::uniform(Link::PERFECT.with_loss(Probability::percent(25.0)), seed);
+        let fixture = Fixture::between(emulation, source, destination);
         for _ in 0..500 {
             fixture.send(b"maybe").await;
         }
@@ -250,9 +253,9 @@ async fn a_replayed_seed_replays_the_same_losses() {
 #[tokio::test]
 async fn a_per_destination_override_beats_the_default_link() {
     let far = fresh_addr(3, 7_006);
-    let netem = Netem::uniform(Link::PERFECT, Seed::DEFAULT)
+    let emulation = IpLinkPolicy::uniform(Link::PERFECT, Seed::DEFAULT)
         .with_link_to(far.ip(), Link::at(Rtt::from_millis(40.0)));
-    let fixture = Fixture::new(netem, 7_006);
+    let fixture = Fixture::new(emulation, 7_006);
     let far_receiver = fixture.network.bind(far);
 
     // The far peer is sent to first; the near one still answers first, because the links differ.
@@ -275,7 +278,7 @@ async fn a_per_destination_override_beats_the_default_link() {
 async fn reordering_lands_a_datagram_behind_one_sent_after_it() {
     let rtt = Rtt::from_millis(20.0);
     let fixture = Fixture::new(
-        Netem::uniform(
+        IpLinkPolicy::uniform(
             Link::at(rtt).with_reorder(Probability::ALWAYS),
             Seed::DEFAULT,
         ),
@@ -283,9 +286,9 @@ async fn reordering_lands_a_datagram_behind_one_sent_after_it() {
     );
     // A second sender onto the same receiver, on a plain link of the same delay: a link that
     // displaces *every* datagram is only a slower link, so the overtaking one comes from elsewhere.
-    let plain = NetemTransport::new(
+    let plain = EmulatedTransport::new(
         Arc::new(fixture.network.bind(fresh_addr(3, 7_007))),
-        Netem::uniform(Link::at(rtt), Seed::DEFAULT),
+        IpLinkPolicy::uniform(Link::at(rtt), Seed::DEFAULT),
     );
 
     fixture.send(b"first").await;
@@ -309,9 +312,9 @@ async fn a_replicated_map_converges_over_a_lossy_delayed_link() {
     // rather than getting lucky on a clean link.
     let link = Link::at(Rtt::from_millis(2.0)).with_loss(Probability::percent(40.0));
     let store = |addr: SocketAddr| {
-        let transport = NetemTransport::new(
+        let transport = EmulatedTransport::new(
             Arc::new(network.bind(addr)),
-            Netem::uniform(link, Seed::DEFAULT),
+            IpLinkPolicy::uniform(link, Seed::DEFAULT),
         );
         let impairments = transport.impairments();
         let store = ReplicatedMap::<u32, u32>::new_with_transport(

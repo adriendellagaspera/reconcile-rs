@@ -31,7 +31,7 @@ use reconcile::{
     Timestamp, Transport,
 };
 
-use gossip::netem::{Link, Netem, NetemTransport, Probability, Rtt, Seed};
+use gossip::emulation::{EmulatedTransport, IpLinkPolicy, Link, Probability, Rtt, Seed};
 
 // Dataset sizes swept by the size-parameterised benchmarks (log scale).
 const SIZES: &[usize] = &[10, 100, 1_000, 10_000, 100_000];
@@ -505,8 +505,8 @@ fn cold_sync(c: &mut Criterion) {
 
 // A [`Transport`] wrapper tallying every datagram this node *sends* — fan-out is a send-side
 // cost, so receipts are not counted. Generic so it can wrap either a bare [`InMemoryTransport`]
-// (the RTT-free lanes) or a [`NetemTransport`]-decorated one (the RTT-swept lanes): wrapping
-// *outside* `NetemTransport` counts what the application handed to `send_to`, ahead of the
+// (the RTT-free lanes) or a [`EmulatedTransport`]-decorated one (the RTT-swept lanes): wrapping
+// *outside* `EmulatedTransport` counts what the application handed to `send_to`, ahead of the
 // impairment draw, so a dropped datagram still counts as sent — matching `gossip_fanout`'s own
 // "sent" definition, unaffected by the link.
 struct CountingTransport<T: Transport> {
@@ -663,9 +663,9 @@ fn build_mesh_coalescing(
 }
 
 // As [`build_mesh`], but every outbound datagram crosses `link` first: [`CountingTransport`]
-// wraps a [`NetemTransport`]-decorated [`InMemoryTransport`] rather than a bare one, so the
+// wraps a [`EmulatedTransport`]-decorated [`InMemoryTransport`] rather than a bare one, so the
 // count is unaffected by the link while the send-loop wall time (timed separately, by the
-// caller) is not. Call inside a runtime, like [`netem_mesh`].
+// caller) is not. Call inside a runtime, like [`emulated_mesh`].
 fn build_mesh_rtt(
     n: usize,
     port: u16,
@@ -675,9 +675,9 @@ fn build_mesh_rtt(
     let mut counters = Vec::with_capacity(n);
     let (stores, addrs) = mesh_with(n, port, |inner| {
         let traffic = TrafficCounters::default();
-        let netem = NetemTransport::new(Arc::new(inner), Netem::uniform(link, seed));
+        let emulation = EmulatedTransport::new(Arc::new(inner), IpLinkPolicy::uniform(link, seed));
         let transport = CountingTransport {
-            inner: netem,
+            inner: emulation,
             datagrams_sent: Arc::clone(&traffic.datagrams_sent),
             bytes_sent: Arc::clone(&traffic.bytes_sent),
         };
@@ -690,14 +690,14 @@ fn build_mesh_rtt(
 
 // `n` in-process nodes whose every outbound datagram crosses `link`. **Unseeded**, like
 // [`mesh_with`]. Call inside a runtime: each node's decorator spawns a delivery pump.
-fn netem_mesh(
+fn emulated_mesh(
     n: usize,
     port: u16,
     link: Link,
     seed: Seed,
 ) -> (Vec<ReplicatedMap<u32, u32>>, Vec<IpAddr>) {
     mesh_with(n, port, |inner| {
-        NetemTransport::new(Arc::new(inner), Netem::uniform(link, seed))
+        EmulatedTransport::new(Arc::new(inner), IpLinkPolicy::uniform(link, seed))
     })
 }
 
@@ -943,9 +943,9 @@ async fn probe_link(link: Link, datagrams: usize, port: u16) -> (Duration, Durat
         SocketAddr::new(addrs[0], port),
         SocketAddr::new(addrs[1], port),
     );
-    let sender = NetemTransport::new(
+    let sender = EmulatedTransport::new(
         Arc::new(network.bind(src)),
-        Netem::uniform(link, Seed::DEFAULT),
+        IpLinkPolicy::uniform(link, Seed::DEFAULT),
     );
     let receiver = network.bind(dst);
     let impairments = sender.impairments();
@@ -975,8 +975,8 @@ async fn probe_link(link: Link, datagrams: usize, port: u16) -> (Duration, Durat
 // Calibrate the instrument before reading anything it produces: configured one-way delay against
 // observed, configured loss against realized. Printed rather than timed, like `memory_footprint`
 // — and the reason the sweeps below can be quoted as measurements of the protocol rather than of
-// tokio's timer, which rounds a sleep up to the next millisecond (`gossip::netem`).
-fn netem_calibration(c: &mut Criterion) {
+// tokio's timer, which rounds a sleep up to the next millisecond (`gossip::emulation`).
+fn emulation_calibration(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     println!(
         "[netem] seed={:#x}; delay is one-way (half the stated RTT), {CALIBRATION_DATAGRAMS} \
@@ -1012,9 +1012,9 @@ fn netem_calibration(c: &mut Criterion) {
         let addrs = mesh_addrs(2);
         let dst = SocketAddr::new(addrs[1], 9_952);
         network.bind(dst);
-        let sender = NetemTransport::new(
+        let sender = EmulatedTransport::new(
             Arc::new(network.bind(SocketAddr::new(addrs[0], 9_952))),
-            Netem::uniform(Link::PERFECT, Seed::DEFAULT),
+            IpLinkPolicy::uniform(Link::PERFECT, Seed::DEFAULT),
         );
         (sender, dst)
     });
@@ -1034,7 +1034,7 @@ const RTT_SIZES: &[usize] = &[1_000, 10_000];
 async fn cold_sync_over(kvs: &[(u32, u32)], link: Link, iters: u64) -> Duration {
     let mut total = Duration::ZERO;
     for _ in 0..iters {
-        let (stores, addrs) = netem_mesh(2, 9_800, link, Seed::DEFAULT);
+        let (stores, addrs) = emulated_mesh(2, 9_800, link, Seed::DEFAULT);
         let (full, empty) = (&stores[0], &stores[1]);
         // Loaded before it has a peer, so nothing is broadcast eagerly — as in `cold_sync`.
         full.insert_bulk(kvs);
@@ -1120,7 +1120,7 @@ fn gossip_propagation_rtt(c: &mut Criterion) {
 
     for (label, link) in lanes {
         let (stores, tasks) = rt.block_on(async {
-            let (stores, addrs) = netem_mesh(PROPAGATION_RTT_NODES, 9_900, link, Seed::DEFAULT);
+            let (stores, addrs) = emulated_mesh(PROPAGATION_RTT_NODES, 9_900, link, Seed::DEFAULT);
             full_mesh_seed(&stores, &addrs);
             let tasks: Vec<_> = stores
                 .iter()
@@ -1165,7 +1165,7 @@ const FANOUT_RTT_NODES: usize = PROPAGATION_RTT_NODES;
 // `gossip_fanout` across the RTT sweep and a loss lane: whether the origin's send-side fan-out
 // cost — datagrams/bytes handed to the transport, and the send-loop wall time — depends on RTT.
 // Unlike [`gossip_propagation_rtt`], expected and confirmed **flat**:
-// [`NetemTransport::send_to`](gossip::netem::NetemTransport::send_to) queues (or drops) a datagram and
+// [`EmulatedTransport::send_to`](gossip::emulation::EmulatedTransport::send_to) queues (or drops) a datagram and
 // returns immediately, before the injected delay elapses — the origin never waits on delivery, so
 // there is no round trip for RTT to lengthen. [`CountingTransport`] wraps *outside* the decorator
 // for exactly this reason: it counts what `Replica::broadcast` handed to `send_to`, matching
@@ -1411,7 +1411,7 @@ criterion_group!(
     gossip_fanout,
     gossip_propagation,
     broadcast_coalescing,
-    netem_calibration,
+    emulation_calibration,
     cold_sync_rtt,
     gossip_propagation_rtt,
     gossip_fanout_rtt,
