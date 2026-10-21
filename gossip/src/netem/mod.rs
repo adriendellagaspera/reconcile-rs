@@ -194,6 +194,20 @@ impl Link {
     }
 }
 
+/// Substrate-specific conditions and reproducible randomness for a directed link.
+///
+/// Endpoints are routing metadata, not peer identities. Choose a stable seed for each directed
+/// `(source, destination)` pair without relying on Rust's unspecified default hash algorithm.
+/// The seed initializes that link's independent PRNG on its first send; subsequent sends advance
+/// the same stream even when another link is used between them. Link conditions are read on every
+/// send, allowing a policy with synchronized state to model an outage or a changing link.
+/// Implementations must return promptly: policy lookup runs synchronously on the sending task.
+/// No session, stream, or IP addressing is required.
+pub trait LinkPolicy<A>: Send + Sync + 'static {
+    /// Return this send's link conditions and the seed used to initialize its directed stream.
+    fn link(&self, source: &A, destination: &A) -> (Link, Seed);
+}
+
 /// One node's view of the network: a default link to every peer, plus per-destination overrides.
 #[derive(Clone, Debug)]
 pub struct Netem {
@@ -224,6 +238,15 @@ impl Netem {
             .get(&destination.ip())
             .copied()
             .unwrap_or(self.default_link)
+    }
+}
+
+impl LinkPolicy<SocketAddr> for Netem {
+    fn link(&self, source: &SocketAddr, destination: &SocketAddr) -> (Link, Seed) {
+        (
+            self.link_to(destination),
+            Seed::new(stream_seed(self.seed, *source, *destination)),
+        )
     }
 }
 

@@ -12,6 +12,7 @@
 use std::cmp::Ordering;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
+use std::hash::Hash;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
@@ -25,7 +26,7 @@ use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-use super::{stream_seed, Netem};
+use super::{LinkPolicy, Netem};
 use crate::Transport;
 
 /// Tokio's timer resolution: [`tokio::time::sleep`] rounds up to the next millisecond. The pump
@@ -35,39 +36,47 @@ const TIMER_RESOLUTION: Duration = Duration::from_millis(1);
 
 /// A datagram in flight, ordered by when it is due and, for a tie, by send order.
 #[derive(Debug)]
-struct Pending {
+struct Pending<A> {
     due: Instant,
     seq: u64,
-    destination: SocketAddr,
+    destination: A,
     bytes: Vec<u8>,
 }
 
-impl Ord for Pending {
-    fn cmp(&self, other: &Pending) -> Ordering {
+impl<A> Ord for Pending<A> {
+    fn cmp(&self, other: &Pending<A>) -> Ordering {
         self.due.cmp(&other.due).then(self.seq.cmp(&other.seq))
     }
 }
 
-impl PartialOrd for Pending {
-    fn partial_cmp(&self, other: &Pending) -> Option<Ordering> {
+impl<A> PartialOrd for Pending<A> {
+    fn partial_cmp(&self, other: &Pending<A>) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for Pending {
-    fn eq(&self, other: &Pending) -> bool {
+impl<A> PartialEq for Pending<A> {
+    fn eq(&self, other: &Pending<A>) -> bool {
         self.cmp(other) == Ordering::Equal
     }
 }
 
-impl Eq for Pending {}
+impl<A> Eq for Pending<A> {}
 
 /// The in-flight queue, shared between [`NetemTransport::send_to`] and the pump task.
-#[derive(Default)]
-struct InFlight {
+struct InFlight<A> {
     /// `Reverse`, so the [`BinaryHeap`] pops the *earliest* due datagram.
-    queue: Mutex<BinaryHeap<Reverse<Pending>>>,
+    queue: Mutex<BinaryHeap<Reverse<Pending<A>>>>,
     wake: Notify,
+}
+
+impl<A> Default for InFlight<A> {
+    fn default() -> Self {
+        Self {
+            queue: Mutex::new(BinaryHeap::new()),
+            wake: Notify::new(),
+        }
+    }
 }
 
 /// What the model did to this node's outbound traffic — the instrument's own accounting, so a lane
@@ -103,27 +112,34 @@ impl Impairments {
 /// A [`Transport`] decorator that delays, drops and reorders what the wrapped one sends.
 ///
 /// Construct inside a Tokio runtime: it spawns the per-node delivery pump, which is aborted when
-/// the transport drops.
-pub struct NetemTransport<T> {
+/// the transport drops. `Netem` preserves IP policy and seeded streams by default. Custom
+/// [`LinkPolicy`] implementations select link conditions and reproducible seeds for opaque
+/// endpoints. Pending messages use unbounded queues, as does the in-memory transport.
+pub struct NetemTransport<T, A = SocketAddr, P = Netem> {
     inner: Arc<T>,
-    netem: Netem,
-    local: SocketAddr,
+    netem: P,
+    local: A,
     /// One PRNG per directed link, created on first use and advanced in send order.
-    streams: Mutex<HashMap<SocketAddr, StdRng>>,
-    in_flight: Arc<InFlight>,
+    streams: Mutex<HashMap<A, StdRng>>,
+    in_flight: Arc<InFlight<A>>,
     seq: AtomicU64,
     impairments: Impairments,
     pump: JoinHandle<()>,
 }
 
-impl<T: Transport> NetemTransport<T> {
+impl<T, A, P> NetemTransport<T, A, P>
+where
+    T: Transport<A>,
+    A: Clone + Eq + Hash + Send + Sync + 'static,
+    P: LinkPolicy<A>,
+{
     /// Wrap `inner` in `netem`.
     ///
     /// # Panics
     ///
     /// If called outside a Tokio runtime, or if `inner` has no local address (neither is reachable
     /// from the benchmarks, which bind an `InMemoryTransport` first).
-    pub fn new(inner: Arc<T>, netem: Netem) -> NetemTransport<T> {
+    pub fn new(inner: Arc<T>, netem: P) -> Self {
         let local = inner
             .local_addr()
             .expect("a netem-wrapped transport must already be bound");
@@ -147,7 +163,7 @@ impl<T: Transport> NetemTransport<T> {
     }
 }
 
-impl<T> Drop for NetemTransport<T> {
+impl<T, A, P> Drop for NetemTransport<T, A, P> {
     fn drop(&mut self) {
         // The pump owns an `Arc` of the wrapped transport and outlives nothing: a benchmark that
         // rebuilds its cluster once per iteration would otherwise accumulate one live task per
@@ -157,20 +173,25 @@ impl<T> Drop for NetemTransport<T> {
 }
 
 #[async_trait::async_trait]
-impl<T: Transport> Transport for NetemTransport<T> {
-    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
+impl<T, A, P> Transport<A> for NetemTransport<T, A, P>
+where
+    T: Transport<A>,
+    A: Clone + Eq + Hash + Send + Sync + 'static,
+    P: LinkPolicy<A>,
+{
+    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, A)> {
         // Reception is untouched: impairment is applied once per datagram, on the sending side,
         // where the link's direction is known from the destination.
         self.inner.recv_from(buf).await
     }
 
-    async fn send_to(&self, buf: &[u8], destination: &SocketAddr) -> io::Result<usize> {
-        let link = self.netem.link_to(destination);
+    async fn send_to(&self, buf: &[u8], destination: &A) -> io::Result<usize> {
+        let (link, seed) = self.netem.link(&self.local, destination);
         let delay = {
             let mut streams = self.streams.lock();
-            let stream = streams.entry(*destination).or_insert_with(|| {
-                StdRng::seed_from_u64(stream_seed(self.netem.seed, self.local, *destination))
-            });
+            let stream = streams
+                .entry(destination.clone())
+                .or_insert_with(|| StdRng::seed_from_u64(seed.get()));
             link.draw(stream)
         };
         self.impairments
@@ -187,27 +208,31 @@ impl<T: Transport> Transport for NetemTransport<T> {
         self.in_flight.queue.lock().push(Reverse(Pending {
             due: Instant::now() + delay,
             seq: self.seq.fetch_add(1, AtomicOrdering::Relaxed),
-            destination: *destination,
+            destination: destination.clone(),
             bytes: buf.to_vec(),
         }));
         self.in_flight.wake.notify_one();
         Ok(buf.len())
     }
 
-    fn local_addr(&self) -> io::Result<SocketAddr> {
+    fn local_addr(&self) -> io::Result<A> {
         self.inner.local_addr()
     }
 }
 
 /// What the pump does next, decided under the queue lock and acted on outside it.
-enum Step {
-    Deliver(Pending),
+enum Step<A> {
+    Deliver(Pending<A>),
     WaitUntil(Instant),
     Idle,
 }
 
 /// Deliver queued datagrams in due order, one node's worth.
-async fn pump<T: Transport>(inner: Arc<T>, in_flight: Arc<InFlight>) {
+async fn pump<T, A>(inner: Arc<T>, in_flight: Arc<InFlight<A>>)
+where
+    T: Transport<A>,
+    A: Send + Sync + 'static,
+{
     loop {
         let step = {
             let mut queue = in_flight.queue.lock();
