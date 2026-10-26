@@ -60,6 +60,8 @@ jobs:
         tool: cargo-mutants@27.1.0
     - name: Documentation budgets
       run: ./scripts/check-doc-budget.sh
+    - name: GC history-fence policy
+      run: ./scripts/check-gc-fence.sh
     - name: Domain purity
       run: ./scripts/check-domain-purity.sh
     - name: RSOS/RBSR ownership boundary

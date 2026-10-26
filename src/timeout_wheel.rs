@@ -50,6 +50,11 @@ impl<T: Clone + Hash + std::cmp::Eq> TimeoutWheel<T> {
         *self.timeout.write().unwrap() = timeout;
     }
 
+    /// Current retention floor; callers serialize configuration changes with collection.
+    pub(crate) fn timeout(&self) -> Duration {
+        *self.timeout.read().unwrap()
+    }
+
     /// Track `e` as expiring at `instant`, clearing any slot it already held.
     pub fn insert(&self, e: T, instant: DateTime<Utc>) {
         let mut wheel = self.wheel.write().unwrap();

@@ -213,9 +213,8 @@ pub(crate) struct Inner<K, V> {
     replay_filter: Arc<replay::ReplayFilter>,
     /// Monotonic set of every peer this node has exchanged messages with; never expired, unlike
     /// [`peers`](Self::peers).
-    /// This is the causal-stability gate on tombstone GC.
-    /// Remote-net members ack on the slower cross-network cadence, so GC is slower there but no
-    /// less correct.
+    /// This tracks receipt obligations. Physical collection has a separate closed gate because
+    /// the runtime does not yet fence obsolete application history.
     pub(crate) members: Arc<RwLock<HashSet<IpAddr>>>,
     /// Per-tombstone acknowledgments: `key -> (peer -> version token of the tombstone it holds)`.
     pub(crate) tombstone_acks: Arc<RwLock<HashMap<K, HashMap<IpAddr, u64>>>>,
@@ -289,8 +288,8 @@ pub(crate) enum Message<K: Serialize, V: Serialize, P: Serialize> {
     /// as differing between the two instances.
     EntryUpdate((K, V)),
     /// Acknowledges that the sender now holds the tombstone for the given key with the
-    /// given version token (see [`version_hash`]). Enables causal-stability-gated
-    /// tombstone garbage collection on the receiver.
+    /// given version token (see [`version_hash`]). This is receipt evidence; it does not authorize
+    /// physical tombstone collection.
     TombstoneAck((K, u64)),
     /// Like [`EntryFingerprint`](Message::EntryFingerprint) but over the **state-only**
     /// `projection` tree (bare `State<V>`, no stamp): a dated store answers these by diffing
@@ -339,7 +338,7 @@ mod run;
 mod write;
 
 pub(crate) use construct::check_port_is_nonzero;
-pub(crate) use gc::version_hash;
+pub(crate) use gc::{has_collection_proof, version_hash};
 pub(crate) use inbound::{admit_inbound, InboundRejection};
 pub(crate) use membership::derive_local_net;
 pub(crate) use recovery::{

@@ -90,3 +90,5 @@ fn virtual_map_with_clock<K: crate::bounds::Key + Hash, V: crate::bounds::Value>
         config.snapshot_change_threshold,
     )
 }
+
+mod atomic_capture;

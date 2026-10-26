@@ -79,13 +79,8 @@ pub(super) fn backoff_delay(attempt: u32) -> Duration {
     LOAD_RETRY_BASE_DELAY * 2u32.pow(attempt - 1)
 }
 
-/// Entries cloned per `Arc` snapshot re-load while building a persisted snapshot
-/// (`Self::persist_snapshot`).
-/// Chunking bounds temporary clone work, but the resulting snapshot is not a single
-/// linearizable instant — a fresh `load_full` between chunks can observe a write concurrent
-/// with an earlier chunk — which is no different from what the gossip protocol itself already
-/// reconciles range-by-range, and each individual entry is still read atomically
-/// .
+/// Payloads cloned per batch over one pinned immutable root. Root and causal metadata are
+/// captured together; materialization and backend I/O do not hold the generation boundary.
 pub(super) const SNAPSHOT_CHUNK_SIZE: usize = 4096;
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
@@ -179,10 +174,24 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     fn collect_persisted_state(&self) -> PersistedState<K, V> {
+        self.collect_persisted_state_observed(|| {})
+    }
+
+    pub(super) fn collect_persisted_state_observed(
+        &self,
+        mut after_chunk: impl FnMut(),
+    ) -> PersistedState<K, V> {
+        let (guard, members, tombstone_acks) =
+            self.engine.snapshot_generations.with_snapshot_cut(|| {
+                (
+                    self.engine.map.load_full(),
+                    self.engine.members.read().clone(),
+                    self.engine.tombstone_acks.read().clone(),
+                )
+            });
         let mut entries: DatedEntries<K, V> = Vec::new();
         let mut cursor: Option<K> = None;
         loop {
-            let guard = self.engine.map.load_full();
             let chunk: Vec<(K, Entry<Timestamp, V>)> = match &cursor {
                 None => guard
                     .range(..)
@@ -195,18 +204,14 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect(),
             };
-            drop(guard);
             let Some((last_key, _)) = chunk.last() else {
                 break;
             };
             cursor = Some(last_key.clone());
             entries.extend(chunk);
+            after_chunk();
         }
-        PersistedState::new(
-            entries,
-            self.engine.members.read().clone(),
-            self.engine.tombstone_acks.read().clone(),
-        )
+        PersistedState::new(entries, members, tombstone_acks)
     }
 
     /// Persist one coherent generation. Incremental backends get the coalesced delta first and

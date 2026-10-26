@@ -97,23 +97,47 @@ impl<K, V, P> Default for GenerationState<K, V, P> {
 /// Bounded two-generation journal: at most one immutable retryable generation plus the current
 /// open generation. All durable mutation sinks take mutation() before changing runtime state;
 /// freeze() takes the same mutex, making the cut atomic.
+/// Lock order is generation -> map write lock -> secondary indexes/causal metadata.
 pub(crate) struct GenerationTracker<K, V, P = IpAddr> {
     state: Mutex<GenerationState<K, V, P>>,
+    #[cfg(test)]
+    before_mutation: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 
 impl<K, V, P> Default for GenerationTracker<K, V, P> {
     fn default() -> Self {
         Self {
             state: Mutex::new(GenerationState::default()),
+            #[cfg(test)]
+            before_mutation: Mutex::new(None),
         }
     }
 }
 
 impl<K: Eq + Hash, V, P> GenerationTracker<K, V, P> {
+    #[cfg(test)]
+    pub(crate) fn before_next_mutation(&self, hook: impl FnOnce() + Send + 'static) {
+        *self.before_mutation.lock() = Some(Box::new(hook));
+    }
+
     pub(crate) fn mutation(&self) -> GenerationMutation<'_, K, V, P> {
+        #[cfg(test)]
+        {
+            let hook = self.before_mutation.lock().take();
+            if let Some(hook) = hook {
+                hook();
+            }
+        }
         GenerationMutation {
             state: self.state.lock(),
         }
+    }
+
+    /// Pin runtime roots and clone causal metadata while every tracked mutation is excluded.
+    /// The returned immutable view can be materialized after releasing the boundary.
+    pub(crate) fn with_snapshot_cut<T>(&self, capture: impl FnOnce() -> T) -> T {
+        let _boundary = self.state.lock();
+        capture()
     }
 
     pub(crate) fn freeze(&self) -> Option<Arc<SnapshotGeneration<K, V, P>>> {

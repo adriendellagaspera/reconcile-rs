@@ -16,7 +16,6 @@ use crate::clock::{
     wall_clock_now, BoundedInstant, ClockDrift, StampBound, Timestamp, MAX_CLOCK_DRIFT,
 };
 use crate::entry::Entry;
-use crate::replica::version_hash;
 
 use super::ReplicatedMap;
 
@@ -267,39 +266,50 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         }
     }
 
-    /// Set a specific expiry timeout to handle tombstones.
-    /// The default value is 60 seconds.
+    /// Set the tombstone retention floor (default 60 seconds).
+    /// This floor does not authorize collection: tombstones are currently retained without a
+    /// time bound because the runtime has no obsolete-history fencing proof.
     pub fn with_tombstone_timeout(mut self, tombstone_timeout: Duration) -> Self {
-        self.tombstones = self.tombstones.with_timeout(tombstone_timeout);
+        {
+            let _boundary = self.engine.snapshot_generations.mutation();
+            self.tombstones = self.tombstones.with_timeout(tombstone_timeout);
+        }
         self
     }
 
     /// (runtime) Retune the tombstone expiry timeout in place, visible to all clones. The runtime
     /// counterpart of the [`with_tombstone_timeout`](Self::with_tombstone_timeout) builder.
     pub fn set_tombstone_timeout(&self, timeout: Duration) {
+        let _boundary = self.engine.snapshot_generations.mutation();
         self.tombstones.set_timeout(timeout);
     }
 
-    /// Garbage-collect tombstones only after their timeout and causal stability.
-    /// Every authoritative replica this node has communicated with must acknowledge the tombstone
-    /// or be decommissioned through [`forget_peer`](Self::forget_peer).
+    /// Inspect retention candidates. Receipt ACKs alone do not prove deletion safe after
+    /// rollback or delayed stale data, so physical collection is currently disabled.
     pub(super) async fn clear_expired_tombstones(&self) {
+        if !crate::replica::has_collection_proof() {
+            return;
+        }
         loop {
-            for key in self.tombstones.expired(wall_clock_now()) {
-                // Version token of the tombstone actually stored, matched against peer acks.
-                let version = self.engine.map.load_full().get(&key).map(version_hash);
-                let Some(version) = version else {
-                    // The key is no longer present (overwritten or already removed): stop
-                    // tracking it.
-                    self.tombstones.remove(&key);
+            let now = wall_clock_now();
+            for key in self.tombstones.expired(now) {
+                let candidate = self
+                    .engine
+                    .map
+                    .load_full()
+                    .get(&key)
+                    .filter(|entry| entry.is_tombstone())
+                    .map(|entry| entry.stamp);
+                let Some(expected) = candidate else {
                     continue;
                 };
-                if self.engine.is_tombstone_stable(&key, version) {
+                if self
+                    .engine
+                    .gc_collect(&key, expected, now, || self.tombstones.timeout())
+                    .is_some()
+                {
                     self.tombstones.remove(&key);
-                    // Remove from the dated map *and* the value-only projection together.
-                    self.engine.gc_collect(&key);
                 }
-                // Otherwise keep the tombstone and re-check on a later iteration.
             }
             tokio::time::sleep(TOMBSTONE_CLEARING).await;
         }

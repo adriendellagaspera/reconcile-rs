@@ -111,10 +111,10 @@ async fn read_replica_converges_with_dated_store() {
 }
 
 /// A read replica must never join the dated store's causal-stability membership set, otherwise it
-/// would hold back tombstone garbage collection forever (it never acknowledges tombstones). With
-/// only a read replica talking to it, the dated store must still collect an expired tombstone.
+/// would create a receipt obligation it can never satisfy. Retention expiry still does not
+/// authorize physical collection when that membership set is empty.
 #[tokio::test(flavor = "multi_thread")]
-async fn read_replica_does_not_block_tombstone_gc() {
+async fn read_replica_is_not_a_receipt_member_and_retained_deletions_propagate() {
     let port = 5000u16;
     let network = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
@@ -156,16 +156,15 @@ async fn read_replica_does_not_block_tombstone_gc() {
     assert_until!(read_replica.get(&1).as_deref() == Some(&11));
     assert_until!(read_replica.get(&2).as_deref() == Some(&22));
 
-    // Delete key 1 on the dated store, then wait well past the tombstone timeout and the GC scan
-    // period. Because the only node that ever contacted the dated store is a value-only read
-    // replica (which is not a member), the tombstone is causally stable and must be collected.
+    assert!(!dated.members().contains(&read_replica_addr));
     dated.remove(&1);
     let with_tombstone = dated.fingerprint(..);
-    assert_until!(dated.fingerprint(..) != with_tombstone);
-    // The live value for key 2 is untouched by GC.
+    assert_until!(read_replica.get(&1).is_none());
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(dated.fingerprint(..), with_tombstone);
+    assert!(dated.snapshot().get(&1).unwrap().is_tombstone());
     assert_eq!(dated.get(&2).as_deref(), Some(&22));
-    // No deletion assertion: this timeout lets GC outrun replica propagation, the documented
-    // consequence. `read_replica_converges_with_dated_store` covers the normal case.
+    assert!(!dated.members().contains(&read_replica_addr));
 
     dated_task.abort();
     read_replica_task.abort();

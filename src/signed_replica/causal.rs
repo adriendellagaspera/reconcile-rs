@@ -119,6 +119,7 @@ where
     }
 
     /// True only when every provisioned authoritative member acknowledged this exact tombstone.
+    /// This reports receipt completion; it does not authorize physical collection.
     ///
     /// The configured roster is installed as blockers at construction, including offline peers.
     /// Operators must still enforce their tombstone retention period before collection.
@@ -135,11 +136,21 @@ where
             .all(|id| self.tombstone_acks.get(key).and_then(|acks| acks.get(id)) == Some(&version))
     }
 
-    /// Collect a tombstone only if every authoritative member has ACKed its exact version.
+    /// Attempt physical collection; currently always returns `false` and retains the tombstone.
     ///
-    /// This is explicitly invoked by the operator after its retention policy has elapsed; a
-    /// reader cannot collect tombstones. Unacknowledged members are never silently evicted.
+    /// Exact-version ACKs establish receipt, not durable history admission after rollback or
+    /// delayed stale data. Until that history is fenced, retention and ACK completion cannot
+    /// authorize deletion. A reader cannot collect, and absent members remain blockers.
     pub fn collect_if_stable(&mut self, key: &K) -> bool {
+        if !crate::replica::has_collection_proof() {
+            return false;
+        }
+        self.collect_candidate(key)
+    }
+
+    // Only local invariants are checked here; distributed history admission is enforced by
+    // the public collection gate. Kept separate so those invariants can be tested independently.
+    pub(super) fn collect_candidate(&mut self, key: &K) -> bool {
         if self.read_only || !self.is_tombstone_stable(key) {
             return false;
         }

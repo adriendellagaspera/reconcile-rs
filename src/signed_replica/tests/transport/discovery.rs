@@ -136,5 +136,5 @@ async fn discovered_optical_routes_remain_untrusted_and_absences_cannot_release_
     assert_eq!(b.members(), HashSet::from([a_id]));
     assert!(b.is_tombstone(&7));
     assert!(a.acknowledged_version(&7, b_id).is_some());
-    assert!(a.collect_if_stable(&7));
+    assert!(!a.collect_if_stable(&7));
 }

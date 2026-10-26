@@ -6,9 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Tombstone causal-stability and garbage collection: a tombstone must survive until every
-//! member has acknowledged it, and must eventually collect once they have — pairwise and across
-//! a cluster with no manual decommissioning.
+//! Deletion propagation and retained history across partitions, receipt ACKs and decommissioning.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -18,11 +16,11 @@ use tokio_util::sync::CancellationToken;
 
 use reconcile::{replicated_map::Config, InMemoryNetwork, ReplicatedMap};
 
-use crate::support::{assert_until, assert_until_slow};
+use crate::support::assert_until;
 
 /// Regression test: a tombstone must not be garbage-collected while a replica
-/// that has not acknowledged it is still a member (causal stability), and decommissioning that
-/// replica must release the tombstone for GC.
+/// that has not acknowledged it is still a member. Decommissioning that replica releases its
+/// receipt obligation, but must not authorize collection without a history fence.
 #[tokio::test(flavor = "multi_thread")]
 async fn tombstone_is_retained_until_peer_acknowledges() {
     let port = 5000u16;
@@ -86,13 +84,13 @@ async fn tombstone_is_retained_until_peer_acknowledges() {
         "tombstone was garbage-collected before the partitioned peer acknowledged it (resurrection hazard)"
     );
 
-    // Decommission the silent peer: the tombstone is now causally stable and may be GC'd.
+    // Retiring receipt obligations does not supply a stale-history fencing proof.
     store1.forget_peer(addr2);
     tokio::time::sleep(Duration::from_millis(1500)).await;
-    assert_ne!(
+    assert_eq!(
         store1.fingerprint(..),
         fingerprint_with_tombstone,
-        "tombstone was not collected after the silent peer was decommissioned"
+        "decommissioning receipt obligations must not erase the retained deletion"
     );
 
     task1.abort();
@@ -177,7 +175,7 @@ async fn deleted_value_is_not_resurrected_by_returning_peer() {
 /// At N≥3, a tombstone must be collected on **every** node with no manual decommission — which
 /// needs the periodic ack resend, acks otherwise being pairwise. Full-mesh topology.
 #[tokio::test(flavor = "multi_thread")]
-async fn tombstone_gc_converges_in_3_node_cluster_mesh() {
+async fn retained_tombstones_converge_in_3_node_cluster_mesh() {
     let port = 5000u16;
     let fabric = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
@@ -243,15 +241,11 @@ async fn tombstone_gc_converges_in_3_node_cluster_mesh() {
     let fp_tombstone = store1.fingerprint(..);
     assert_until!(store2.fingerprint(..) == fp_tombstone && store3.fingerprint(..) == fp_tombstone);
 
-    // The regression: with NO decommissioning, the tombstone must be collected on all three
-    // nodes (this hung before the fix), and they must converge to the same post-GC fingerprint.
-    assert_until_slow!(store1.fingerprint(..) != fp_tombstone);
-    assert_until_slow!(store2.fingerprint(..) != fp_tombstone);
-    assert_until_slow!(store3.fingerprint(..) != fp_tombstone);
-    let fp_collected = store1.fingerprint(..);
-    assert_until_slow!(
-        store2.fingerprint(..) == fp_collected && store3.fingerprint(..) == fp_collected
-    );
+    // All nodes retain the converged deletion even after the retention floor.
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(store1.fingerprint(..), fp_tombstone);
+    assert_eq!(store2.fingerprint(..), fp_tombstone);
+    assert_eq!(store3.fingerprint(..), fp_tombstone);
 
     task1.abort();
     task2.abort();
@@ -259,10 +253,9 @@ async fn tombstone_gc_converges_in_3_node_cluster_mesh() {
 }
 
 /// The same in a line topology (A↔B↔C), where propagation is relayed rather than broadcast from
-/// one origin. The mesh test above is the strict guard; a line completes the ack matrix through
-/// the stale-value ack path anyway.
+/// one origin. Receipt propagation must preserve the retained deletion in either topology.
 #[tokio::test(flavor = "multi_thread")]
-async fn tombstone_gc_converges_in_3_node_cluster_line() {
+async fn retained_tombstones_converge_in_3_node_cluster_line() {
     let port = 5000u16;
     let fabric = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
@@ -321,13 +314,10 @@ async fn tombstone_gc_converges_in_3_node_cluster_line() {
     let fp_tombstone = store1.fingerprint(..);
     assert_until!(store2.fingerprint(..) == fp_tombstone && store3.fingerprint(..) == fp_tombstone);
 
-    assert_until_slow!(store1.fingerprint(..) != fp_tombstone);
-    assert_until_slow!(store2.fingerprint(..) != fp_tombstone);
-    assert_until_slow!(store3.fingerprint(..) != fp_tombstone);
-    let fp_collected = store1.fingerprint(..);
-    assert_until_slow!(
-        store2.fingerprint(..) == fp_collected && store3.fingerprint(..) == fp_collected
-    );
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(store1.fingerprint(..), fp_tombstone);
+    assert_eq!(store2.fingerprint(..), fp_tombstone);
+    assert_eq!(store3.fingerprint(..), fp_tombstone);
 
     task1.abort();
     task2.abort();

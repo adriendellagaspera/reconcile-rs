@@ -14,6 +14,9 @@ echo "Running cargo fmt"
 echo "Running doc-budget check"
 (cd $TEMPDIR; ./scripts/check-doc-budget.sh)
 
+echo "Running GC history-fence check"
+(cd $TEMPDIR; ./scripts/check-gc-fence.sh)
+
 echo "Running domain-purity check"
 (cd $TEMPDIR; ./scripts/check-domain-purity.sh)
 

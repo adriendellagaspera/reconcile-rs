@@ -9,6 +9,9 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
 
 use serde::Serialize;
 
@@ -45,13 +48,19 @@ fn all_members_acknowledged<K: Eq + Hash, P: Eq + Hash>(
         .all(|peer| key_acks.get(peer) == Some(&version))
 }
 
+/// Receipt ACKs do not fence rollback or delayed application data. Keep physical collection
+/// closed until the runtime can prove obsolete history is no longer admissible.
+pub(crate) fn has_collection_proof() -> bool {
+    false
+}
+
 impl<K: Key + Hash, V: Value> Replica<K, V> {
     /// Remove a key from the dated `map`, its value-only projection, and the live-tombstone
     /// index (the GC removal path).
     #[cfg(test)]
     pub(crate) fn gc_remove(&self, key: &K) -> Option<Entry<Timestamp, V>> {
-        let _guard = self.write_lock.lock();
         let mut generation = self.snapshot_generations.mutation();
+        let _guard = self.write_lock.lock();
         let mut map = (*self.map.load_full()).clone();
         let mut projection = (*self.projection.load_full()).clone();
         self.live_tombstones.write().remove(key);
@@ -66,19 +75,48 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         ret
     }
 
-    /// Atomically collect one causally-stable tombstone and its acknowledgement bookkeeping under
-    /// the same snapshot-generation boundary.
-    pub(crate) fn gc_collect(&self, key: &K) -> Option<Entry<Timestamp, V>> {
+    /// The public runtime path retains tombstones until distributed history is fenced.
+    pub(crate) fn gc_collect(
+        &self,
+        key: &K,
+        expected: Timestamp,
+        now: DateTime<Utc>,
+        retention: impl FnOnce() -> Duration,
+    ) -> Option<Entry<Timestamp, V>> {
+        if !has_collection_proof() {
+            return None;
+        }
+        self.collect_candidate(key, expected, now, retention)
+    }
+
+    /// Conditional local transaction. This does not itself establish a distributed history proof;
+    /// only the gated runtime path may call it outside the local-invariant tests.
+    pub(super) fn collect_candidate(
+        &self,
+        key: &K,
+        expected: Timestamp,
+        now: DateTime<Utc>,
+        retention: impl FnOnce() -> Duration,
+    ) -> Option<Entry<Timestamp, V>> {
         let mut generation = self.snapshot_generations.mutation();
         let _guard = self.write_lock.lock();
-        let mut map = (*self.map.load_full()).clone();
+        let root = self.map.load_full();
+        let entry = root.get(key)?;
+        if !entry.is_tombstone() || entry.stamp != expected {
+            return None;
+        }
+        let now_ms: u64 = now.timestamp_millis().try_into().ok()?;
+        let expires = u128::from(entry.stamp.physical().millis()) + retention().as_millis();
+        if expires >= u128::from(now_ms) || !self.is_tombstone_stable(key, version_hash(entry)) {
+            return None;
+        }
+        let mut map = (*root).clone();
         let mut projection = (*self.projection.load_full()).clone();
         self.live_tombstones.write().remove(key);
         projection.remove(key);
         let ret = map.remove(key);
         self.map.store(Arc::new(map));
         self.projection.store(Arc::new(projection));
-
         let mut changed = 0;
         if ret.is_some() {
             generation.record_physical_delete(key.clone());
@@ -92,8 +130,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         ret
     }
 
-    /// Whether the tombstone for `key` at this version has been acknowledged by every member and
-    /// is safe to collect. With no members known, GC is allowed.
+    /// Whether every current member has acknowledged this version. The empty receipt quorum
+    /// is complete; neither case establishes that obsolete application history is fenced.
     pub(crate) fn is_tombstone_stable(&self, key: &K, version: u64) -> bool {
         all_members_acknowledged(
             &self.members.read(),
@@ -136,109 +174,4 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use crate::replicated_map::Config;
-
-    use super::*;
-
-    #[test]
-    fn gc_collect_counts_physical_delete_and_ack_cleanup() {
-        let config = Config::default()
-            .with_port(5000)
-            .with_listen_addr("127.0.0.120".parse().unwrap())
-            .with_insecure_no_key();
-        let replica = crate::replica::tests::in_memory_test_replica::<u32, u32>(config);
-        let key = 7;
-        let peer: IpAddr = "127.0.0.9".parse().unwrap();
-        replica.just_insert(key, Entry::tombstone(replica.clock_now()));
-        replica
-            .tombstone_acks
-            .write()
-            .insert(key, HashMap::from([(peer, 11)]));
-        let before = replica.change_count();
-
-        assert!(replica.gc_collect(&key).is_some());
-        assert_eq!(
-            replica.change_count() - before,
-            2,
-            "physical deletion and ACK cleanup are two durable mutations"
-        );
-    }
-
-    /// Pins the exact formula (`rsos::digest`'s low limb), not just "some function of the
-    /// value" — a mutant hardcoding a constant return has no other caller in this crate that
-    /// would catch it (every existing test only compares `version_hash` against itself).
-    #[test]
-    fn stable_peer_ids_gate_gc_without_transport_endpoint_keys() {
-        use crate::PeerId;
-
-        let a = PeerId::from_bytes([0x41; 32]);
-        let b = PeerId::from_bytes([0x42; 32]);
-        let members = HashSet::from([a, b]);
-        let key = 7_u32;
-        let mut acknowledgments = HashMap::new();
-        assert!(!all_members_acknowledged(
-            &members,
-            &acknowledgments,
-            &key,
-            42
-        ));
-
-        acknowledgments.insert(key, HashMap::from([(a, 42_u64)]));
-        assert!(!all_members_acknowledged(
-            &members,
-            &acknowledgments,
-            &key,
-            42
-        ));
-        acknowledgments.get_mut(&key).unwrap().insert(b, 41);
-        assert!(!all_members_acknowledged(
-            &members,
-            &acknowledgments,
-            &key,
-            42
-        ));
-        acknowledgments.get_mut(&key).unwrap().insert(b, 42);
-        assert!(all_members_acknowledged(
-            &members,
-            &acknowledgments,
-            &key,
-            42
-        ));
-        assert!(!all_members_acknowledged(
-            &members,
-            &acknowledgments,
-            &key,
-            43
-        ));
-
-        // Route updates must not alter the causal membership or ACK bookkeeping.
-        let mut routes = HashMap::from([(a, (3_u16, 2_u8))]);
-        routes.insert(a, (3, 7));
-        assert!(all_members_acknowledged(
-            &members,
-            &acknowledgments,
-            &key,
-            42
-        ));
-        assert_eq!(routes.len(), 1);
-        assert!(all_members_acknowledged::<u32, PeerId>(
-            &HashSet::new(),
-            &HashMap::new(),
-            &key,
-            42
-        ));
-    }
-
-    #[test]
-    fn version_hash_matches_the_digest_low_limb() {
-        assert_eq!(version_hash(&42u32), rsos::digest(&42u32).0[0]);
-    }
-
-    #[test]
-    fn version_hash_differs_for_different_values() {
-        assert_ne!(version_hash(&1u32), version_hash(&2u32));
-    }
-}
+mod tests;

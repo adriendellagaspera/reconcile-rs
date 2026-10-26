@@ -96,3 +96,5 @@ mod reserved_wire_tags;
 mod socket_buffers;
 mod tombstone_ack_bounds;
 mod tombstone_ack_resend_counting;
+
+mod mutation_atomicity;

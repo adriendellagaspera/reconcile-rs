@@ -95,11 +95,13 @@ to reinitialize incompatible history intentionally.
   can mutate authoritative values or provide an ACK. Duplicate, stale or
   unknown-signer datagrams must not allocate fragments, advance HLC state, or
   reopen the signer's replay history on route change.
-- Tombstone GC is **not** automatic in the signed actor: operators must enforce
-  their deletion-retention period and invoke `collect_if_stable` only after
-  all authoritative peers have acknowledged exactly the current version.
-  A disconnected authority remains a GC blocker until it rejoins or is
-  explicitly decommissioned.
+- Physical tombstone GC is disabled in both runtimes; `collect_if_stable` returns
+  `false`. Receipt completion and elapsed retention do not authorize collection.
+  Tombstones and ACK metadata have no collection bound until stale-history
+  admission is fenced. This prevents further collection; it cannot reconstruct
+  deletions already collected by older processes. Do not reintroduce rolled-back
+  sources; bootstrap from trusted state with the required history.
+  See [the operational contract](SECURITY.md).
 - The new signed actor is an intentionally bounded **baseline**, not a
   drop-in high-throughput successor to RSOS/RBSR. Each `reconcile` call
   currently sends at most one dated entry per confirmed peer, with

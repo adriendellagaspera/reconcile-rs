@@ -1,6 +1,6 @@
 # Architecture
 
-The runtime is an embedded, **fully replicated** LWW map: each authoritative node holds all entries, serves local reads, propagates writes and repairs divergence through range-based anti-entropy. Deletions remain tombstones until causal stability permits GC. `ReadReplicaMap` is a non-authoritative sink, never a source or causal-stability member.
+The runtime is an embedded, **fully replicated** LWW map: each authoritative node holds all entries, serves local reads, propagates writes and repairs divergence through range-based anti-entropy. Deletions remain tombstones: physical collection is disabled until obsolete-history admission is fenced. Receipt ACKs alone do not authorize it. `ReadReplicaMap` is a non-authoritative sink, never a source or causal-stability member.
 
 ## 2. Boundaries
 
@@ -36,7 +36,7 @@ Persistent tree nodes share unchanged structure via `Arc`; `ReplicatedMap` and `
 
 `Persistence::load/save` exchanges a complete `PersistedState` with generic backends. `FileSnapshot` may instead store incremental generations without changing that port's semantics.
 
-- Each durable generation is a consistent cut of entries, membership, tombstone acknowledgements and physical GC deletions. Physical deletion differs from writing a tombstone.
+- Durable mutations acquire generation -> write lock -> secondary indexes. Full fallback capture pins the dated root and causal metadata under that boundary, then clones payloads and performs I/O outside it. Retrying a frozen generation never retires newer open writes.
 - Each mutation belongs to one generation. Freezing generation `g` isolates it from later writes in `g + 1`; success/failure of `g` cannot retire later writes. Frozen work remains retryable after failure, with at most one generation frozen for publication. Pending mutations in an open generation coalesce.
 - `FileSnapshot` uses an immutable base, zero or more ordered immutable deltas, and an atomic authoritative manifest naming the complete contiguous committed chain. Unreferenced segments are ignored.
 - Base, delta and manifest formats are versioned and integrity-checked. Recovery validates the manifest, referenced base and every named delta in generation order. Missing, corrupt, duplicated or out-of-order committed segments fail with `InvalidData`; recovery must not silently drop generations or initialize empty state.
@@ -58,6 +58,6 @@ A frame contains a complete logical message, fragment, or capability-gated selec
 - Same-key conflicts use deterministic total `Timestamp` order.
 - Range equality checks both aggregate cardinality and fingerprint.
 - Reconciliation policies are local, not wire-negotiated; non-progressing splits fall back to enumeration.
-- Only acknowledged tombstones across **all configured authoritative signers**, including disconnected members, may be physically collected in signed mode; an explicit coordinated decommission is the only way to remove an absent GC blocker. Signed read-only peers are never causal members.
+- Receipt ACKs track **all configured authoritative signers**, including disconnected members. Physical tombstone collection is disabled in both runtimes: neither a receipt quorum, elapsed retention, decommission nor a checkpoint excludes rollback or first delivery of stale application data. Tombstone/ACK memory therefore has no collection bound. Signed readers never count as authorities.
 - The signed actor currently runs bounded record-by-record round-robin anti-entropy; the legacy runtime retains its RSOS/RBSR range reconciliation. Deployment-level throughput and reconciliation cadence must not be assumed equivalent.
 - Authentication precedes deserialization and protocol handling; wire versions are strictly incompatible.
