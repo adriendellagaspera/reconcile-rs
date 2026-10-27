@@ -138,8 +138,9 @@ pub trait Persistence<K, V, P = IpAddr>: Send + Sync + 'static {
     /// # Call context
     /// Called synchronously and inline — never via `spawn_blocking`. The default generation hook
     /// delegates here with the complete state, so existing backends keep their historical
-    /// `O(state size)` behavior unchanged. `state` is one coherent durable generation; a write
-    /// published after that generation was frozen remains pending for the next save.
+    /// `O(state size)` behavior unchanged. `state` is one coherent cut. The runtime retires only
+    /// its frozen journal generation: newer writes remain pending, even if a later full fallback
+    /// cut already includes them. Payload cloning and I/O do not hold the mutation boundary.
     fn save(&self, state: &PersistedState<K, V, P>) -> io::Result<()>;
 
     /// Try to durably commit a coherent generation from its coalesced delta without requiring a

@@ -38,7 +38,7 @@ async fn tombstone_not_stable_until_all_members_ack() {
     ));
     let version = version_hash(&tombstone);
 
-    // No member known yet: nothing could resurrect the value, so GC is allowed.
+    // The empty receipt quorum is complete; this does not authorize physical collection.
     assert!(eng.is_tombstone_stable(&key, version));
 
     // Two members known, neither has acknowledged: not stable.

@@ -130,7 +130,7 @@ rand = "0.8.5"
 rbsr = "=0.2.3"
 rsos = "=0.5.3"
 serde = { version = "1.0.192", features = ["derive"] }
-tokio = { version = "1.33.0", features = ["net", "time", "rt", "macros", "sync"] }
+tokio = { version = "1.53.3", features = ["net", "time", "rt", "macros", "sync"] }
 tokio-util = { version = "0.7", default-features = false }
 tracing = "0.1.40"
 
@@ -144,5 +144,5 @@ metrics-util = { version = "0.19", default-features = false, features = ["debugg
 rand = "0.8.5"
 socket2 = "0.5"
 tempfile = "3"
-tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread", "io-util"] }
+tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "io-util"] }
 tracing-subscriber = "0.3.17"

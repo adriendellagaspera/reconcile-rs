@@ -41,10 +41,10 @@ fn exposed_record_counts_and_exact_ack_matrix_track_real_causal_state() {
         Some(&exact)
     );
     assert!(store.is_tombstone_stable(&1));
-    assert!(store.collect_if_stable(&1));
-    assert_eq!(store.len(), 1);
+    assert!(!store.collect_if_stable(&1));
+    assert_eq!(store.len(), 2);
     assert!(!store.is_empty());
-    assert!(store.tombstone_ack_snapshot().is_empty());
+    assert_eq!(store.acknowledged_version(&1, peer), Some(exact));
 }
 
 #[test]

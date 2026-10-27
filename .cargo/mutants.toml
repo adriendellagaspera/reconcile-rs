@@ -11,6 +11,13 @@ exclude_globs = ["benches/**", "examples/**"]
 # Test-only seams, unavailable feature branches, equivalent mutants, and mutants that cannot
 # terminate or be hit deterministically.
 exclude_re = [
+    # These three replacements are exactly equivalent while the history gate is closed.
+    # check-gc-fence.sh requires that closed gate and these precise exclusions together;
+    # opening collection requires removing/replacing this policy, never a silent skip.
+    "replicated_map/write\\.rs:.*replace ReplicatedMap.*clear_expired_tombstones with \\(\\)",
+    "signed_replica/causal\\.rs:.*replace SignedReplica.*collect_if_stable -> bool with false",
+    "replica/gc\\.rs:.*replace Replica.*gc_collect -> Option.* with None",
+
     "testing::",
     "impl Mac for HmacSha256Mac",
     "read_replica_map/membership\\.rs:71:53: replace < with <=",

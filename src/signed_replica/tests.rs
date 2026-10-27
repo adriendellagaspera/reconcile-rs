@@ -105,12 +105,12 @@ fn two_signed_authorities_converge_and_ack_the_exact_tombstone() {
     assert!(b.is_tombstone(&7));
     assert!(a.is_tombstone_stable(&7));
     assert!(a.acknowledged_version(&7, b_id).is_some());
-    assert!(a.collect_if_stable(&7));
-    assert!(!a.is_tombstone(&7));
+    assert!(!a.collect_if_stable(&7));
+    assert!(a.is_tombstone(&7));
 }
 
 #[test]
-fn disconnected_third_authority_blocks_gc_until_explicit_decommission() {
+fn decommission_releases_receipt_obligations_but_does_not_prove_safe_collection() {
     let a_id = signer(21).peer_id();
     let b_id = signer(22).peer_id();
     let c_id = signer(23).peer_id();
@@ -126,7 +126,7 @@ fn disconnected_third_authority_blocks_gc_until_explicit_decommission() {
     assert!(a.decommission(c_id));
     assert_eq!(a.members(), HashSet::from([b_id]));
     assert!(a.is_tombstone_stable(&42));
-    assert!(a.collect_if_stable(&42));
+    assert!(!a.collect_if_stable(&42));
 }
 
 #[test]
@@ -367,7 +367,7 @@ fn version_exact_ack_bookkeeping_survives_v2_incremental_snapshot_and_reboot() {
     assert_eq!(reloaded.acknowledged_version(&123, b_id), Some(exact));
     assert_eq!(reloaded.members(), HashSet::from([b_id]));
     assert!(reloaded.is_tombstone_stable(&123));
-    assert!(reloaded.collect_if_stable(&123));
+    assert!(!reloaded.collect_if_stable(&123));
     reloaded.snapshot_now().unwrap();
 }
 
@@ -420,3 +420,5 @@ mod advanced;
 mod mutation_boundaries;
 
 mod transport;
+
+mod deletion_safety;

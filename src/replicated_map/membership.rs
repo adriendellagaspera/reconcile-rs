@@ -43,8 +43,8 @@ pub struct SyncState {
 
 /// How [`ReplicatedMap::run`] ended.
 ///
-/// Always cancellation today — the four background loops [`run`](ReplicatedMap::run) joins never
-/// return on their own — but `#[non_exhaustive]` so a future variant (e.g. a fatal I/O error)
+/// Always cancellation today — the gossip engine [`run`](ReplicatedMap::run) joins does not
+/// return on its own — but `#[non_exhaustive]` so a future variant (e.g. a fatal I/O error)
 /// does not break a caller matching on this today.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -63,10 +63,10 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.engine.start_reconciliation(&mut buf).await;
     }
 
-    /// Permanently forget a peer, so tombstones stop waiting for its acknowledgment.
+    /// Explicitly retire a peer's receipt obligations.
     ///
-    /// The escape hatch from the causal-stability gate: a replica that is never coming back must
-    /// be decommissioned, or its tombstones are retained forever.
+    /// This does not prove obsolete history is fenced and does not enable physical collection.
+    /// The operator must prevent a retired authority from returning with stale state.
     pub fn forget_peer(&self, peer: IpAddr) {
         self.engine.decommission_peer(peer);
     }

@@ -178,6 +178,11 @@ async fn failed_generation_retries_without_retiring_newer_writes() {
         "successful retry retired a write from the newer open generation"
     );
 
+    let restarted = virtual_map::<u32, u32>(virtual_config())
+        .with_persistence(backend.clone())
+        .unwrap();
+    assert_eq!(restarted.get_cloned(&1), Some(10));
+    assert_eq!(restarted.get_cloned(&2), Some(20));
     store.snapshot_now().unwrap();
     assert_eq!(store.engine.change_count(), 0);
     let last = backend.saved.lock().unwrap().last().unwrap().clone();

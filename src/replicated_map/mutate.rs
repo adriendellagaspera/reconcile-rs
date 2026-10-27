@@ -33,6 +33,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         // (clock, then map → projection).
         let now = self.engine.clock_now();
         let mut updated: Option<Entry<Timestamp, V>> = None;
+        let mut generation = self.engine.snapshot_generations.mutation();
         let _guard = self.engine.write_lock.lock();
         let mut map = (*self.engine.map.load_full()).clone();
         map.with_mut(k, |maybe_entry| {
@@ -51,16 +52,13 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             projection.insert(k.clone(), projected);
             self.engine.projection.store(Arc::new(projection));
         }
-        let mut generation = updated
-            .as_ref()
-            .map(|_| self.engine.snapshot_generations.mutation());
-        if let (Some(value), Some(generation)) = (&updated, generation.as_mut()) {
+        if let Some(value) = &updated {
             generation.record_entry(k.clone(), value.clone());
             self.engine.record_changes(1);
         }
         self.engine.map.store(Arc::new(map));
-        drop(generation);
         drop(_guard);
+        drop(generation);
         if let Some(value) = updated {
             self.engine.broadcast_update(k.clone(), value);
         }
@@ -84,6 +82,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         // Mint the timestamp before taking the write lock, matching the lock order of `insert`.
         let now = self.engine.clock_now();
         let mut updated: Option<Entry<Timestamp, V>> = None;
+        let mut generation = self.engine.snapshot_generations.mutation();
         let _guard = self.engine.write_lock.lock();
         let mut map = (*self.engine.map.load_full()).clone();
         map.with_mut(k, |maybe_entry| {
@@ -100,10 +99,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             // above, which only runs for a live entry.
             validate(entry.value().expect("just-mutated live entry has a value"))?;
         }
-        let mut generation = updated
-            .as_ref()
-            .map(|_| self.engine.snapshot_generations.mutation());
-        if let (Some(entry), Some(generation)) = (&updated, generation.as_mut()) {
+        if let Some(entry) = &updated {
             generation.record_entry(k.clone(), entry.clone());
             self.engine.record_changes(1);
             if let Some(entry) = map.get(k) {
@@ -114,6 +110,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             }
         }
         self.engine.map.store(Arc::new(map));
+        drop(_guard);
         drop(generation);
         Ok(updated)
     }

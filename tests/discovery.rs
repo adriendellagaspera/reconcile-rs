@@ -7,8 +7,8 @@
 // except according to those terms.
 
 //! End-to-end test of dynamic discovery through the public `run()` path: a peer that disappears
-//! from the discovery source is decommissioned after the grace period, releasing the causal
-//! stability gate that was holding back a tombstone's garbage collection.
+//! from an authoritative discovery source is decommissioned after its grace period. This
+//! retires receipt obligations without authorizing physical deletion of retained history.
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -63,10 +63,9 @@ impl Discovery for ScriptedDiscovery {
     }
 }
 
-/// A peer that vanishes from discovery is decommissioned after the grace period, which lets a
-/// tombstone it had not acknowledged finally be garbage-collected.
+/// A peer that vanishes from discovery can be decommissioned without erasing the tombstone.
 #[tokio::test(flavor = "multi_thread")]
-async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
+async fn vanished_peer_is_decommissioned_without_erasing_deletion_history() {
     let port = 5000u16;
     let network = InMemoryNetwork::new();
     let net = "127.0.0.1/8".parse().unwrap();
@@ -132,11 +131,11 @@ async fn vanished_peer_is_decommissioned_and_tombstone_collected() {
         "tombstone collected while the peer was still reported present (resurrection hazard)"
     );
 
-    // The peer now disappears from discovery: after clearing both the miss threshold and the
-    // wall-time floor (since its tombstone ack is pending) it is decommissioned, and the tombstone
-    // becomes causally stable, so GC proceeds.
     discovery.set(vec![]);
-    assert_until!(store1.fingerprint(..) != fingerprint_with_tombstone);
+    assert_until!(!store1.members().contains(&addr2));
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(store1.fingerprint(..), fingerprint_with_tombstone);
+    assert!(store1.snapshot().get(&1).unwrap().is_tombstone());
 
     task1.abort();
 }
