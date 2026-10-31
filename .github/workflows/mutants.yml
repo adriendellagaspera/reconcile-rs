@@ -4,7 +4,8 @@ on:
   pull_request:
   merge_group:
   schedule:
-    - cron: "0 3 * * *"
+    # A full mutation trend is expensive; PR diffs continue to be checked on every change.
+    - cron: "0 3 * * 0"
   workflow_dispatch:
 
 concurrency:
@@ -112,29 +113,31 @@ jobs:
         echo "::error::one or more mutation-gate jobs failed or were cancelled"
         exit 1
 
-  nightly:
+  full-sweep:
     if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 80
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-mutants@27.1.0
-      - env:
+      # Stop before the job is cancelled so the partial outcome can be uploaded.
+      - name: Run bounded full mutation shard
+        env:
           RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-        run: >
-          cargo mutants --workspace
-          --shard ${{ matrix.shard }}/8 --sharding round-robin
-          --baseline=skip --timeout 300
+        run: |
+          timeout --signal=TERM --kill-after=20s 70m cargo mutants --workspace \
+            --shard ${{ matrix.shard }}/16 --sharding round-robin \
+            --baseline=skip --timeout 300
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mutants-nightly-${{ matrix.shard }}
+          name: mutants-full-sweep-${{ matrix.shard }}
           path: mutants.out
