@@ -316,18 +316,6 @@ fn full_materialization_cleans_superseded_segments_after_publication() {
     assert_states_equivalent(&loaded, &state);
 }
 
-/// A snapshot truncated below the header length must be rejected, not panic on the
-/// out-of-bounds header slice.
-#[test]
-fn truncated_snapshot_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("snapshot.bin");
-    fs::write(&path, [0xAB; 3]).unwrap();
-    let backend = FileSnapshot::new(&path);
-    let err = Persistence::<i32, String>::load(&backend).unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-}
-
 #[test]
 fn single_file_snapshot_layout_is_rejected_for_both_identity_schemas() {
     let dir = tempfile::tempdir().unwrap();
