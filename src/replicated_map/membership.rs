@@ -242,7 +242,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.engine.peers_vec()
     }
 
-    /// The current causal-stability membership set — see `members_snapshot` (gated behind
+    /// The current authoritative membership set with tombstone receipt obligations — see `members_snapshot` (gated behind
     /// `cfg(reconcile_internal_testing)`) for the `HashSet` form test assertions use.
     pub fn members(&self) -> Vec<IpAddr> {
         self.engine.members_vec()
