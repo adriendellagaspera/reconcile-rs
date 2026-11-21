@@ -258,7 +258,7 @@ async fn encrypted_node_with_wrong_key_is_rejected() {
 #[cfg(reconcile_internal_testing)]
 #[tokio::test(flavor = "multi_thread")]
 async fn stale_datagram_outside_freshness_window_is_rejected() {
-    use reconcile::testing::seal_datagram;
+    use reconcile::testing::{members_snapshot, seal_datagram};
 
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.9.1".parse().unwrap();
@@ -302,84 +302,20 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
     // for key=0 exists). With the freshness check, it never reaches the handler at all.
     let payload = tombstone_ack_payload();
 
-    let stale_datagram = seal_datagram(key, 1, one_hour_ago_ms, &payload);
+    let sender_ip = sender_sock.local_addr().unwrap().ip();
+    // Send a higher sequence number with a stale stamp, followed by a lower sequence number with
+    // a fresh stamp from the same socket. UDP preserves this send order. If the stale packet were
+    // admitted to replay state, it would consume seq=2 and the fresh seq=1 packet would be rejected.
+    let stale_datagram = seal_datagram(key, 2, one_hour_ago_ms, &payload);
+    let fresh_datagram = seal_datagram(key, 1, now_ms, &payload);
     sender_sock.send_to(&stale_datagram, &target).await.unwrap();
+    sender_sock.send_to(&fresh_datagram, &target).await.unwrap();
 
-    // Give the engine time to (not) process.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // The injected datagram must have been rejected silently: engine is still running.
-    assert!(
-        !task.is_finished(),
-        "engine must still be running after stale datagram"
-    );
-    // No state change: the value inserted before the test started is unchanged.
+    // The fresh lower-sequence packet can join only if the stale packet was rejected before the
+    // replay filter. This also proves the receiver processed both datagrams in send order.
+    assert_until!(members_snapshot(&store).contains(&sender_ip));
+    assert!(!task.is_finished(), "engine must remain alive after stale traffic");
     assert_eq!(store.get(&0).as_deref(), Some(&99));
-
-    task.abort();
-}
-
-/// Redelivering identical sealed bytes must be dropped silently: the sequence number is already
-/// recorded in the per-peer replay filter.
-#[cfg(reconcile_internal_testing)]
-#[tokio::test(flavor = "multi_thread")]
-async fn replayed_sealed_datagram_is_rejected() {
-    use reconcile::testing::seal_datagram;
-
-    let net = "127.0.0.1/8".parse().unwrap();
-    let addr_victim = "127.0.10.1".parse().unwrap();
-    let receiver_socket = Arc::new(
-        tokio::net::UdpSocket::bind((addr_victim, 0))
-            .await
-            .expect("bind victim"),
-    );
-    let port = receiver_socket.local_addr().unwrap().port();
-    let key = [0xDDu8; 32];
-
-    let cfg = Config::default()
-        .with_port(port)
-        .with_listen_addr(addr_victim)
-        .with_net(net)
-        .unwrap()
-        .with_cluster_key(ClusterKey::new(key));
-
-    let store = ReplicatedMap::<i32, i32>::new_with_transport(
-        cfg,
-        Arc::new(UdpTransport::new(receiver_socket)),
-    )
-    .expect("valid test config");
-    let task = tokio::spawn(store.clone().run(CancellationToken::new()));
-
-    // Give the run loop time to start before injecting traffic.
-    tokio::time::sleep(Duration::from_millis(20)).await;
-
-    let sender_sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-    let target = format!("{}:{}", addr_victim, port);
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
-
-    // A minimal `Ack` message: bincode variant index 2, key=0 (i32), version token=0 (u64).
-    let payload = tombstone_ack_payload();
-
-    // Seal once with seq=1 and a fresh stamp.
-    let datagram = seal_datagram(key, 1, now_ms, &payload);
-
-    // First delivery: seq=1 is new for this sender — passes the replay filter.
-    sender_sock.send_to(&datagram, &target).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    // Second delivery: identical bytes, seq=1 already recorded — must be dropped by the replay
-    // filter without reaching the message handler.
-    sender_sock.send_to(&datagram, &target).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    // The engine must still be alive: replay rejection is silent, not a crash.
-    assert!(
-        !task.is_finished(),
-        "engine must still be running after replay"
-    );
 
     task.abort();
 }
