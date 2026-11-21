@@ -71,8 +71,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.engine.decommission_peer(peer);
     }
 
-    /// The current membership set: peers that have sent a dated, authenticated datagram, and that
-    /// gate tombstone GC.
+    /// The current authoritative membership set: peers that have sent a dated, authenticated
+    /// datagram and therefore have tombstone receipt obligations.
     #[cfg(any(test, reconcile_internal_testing))]
     pub fn members_snapshot(&self) -> std::collections::HashSet<std::net::IpAddr> {
         self.engine.members_snapshot()
