@@ -9,8 +9,6 @@ use std::hash::Hash;
 use std::ops::RangeBounds;
 use std::time::Duration;
 
-use tracing::warn;
-
 use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
 use crate::entry::Entry;
