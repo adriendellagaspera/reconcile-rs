@@ -74,17 +74,16 @@ pub fn decode_stream<T: DeserializeOwned>(
     bytes: &[u8],
     max_items: usize,
 ) -> Result<Vec<T>, DecodeError> {
-    use ::bincode::{DefaultOptions, Deserializer};
-    let mut deserializer =
-        Deserializer::with_reader(std::io::Cursor::new(bytes), DefaultOptions::new());
+    use ::bincode::{DefaultOptions, Options};
+    let mut cursor = std::io::Cursor::new(bytes);
     let mut out = Vec::new();
     while out.len() < max_items {
         // End only when no bytes remain before starting another value. UnexpectedEof after
         // consuming any part of a value is a truncated datagram, not a clean stream boundary.
-        if deserializer.bytes_read() == bytes.len() as u64 {
+        if cursor.position() == bytes.len() as u64 {
             break;
         }
-        match T::deserialize(&mut deserializer) {
+        match DefaultOptions::new().deserialize_from(&mut cursor) {
             Ok(value) => out.push(value),
             Err(err) => return Err(DecodeError(err)),
         }
