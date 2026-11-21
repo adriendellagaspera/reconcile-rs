@@ -169,8 +169,7 @@ fn observe_trusted_bypasses_far_future_clamp() {
     let after_trusted = trusted_clock.now();
     assert!(
         after_trusted > far_future,
-        "observe_trusted did not advance the clock past the far-future stamp: \
-         next now() {after_trusted:?} is not > {far_future:?}"
+        "observe_trusted did not advance the clock past the observed stamp"
     );
 
     // Clamped path: it must not.
