@@ -173,6 +173,21 @@ fn warn_on_ignored_config_fields(config: &Config) {
     if config.max_value_size != default.max_value_size {
         ignored.push("max_value_size");
     }
+    if config.repair_interval != default.repair_interval {
+        ignored.push("repair_interval");
+    }
+    if config.snapshot_interval != default.snapshot_interval {
+        ignored.push("snapshot_interval");
+    }
+    if config.snapshot_change_threshold != default.snapshot_change_threshold {
+        ignored.push("snapshot_change_threshold");
+    }
+    if config.max_clock_drift != default.max_clock_drift {
+        ignored.push("max_clock_drift");
+    }
+    if config.coalesce_window != default.coalesce_window {
+        ignored.push("coalesce_window");
+    }
     if config.max_concurrent_broadcasts != default.max_concurrent_broadcasts {
         ignored.push("max_concurrent_broadcasts");
     }
@@ -190,9 +205,9 @@ fn warn_on_ignored_config_fields(config: &Config) {
 impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// Create a read replica bound to the configured UDP socket.
     ///
-    /// Honours the same [`Config`] as a dated store — including
-    /// [`with_cluster_key`](Config::with_cluster_key), which an authenticated cluster requires.
-    /// `node_id` is ignored: a read replica mints no timestamps.
+    /// Shares the dated store's [`Config`] for transport, security and framing settings. Dated-only
+    /// fields are ignored and produce a warning when set to a non-default value.
+    /// [`with_cluster_key`](Config::with_cluster_key) is honoured and required by authenticated clusters.
     ///
     /// # Errors
     ///
