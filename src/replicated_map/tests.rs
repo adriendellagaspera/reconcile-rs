@@ -26,7 +26,6 @@ mod snapshot_cadence;
 mod snapshot_generation;
 mod value_ref;
 mod value_size;
-mod write;
 
 /// Complete loopback test config on a caller-selected nonzero protocol port.
 fn config_on_port(port: u16) -> Config {

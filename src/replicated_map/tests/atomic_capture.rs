@@ -16,7 +16,7 @@ use super::{virtual_config, virtual_map};
 fn full_capture_pins_one_root_and_its_membership_and_acknowledgments() {
     let store = virtual_map::<u32, u32>(virtual_config());
     let end = super::super::persistence::SNAPSHOT_CHUNK_SIZE as u32;
-    store.just_insert_bulk(&(0..=end).map(|key| (key, 0)).collect::<Vec<_>>());
+    store.load_bulk(&(0..=end).map(|key| (key, 0)).collect::<Vec<_>>());
     let peer = "127.0.0.9".parse().unwrap();
     store.engine.members.write().insert(peer);
     store
@@ -41,7 +41,7 @@ fn full_capture_pins_one_root_and_its_membership_and_acknowledgments() {
     entered_rx
         .recv_timeout(std::time::Duration::from_secs(10))
         .expect("worker did not reach the controlled boundary");
-    store.just_insert_bulk(&[(0, 1), (end, 1)]);
+    store.load_bulk(&[(0, 1), (end, 1)]);
     store.engine.decommission_peer(peer);
     release.wait();
     let saved = handle.join().unwrap();

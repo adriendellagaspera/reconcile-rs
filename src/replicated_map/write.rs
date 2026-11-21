@@ -59,14 +59,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         ret.and_then(|t| t.state.into())
     }
 
-    /// Bulk-insert with hooks — every hook outside any lock, then one write lock for all entries.
-    /// Local-only and off the published API; [`load_bulk`](Self::load_bulk) is the public
-    /// no-broadcast seeding path.
-    #[cfg(any(test, reconcile_internal_testing))]
-    pub fn just_insert_bulk(&self, key_values: &[(K, V)]) {
-        self.load_bulk(key_values);
-    }
-
     /// Bulk-insert + async broadcast.
     /// # Panics
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime.
@@ -120,18 +112,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             .engine
             .insert(key.clone(), Entry::tombstone(self.engine.clock_now()));
         ret.and_then(|t| t.state.into())
-    }
-
-    /// Local-only bulk removal; off the published API (test/`cfg(reconcile_internal_testing)` only). Use
-    /// [`remove_bulk`](Self::remove_bulk) for propagating deletions.
-    #[cfg(any(test, reconcile_internal_testing))]
-    pub fn just_remove_bulk(&self, keys: &[K]) {
-        self.engine.just_insert_bulk(
-            &keys
-                .iter()
-                .map(|k| (k.clone(), Entry::tombstone(self.engine.clock_now())))
-                .collect::<Vec<_>>(),
-        );
     }
 
     /// Bulk-remove: a fresh HLC stamp per key, broadcast as tombstones.
