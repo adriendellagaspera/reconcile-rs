@@ -27,25 +27,40 @@ use reconcile::{replicated_map::Config, transport::UdpTransport, ClusterKey, Rep
 use crate::support::wait_until;
 use crate::support::{assert_until, bind_udp_pair};
 
-/// Serialize the real wire shape for a dated tombstone receipt using the runtime's bincode options.
-/// The two preceding variants preserve the protocol's tag 2 for `TombstoneAck`.
-fn tombstone_ack_payload() -> Vec<u8> {
-    #[derive(Serialize)]
-    enum WireMessage {
-        EntryFingerprint(()),
-        EntryUpdate(()),
-        TombstoneAck((i32, u64)),
-    }
+#[derive(Serialize)]
+enum WireState {
+    Present(i32),
+}
 
-    let _ = (
-        WireMessage::EntryFingerprint(()),
-        WireMessage::EntryUpdate(()),
-    );
+#[derive(Serialize)]
+enum WireMessage {
+    EntryFingerprint(()),
+    EntryUpdate(()),
+    TombstoneAck((i32, u64)),
+    StateFingerprint(()),
+    StateUpdate((i32, WireState)),
+}
+
+fn encode_wire_message(message: WireMessage) -> Vec<u8> {
     let mut payload = Vec::new();
-    WireMessage::TombstoneAck((0, 0))
+    message
         .serialize(&mut Serializer::new(&mut payload, DefaultOptions::new()))
         .unwrap();
     payload
+}
+
+/// Minimal dated and value-only messages serialized with the runtime's exact bincode options.
+fn protocol_test_payloads() -> (Vec<u8>, Vec<u8>) {
+    // Construct the preceding variants so the test enum pins the same tags as the runtime.
+    let _ = (
+        WireMessage::EntryFingerprint(()),
+        WireMessage::EntryUpdate(()),
+        WireMessage::StateFingerprint(()),
+    );
+    (
+        encode_wire_message(WireMessage::TombstoneAck((0, 0))),
+        encode_wire_message(WireMessage::StateUpdate((0, WireState::Present(99)))),
+    )
 }
 
 /// Two nodes sharing the same cluster key must still converge, proving that authenticated
@@ -304,13 +319,14 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
     // A minimal `Ack` message: bincode variant index 2, key=0 (i32), version token=0 (u64).
     // If the freshness check were absent, this would reach the handler and do nothing (no tombstone
     // for key=0 exists). With the freshness check, it never reaches the handler at all.
-    let payload = tombstone_ack_payload();
+    let (payload, state_only_payload) = protocol_test_payloads();
 
     let sender_ip = sender_sock.local_addr().unwrap().ip();
-    // Send a higher sequence number with a stale stamp, followed by a lower sequence number with
-    // a fresh stamp from the same socket. UDP preserves this send order. If the stale packet were
-    // admitted to replay state, it would consume seq=2 and the fresh seq=1 packet would be rejected.
-    let stale_datagram = seal_datagram(key, 2, one_hour_ago_ms, &payload);
+    // Send a stale value-only message, then a fresh dated message with the same sequence number.
+    // UDP preserves this send order. If freshness were bypassed, the first message would consume
+    // seq=1 and the fresh dated message would be rejected as a replay. Because it is value-only,
+    // the stale message cannot itself add the sender to authoritative membership.
+    let stale_datagram = seal_datagram(key, 1, one_hour_ago_ms, &state_only_payload);
     let fresh_datagram = seal_datagram(key, 1, now_ms, &payload);
     sender_sock.send_to(&stale_datagram, &target).await.unwrap();
     sender_sock.send_to(&fresh_datagram, &target).await.unwrap();
@@ -370,7 +386,7 @@ async fn decommissioned_peer_replay_is_rejected() {
 
     // A minimal `Ack` message (variant 2): causes `spoke_dated = true` so the sender is
     // added to `members` on acceptance.
-    let payload = tombstone_ack_payload();
+    let (payload, _) = protocol_test_payloads();
 
     // Seal the datagram — this is the "captured" datagram the adversary holds.
     let captured = seal_datagram(key, 1, now_ms, &payload);
