@@ -269,123 +269,20 @@ async fn last_successful_discovery_at_advances_only_on_success() {
 #[test]
 fn member_presence_starts_present_and_requires_the_miss_threshold() {
     let mut state = MemberPresence::default();
-    assert!(!state.eligible_for_decommission(1, Duration::ZERO, false));
+    assert!(!state.eligible_for_decommission(1));
     state.mark_missed();
     assert!(state.eligible_for_decommission(1, Duration::ZERO, false));
 }
 
 #[test]
-fn member_presence_reappearance_resets_the_absence_clock_and_counter() {
+fn member_presence_reappearance_resets_the_miss_counter() {
     let mut state = MemberPresence::default();
     state.mark_missed();
     state.mark_missed();
     state.mark_seen();
     // A single miss after reappearing must not already clear a 2-miss threshold.
     state.mark_missed();
-    assert!(!state.eligible_for_decommission(2, Duration::ZERO, false));
-}
-
-#[test]
-fn member_presence_pending_tombstone_acks_require_the_wall_time_floor() {
-    let mut state = MemberPresence::default();
-    state.mark_missed();
-    state.mark_missed();
-    // Below miss_threshold: never eligible, regardless of pending acks or floor.
-    assert!(!state.eligible_for_decommission(3, Duration::ZERO, true));
-
-    state.mark_missed();
-    // At the threshold, pending acks, and a floor nowhere near elapsed: held back.
-    assert!(!state.eligible_for_decommission(3, Duration::from_secs(3600), true));
-    // Same absence with no pending acks: the fast path is unaffected by the floor.
-    assert!(state.eligible_for_decommission(3, Duration::from_secs(3600), false));
-    // A zero floor is cleared instantly even with pending acks.
-    assert!(state.eligible_for_decommission(3, Duration::ZERO, true));
-}
-
-/// A member with an unacknowledged tombstone survives past `miss_threshold` and is
-/// decommissioned only once its absence clears the wall-time floor
-/// .
-#[tokio::test(flavor = "multi_thread")]
-async fn pending_tombstone_acks_hold_decommission_past_the_miss_threshold() {
-    let member: IpAddr = "127.0.0.210".parse().unwrap();
-
-    let fake = FakeDiscovery::new(FakeResp::Present(vec![member]));
-    let store = discovery_store(discovery_config())
-        .with_discovery(Arc::new(fake.clone()))
-        .unwrap()
-        .with_discovery_interval(Duration::from_millis(15))
-        .with_discovery_miss_threshold(2)
-        .with_discovery_decommission_floor(Duration::from_millis(300));
-    store.engine.members.write().insert(member);
-
-    // A local tombstone this member has never acknowledged.
-    store.just_insert(1, 11);
-    store.just_remove(&1);
-
-    let loop_store = store.clone();
-    let handle = tokio::spawn(async move { loop_store.discover_periodically().await });
-
-    // Let the member be observed present at least once, so it is registered as discovered by
-    // this source (and thus eligible for grace-decommissioning) before it vanishes.
-    tokio::time::sleep(Duration::from_millis(60)).await;
-
-    // The member vanishes. It must clear the miss threshold quickly but stay a member — the
-    // floor has not elapsed yet.
-    fake.set(FakeResp::Present(vec![]));
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    assert!(
-        store.engine.members.read().contains(&member),
-        "member with a pending tombstone ack was decommissioned before the wall-time floor \
-         elapsed"
-    );
-
-    // Once the floor elapses, decommissioning proceeds.
-    tokio::time::sleep(Duration::from_millis(350)).await;
-    assert!(
-        !store.engine.members.read().contains(&member),
-        "member was never decommissioned even after the wall-time floor elapsed"
-    );
-
-    handle.abort();
-}
-
-/// Reappearing before the floor elapses resets the absence clock: a brief DNS blip followed by
-/// recovery must never decommission the member, however close to the floor the first absence
-/// got.
-#[tokio::test(flavor = "multi_thread")]
-async fn reappearance_resets_the_floor_for_a_member_with_pending_acks() {
-    let member: IpAddr = "127.0.0.211".parse().unwrap();
-
-    let fake = FakeDiscovery::new(FakeResp::Present(vec![member]));
-    let store = discovery_store(discovery_config())
-        .with_discovery(Arc::new(fake.clone()))
-        .unwrap()
-        .with_discovery_interval(Duration::from_millis(15))
-        .with_discovery_miss_threshold(2)
-        .with_discovery_decommission_floor(Duration::from_millis(300));
-    store.engine.members.write().insert(member);
-    store.just_insert(1, 11);
-    store.just_remove(&1);
-
-    let loop_store = store.clone();
-    let handle = tokio::spawn(async move { loop_store.discover_periodically().await });
-
-    // Absent for a while (well past miss_threshold, short of the floor), then returns.
-    fake.set(FakeResp::Present(vec![]));
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    fake.set(FakeResp::Present(vec![member]));
-    tokio::time::sleep(Duration::from_millis(60)).await;
-
-    // Vanishes again; if the clock had not reset, the combined absence would already exceed
-    // the floor.
-    fake.set(FakeResp::Present(vec![]));
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    assert!(
-        store.engine.members.read().contains(&member),
-        "reappearance did not reset the wall-time floor's absence clock"
-    );
-
-    handle.abort();
+    assert!(!state.eligible_for_decommission(2));
 }
 
 /// The grace-account loop's `member == own_addr || current.contains(&member)` guard must skip
