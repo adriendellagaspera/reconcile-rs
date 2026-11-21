@@ -108,4 +108,3 @@ async fn decommission_releases_a_silent_peer() {
     assert!(!key_acks.contains_key(&gone));
     assert_eq!(key_acks.get(&live), Some(&version));
 }
-
