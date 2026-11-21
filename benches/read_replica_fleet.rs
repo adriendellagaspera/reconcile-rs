@@ -18,7 +18,6 @@
 // Overrides:
 //   RECONCILE_READ_REPLICA_COUNTS=1,10,100,1000
 //   RECONCILE_READ_AUTHORITATIVE_PEERS=3
-//   RECONCILE_READ_MODEL_TARGET=100000
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{HashMap, HashSet};
@@ -410,36 +409,13 @@ fn ingress_point(runtime: &Runtime, replicas: usize) -> IngressPoint {
     }
 }
 
-fn extrapolate(points: &[(usize, f64)], target: usize) -> Option<(usize, usize, f64)> {
-    if points.len() < 2 {
-        return None;
-    }
-    let (n1, v1) = points[points.len() - 2];
-    let (n2, v2) = points[points.len() - 1];
-    if n2 <= n1 || target < n2 {
-        return None;
-    }
-    let slope = (v2 - v1) / (n2 - n1) as f64;
-    Some((n1, n2, v2 + slope * (target - n2) as f64))
-}
-
-fn report_model(label: &str, points: &[(usize, f64)], target: usize, unit: &str) {
-    if let Some((n1, n2, estimate)) = extrapolate(points, target) {
-        println!(
-            "[read-fleet-model] MODEL target={target},metric={label},estimate={estimate:.3} {unit},based_on={n1},{n2},method=linear-last-two"
-        );
-    }
-}
-
 fn main() {
     let counts = env_list("RECONCILE_READ_REPLICA_COUNTS", "1,10,100,1000");
     let authoritative_peers = env_usize("RECONCILE_READ_AUTHORITATIVE_PEERS", 3);
-    let model_target = env_usize("RECONCILE_READ_MODEL_TARGET", 100_000);
     assert!(authoritative_peers > 0);
 
     let runtime = Runtime::new().expect("Tokio runtime");
 
-    let mut fleet_points = Vec::new();
     for &replicas in &counts {
         let point = fleet_point(&runtime, replicas, authoritative_peers);
         println!(
@@ -451,7 +427,6 @@ fn main() {
             point.probe_tx_bytes,
             point.probe_tx_datagrams
         );
-        fleet_points.push(point);
     }
 
     let mut ingress_points = Vec::new();
@@ -471,24 +446,6 @@ fn main() {
         ingress_points.push(point);
     }
 
-    report_model(
-        "read_replica_fleet_heap",
-        &fleet_points
-            .iter()
-            .map(|p| (p.replicas, p.heap_bytes as f64))
-            .collect::<Vec<_>>(),
-        model_target,
-        "bytes",
-    );
-    report_model(
-        "read_replica_known_round_egress",
-        &fleet_points
-            .iter()
-            .map(|p| (p.replicas, p.known_tx_bytes as f64))
-            .collect::<Vec<_>>(),
-        model_target,
-        "bytes",
-    );
     let max_auth_extra_heap = ingress_points
         .iter()
         .map(|p| {

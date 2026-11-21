@@ -93,8 +93,7 @@ async fn ack_for_live_key_does_not_grow_tombstone_acks() {
     );
 }
 
-/// An ack for a key that IS a local tombstone must be recorded normally; the
-/// decommission test verifies tombstone GC still completes.
+/// An ack for a local tombstone is recorded against its exact version.
 #[tokio::test]
 async fn ack_for_local_tombstone_is_recorded() {
     let eng = engine("127.0.0.97").await;
@@ -116,20 +115,6 @@ async fn ack_for_local_tombstone_is_recorded() {
         eng.tombstone_acks_len(),
         1,
         "ack for a local tombstone must be recorded in tombstone_acks"
-    );
-
-    // Causal-stability GC still completes: with one member who has acked and no
-    // other members, the tombstone is stable and bookkeeping is cleared on forget.
-    eng.members.write().insert(peer.ip());
-    assert!(
-        eng.is_tombstone_stable(&key, version),
-        "tombstone should be stable after the only member has acked"
-    );
-    eng.forget_tombstone(&key);
-    assert_eq!(
-        eng.tombstone_acks_len(),
-        0,
-        "forget_tombstone must clear tombstone_acks for the key"
     );
 }
 

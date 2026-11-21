@@ -100,8 +100,10 @@ impl<K, V, P> From<DatedEntries<K, V>> for PersistedState<K, V, P> {
     deserialize = "K: Deserialize<'de> + Eq + std::hash::Hash, V: Deserialize<'de>, P: Deserialize<'de> + Eq + std::hash::Hash"
 ))]
 pub struct PersistenceDelta<K, V, P = IpAddr> {
+    /// Serialized as optional entries for the legacy delta layout; current writers never emit `None`.
     pub(crate) entries: HashMap<K, Option<Entry<Timestamp, V>>>,
     pub(crate) members: HashMap<P, bool>,
+    /// A signed-runtime write replacing a tombstone clears that key's prior receipt history.
     pub(crate) ack_key_clears: HashSet<K>,
     pub(crate) ack_peers: HashMap<K, HashMap<P, Option<u64>>>,
 }

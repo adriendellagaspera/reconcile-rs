@@ -43,7 +43,8 @@ pub use lww_register::entry;
 
 // Re-exported so no public signature that names one of these types — `Config::nets`'
 // `ipnet::IpNet`, `UdpTransport::new`/`socket`'s `tokio::net::UdpSocket`, `RandomProbe::new`'s
-// `parking_lot`/`rand` parameters, `Transport`'s `#[async_trait]` — forces a dependent onto an
+// `parking_lot`/`rand` parameters, `Transport`'s `#[async_trait]`, and `ReplicatedMap::run`'s
+// `tokio_util::sync::CancellationToken` — forces a dependent onto an
 // independently-versioned copy of that crate. `bincode` and `metrics-exporter-prometheus` are
 // deliberately not re-exported this way: their errors are wrapped instead (`gossip::bincode`,
 // `prometheus.rs`) because they are an implementation choice, not part of the contract.
@@ -144,7 +145,7 @@ pub mod testing {
         pub enumerated_elements: usize,
     }
 
-    /// The current causal-stability membership set.
+    /// The current authoritative membership set.
     pub fn members_snapshot<K, V>(
         store: &crate::ReplicatedMap<K, V>,
     ) -> std::collections::HashSet<std::net::IpAddr>

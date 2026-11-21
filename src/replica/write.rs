@@ -61,7 +61,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         // Keep the live-tombstone index in step with the map at its single mutation sink: a
         // tombstone value adds the key; any live value (a fresh insert, or an LWW overwrite that
         // resurrects a previously-deleted key) removes it. This index drives the per-round
-        // causal-stability ack resend in `start_reconciliation`.
+        // tombstone receipt-ack resend in `start_reconciliation`.
         {
             let mut live_tombstones = self.live_tombstones.write();
             if value.is_tombstone() {

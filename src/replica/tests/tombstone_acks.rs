@@ -26,53 +26,8 @@ async fn engine(addr: &str) -> Replica<i32, i32> {
     super::in_memory_test_replica(config)
 }
 
-#[tokio::test]
-async fn tombstone_not_stable_until_all_members_ack() {
-    let eng = engine("127.0.0.60").await;
-    let peer_a: IpAddr = "127.0.0.61".parse().unwrap();
-    let peer_b: IpAddr = "127.0.0.62".parse().unwrap();
-    let key = 7;
-    let tombstone: Tombstoned = Entry::tombstone(Timestamp::new(
-        Hlc::new(PhysicalTime::from_millis(1), LogicalCounter::new(0)),
-        NodeId::new(0),
-    ));
-    let version = version_hash(&tombstone);
-
-    // The empty receipt quorum is complete; this does not authorize physical collection.
-    assert!(eng.is_tombstone_stable(&key, version));
-
-    // Two members known, neither has acknowledged: not stable.
-    eng.members.write().insert(peer_a);
-    eng.members.write().insert(peer_b);
-    assert!(!eng.is_tombstone_stable(&key, version));
-
-    // Only one member acknowledges: still not stable.
-    eng.tombstone_acks
-        .write()
-        .entry(key)
-        .or_default()
-        .insert(peer_a, version);
-    assert!(!eng.is_tombstone_stable(&key, version));
-
-    // A stale acknowledgment (wrong version) from the other member does not count.
-    eng.tombstone_acks
-        .write()
-        .entry(key)
-        .or_default()
-        .insert(peer_b, version.wrapping_add(1));
-    assert!(!eng.is_tombstone_stable(&key, version));
-
-    // The correct acknowledgment from every member makes it stable.
-    eng.tombstone_acks
-        .write()
-        .entry(key)
-        .or_default()
-        .insert(peer_b, version);
-    assert!(eng.is_tombstone_stable(&key, version));
-}
-
 /// Every reconciliation round must resend an `Ack` for each tombstone the node currently
-/// holds, so the causal-stability ack matrix keeps converging at three or more nodes (where a
+/// holds, so the tombstone receipt-ack matrix keeps converging at three or more nodes (where a
 /// held tombstone is otherwise never re-advertised once two replicas agree on it).
 /// Deterministic, socket-free: insert a tombstone, run one round, and inspect the datagram.
 #[tokio::test]
@@ -133,23 +88,25 @@ async fn decommission_releases_a_silent_peer() {
     ));
     let version = version_hash(&tombstone);
 
-    eng.members.write().insert(live);
-    eng.members.write().insert(gone);
+    eng.members.write().extend([live, gone]);
     eng.tombstone_acks
         .write()
         .entry(key)
         .or_default()
         .insert(live, version);
-    // `gone` never acknowledges: not stable.
-    assert!(!eng.is_tombstone_stable(&key, version));
+    eng.tombstone_acks
+        .write()
+        .entry(key)
+        .or_default()
+        .insert(gone, version);
 
-    // Decommissioning the silent peer makes the tombstone stable.
     eng.decommission_peer(gone);
-    assert!(eng.is_tombstone_stable(&key, version));
 
-    // Forgetting the tombstone clears its bookkeeping.
-    eng.forget_tombstone(&key);
-    assert!(eng.tombstone_acks.read().get(&key).is_none());
+    assert!(!eng.members.read().contains(&gone));
+    let acks = eng.tombstone_acks.read();
+    let key_acks = acks.get(&key).unwrap();
+    assert!(!key_acks.contains_key(&gone));
+    assert_eq!(key_acks.get(&live), Some(&version));
 }
 
 /// A tombstone with zero acknowledgments — the state a deletion is in the instant it happens —

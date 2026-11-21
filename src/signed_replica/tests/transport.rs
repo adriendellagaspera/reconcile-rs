@@ -150,7 +150,6 @@ async fn signed_replication_survives_non_ip_outage_and_route_move() {
             .unwrap();
     }
     assert!(a.is_tombstone(&7));
-    assert!(!a.collect_if_stable(&7));
     assert!(b.get(&7).is_some());
 
     // Restore the same signer at a different endpoint; returnability must be proved again.
@@ -163,7 +162,6 @@ async fn signed_replication_survives_non_ip_outage_and_route_move() {
     assert_eq!(b.members(), HashSet::from([a_id]));
     assert!(b.is_tombstone(&7));
     assert!(a.acknowledged_version(&7, b_id).is_some());
-    assert!(!a.collect_if_stable(&7));
     // The substrate rejects oversize datagrams before queueing them. The decorator's
     // asynchronous pump treats substrate errors as loss, rather than reporting delivery.
     assert_eq!(

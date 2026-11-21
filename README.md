@@ -1,49 +1,23 @@
 # reconcile-rs
 
-[![Build](https://github.com/adriendellagaspera/reconcile-rs/actions/workflows/main.yml/badge.svg)](https://github.com/adriendellagaspera/reconcile-rs/actions/workflows/main.yml)
-[![Crates.io](https://img.shields.io/crates/v/reconcile.svg)](https://crates.io/crates/reconcile)
-[![Documentation](https://docs.rs/reconcile/badge.svg)](https://docs.rs/reconcile/latest/reconcile/)
+Frozen research reference for an experimental Rust implementation of fully replicated key-value storage.
 
-**Research prototype — no active development, roadmap, or production support.**
+The repository preserves two deliberately incompatible runtime designs:
 
-This repository records an exploration of fully replicated key-value storage in Rust. It investigates eventual convergence, last-write-wins conflict resolution, range-based anti-entropy, authenticated datagrams, peer membership, and snapshot persistence.
+- Legacy ReplicatedMap: IP-addressed UDP replication, LWW conflict resolution, and RSOS/RBSR range-based anti-entropy.
+- SignedReplica: caller-driven datagram actor, allowlisted Ed25519 identities, and a separate v2 persistence format.
 
-It is kept public as a technical reference. It is not a recommended database, replication framework, or production dependency. The published `0.6.0` crates are historical artifacts; do not assume future releases, compatibility guarantees, or security maintenance.
+The algorithmic RSOS/RBSR work is maintained separately in [set-reconciliation](https://github.com/adriendellagaspera/set-reconciliation). This repository records the system integration, transport, persistence, membership, security, and runtime experiments.
 
-## What is here
+## Important limits
 
-- `reconcile`: the replicated-map implementation, persistence, and replica lifecycle.
-- `reconcile-gossip`: datagram transport, framing, authentication, replay protection, and discovery. It is an implementation detail of `reconcile`.
-- `examples/`: a minimal local experiment.
-- `tests/`: behavioral and protocol tests.
-- `benches/`: runtime and transport experiments. Some targets are models, not measurements of real network transports.
+- Every authoritative replica stores the complete dataset. There is no sharding, consensus, transaction support, or linearizable write path.
+- Writes propagate asynchronously; same-key conflicts use last-write-wins ordering.
+- Physical tombstone collection is not implemented in either runtime path. Tombstones and causal acknowledgement metadata can grow without bound.
+- The two runtime paths have incompatible membership, wire, and persistence semantics. They cannot share a cluster or snapshots.
+- Snapshot persistence is not a transactional database or write-ahead log.
+- This is not a supported database or production dependency. There is no active development, security response commitment, or release roadmap.
 
-The algorithm-level RBSR and RSOS implementations are maintained separately in [set-reconciliation](https://github.com/adriendellagaspera/set-reconciliation).
-
-## Try the local demo
-
-With a Rust toolchain installed:
-
-```sh
-cargo run --release --example demo -- 8080 127.0.0.1 127.0.0.0/30 100
-```
-
-This starts a local UDP node, inserts sample key-value pairs, and reports its map fingerprint. The example disables cluster authentication and is only intended for local experimentation.
-
-## Important limitations
-
-- Every authoritative replica stores the full dataset; there is no sharding.
-- Writes are asynchronous and conflict resolution is last-write-wins. There are no transactions, consensus, or strongly consistent writes.
-- Eventual convergence depends on peers being able to communicate and continue anti-entropy.
-- The legacy `ReplicatedMap` and opt-in signed `SignedReplica` are separate, incompatible runtime paths. Their membership models and snapshot formats cannot be mixed.
-- Tombstone collection is disabled. Tombstones and associated causal metadata can grow without bound.
-- Persistence uses versioned snapshots; it is not a general-purpose transactional database or a write-ahead log.
-- Security depends on correct key provisioning, membership configuration, and network deployment. Read [SECURITY.md](SECURITY.md) before experimenting beyond localhost.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the implementation boundaries and known trade-offs, and [benches/README.md](benches/README.md) before interpreting benchmark results.
-
-## Status
-
-The project is intentionally frozen in practice. Issues and pull requests may not receive a response. Forks are welcome, but this repository does not promise to review contributions or publish further releases.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and invariants, [SIGNED-RUNTIME-v0.md](SIGNED-RUNTIME-v0.md) for the signed actor's distinct semantics, [SECURITY.md](SECURITY.md) for trust boundaries, and [benches/README.md](benches/README.md) for benchmark methodology.
 
 Licensed under either [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

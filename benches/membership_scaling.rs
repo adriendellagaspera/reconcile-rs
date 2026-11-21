@@ -5,19 +5,17 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Product/runtime scaling probe for ReplicatedMap membership and causal-stability metadata.
+// Product/runtime scaling probe for ReplicatedMap membership and tombstone-ACK metadata.
 //
 // This does not compare reconciliation algorithms. It measures shipped runtime bookkeeping:
 // peer-routing heap, real authoritative-member admission/background traffic, and durable
-// membership/tombstone-ack metadata. Live runs stop at the configured maximum (1,000 by default);
-// the 100k point is only a linear model from the two largest measured points and is labelled MODEL.
+// membership/tombstone-ack metadata. Every reported point is directly measured.
 //
 // Run:
 //   cargo bench --bench membership_scaling
 // Overrides:
 //   RECONCILE_MEMBERSHIP_COUNTS=2,10,100,1000
 //   RECONCILE_MEMBERSHIP_TOMBSTONES=0,10,100
-//   RECONCILE_MEMBERSHIP_MODEL_TARGET=100000
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{HashMap, HashSet};
@@ -180,13 +178,6 @@ fn env_list(name: &str, default: &str) -> Vec<usize> {
     values.dedup();
     assert!(!values.is_empty(), "{name} must contain at least one value");
     values
-}
-
-fn model_target() -> usize {
-    std::env::var("RECONCILE_MEMBERSHIP_MODEL_TARGET").map_or(100_000, |raw| {
-        raw.parse::<usize>()
-            .expect("RECONCILE_MEMBERSHIP_MODEL_TARGET must be an integer")
-    })
 }
 
 fn peer_ip(index: usize) -> IpAddr {
@@ -437,38 +428,15 @@ async fn live_point(members: usize) -> LivePoint {
     }
 }
 
-fn extrapolate(points: &[(usize, f64)], target: usize) -> Option<(usize, usize, f64)> {
-    if points.len() < 2 {
-        return None;
-    }
-    let (n1, v1) = points[points.len() - 2];
-    let (n2, v2) = points[points.len() - 1];
-    if n2 <= n1 || target < n2 {
-        return None;
-    }
-    let slope = (v2 - v1) / (n2 - n1) as f64;
-    Some((n1, n2, v2 + slope * (target - n2) as f64))
-}
-
-fn report_model(label: &str, points: &[(usize, f64)], target: usize, unit: &str) {
-    if let Some((n1, n2, estimate)) = extrapolate(points, target) {
-        println!(
-            "[membership-model] MODEL target={target},metric={label},estimate={estimate:.3} {unit},based_on={n1},{n2},method=linear-last-two"
-        );
-    }
-}
-
 fn main() {
     let counts = env_list("RECONCILE_MEMBERSHIP_COUNTS", "2,10,100,1000");
     let tombstones = env_list("RECONCILE_MEMBERSHIP_TOMBSTONES", "0,10,100");
-    let target = model_target();
     assert!(
         counts.iter().all(|&n| n > 0),
         "member counts must be positive"
     );
 
     println!("[membership-routing] members,authoritative_heap_bytes,read_replica_heap_bytes");
-    let mut routing = Vec::new();
     for &members in &counts {
         let point = RoutingPoint {
             members,
@@ -479,13 +447,11 @@ fn main() {
             "[membership-routing] {},{},{}",
             point.members, point.authoritative_heap, point.read_replica_heap
         );
-        routing.push(point);
     }
 
     println!(
         "[membership-durable] members,tombstones,full_ack_entries,heap_bytes,file_bytes,save_ms,load_ms"
     );
-    let mut durable = Vec::new();
     for &tombstone_count in &tombstones {
         for &members in &counts {
             let point = durable_point(members, tombstone_count);
@@ -499,7 +465,6 @@ fn main() {
                 point.save_ms,
                 point.load_ms,
             );
-            durable.push(point);
         }
     }
 
@@ -507,7 +472,6 @@ fn main() {
     println!(
         "[membership-live] members,admission_ms,admission_rx_bytes,admission_rx_dgrams,admission_tx_bytes,admission_tx_dgrams,round_ms,round_tx_bytes,round_tx_dgrams"
     );
-    let mut live = Vec::new();
     for &members in &counts {
         let point = runtime.block_on(live_point(members));
         println!(
@@ -521,59 +485,6 @@ fn main() {
             point.round_ms,
             point.round.tx_bytes,
             point.round.tx_datagrams,
-        );
-        live.push(point);
-    }
-
-    report_model(
-        "authoritative_routing_heap",
-        &routing
-            .iter()
-            .map(|p| (p.members, p.authoritative_heap as f64))
-            .collect::<Vec<_>>(),
-        target,
-        "bytes",
-    );
-    report_model(
-        "read_replica_routing_heap",
-        &routing
-            .iter()
-            .map(|p| (p.members, p.read_replica_heap as f64))
-            .collect::<Vec<_>>(),
-        target,
-        "bytes",
-    );
-    report_model(
-        "full_round_tx_wire",
-        &live
-            .iter()
-            .map(|p| (p.members, p.round.tx_bytes as f64))
-            .collect::<Vec<_>>(),
-        target,
-        "bytes",
-    );
-    for &tombstone_count in &tombstones {
-        let subset: Vec<_> = durable
-            .iter()
-            .filter(|p| p.tombstones == tombstone_count)
-            .map(|p| (p.members, p.file_bytes as f64))
-            .collect();
-        report_model(
-            &format!("snapshot_file_tombstones_{tombstone_count}"),
-            &subset,
-            target,
-            "bytes",
-        );
-        let heap_subset: Vec<_> = durable
-            .iter()
-            .filter(|p| p.tombstones == tombstone_count)
-            .map(|p| (p.members, p.heap_bytes as f64))
-            .collect();
-        report_model(
-            &format!("causal_state_heap_tombstones_{tombstone_count}"),
-            &heap_subset,
-            target,
-            "bytes",
         );
     }
 }

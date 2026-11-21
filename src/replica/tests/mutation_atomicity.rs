@@ -41,34 +41,3 @@ fn a_writer_waiting_for_the_generation_boundary_does_not_hold_the_write_lock() {
         "generation boundary must precede the map write lock"
     );
 }
-
-#[test]
-fn a_reinserted_value_survives_collection_of_an_earlier_tombstone_candidate() {
-    let replica = in_memory_test_replica::<u32, u32>(Config::default().with_insecure_no_key());
-    replica.just_insert(7, Entry::tombstone(replica.clock_now()));
-    let candidate = Arc::new(Barrier::new(2));
-    let release = Arc::new(Barrier::new(2));
-    let collector = replica.clone();
-    let (worker_candidate, worker_release) = (candidate.clone(), release.clone());
-    let handle = std::thread::spawn(move || {
-        let version = super::super::version_hash(collector.map.load_full().get(&7).unwrap());
-        assert!(collector.is_tombstone_stable(&7, version));
-        let expected = collector.map.load_full().get(&7).unwrap().stamp;
-        worker_candidate.wait();
-        worker_release.wait();
-        collector.collect_candidate(
-            &7,
-            expected,
-            chrono::Utc::now() + chrono::Duration::seconds(1),
-            || std::time::Duration::ZERO,
-        )
-    });
-    candidate.wait();
-    replica.just_insert(7, Entry::present(replica.clock_now(), 99));
-    release.wait();
-    handle.join().unwrap();
-    assert_eq!(
-        replica.map.load_full().get(&7).and_then(Entry::value),
-        Some(&99)
-    );
-}

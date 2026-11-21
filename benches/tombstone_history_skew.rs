@@ -12,9 +12,7 @@
 // tombstones; in the measured case the left starts without them while the right retains them.
 // This models asymmetric historical state; it does not execute or measure physical tombstone GC.
 //
-// d is a direct retained-tombstone debt input. Operationally it is approximately
-// delete_rate_per_second * effective_unacked_membership_lag_seconds: tombstone age timeout is only
-// one collection condition, and an unacknowledged causal member can extend retention beyond it.
+// d is a direct retained-tombstone debt input; this experiment measures its anti-entropy cost.
 //
 // Run:
 //   cargo bench --bench tombstone_history_skew

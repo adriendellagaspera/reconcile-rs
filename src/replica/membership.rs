@@ -161,7 +161,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.peers.write().insert(peer, Instant::now());
     }
 
-    /// A snapshot of the monotonic membership set (peers that gate tombstone GC).
+    /// A snapshot of the monotonic membership set (peers with tombstone receipt obligations).
     pub(crate) fn members_snapshot(&self) -> HashSet<IpAddr> {
         self.members.read().clone()
     }
@@ -235,7 +235,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.peers.read().keys().copied().collect()
     }
 
-    /// The causal-stability membership set, as a `Vec` — see
+    /// The authoritative membership set, as a `Vec` — see
     /// [`members_snapshot`](Self::members_snapshot) for the `HashSet` form
     /// `cfg(reconcile_internal_testing)` assertions use.
     pub(crate) fn members_vec(&self) -> Vec<IpAddr> {

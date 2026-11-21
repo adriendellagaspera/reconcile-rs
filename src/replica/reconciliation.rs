@@ -105,7 +105,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             }
         }
 
-        // Piggyback causal-stability ack resends for the tombstones we hold.
+        // Piggyback tombstone receipt-ack resends for the tombstones we hold.
         self.resend_held_tombstone_acks(send_buf);
 
         // Drop any target whose paced bulk transfer to us might still legitimately be in
@@ -183,7 +183,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 next_cursor = Some(key.clone());
                 break;
             }
-            // Re-confirm against the map: the tombstone may have been resurrected or GC'd since
+            // Re-confirm against the map: the tombstone may have been superseded since
             // we snapshotted the index, and only the live tombstone's version is a valid ack.
             if let Some(v) = map_guard.get(key).filter(|v| v.is_tombstone()) {
                 gossip::bincode::encode(

@@ -122,8 +122,8 @@ where
     /// This reports receipt completion; it does not authorize physical collection.
     ///
     /// The configured roster is installed as blockers at construction, including offline peers.
-    /// Operators must still enforce their tombstone retention period before collection.
-    pub fn is_tombstone_stable(&self, key: &K) -> bool {
+    /// Receipt completion alone never makes physical collection safe.
+    pub fn has_all_tombstone_acks(&self, key: &K) -> bool {
         let Some(entry) = self.entries.get(key) else {
             return false;
         };
@@ -134,33 +134,6 @@ where
         self.members
             .iter()
             .all(|id| self.tombstone_acks.get(key).and_then(|acks| acks.get(id)) == Some(&version))
-    }
-
-    /// Attempt physical collection; currently always returns `false` and retains the tombstone.
-    ///
-    /// Exact-version ACKs establish receipt, not durable history admission after rollback or
-    /// delayed stale data. Until that history is fenced, retention and ACK completion cannot
-    /// authorize deletion. A reader cannot collect, and absent members remain blockers.
-    pub fn collect_if_stable(&mut self, key: &K) -> bool {
-        if !crate::replica::has_collection_proof() {
-            return false;
-        }
-        self.collect_candidate(key)
-    }
-
-    // Only local invariants are checked here; distributed history admission is enforced by
-    // the public collection gate. Kept separate so those invariants can be tested independently.
-    pub(super) fn collect_candidate(&mut self, key: &K) -> bool {
-        if self.read_only || !self.is_tombstone_stable(key) {
-            return false;
-        }
-        let mut generation = self.generations.mutation();
-        self.entries.remove(key);
-        generation.record_physical_delete(key.clone());
-        if self.tombstone_acks.remove(key).is_some() {
-            generation.record_ack_key_clear(key.clone());
-        }
-        true
     }
 
     /// Explicitly retire one logical peer and all of its outstanding ACK obligations.

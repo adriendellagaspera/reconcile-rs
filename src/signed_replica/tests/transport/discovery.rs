@@ -37,7 +37,8 @@ fn discovery() -> EndpointDiscoveryState<OpticalSlot> {
 }
 
 #[tokio::test]
-async fn discovered_optical_routes_remain_untrusted_and_absences_cannot_release_gc() {
+async fn discovered_optical_routes_remain_untrusted_and_absences_cannot_release_receipt_obligations(
+) {
     let network = InMemoryNetwork::with_datagram_limit(NonZeroUsize::new(MTU).unwrap());
     let a_port = network.bind(slot("surface", 3));
     let b_port = network.bind(slot("vehicle", 7));
@@ -105,7 +106,6 @@ async fn discovered_optical_routes_remain_untrusted_and_absences_cannot_release_
     assert_eq!(a_discovery.candidate_count(), 0);
     assert_eq!(a.members(), HashSet::from([b_id]));
     assert!(a.is_tombstone(&7));
-    assert!(!a.collect_if_stable(&7));
     // Directory omissions do not remove a previously confirmed route either.
     let frames = a.reconcile(now).unwrap();
     assert!(!frames.is_empty());
@@ -136,5 +136,4 @@ async fn discovered_optical_routes_remain_untrusted_and_absences_cannot_release_
     assert_eq!(b.members(), HashSet::from([a_id]));
     assert!(b.is_tombstone(&7));
     assert!(a.acknowledged_version(&7, b_id).is_some());
-    assert!(!a.collect_if_stable(&7));
 }

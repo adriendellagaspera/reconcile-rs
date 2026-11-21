@@ -113,6 +113,8 @@ fn apply_delta<K, V, P>(
     K: Eq + Hash,
     P: Eq + Hash,
 {
+    // Physical-delete markers are legacy-only. SignedReplica emits key-level ACK clears when a
+    // new entry supersedes a tombstone.
     for (key, entry) in delta.entries {
         match entry {
             Some(entry) => {

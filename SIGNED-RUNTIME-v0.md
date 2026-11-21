@@ -47,20 +47,17 @@ storage together, and only then start the signed cluster. Never wipe a
 single replica's causal history and let it rejoin others holding older
 versions: forgotten tombstone ACKs can permit resurrection.
 
-## Causal membership and GC
+## Causal membership and deletion retention
 
 The signed mode records every provisioned authoritative signer as a causal
 blocker from first startup, **including offline peers**. Only authenticated
 signers on returnability-confirmed routes can contribute version-exact
 tombstone ACKs.
 
-Physical tombstone collection is deliberately disabled in this prototype.
-`collect_if_stable()` always returns `false`: an ACK quorum proves receipt
-of one tombstone version, but does not prove that delayed or rolled-back
-application history can no longer be admitted. The local collection
-candidate is retained only to test local invariants; it is not reachable
-through the public collection path. Tombstones therefore remain part of
-the replicated and persisted history indefinitely.
+Physical tombstone collection is not implemented: an ACK quorum proves
+receipt of one tombstone version, but does not prove that delayed or
+rolled-back application history can no longer be admitted. Tombstones
+therefore remain part of the replicated and persisted history indefinitely.
 
 `decommission(PeerId)` is an explicit membership operation, not a timeout.
 It removes a causal blocker and its ACK obligations, but does not enable
@@ -68,7 +65,7 @@ collection. Reintroducing a retired replica still requires careful history
 coordination; this prototype does not provide a safe rollback-fencing protocol.
 
 Signed read replicas remain outside authoritative membership and cannot
-gate ACK stability. A route change does not affect a member ID, replay
+contribute authoritative ACKs or block ACK completion. A route change does not affect a member ID, replay
 history or acknowledgement identity.
 
 ## Limitations of this v0 surface

@@ -76,7 +76,7 @@ pub(crate) struct Inner<K, V> {
     pub(crate) map: Arc<ArcSwap<FingerprintTreeMap<K, Entry<Timestamp, V>>>>,
     /// Value-only **projection** of [`map`](Self::map), kept in sync at every mutation.
     /// Timestamp-less by construction, which is what lets a
-    /// dateless read replica converge with this dated store. Never touches causal stability.
+    /// dateless read replica converge with this dated store. Never touches authoritative membership or tombstone receipt state.
     pub(crate) projection: Arc<ArcSwap<FingerprintTreeMap<K, State<V>>>>,
     /// Serializes every writer of [`map`](Self::map)/[`projection`](Self::projection)/
     /// [`live_tombstones`](Self::live_tombstones), so the three stay consistent with each other
@@ -213,8 +213,8 @@ pub(crate) struct Inner<K, V> {
     replay_filter: Arc<replay::ReplayFilter>,
     /// Monotonic set of every peer this node has exchanged messages with; never expired, unlike
     /// [`peers`](Self::peers).
-    /// This tracks receipt obligations. Physical collection has a separate closed gate because
-    /// the runtime does not yet fence obsolete application history.
+    /// This tracks receipt obligations. Physical collection is not implemented because the
+    /// runtime does not fence obsolete application history.
     pub(crate) members: Arc<RwLock<HashSet<IpAddr>>>,
     /// Per-tombstone acknowledgments: `key -> (peer -> version token of the tombstone it holds)`.
     pub(crate) tombstone_acks: Arc<RwLock<HashMap<K, HashMap<IpAddr, u64>>>>,
@@ -222,7 +222,7 @@ pub(crate) struct Inner<K, V> {
     /// enumerate them without scanning the map and resend an ack for each — without which the ack
     /// matrix never completes past two nodes, acks being pairwise.
     pub(crate) live_tombstones: Arc<RwLock<HashSet<K>>>,
-    /// Next tombstone key whose causal-stability ack resend has not yet been covered by the
+    /// Next tombstone key whose tombstone receipt-ack resend has not yet been covered by the
     /// byte-bounded resend window. Runtime-only: if that key disappears before the next round,
     /// ordered lookup resumes at its successor; wrapping eventually covers insertions behind it.
     tombstone_ack_resend_cursor: Arc<Mutex<Option<K>>>,
@@ -251,10 +251,10 @@ pub(crate) struct Inner<K, V> {
     /// same-key writes collapse via [`Entry::merge`] as they arrive. Always empty when
     /// [`coalesce_window`](Self::coalesce_window) is zero.
     coalesce_pending: Arc<RwLock<HashMap<K, Entry<Timestamp, V>>>>,
-    /// Changes (local writes, gossip-applied remote updates, and physical tombstone removals in
-    /// the local GC-candidate tests) since the persistence layer last snapshotted, each counted
-    /// once at its single mutation sink ([`Replica::just_insert`]/[`just_insert_bulk`](Replica::just_insert_bulk),
-    /// the gossip bulk-apply path in `dispatch.rs`, [`Replica::gc_remove`]) — what
+    /// Changes (local writes and gossip-applied remote updates) since the persistence layer last
+    /// snapshotted, each counted once at its single mutation sink ([`Replica::just_insert`]/
+    /// [`just_insert_bulk`](Replica::just_insert_bulk) and the gossip bulk-apply path in
+    /// `dispatch.rs`) — what
     /// [`Config::snapshot_change_threshold`](crate::replicated_map::Config::snapshot_change_threshold)
     /// is compared against. Successful snapshots retire only the pre-capture count, so
     /// concurrent writes remain pending and failures retire nothing.
@@ -322,8 +322,8 @@ mod construct;
 mod dispatch;
 mod dump;
 mod framed_send;
-mod gc;
 mod generation;
+mod tombstone;
 pub(crate) use generation::GenerationTracker;
 mod inbound;
 mod membership;
@@ -338,12 +338,12 @@ mod run;
 mod write;
 
 pub(crate) use construct::check_port_is_nonzero;
-pub(crate) use gc::{has_collection_proof, version_hash};
 pub(crate) use inbound::{admit_inbound, InboundRejection};
 pub(crate) use membership::derive_local_net;
 pub(crate) use recovery::{
     is_selective_recovery_capability, RecoveryBook, SELECTIVE_RECOVERY_CAPABILITY,
 };
+pub(crate) use tombstone::version_hash;
 
 pub(crate) use framed_send::{
     send_control_batch_to, send_messages_paced, send_messages_to, send_to_retry, SendPorts,

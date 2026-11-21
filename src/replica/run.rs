@@ -224,8 +224,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                         // pending so a lost fragment is retried with the same content address.
                         self.pending_repairs.write().remove(&sender);
                         let spoke_dated = self.handle_messages(payload, peer, &mut send_buf).await;
-                        // Only a sender that spoke the dated channel joins causal-stability
-                        // membership; value-only read replicas never gate tombstone GC.
+                        // Only a sender that spoke the dated channel joins authoritative membership;
+                        // value-only read replicas never create tombstone ACK obligations.
                         if spoke_dated {
                             self.peers.write().insert(sender, Instant::now());
                             let mut generation = self.snapshot_generations.mutation();
@@ -238,17 +238,5 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::replica::PeerCap;
-
-    /// `max()` reflects the constructed value — its only call site today is a `trace!` format
-    /// string, so nothing else in the crate would catch a mutant hardcoding a constant return.
-    #[test]
-    fn peer_cap_max_reflects_the_constructed_value() {
-        assert_eq!(PeerCap::new(5).max(), 5);
     }
 }

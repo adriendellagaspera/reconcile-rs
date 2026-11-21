@@ -76,7 +76,6 @@ pub(super) fn logical_payload<K, V>(
 
 mod auth_attack;
 mod broadcast_budget;
-mod causal_stability;
 mod clock_drift;
 mod clock_port;
 mod coalescing;
@@ -96,5 +95,6 @@ mod reserved_wire_tags;
 mod socket_buffers;
 mod tombstone_ack_bounds;
 mod tombstone_ack_resend_counting;
+mod tombstone_acks;
 
 mod mutation_atomicity;

@@ -9,10 +9,10 @@
 //! Opaque logical identity, distinct from transport endpoints and the LWW clock's `NodeId`.
 //!
 //! A `PeerId` value **does not authenticate its holder**. A sender-supplied claim must not be
-//! admitted to replay, membership, or causal-GC state without independently verified binding.
-//! Deployed UDP traffic and durable state still use IP addresses. The optional identity proof
-//! verifier and optional signed envelope authenticate datagram ownership, but are not yet
-//! wired into the runtime.
+//! admitted to replay or causal-membership state without independently verified binding.
+//! The legacy UDP runtime and its durable state still use IP addresses. The separate signed
+//! runtime uses verified `PeerId` identities and caller-owned datagram endpoints; the two
+//! runtime protocols and persistence formats are incompatible.
 
 pub mod envelope;
 pub mod identity;
