@@ -5,14 +5,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::sync::Arc;
-
-use super::super::*;
 use super::{isolated_read_replica, virtual_config};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
 use crate::FingerprintTreeMap;
-use rsos::Fingerprint;
 
 /// `get` returns the live value, and absent keys are `None`.
 #[tokio::test]
