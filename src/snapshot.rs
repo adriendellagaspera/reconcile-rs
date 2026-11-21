@@ -7,8 +7,7 @@
 
 //! The file-backed [`Persistence`] adapter for a replicated map.
 //! [`FileSnapshot`] stores an immutable materialized base plus ordered delta segments behind one
-//! atomically-published manifest. Loading still accepts the previous single-file snapshot format
-//! for migration. The port, snapshot value type and non-durable default live in
+//! atomically-published manifest. The port, snapshot value type and non-durable default live in
 //! [`crate::persistence`]; this module owns the filesystem and codec adapter.
 //! One type with no standalone reuse value outside this workspace, so it stays folded into
 //! `reconcile` rather than earning its own crate. [`FileSnapshot`] is
@@ -37,14 +36,13 @@ pub struct FileSnapshot {
 
 impl FileSnapshot {
     /// Create a backend whose incremental store is written under the sibling `<path>.d` directory.
-    /// The path itself must not contain an old single-file snapshot.
+    /// The path itself must be absent; it is used as the store's base name.
     pub fn new(path: impl AsRef<Path>) -> Self {
         FileSnapshot {
             path: path.as_ref().to_path_buf(),
         }
     }
 }
-
 
 /// Reject the obsolete single-file layout rather than treating it as an empty incremental store.
 fn reject_single_file_snapshot(path: &Path) -> io::Result<()> {
