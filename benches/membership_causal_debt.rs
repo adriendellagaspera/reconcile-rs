@@ -486,6 +486,16 @@ async fn one_unreachable(members: usize, tombstones: usize) {
         .values()
         .all(|acks| acks.len() == members - 2));
 
+    println!(
+        "[causal-unreachable] members={members},tombstones={tombstones},responsive={},round_tx_bytes={},round_tx_dgrams={},round_rx_bytes={},round_rx_dgrams={},round_ms={round_ms:.3},repair_tx_bytes={},repair_tx_dgrams={},unreachable_repair_tx_bytes={unreachable_repair_bytes},unreachable_repair_tx_dgrams={unreachable_repair_dgrams},responsive_member_repair_tx_dgrams={responsive_member_repair_dgrams},speculative_repair_tx_bytes={speculative_repair_bytes},speculative_repair_tx_dgrams={speculative_repair_dgrams},forget_acked_ms={forget_acked_ms:.3},forget_unacked_ms={forget_unacked_ms:.3}",
+        members - 1,
+        round.tx_bytes,
+        round.tx_datagrams,
+        round.rx_bytes,
+        round.rx_datagrams,
+        repair.tx_bytes,
+        repair.tx_datagrams,
+    );
 
     responder_shutdown.cancel();
     run_shutdown.cancel();
