@@ -13,7 +13,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use rand::Rng;
 
-fn gen_ip<R: Rng>(rng: &mut R, network: IpNet) -> IpAddr {
+pub fn gen_ip<R: Rng>(rng: &mut R, network: IpNet) -> IpAddr {
     match network {
         IpNet::V4(network) => IpAddr::V4(gen_ipv4(rng, network)),
         IpNet::V6(network) => IpAddr::V6(gen_ipv6(rng, network)),
