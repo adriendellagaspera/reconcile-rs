@@ -349,7 +349,7 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
 #[cfg(reconcile_internal_testing)]
 #[tokio::test(flavor = "multi_thread")]
 async fn decommissioned_peer_replay_is_rejected() {
-    use reconcile::testing::{members_snapshot, seal_datagram};
+    use reconcile::testing::seal_datagram;
 
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim: std::net::IpAddr = "127.0.11.1".parse().unwrap();
