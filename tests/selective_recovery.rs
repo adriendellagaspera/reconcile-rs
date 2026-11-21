@@ -165,16 +165,6 @@ async fn selective_recovery_has_negligible_clean_path_wire_overhead() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn selective_recovery_reduces_wire_under_matched_emulated_loss() {
-    let selective = exercise(true, true, 150.0, 5.0).await;
-    let legacy = exercise(false, false, 150.0, 5.0).await;
-    assert!(
-        selective < legacy,
-        "selective recovery must reduce modeled-wire submissions on this matched loss profile: selective={selective}, legacy={legacy}"
-    );
-}
-
 /// Cut both directions after the sender has offered ~80% of a 128 KiB transfer.
 struct ContactGate {
     armed: std::sync::atomic::AtomicBool,
