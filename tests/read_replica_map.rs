@@ -12,8 +12,8 @@
 //! 1. **Convergence**: the read replica receives the dated store's current values (timestamps
 //!    dropped), reflects deletions as tombstones, and its value-only fingerprint matches the dated
 //!    store's value-only projection.
-//! 2. **Causal-stability safety**: a read replica is never counted as a causal-stability member, so
-//!    it cannot block the dated store's tombstone garbage collection.
+//! 2. **Receipt accounting**: a read replica never joins authoritative membership or creates
+//!    tombstone ACK obligations.
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
