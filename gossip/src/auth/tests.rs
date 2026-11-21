@@ -400,7 +400,7 @@ mod encryption {
     /// still decrypt. The length check in `encryption:open` is a strict `<`, not `<=`.
     #[test]
     fn open_accepts_the_exact_minimum_length_datagram() {
-        let k = key(0x11);
+        let k = ClusterKey::new(rand::random());
         let sealed = crate::auth::encryption::seal(&k, b"");
         assert_eq!(sealed.len(), super::AEAD_NONCE_LEN + super::AEAD_TAG_LEN);
         assert_eq!(crate::auth::encryption::open(&k, &sealed), Some(Vec::new()));
@@ -414,7 +414,7 @@ mod encryption {
     /// `datagram.split_at(AEAD_NONCE_LEN)` and panic instead of returning `None`.
     #[test]
     fn open_rejects_a_datagram_between_the_two_length_thresholds() {
-        let k = key(0x11);
+        let k = ClusterKey::new(rand::random());
         assert_eq!(crate::auth::encryption::open(&k, &[0u8; 15]), None);
     }
 
