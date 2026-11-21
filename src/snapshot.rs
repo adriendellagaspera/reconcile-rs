@@ -44,12 +44,12 @@ impl FileSnapshot {
     }
 }
 
-/// Reject the obsolete single-file layout rather than treating it as an empty incremental store.
-fn reject_single_file_snapshot(path: &Path) -> io::Result<()> {
+/// The configured base path is reserved; all snapshot data lives in its sibling `.d` directory.
+fn ensure_base_path_absent(path: &Path) -> io::Result<()> {
     if path.exists() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "snapshot path exists without an incremental manifest; single-file snapshots are unsupported",
+            "snapshot base path must be absent; the single-file layout is unsupported",
         ));
     }
     Ok(())
@@ -61,7 +61,7 @@ where
     V: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     fn load(&self) -> io::Result<Option<PersistedState<K, V>>> {
-        reject_single_file_snapshot(&self.path)?;
+        ensure_base_path_absent(&self.path)?;
         incremental::load(self)
     }
 
@@ -82,7 +82,7 @@ where
     V: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     fn load(&self) -> io::Result<Option<PersistedState<K, V, PeerId>>> {
-        reject_single_file_snapshot(&self.path)?;
+        ensure_base_path_absent(&self.path)?;
         incremental::load_for(self, incremental::PEER_ID_FORMAT_VERSION)
     }
 
