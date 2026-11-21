@@ -7,13 +7,8 @@
 
 //! The wall-clock **adapter** behind the [`Clock`] port, whose types and arithmetic live in
 //! [`lww_register::clock`] and are re-exported here.
-//! `HlcClock` owns the crate's primary wall-clock read and the node's [`NodeId`], which it
-//! attaches when minting a reading into a [`Timestamp`]. Every other wall-clock read in `reconcile`
-//! lives in this file too, alongside it: `BoundedInstant` needs a physical-time read and `chrono`
-//! for the tombstone-expiry instant derived from a *stored* stamp, bounded by the same
-//! [`MAX_CLOCK_DRIFT`] budget; `wall_clock_now` is the plain `DateTime<Utc>` reading a caller
-//! like `TimeoutWheel::expired` needs for an instant of its own, supplied instead of read locally so
-//! the wheel itself never touches the wall clock.
+//! `HlcClock` owns the crate's physical-time read and the node's [`NodeId`], which it
+//! attaches when minting a reading into a [`Timestamp`].
 //! `HlcClock` is the default [`Clock`] adapter, not the only one that can be plugged in:
 //! [`ReplicatedMap::new_with_clock`](crate::ReplicatedMap::new_with_clock) accepts any `Arc<dyn
 //! Clock>`. [`assert_conformance`] is what an implementor runs before trusting a
