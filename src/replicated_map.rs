@@ -22,7 +22,6 @@ use crate::clock::NodeId;
 use crate::discovery::Discovery;
 use crate::persistence::{InMemoryPersistence, Persistence};
 use crate::replica::Replica;
-use crate::timeout_wheel::TimeoutWheel;
 use crate::transport::Transport;
 
 mod backpressure;
@@ -69,8 +68,6 @@ where
 {
     /// Internal map and hooks container.
     engine: Replica<K, V>,
-    /// Tombstone timestamps for deleted entries.
-    tombstones: TimeoutWheel<K>,
     /// Durable backend. Always present (the trait is mandatory); defaults to the non-durable
     /// [`InMemoryPersistence`], swapped out via [`with_persistence`](ReplicatedMap::with_persistence).
     persistence: Arc<dyn Persistence<K, V>>,
@@ -121,7 +118,6 @@ where
     fn clone(&self) -> Self {
         ReplicatedMap {
             engine: self.engine.clone(),
-            tombstones: self.tombstones.clone(),
             persistence: self.persistence.clone(),
             discovery: self.discovery.clone(),
             discovery_interval: self.discovery_interval,
@@ -199,7 +195,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     ) -> Self {
         let svc = ReplicatedMap {
             engine,
-            tombstones: TimeoutWheel::new(),
             persistence: Arc::new(InMemoryPersistence::default()),
             discovery: None,
             discovery_interval: DEFAULT_DISCOVERY_INTERVAL,
