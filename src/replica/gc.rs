@@ -5,6 +5,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Tombstone-collection research code for the legacy runtime.
+//!
+//! The production collection gate is deliberately closed: receipt ACKs and elapsed retention do
+//! not prove that rolled-back or delayed application history can no longer be admitted. The
+//! candidate path below remains only to test local deletion invariants; it is not reachable through
+//! the runtime's public collection path.
+
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::net::IpAddr;
