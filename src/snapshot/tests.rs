@@ -300,7 +300,18 @@ fn full_materialization_cleans_superseded_segments_after_publication() {
 
     let (store_dir, _) = incremental::paths(&backend);
     fs::write(store_dir.join("delta-99999999999999999999.bin"), b"orphan").unwrap();
-    Persistence::<i32, String>::save(&backend, &state).unwrap();
+    let mut replacement = state.clone();
+    replacement.entries.push((
+        999,
+        Entry::present(
+            Timestamp::new(
+                Hlc::new(PhysicalTime::from_millis(99_000), LogicalCounter::new(0)),
+                NodeId::new(7),
+            ),
+            "replacement-after-materialization".to_string(),
+        ),
+    ));
+    Persistence::<i32, String>::save(&backend, &replacement).unwrap();
 
     let mut bases = 0;
     let mut deltas = 0;
@@ -315,7 +326,7 @@ fn full_materialization_cleans_superseded_segments_after_publication() {
     assert_eq!(bases, 1, "only the newly committed base may remain");
     assert_eq!(deltas, 0, "all superseded/orphan deltas must be retired");
     let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
-    assert_states_equivalent(&loaded, &state);
+    assert_states_equivalent(&loaded, &replacement);
 }
 
 #[test]
