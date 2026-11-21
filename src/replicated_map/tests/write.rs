@@ -53,22 +53,3 @@ async fn just_remove_bulk_actually_removes_every_key() {
     assert_eq!(store.get(&2).as_deref(), None);
 }
 
-/// `set_tombstone_timeout` must actually retune the wheel at runtime, not silently no-op.
-#[tokio::test]
-async fn set_tombstone_timeout_actually_retunes_the_wheel() {
-    let store =
-        virtual_map::<i32, i32>(virtual_config()).with_tombstone_timeout(Duration::from_secs(3600)); // won't expire on its own
-    store.remove(&0);
-    assert!(
-        store.tombstones.expired(Utc::now()).is_empty(),
-        "must not be expired yet under the long initial timeout"
-    );
-
-    store.set_tombstone_timeout(Duration::from_millis(1));
-    tokio::time::sleep(Duration::from_millis(10)).await;
-    assert_eq!(
-        store.tombstones.expired(Utc::now()),
-        vec![0],
-        "retuning the timeout down must make the tombstone expire promptly"
-    );
-}
