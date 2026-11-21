@@ -70,7 +70,6 @@ async fn deleted_value_is_not_resurrected_by_returning_peer() {
     // Delete key 1 on store1 while store2 is partitioned; the retained tombstone will
     // eventually propagate when store2 returns.
     store1.remove(&1);
-    tokio::time::sleep(Duration::from_millis(1500)).await;
     assert!(store1.get(&1).is_none());
 
     // store2 returns with the stale value and reconciles.
