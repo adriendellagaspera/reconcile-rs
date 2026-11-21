@@ -397,12 +397,12 @@ async fn decommissioned_peer_replay_is_rejected() {
     // First delivery: wait for the receiver to process the datagram instead of assuming a
     // fixed 50ms is enough on a loaded CI runner.
     sender_sock.send_to(&captured, &target).await.unwrap();
-    assert_until!(members_snapshot(&store).contains(&addr_sender));
+    assert_until!(store.members_snapshot().contains(&addr_sender));
 
     // Decommission peer X: removes it from members/tombstone_acks but must NOT erase replay state.
     store.forget_peer(addr_sender);
     assert!(
-        !members_snapshot(&store).contains(&addr_sender),
+        !store.members_snapshot().contains(&addr_sender),
         "sender must be gone from members after decommission"
     );
 
@@ -412,7 +412,7 @@ async fn decommissioned_peer_replay_is_rejected() {
 
     // The replay must be rejected: X must NOT be re-added to members.
     assert!(
-        !members_snapshot(&store).contains(&addr_sender),
+        !store.members_snapshot().contains(&addr_sender),
         "decommissioned peer must not be re-added to members by a replayed datagram"
     );
 
