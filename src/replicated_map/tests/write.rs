@@ -28,7 +28,10 @@ async fn tombstone_timeout_settings_do_not_collect() {
     tokio::time::sleep(Duration::from_millis(10)).await;
 
     assert!(
-        store.snapshot().get(&0).is_some_and(|entry| entry.is_tombstone()),
+        store
+            .snapshot()
+            .get(&0)
+            .is_some_and(|entry| entry.is_tombstone()),
         "physical tombstone collection is disabled"
     );
 }
@@ -52,4 +55,3 @@ async fn just_remove_bulk_actually_removes_every_key() {
     assert_eq!(store.get(&1).as_deref(), None);
     assert_eq!(store.get(&2).as_deref(), None);
 }
-
