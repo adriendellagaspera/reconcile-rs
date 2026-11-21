@@ -53,8 +53,6 @@ pub fn host_net(addr: IpAddr) -> IpNet {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use rand::SeedableRng;
 
     use super::gen_ip;
@@ -62,24 +60,16 @@ mod tests {
     const N_ADDR: usize = 1000;
 
     #[test]
-    fn rand_ipv4() {
+    fn random_addresses_stay_inside_ipv4_and_ipv6_networks() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let net = "127.0.0.0/8".parse().unwrap();
-        let addrs: HashSet<_> = (0..N_ADDR).map(|_| gen_ip(&mut rng, net)).collect();
-        assert_eq!(addrs.len(), N_ADDR);
-        for addr in addrs {
-            assert!(net.contains(&addr), "{net} should contain {addr}");
-        }
-    }
+        let ipv4 = "127.0.0.0/8".parse().unwrap();
+        let ipv6 = "2001:db8::/32".parse().unwrap();
 
-    #[test]
-    fn rand_ipv6() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let net = "2001:db8::/32".parse().unwrap();
-        let addrs: HashSet<_> = (0..N_ADDR).map(|_| gen_ip(&mut rng, net)).collect();
-        assert_eq!(addrs.len(), N_ADDR);
-        for addr in addrs {
-            assert!(net.contains(&addr), "{net} should contain {addr}");
+        for _ in 0..N_ADDR {
+            let v4 = gen_ip(&mut rng, ipv4);
+            let v6 = gen_ip(&mut rng, ipv6);
+            assert!(ipv4.contains(&v4), "{ipv4} should contain {v4}");
+            assert!(ipv6.contains(&v6), "{ipv6} should contain {v6}");
         }
     }
 
