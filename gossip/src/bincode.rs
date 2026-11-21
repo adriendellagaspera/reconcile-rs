@@ -75,7 +75,8 @@ pub fn decode_stream<T: DeserializeOwned>(
     max_items: usize,
 ) -> Result<Vec<T>, DecodeError> {
     use ::bincode::{DefaultOptions, Deserializer};
-    let mut deserializer = Deserializer::from_slice(bytes, DefaultOptions::new());
+    let mut deserializer =
+        Deserializer::with_reader(std::io::Cursor::new(bytes), DefaultOptions::new());
     let mut out = Vec::new();
     while out.len() < max_items {
         // End only when no bytes remain before starting another value. UnexpectedEof after
