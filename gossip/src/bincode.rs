@@ -78,17 +78,14 @@ pub fn decode_stream<T: DeserializeOwned>(
     let mut deserializer = Deserializer::from_slice(bytes, DefaultOptions::new());
     let mut out = Vec::new();
     while out.len() < max_items {
+        // End only when no bytes remain before starting another value. UnexpectedEof after
+        // consuming any part of a value is a truncated datagram, not a clean stream boundary.
+        if deserializer.bytes_read() == bytes.len() as u64 {
+            break;
+        }
         match T::deserialize(&mut deserializer) {
             Ok(value) => out.push(value),
-            Err(err) => {
-                // A clean end-of-stream surfaces as `UnexpectedEof`: success, not corruption.
-                if let ::bincode::ErrorKind::Io(io_err) = err.as_ref() {
-                    if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
-                        break;
-                    }
-                }
-                return Err(DecodeError(err));
-            }
+            Err(err) => return Err(DecodeError(err)),
         }
     }
     Ok(out)
@@ -170,15 +167,16 @@ mod tests {
     }
 
     #[test]
-    fn a_truncated_trailing_message_ends_the_stream_leniently() {
-        // A cut-short final message is indistinguishable from a clean boundary in a
-        // non-self-describing stream, so the intact prefix is returned.
+    fn a_truncated_trailing_message_rejects_the_entire_stream() {
+        // A valid prefix must not be applied when the datagram also contains a partial message.
         let mut buf = Vec::new();
         encode(&[1u8, 2, 3, 4], &mut buf).unwrap();
         encode(&[5u8, 6, 7, 8], &mut buf).unwrap();
         buf.pop();
-        let decoded: Vec<[u8; 4]> = decode_stream(&buf, 100)
-            .expect("a truncated trailing message ends the stream, not an error");
-        assert_eq!(decoded, vec![[1, 2, 3, 4]]);
+        let decoded: Result<Vec<[u8; 4]>, _> = decode_stream(&buf, 100);
+        assert!(
+            decoded.is_err(),
+            "a truncated trailing message must reject the whole datagram"
+        );
     }
 }
