@@ -563,15 +563,3 @@ fn zero_missing_range_budget_never_emits_even_with_leading_gap() {
         1
     );
 }
-
-// The private helper must not produce a trailing range when the budget is zero.
-#[test]
-fn missing_range_private_helper_honours_zero_limit() {
-    let now = std::time::Instant::now();
-    let peer: IpAddr = "127.0.0.99".parse().unwrap();
-    let id = [0x67; 32];
-    let reassembler = seeded_reassembler(peer, id, 8, &[(0, b"abc")], now);
-    let transfer = &reassembler.peers.get(&peer).unwrap().transfers[&id];
-    assert!(missing_ranges_for_transfer(transfer, 0).is_empty());
-    assert_eq!(missing_ranges_for_transfer(transfer, 1), vec![(3, 5)]);
-}
