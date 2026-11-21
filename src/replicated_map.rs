@@ -53,11 +53,6 @@ const DEFAULT_DISCOVERY_INTERVAL: Duration = Duration::from_secs(5);
 /// decommissioned (see [`ReplicatedMap::with_discovery_miss_threshold`]).
 const DEFAULT_DISCOVERY_MISS_THRESHOLD: u32 = 3;
 
-/// Default wall-time floor a member with pending unacknowledged tombstones must be absent for
-/// before decommissioning (see [`ReplicatedMap::with_discovery_decommission_floor`]). Ten minutes
-/// is far above any DNS blip, so it engages only against a sustainedly wrong resolver.
-const DEFAULT_DISCOVERY_DECOMMISSION_FLOOR: Duration = Duration::from_secs(600);
-
 /// Core service wrapping a key-value map, reconciled with peers over the network.
 /// Wraps its [`FingerprintTreeMap`](crate::FingerprintTreeMap)'s insertion and deletion; `run`
 /// must be called to synchronize. Peers come from [`with_seed`](ReplicatedMap::with_seed) and from
@@ -77,13 +72,8 @@ where
     discovery: Option<Arc<dyn Discovery>>,
     /// How often the discovery task resolves the peer set.
     discovery_interval: Duration,
-    /// Consecutive missed discovery rounds before a vanished member with no pending unacknowledged
-    /// tombstones is decommissioned (the fast path).
+    /// Consecutive missed discovery rounds before a vanished member is decommissioned.
     discovery_miss_threshold: u32,
-    /// Minimum continuous wall-time absence a member with pending unacknowledged tombstones must
-    /// additionally clear before it is decommissioned (see
-    /// [`with_discovery_decommission_floor`](Self::with_discovery_decommission_floor)).
-    discovery_decommission_floor: Duration,
     /// How often [`snapshot_periodically`](Self::snapshot_periodically) wakes to consider writing
     /// a full snapshot, or `None` to disable the periodic task entirely. See
     /// [`Config::snapshot_interval`].
@@ -122,7 +112,6 @@ where
             discovery: self.discovery.clone(),
             discovery_interval: self.discovery_interval,
             discovery_miss_threshold: self.discovery_miss_threshold,
-            discovery_decommission_floor: self.discovery_decommission_floor,
             snapshot_interval: self.snapshot_interval,
             snapshot_change_threshold: self.snapshot_change_threshold,
             last_snapshot_at: self.last_snapshot_at.clone(),
@@ -199,7 +188,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             discovery: None,
             discovery_interval: DEFAULT_DISCOVERY_INTERVAL,
             discovery_miss_threshold: DEFAULT_DISCOVERY_MISS_THRESHOLD,
-            discovery_decommission_floor: DEFAULT_DISCOVERY_DECOMMISSION_FLOOR,
             snapshot_interval,
             snapshot_change_threshold,
             last_snapshot_at: Arc::new(RwLock::new(None)),
