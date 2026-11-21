@@ -10,6 +10,7 @@
 
 use std::time::Duration;
 
+use bincode::{DefaultOptions, Serializer};
 use rand::{
     distributions::{Alphanumeric, DistString},
     SeedableRng,
@@ -17,6 +18,7 @@ use rand::{
 
 use std::sync::Arc;
 
+use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
 use reconcile::{replicated_map::Config, transport::UdpTransport, ClusterKey, ReplicatedMap};
@@ -24,6 +26,24 @@ use reconcile::{replicated_map::Config, transport::UdpTransport, ClusterKey, Rep
 #[cfg(feature = "encryption")]
 use crate::support::wait_until;
 use crate::support::{assert_until, bind_udp_pair};
+
+/// Serialize the real wire shape for a dated tombstone receipt using the runtime's bincode options.
+/// The two preceding variants preserve the protocol's tag 2 for `TombstoneAck`.
+fn tombstone_ack_payload() -> Vec<u8> {
+    #[derive(Serialize)]
+    enum WireMessage {
+        EntryFingerprint(()),
+        EntryUpdate(()),
+        TombstoneAck((i32, u64)),
+    }
+
+    let _ = (WireMessage::EntryFingerprint(()), WireMessage::EntryUpdate(()));
+    let mut payload = Vec::new();
+    WireMessage::TombstoneAck((0, 0))
+        .serialize(&mut Serializer::new(&mut payload, DefaultOptions::new()))
+        .unwrap();
+    payload
+}
 
 /// Two nodes sharing the same cluster key must still converge, proving that authenticated
 /// datagrams round-trip end-to-end through the MAC layer.
@@ -277,10 +297,7 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
     // A minimal `Ack` message: bincode variant index 2, key=0 (i32), version token=0 (u64).
     // If the freshness check were absent, this would reach the handler and do nothing (no tombstone
     // for key=0 exists). With the freshness check, it never reaches the handler at all.
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&2u32.to_le_bytes()); // Ack variant index
-    payload.extend_from_slice(&0i32.to_le_bytes()); // key = 0
-    payload.extend_from_slice(&0u64.to_le_bytes()); // version token = 0
+    let payload = tombstone_ack_payload();
 
     let stale_datagram = seal_datagram(key, 1, one_hour_ago_ms, &payload);
     sender_sock.send_to(&stale_datagram, &target).await.unwrap();
@@ -341,10 +358,7 @@ async fn replayed_sealed_datagram_is_rejected() {
         .as_millis() as u64;
 
     // A minimal `Ack` message: bincode variant index 2, key=0 (i32), version token=0 (u64).
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&2u32.to_le_bytes()); // Ack variant index
-    payload.extend_from_slice(&0i32.to_le_bytes()); // key = 0
-    payload.extend_from_slice(&0u64.to_le_bytes()); // version token = 0
+    let payload = tombstone_ack_payload();
 
     // Seal once with seq=1 and a fresh stamp.
     let datagram = seal_datagram(key, 1, now_ms, &payload);
@@ -413,10 +427,7 @@ async fn decommissioned_peer_replay_is_rejected() {
 
     // A minimal `Ack` message (variant 2): causes `spoke_dated = true` so the sender is
     // added to `members` on acceptance.
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&2u32.to_le_bytes()); // Ack variant index
-    payload.extend_from_slice(&0i32.to_le_bytes()); // key = 0
-    payload.extend_from_slice(&0u64.to_le_bytes()); // version token = 0
+    let payload = tombstone_ack_payload();
 
     // Seal the datagram — this is the "captured" datagram the adversary holds.
     let captured = seal_datagram(key, 1, now_ms, &payload);
