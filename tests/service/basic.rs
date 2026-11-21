@@ -6,7 +6,7 @@
 // except according to those terms.
 
 //! Core LWW convergence: bulk sync, single-key read/write/delete, causal ordering, and
-//! concurrent-write tie-breaking. No auth, encryption, topology, or tombstone-GC concerns.
+//! concurrent-write tie-breaking. No auth, encryption, topology, or deletion-retention concerns.
 
 use rand::{
     distributions::{Alphanumeric, DistString},
