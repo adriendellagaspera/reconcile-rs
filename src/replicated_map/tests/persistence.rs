@@ -43,8 +43,10 @@ async fn persistence_roundtrip_recovers_entries_and_tombstones() {
         expected,
         "recovered state must hash identically (timestamps preserved)"
     );
-    // The recovered tombstone is back in the expiry wheel (replayed through the hook).
-    assert!(restarted.tombstones.remove(&2).is_some());
+    assert!(
+        restarted.snapshot().get(&2).is_some_and(|entry| entry.is_tombstone()),
+        "the recovered tombstone remains part of the durable state"
+    );
 }
 
 /// A [`Persistence`] backend that fails `load` with a given `io::ErrorKind` a fixed number of
