@@ -290,7 +290,11 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
     let sender_sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let target = format!("{}:{}", addr_victim, port);
 
-    // A stamp from 1 hour ago — definitively outside the 5-minute freshness window.
+    // A fresh stamp and one from 1 hour ago — definitively outside the 5-minute window.
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
     let one_hour_ago_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
