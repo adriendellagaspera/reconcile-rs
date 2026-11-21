@@ -7,14 +7,12 @@
 
 //! The file-backed [`Persistence`] adapter for a replicated map.
 //! [`FileSnapshot`] stores an immutable materialized base plus ordered delta segments behind one
-//! atomically-published manifest. Loading still accepts the previous single-file snapshot format
-//! for migration. The port, snapshot value type and non-durable default live in
+//! atomically-published manifest. The port, snapshot value type and non-durable default live in
 //! [`crate::persistence`]; this module owns the filesystem and codec adapter.
 //! One type with no standalone reuse value outside this workspace, so it stays folded into
 //! `reconcile` rather than earning its own crate. [`FileSnapshot`] is
 //! re-exported from [`crate::persistence`] and from the crate root.
 
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -26,89 +24,35 @@ use crate::PeerId;
 
 mod incremental;
 
-/// On-disk snapshot header: a 4-byte magic then a little-endian `u32` format version.
-/// The body is bincode, not self-describing, so without this a format change would be silently
-/// misread into a plausible-but-wrong state — dropping tombstones and re-enabling resurrection.
-/// A pre-header snapshot is rejected the same way.
-const SNAPSHOT_MAGIC: [u8; 4] = *b"RCNL";
-/// Current on-disk snapshot format version. Bump whenever the serialized shape of
-/// [`PersistedState`] changes. Version 1 is the `Entry<Timestamp, V>` / `State<V>` layout.
-const SNAPSHOT_FORMAT_VERSION: u32 = 1;
-/// Length of the header written ahead of the bincode body: magic (4) + version (4).
-const SNAPSHOT_HEADER_LEN: usize = 8;
-
-/// Validate the header, then decode the body. Every failure — short, wrong magic, unsupported
-/// version, undecodable body — becomes an `InvalidData` error rather than a silent misread.
-fn decode_snapshot<K, V>(bytes: &[u8]) -> io::Result<PersistedState<K, V>>
-where
-    K: DeserializeOwned + Eq + std::hash::Hash,
-    V: DeserializeOwned,
-{
-    decode_snapshot_for::<K, V, std::net::IpAddr>(bytes, SNAPSHOT_FORMAT_VERSION)
-}
-
-fn decode_snapshot_for<K, V, P>(
-    bytes: &[u8],
-    expected_version: u32,
-) -> io::Result<PersistedState<K, V, P>>
-where
-    K: DeserializeOwned + Eq + std::hash::Hash,
-    V: DeserializeOwned,
-    P: DeserializeOwned + Eq + std::hash::Hash,
-{
-    if bytes.len() < SNAPSHOT_HEADER_LEN {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "snapshot is {} bytes, shorter than the {SNAPSHOT_HEADER_LEN}-byte format header \
-                 (truncated, or a pre-Entry/State snapshot without the versioned header)",
-                bytes.len()
-            ),
-        ));
-    }
-    let (header, body) = bytes.split_at(SNAPSHOT_HEADER_LEN);
-    if header[..4] != SNAPSHOT_MAGIC {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "snapshot magic {:02x?} does not match {SNAPSHOT_MAGIC:02x?}; the file is not a \
-                 reconcile snapshot, or predates the versioned format",
-                &header[..4]
-            ),
-        ));
-    }
-    let version = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
-    if version != expected_version {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "snapshot format version {version} is not supported by this build (expected \
-                 {expected_version}); it was written by a different reconcile version and \
-                 must be migrated or discarded"
-            ),
-        ));
-    }
-    bincode::deserialize::<PersistedState<K, V, P>>(body)
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
-}
-
 /// A durable, file-based [`Persistence`] backend.
 /// A materialized base and ordered immutable deltas are referenced by one atomically-published
 /// manifest. Segment bytes are flushed before the manifest that makes them visible; unreferenced
-/// crash leftovers are ignored on recovery. The configured path is also accepted as the legacy
-/// single-file v1 snapshot and is migrated on the next successful save.
+/// crash leftovers are ignored on recovery. The store lives in a sibling `.d` directory derived
+/// from the configured path.
 #[derive(Clone, Debug)]
 pub struct FileSnapshot {
     path: PathBuf,
 }
 
 impl FileSnapshot {
-    /// Create a backend that reads from and writes to `path`.
+    /// Create a backend whose incremental store is written under the sibling `<path>.d` directory.
+    /// The path itself must be absent; it is used as the store's base name.
     pub fn new(path: impl AsRef<Path>) -> Self {
         FileSnapshot {
             path: path.as_ref().to_path_buf(),
         }
     }
+}
+
+/// The configured base path is reserved; all snapshot data lives in its sibling `.d` directory.
+fn ensure_base_path_absent(path: &Path) -> io::Result<()> {
+    if path.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "snapshot base path must be absent; the single-file layout is unsupported",
+        ));
+    }
+    Ok(())
 }
 
 impl<K, V> Persistence<K, V> for FileSnapshot
@@ -117,15 +61,8 @@ where
     V: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     fn load(&self) -> io::Result<Option<PersistedState<K, V>>> {
-        if let Some(state) = incremental::load(self)? {
-            return Ok(Some(state));
-        }
-        let bytes = match fs::read(&self.path) {
-            Ok(bytes) => bytes,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(err),
-        };
-        decode_snapshot(&bytes).map(Some)
+        ensure_base_path_absent(&self.path)?;
+        incremental::load(self)
     }
 
     fn save(&self, state: &PersistedState<K, V>) -> io::Result<()> {
@@ -145,15 +82,8 @@ where
     V: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     fn load(&self) -> io::Result<Option<PersistedState<K, V, PeerId>>> {
-        if let Some(state) = incremental::load_for(self, incremental::PEER_ID_FORMAT_VERSION)? {
-            return Ok(Some(state));
-        }
-        let bytes = match fs::read(&self.path) {
-            Ok(bytes) => bytes,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(err),
-        };
-        decode_snapshot_for(&bytes, incremental::PEER_ID_FORMAT_VERSION).map(Some)
+        ensure_base_path_absent(&self.path)?;
+        incremental::load_for(self, incremental::PEER_ID_FORMAT_VERSION)
     }
 
     fn save(&self, state: &PersistedState<K, V, PeerId>) -> io::Result<()> {

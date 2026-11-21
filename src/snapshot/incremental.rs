@@ -272,12 +272,12 @@ where
     V: Serialize,
     P: Serialize,
 {
-    let previous = read_manifest_version(backend, format_version)?;
-    if format_version != FORMAT_VERSION && previous.is_none() && backend.path.exists() {
+    if backend.path.exists() {
         return Err(invalid(
-            "incompatible single-file snapshot exists: refusing to overwrite causal state",
+            "snapshot base path must be absent: refusing to overwrite the existing path",
         ));
     }
+    let previous = read_manifest_version(backend, format_version)?;
     let generation = previous
         .as_ref()
         .map_or(1, |manifest| manifest.current_generation.saturating_add(1));
@@ -327,12 +327,12 @@ where
     V: Serialize + DeserializeOwned,
     P: Serialize + DeserializeOwned + Eq + Hash,
 {
+    if backend.path.exists() {
+        return Err(invalid(
+            "snapshot base path must be absent: refusing to reset the existing path",
+        ));
+    }
     let Some(mut manifest) = read_manifest_version(backend, format_version)? else {
-        if format_version != FORMAT_VERSION && backend.path.exists() {
-            return Err(invalid(
-                "incompatible single-file snapshot exists: refusing to reset causal state",
-            ));
-        }
         return Ok(false);
     };
     let Some(delta) = delta else {

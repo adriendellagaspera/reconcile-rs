@@ -6,6 +6,8 @@
 // except according to those terms.
 
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::io;
 
 use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
 use crate::entry::Entry;
@@ -97,51 +99,6 @@ fn empty_member_sets_do_not_allow_reading_a_snapshot_under_the_wrong_identity_sc
     let error = Persistence::<u32, String>::load(&peer_backend).unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     assert!(error.to_string().contains("format version"));
-}
-
-#[test]
-fn peer_id_mode_rejects_old_single_file_on_read_and_before_any_overwrite() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("store.bin");
-    let mut old_bytes = Vec::from(SNAPSHOT_MAGIC);
-    old_bytes.extend_from_slice(&SNAPSHOT_FORMAT_VERSION.to_le_bytes());
-    old_bytes
-        .extend_from_slice(&bincode::serialize(&PersistedState::<u32, String>::default()).unwrap());
-    fs::write(&path, &old_bytes).unwrap();
-    let backend = FileSnapshot::new(&path);
-
-    assert_eq!(
-        load_signed(&backend).unwrap_err().kind(),
-        io::ErrorKind::InvalidData
-    );
-    assert_eq!(
-        Persistence::<u32, String, PeerId>::save(&backend, &signed_state())
-            .unwrap_err()
-            .kind(),
-        io::ErrorKind::InvalidData
-    );
-    assert_eq!(
-        Persistence::<u32, String, PeerId>::try_save_delta(&backend, None)
-            .unwrap_err()
-            .kind(),
-        io::ErrorKind::InvalidData
-    );
-    assert_eq!(fs::read(&path).unwrap(), old_bytes);
-    assert!(!incremental::paths(&backend).1.exists());
-}
-
-#[test]
-fn signed_single_file_v2_is_decodable_without_guessing_the_identity_type() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("store.bin");
-    let state = signed_state();
-    let mut bytes = Vec::from(SNAPSHOT_MAGIC);
-    bytes.extend_from_slice(&incremental::PEER_ID_FORMAT_VERSION.to_le_bytes());
-    bytes.extend_from_slice(&bincode::serialize(&state).unwrap());
-    fs::write(&path, bytes).unwrap();
-    let restored = load_signed(&FileSnapshot::new(path)).unwrap().unwrap();
-    assert_eq!(restored.members, state.members);
-    assert_eq!(restored.tombstone_acks, state.tombstone_acks);
 }
 
 #[test]

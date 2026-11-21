@@ -267,10 +267,6 @@ pub(super) fn cleanup_after_full_materialization(
         Err(_) => observability::record_snapshot_cleanup_failure(),
     }
 
-    if fs::remove_file(&backend.path).is_err_and(|err| err.kind() != io::ErrorKind::NotFound) {
-        observability::record_snapshot_cleanup_failure();
-    }
-
     #[cfg(unix)]
     if let Ok(dir_handle) = fs::File::open(&dir) {
         let _ = dir_handle.sync_all();
