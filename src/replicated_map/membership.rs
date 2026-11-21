@@ -116,7 +116,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Exposed for integration-test assertions under `cfg(reconcile_internal_testing)`.
     #[cfg(any(test, reconcile_internal_testing))]
     pub fn broadcasts_in_flight_count(&self) -> usize {
-        self.engine.broadcasts_in_flight_count()
+        self.engine.broadcasts_in_flight()
     }
 
     /// (runtime) Replace the declared geographical networks, re-deriving the local one. See
