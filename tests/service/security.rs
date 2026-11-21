@@ -37,7 +37,10 @@ fn tombstone_ack_payload() -> Vec<u8> {
         TombstoneAck((i32, u64)),
     }
 
-    let _ = (WireMessage::EntryFingerprint(()), WireMessage::EntryUpdate(()));
+    let _ = (
+        WireMessage::EntryFingerprint(()),
+        WireMessage::EntryUpdate(()),
+    );
     let mut payload = Vec::new();
     WireMessage::TombstoneAck((0, 0))
         .serialize(&mut Serializer::new(&mut payload, DefaultOptions::new()))
