@@ -380,8 +380,7 @@ async fn live_point(members: usize) -> LivePoint {
         central_config(members.saturating_add(8)),
         Arc::new(central_transport),
     )
-    .expect("valid central benchmark node")
-;
+    .expect("valid central benchmark node");
 
     let shutdown = CancellationToken::new();
     let run_store = central.clone();
@@ -425,7 +424,6 @@ async fn live_point(members: usize) -> LivePoint {
     central.start_reconciliation().await;
     let round_ms = round_started.elapsed().as_secs_f64() * 1_000.0;
     let round = traffic.snapshot();
-
 
     shutdown.cancel();
     run_task.await.expect("central run task");
