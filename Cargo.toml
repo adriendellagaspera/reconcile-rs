@@ -59,10 +59,6 @@ name = "snapshot_metadata_only"
 harness = false
 
 [[bench]]
-name = "workload_distribution"
-harness = false
-
-[[bench]]
 name = "security_ingress"
 harness = false
 
@@ -76,14 +72,6 @@ harness = false
 
 [[bench]]
 name = "fragmentation"
-harness = false
-
-[[bench]]
-name = "fragment_recovery"
-harness = false
-
-[[bench]]
-name = "ordered_stream"
 harness = false
 
 [[bench]]
