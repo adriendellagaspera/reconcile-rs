@@ -16,6 +16,7 @@ use std::hash::Hash;
 #[cfg(feature = "metrics")]
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use reconcile::{
     replicated_map::{Config, ConstructionError},
