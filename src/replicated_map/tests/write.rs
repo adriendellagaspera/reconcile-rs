@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use crate::{replicated_map::Config, ReplicatedMap};
+use crate::replicated_map::Config;
 
 use super::{virtual_config, virtual_map};
 
