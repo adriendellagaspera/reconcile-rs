@@ -5,8 +5,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::time::Duration;
-
 use crate::{
     replicated_map::{Config, ConfigError, ConstructionError, MAX_NETS},
     ReadReplicaMap, ReplicatedMap,
