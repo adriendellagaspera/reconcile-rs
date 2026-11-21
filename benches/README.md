@@ -15,7 +15,8 @@ CI compile-checks benchmark targets; it does not execute measurements.
 
 | Targets | What they exercise |
 |---|---|
-| `replicated_map`, `system` | Local data-structure and runtime costs, plus in-memory/emulated reconciliation |
+| `replicated_map` | Per-entry `just_insert`, read-replica memory-fill cost, and service reconciliation RTT/cadence; uses internal benchmark seams |
+| `system` | Public-API baselines, batched writes, heap footprint, convergence/gossip, persistence rejoin, and emulated RTT/loss |
 | `membership_scaling`, `membership_causal_debt`, `membership_churn` | Runtime membership, ACK metadata, and churn costs |
 | `read_replica_fleet` | Read-only replica fleet overhead and ingress state |
 | `snapshot_write_amplification`, `snapshot_metadata_only` | Durable snapshot writes, retained bytes, and metadata costs |
