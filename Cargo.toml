@@ -15,7 +15,6 @@ keywords = ["reconciliation", "gossip", "replicated", "distributed", "crdt"]
 categories = ["data-structures", "network-programming"]
 exclude = [
     "CONTRIBUTING.md",
-    "examples/k8s/",
     "ARCHITECTURE.md",
 ]
 
@@ -104,11 +103,6 @@ dns-hickory = ["gossip/dns-hickory"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(reconcile_internal_testing)"] }
-
-[[example]]
-name = "k8s"
-path = "examples/k8s/main.rs"
-required-features = ["metrics-prometheus"]
 
 [dependencies]
 arc-swap = "1.7.1"
