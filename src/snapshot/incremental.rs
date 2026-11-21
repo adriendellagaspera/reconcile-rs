@@ -327,12 +327,12 @@ where
     V: Serialize + DeserializeOwned,
     P: Serialize + DeserializeOwned + Eq + Hash,
 {
+    if backend.path.exists() {
+        return Err(invalid(
+            "single-file snapshots are no longer supported: refusing to reset the existing path",
+        ));
+    }
     let Some(mut manifest) = read_manifest_version(backend, format_version)? else {
-        if backend.path.exists() {
-            return Err(invalid(
-                "single-file snapshots are no longer supported: refusing to reset the existing file",
-            ));
-        }
         return Ok(false);
     };
     let Some(delta) = delta else {
