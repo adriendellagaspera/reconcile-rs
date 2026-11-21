@@ -9,8 +9,8 @@
 //! For substrate-neutral signed discovery, use [`EndpointDiscovery`] and [`EndpointDiscoveryState`].
 //!
 //! [`RandomProbe`] supplies speculative round targets. [`DnsDiscovery`] supplies an authoritative
-//! peer snapshot suitable for DNS-backed deployments. Discovery changes gossip targets only;
-//! authoritative membership is established by authenticated protocol traffic.
+//! peer snapshot suitable for DNS-backed deployments. Discovery changes gossip targets only; authoritative membership is established by accepted
+//! dated protocol traffic.
 use std::error::Error as StdError;
 use std::fmt;
 use std::future::Future;
