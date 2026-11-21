@@ -175,7 +175,7 @@ fn baseline_checkpoint(
 ) -> (Duration, StoreImage, u64) {
     let before = StoreImage::capture(path);
     let start = Instant::now();
-    store.snapshot_now().expect("write reference snapshot");
+    store.snapshot_now().expect("write full-base baseline");
     let elapsed = start.elapsed();
     let after = StoreImage::capture(path);
     let written = after.write_bytes_since(&before);
