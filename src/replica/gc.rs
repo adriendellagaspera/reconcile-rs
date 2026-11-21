@@ -167,7 +167,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Whether `peer` still owes an acknowledgment on some held tombstone — i.e. whether its
-    /// absence would block GC.
+    /// absence would block a future, separately proven collection protocol.
     /// Walks [`live_tombstones`](Self::live_tombstones), not
     /// [`tombstone_acks`](Self::tombstone_acks): a freshly deleted tombstone has no ack entry yet
     /// and must still count as pending.
