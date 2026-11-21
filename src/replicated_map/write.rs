@@ -206,5 +206,4 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             self.remove_bulk(&keys);
         }
     }
-
 }
