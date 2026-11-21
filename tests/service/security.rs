@@ -331,8 +331,8 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
     sender_sock.send_to(&stale_datagram, &target).await.unwrap();
     sender_sock.send_to(&fresh_datagram, &target).await.unwrap();
 
-    // The fresh lower-sequence packet can join only if the stale packet was rejected before the
-    // replay filter. This also proves the receiver processed both datagrams in send order.
+    // The fresh packet can join only if the stale packet was rejected before the replay filter.
+    // The shared sequence number makes replay admission observable; send order is preserved.
     assert_until!(members_snapshot(&store).contains(&sender_ip));
     assert!(
         !task.is_finished(),
