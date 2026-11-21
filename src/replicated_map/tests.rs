@@ -20,7 +20,6 @@ mod lifecycle;
 mod membership;
 mod peer_cap;
 mod persistence;
-mod persistence_errors;
 mod read;
 mod snapshot_cadence;
 mod snapshot_generation;
