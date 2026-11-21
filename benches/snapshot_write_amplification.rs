@@ -5,9 +5,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Paired persistence probe: the same binary can measure the legacy single-file snapshot backend
-// or the incremental base+delta backend because it observes only files created under the configured
-// snapshot path. "Write bytes" means bytes in newly-created or content-changed durable files after
+// Incremental persistence write-amplification probe. The initial checkpoint provides a full-base
+// reference; subsequent checkpoints measure the bytes added or changed by incremental persistence.
+// "Write bytes" means bytes in newly-created or content-changed durable files after
 // one checkpoint; this intentionally excludes filesystem metadata, fsync amplification and RSS.
 // Retained bytes are the complete durable footprint after the checkpoint. Durations include
 // ReplicatedMap collection, serialization, file I/O, sync and publication.
@@ -55,10 +55,6 @@ struct StoreImage {
 impl StoreImage {
     fn capture(path: &Path) -> Self {
         let mut image = Self::default();
-        if path.is_file() {
-            image.add_file(path);
-        }
-
         let dir = incremental_dir(path);
         if dir.is_dir() {
             for entry in fs::read_dir(&dir).expect("read snapshot directory") {
@@ -88,8 +84,8 @@ impl StoreImage {
             .sum()
     }
 
-    fn segments(&self, legacy_path: &Path) -> (usize, usize) {
-        let mut bases = usize::from(self.files.contains_key(legacy_path));
+    fn segments(&self) -> (usize, usize) {
+        let mut bases = 0;
         let mut deltas = 0;
         for path in self.files.keys() {
             let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
@@ -107,9 +103,9 @@ impl StoreImage {
 
 #[derive(Clone, Copy, Debug)]
 struct Measurement {
-    reference_time: Duration,
+    baseline_time: Duration,
     checkpoint_time: Duration,
-    reference_write_bytes: u64,
+    baseline_write_bytes: u64,
     checkpoint_write_bytes: u64,
     retained_bytes: u64,
     base_segments: usize,
@@ -173,7 +169,7 @@ fn make_store(rt: &Runtime, path: &Path) -> ReplicatedMap<u32, Vec<u8>> {
         .expect("load the existing snapshot, if any")
 }
 
-fn reference_snapshot(
+fn baseline_checkpoint(
     store: &ReplicatedMap<u32, Vec<u8>>,
     path: &Path,
 ) -> (Duration, StoreImage, u64) {
@@ -249,7 +245,7 @@ fn trial(rt: &Runtime, n: usize, delta: usize, checkpoints: usize) -> Measuremen
     }
 
     let retained_bytes = before.retained_bytes();
-    let (base_segments, delta_segments) = before.segments(&path);
+    let (base_segments, delta_segments) = before.segments();
     let restart_time = verify_restart(rt, &path, &store, n);
 
     Measurement {
@@ -305,7 +301,7 @@ fn main() {
     assert!(repeats > 0);
 
     println!(
-        "case,n,delta,checkpoints,trial,reference_ms,checkpoint_total_ms,reference_write_bytes,checkpoint_write_bytes,write_ratio_to_full_baseline,retained_bytes,base_segments,delta_segments,restart_ms"
+        "case,n,delta,checkpoints,trial,baseline_ms,checkpoint_total_ms,reference_write_bytes,checkpoint_write_bytes,write_ratio_to_baseline,retained_bytes,base_segments,delta_segments,restart_ms"
     );
 
     for n in ns {
