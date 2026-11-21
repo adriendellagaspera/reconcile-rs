@@ -40,7 +40,6 @@ use tokio_util::sync::CancellationToken;
 const PORT: u16 = 9_875;
 const CENTRAL_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 254, 1, 1));
 const LONG_INTERVAL: Duration = Duration::from_secs(60 * 60);
-const TOMBSTONE_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24 * 365 * 100);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 const SETTLE: Duration = Duration::from_millis(2);
 
@@ -227,7 +226,6 @@ fn newcomer(
         Arc::new(network.bind(SocketAddr::new(addr, PORT))),
     )
     .expect("valid newcomer")
-    .with_tombstone_timeout(TOMBSTONE_TIMEOUT)
     .with_persistence(backend)
     .expect("load newcomer state");
     replica.seed_peer(CENTRAL_IP);
