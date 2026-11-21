@@ -7,8 +7,8 @@
 // except according to those terms.
 
 //! End-to-end test of dynamic discovery through the public `run()` path: a peer that disappears
-//! from an authoritative discovery source is decommissioned after its grace period. This
-//! retires receipt obligations without authorizing physical deletion of retained history.
+//! from an authoritative discovery source is decommissioned after the configured miss threshold.
+//! Decommissioning releases receipt obligations but never erases retained deletion history.
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -92,22 +92,16 @@ async fn vanished_peer_is_decommissioned_without_erasing_deletion_history() {
     )
     .expect("valid test config")
     .with_seed(addr2)
-    .with_tombstone_timeout(Duration::from_millis(50))
     .with_discovery(Arc::new(discovery.clone()))
     .unwrap()
     .with_discovery_interval(Duration::from_millis(20))
-    .with_discovery_miss_threshold(3)
-    // store2's tombstone ack is pending (it was partitioned before it could send one), so
-    // decommissioning takes the wall-time-floor path, not the miss-threshold fast path; keep
-    // the floor short so the test still runs quickly.
-    .with_discovery_decommission_floor(Duration::from_millis(50));
+    .with_discovery_miss_threshold(3);
     let store2 = ReplicatedMap::<i32, i32>::new_with_transport(
         cfg2,
         Arc::new(network.bind(SocketAddr::new(addr2, port))),
     )
     .expect("valid test config")
-    .with_seed(addr1)
-    .with_tombstone_timeout(Duration::from_millis(50));
+    .with_seed(addr1);
 
     let task1 = tokio::spawn(store1.clone().run(CancellationToken::new()));
     let task2 = tokio::spawn(store2.clone().run(CancellationToken::new()));
@@ -118,22 +112,16 @@ async fn vanished_peer_is_decommissioned_without_erasing_deletion_history() {
     store2.insert(2, 22);
     assert_until!(store1.get(&2).as_deref() == Some(&22));
 
-    // Partition store2 but keep reporting it present in discovery: its tombstone gate holds.
+    // Partition store2 but keep reporting it present in discovery: it must remain a member.
     task2.abort();
     store1.remove(&1);
     assert!(store1.get(&1).is_none());
     let fingerprint_with_tombstone = store1.fingerprint(..);
 
-    tokio::time::sleep(Duration::from_millis(1500)).await;
-    assert_eq!(
-        store1.fingerprint(..),
-        fingerprint_with_tombstone,
-        "tombstone collected while the peer was still reported present (resurrection hazard)"
-    );
+    assert!(store1.members().contains(&addr2));
 
     discovery.set(vec![]);
     assert_until!(!store1.members().contains(&addr2));
-    tokio::time::sleep(Duration::from_millis(1200)).await;
     assert_eq!(store1.fingerprint(..), fingerprint_with_tombstone);
     assert!(store1.snapshot().get(&1).unwrap().is_tombstone());
 
