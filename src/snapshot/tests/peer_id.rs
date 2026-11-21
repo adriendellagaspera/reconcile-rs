@@ -5,6 +5,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::fs;
+use std::io;
 use std::collections::{HashMap, HashSet};
 
 use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
