@@ -49,7 +49,9 @@ impl std::error::Error for NotAuthoritative {}
 pub(crate) enum MemberPresence {
     #[default]
     Present,
-    Absent { misses: u32 },
+    Absent {
+        misses: u32,
+    }
 }
 
 impl MemberPresence {
