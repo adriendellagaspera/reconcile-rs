@@ -167,7 +167,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Number of entries currently in the per-peer replay filter.
-    /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
+    /// Unit-test introspection only.
     #[cfg(test)]
     pub(crate) fn replay_filter_len(&self) -> usize {
         self.replay_filter.len()
