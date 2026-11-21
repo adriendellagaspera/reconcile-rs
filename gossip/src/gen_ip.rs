@@ -13,6 +13,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use rand::Rng;
 
+/// Select a random IP address from a CIDR network.
 pub fn gen_ip<R: Rng>(rng: &mut R, network: IpNet) -> IpAddr {
     match network {
         IpNet::V4(network) => IpAddr::V4(gen_ipv4(rng, network)),
