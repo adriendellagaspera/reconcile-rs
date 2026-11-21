@@ -341,7 +341,9 @@ fn single_file_snapshot_layout_is_rejected_for_both_identity_schemas() {
     let signed_state = PersistedState::<i32, String, crate::PeerId>::default();
 
     assert_eq!(
-        Persistence::<i32, String>::load(&backend).unwrap_err().kind(),
+        Persistence::<i32, String>::load(&backend)
+            .unwrap_err()
+            .kind(),
         io::ErrorKind::InvalidData
     );
     assert_eq!(
