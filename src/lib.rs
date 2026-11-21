@@ -144,5 +144,4 @@ pub mod testing {
         /// Number of dated entries enumerated into update messages.
         pub enumerated_elements: usize,
     }
-
 }
