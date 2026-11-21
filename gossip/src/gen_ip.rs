@@ -14,7 +14,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use rand::Rng;
 
 /// Select a random IP address from a CIDR network.
-fn gen_ip<R: Rng>(rng: &mut R, network: IpNet) -> IpAddr {
+pub fn gen_ip<R: Rng>(rng: &mut R, network: IpNet) -> IpAddr {
     match network {
         IpNet::V4(network) => IpAddr::V4(gen_ipv4(rng, network)),
         IpNet::V6(network) => IpAddr::V6(gen_ipv6(rng, network)),
@@ -34,6 +34,22 @@ fn gen_ipv6<R: Rng>(rng: &mut R, network: Ipv6Net) -> Ipv6Addr {
 /// One random probe address per network CIDR, so discovery spans every configured network.
 pub(crate) fn probe_targets<R: Rng>(rng: &mut R, nets: &[IpNet]) -> Vec<IpAddr> {
     nets.iter().map(|&net| gen_ip(rng, net)).collect()
+}
+
+/// The first network in `nets` whose CIDR contains `addr`. A peer's network is derived from its
+/// address alone, so the wire format carries no network tag.
+pub fn net_of(nets: &[IpNet], addr: IpAddr) -> Option<IpNet> {
+    nets.iter().copied().find(|net| net.contains(&addr))
+}
+
+/// The host route (`/32`, `/128`) of a single address: the local network of last resort when no
+/// configured network contains the listen address.
+pub fn host_net(addr: IpAddr) -> IpNet {
+    let prefix_len = match addr {
+        IpAddr::V4(_) => 32,
+        IpAddr::V6(_) => 128,
+    };
+    IpNet::new(addr, prefix_len).expect("host prefix length is always valid")
 }
 
 #[cfg(test)]
@@ -72,5 +88,23 @@ mod tests {
         for (target, net) in targets.iter().zip(nets.iter()) {
             assert!(net.contains(target), "{net} should contain {target}");
         }
+    }
+
+    #[test]
+    fn net_classification() {
+        use super::{host_net, net_of};
+        let nets: Vec<_> = ["127.0.0.0/30", "127.0.1.0/30"]
+            .iter()
+            .map(|s| s.parse().unwrap())
+            .collect();
+        assert_eq!(net_of(&nets, "127.0.0.1".parse().unwrap()), Some(nets[0]));
+        assert_eq!(net_of(&nets, "127.0.1.1".parse().unwrap()), Some(nets[1]));
+        assert_eq!(net_of(&nets, "10.0.0.1".parse().unwrap()), None);
+
+        assert_eq!(
+            host_net("10.0.0.1".parse().unwrap()),
+            "10.0.0.1/32".parse().unwrap()
+        );
+        assert_eq!(host_net("::1".parse().unwrap()), "::1/128".parse().unwrap());
     }
 }
