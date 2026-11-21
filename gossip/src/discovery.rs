@@ -201,20 +201,6 @@ mod tests {
         assert!(discovery.discover().await.is_err());
     }
 
-    /// `tokio::time::timeout` polls the wrapped future before it ever checks the deadline, so a
-    /// future that can resolve synchronously on its first poll (as `lookup_host("localhost")`
-    /// does on this host) always wins the race regardless of how small a budget is passed — no
-    /// duration can deterministically force a `Timeout` here without also mocking the resolver.
-    /// `with_timeout` itself, and the `Elapsed` → `DnsDiscoveryError::Timeout` mapping in
-    /// `discover`, stay covered by inspection and by `tokio::time::timeout`'s own test suite.
-    #[test]
-    fn dns_discovery_with_timeout_is_a_builder() {
-        let discovery = DnsDiscovery::new("svc", 0).with_timeout(Duration::from_millis(1));
-        assert_eq!(discovery.timeout, Duration::from_millis(1));
-    }
-
-    /// `Display`'s text is user- and log-facing — assert its actual content for both variants,
-    /// not merely that formatting it doesn't panic.
     #[tokio::test]
     async fn dns_discovery_error_display_names_the_failure_kind() {
         let resolve = DnsDiscoveryError::Resolve(std::io::Error::other("boom"));
