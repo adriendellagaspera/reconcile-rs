@@ -137,8 +137,7 @@ impl<K: Key> ReadReplicaSet<K> {
         self.0.value_fingerprint(range)
     }
 
-    /// Deprecated alias for [`value_fingerprint`](Self::value_fingerprint).
-    #[deprecated(since = "1.0.0", note = "renamed to `value_fingerprint`")]
+    /// Legacy alias for [`value_fingerprint`](Self::value_fingerprint), retained for source compatibility.
     #[must_use]
     pub fn fingerprint<R: RangeBounds<K>>(&self, range: R) -> Fingerprint {
         self.value_fingerprint(range)
