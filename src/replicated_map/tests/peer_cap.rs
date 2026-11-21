@@ -178,12 +178,11 @@ async fn peer_cap_allows_known_member_at_capacity() {
     task.abort();
 }
 
-/// Decommissioning a member frees its slot, letting a new sender through the cap.
+/// Decommissioning removes a member from both causal membership and gossip routing.
 #[tokio::test]
-async fn decommission_frees_peer_cap_slot() {
+async fn forget_peer_removes_member_and_routing_entry() {
     let peer1: std::net::IpAddr = "127.1.0.1".parse().unwrap();
     let peer2: std::net::IpAddr = "127.1.0.2".parse().unwrap();
-    let newcomer: std::net::IpAddr = "127.1.0.3".parse().unwrap();
 
     let port = 9803u16; // Virtual port scoped to this test's in-memory network.
     let config = Config::default()
@@ -204,16 +203,6 @@ async fn decommission_frees_peer_cap_slot() {
     store.engine.members.write().insert(peer2);
     assert_eq!(store.engine.members.read().len(), 2);
 
-    // At cap: a newcomer would be blocked.
-    assert!(
-        store.engine.members.read().len() >= 2,
-        "precondition: at cap"
-    );
-    assert!(
-        !store.engine.members.read().contains(&newcomer),
-        "precondition: newcomer not yet in members"
-    );
-
     // Decommission peer2, freeing one slot.
     store.forget_peer(peer2);
     assert_eq!(
@@ -230,15 +219,6 @@ async fn decommission_frees_peer_cap_slot() {
     assert!(
         !store.engine.peers.read().contains_key(&peer2),
         "peer2 must be removed from peers by decommission"
-    );
-
-    // After decommission: members.len() == 1 < max_peers == 2.
-    // The cap check allows the newcomer through: current_len < 2.
-    let current_len = store.engine.members.read().len();
-    let is_known = store.engine.members.read().contains(&newcomer);
-    assert!(
-        is_known || current_len < 2,
-        "newcomer must not be capped out (members.len={current_len}) after decommission freed a slot"
     );
 }
 

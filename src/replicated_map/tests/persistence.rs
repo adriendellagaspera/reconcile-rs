@@ -473,3 +473,21 @@ async fn config_snapshot_interval_actually_changes_the_periodic_cadence() {
         "the configured short snapshot_interval was not honored by the periodic task"
     );
 }
+
+/// `PersistenceLoadError`'s `Display` text is user-facing; assert the actual content for both variants.
+#[test]
+fn persistence_load_error_display_messages() {
+    let err = std::io::Error::other("boom");
+    assert_eq!(
+        PersistenceLoadError::Corrupt(err).to_string(),
+        "persisted state is corrupt or from an incompatible format, refusing to silently start fresh: boom"
+    );
+    let err = std::io::Error::other("boom");
+    assert_eq!(
+        PersistenceLoadError::RetriesExhausted(err).to_string(),
+        format!(
+            "failed to load persisted state after {} attempts: boom",
+            super::super::persistence::LOAD_RETRY_ATTEMPTS
+        )
+    );
+}

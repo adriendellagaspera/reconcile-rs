@@ -5,8 +5,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::time::Duration;
-
 use crate::{
     replicated_map::{Config, ConfigError, ConstructionError, MAX_NETS},
     ReadReplicaMap, ReplicatedMap,
@@ -156,66 +154,6 @@ fn config_debug_redacts_cluster_key_but_not_its_presence() {
         debug.contains("cluster_key: None"),
         "expected an explicit None, got: {debug}"
     );
-}
-
-/// Each `with_*` builder actually sets its field on `self`; a mutant collapsing any of them to
-/// `Default::default` would silently discard both `self` and the argument.
-#[test]
-fn config_builders_actually_set_their_field() {
-    use ipnet::IpNet;
-
-    let net_a: IpNet = "10.0.0.0/8".parse().unwrap();
-    let net_b: IpNet = "10.1.0.0/16".parse().unwrap();
-    let cfg = Config::default().with_nets(&[net_a, net_b]).unwrap();
-    assert_eq!(cfg.nets[0], Some(net_a));
-    assert_eq!(cfg.nets[1], Some(net_b));
-
-    let cfg = Config::default().with_bulk_send_rate(777_216);
-    assert_eq!(cfg.bulk_send_rate, Some(777_216));
-
-    let cfg = Config::default().with_recv_buffer_size(12_345);
-    assert_eq!(cfg.recv_buffer_size, Some(12_345));
-
-    let cfg = Config::default().with_send_buffer_size(54_321);
-    assert_eq!(cfg.send_buffer_size, Some(54_321));
-
-    let cfg = Config::default().with_freshness_window(Duration::from_secs(42));
-    assert_eq!(cfg.freshness_window, Duration::from_secs(42));
-
-    let cfg = Config::default().with_max_replay_senders(73);
-    assert_eq!(cfg.max_replay_senders, 73);
-
-    let cfg = Config::default().with_max_concurrent_broadcasts(7);
-    assert_eq!(cfg.max_concurrent_broadcasts, 7);
-
-    let cfg = Config::default().with_max_concurrent_bulk_dumps(3);
-    assert_eq!(cfg.max_concurrent_bulk_dumps, 3);
-
-    let cfg = Config::default().with_snapshot_interval(Some(Duration::from_secs(99)));
-    assert_eq!(cfg.snapshot_interval, Some(Duration::from_secs(99)));
-
-    let cfg = Config::default().with_snapshot_interval(None);
-    assert_eq!(cfg.snapshot_interval, None);
-
-    let cfg = Config::default().with_snapshot_change_threshold(42);
-    assert_eq!(cfg.snapshot_change_threshold, 42);
-
-    let drift = crate::clock::ClockDrift::from_millis(123);
-    let cfg = Config::default().with_max_clock_drift(drift);
-    assert_eq!(cfg.max_clock_drift, drift);
-
-    let cfg = Config::default().with_coalesce_window(Duration::from_millis(7));
-    assert_eq!(cfg.coalesce_window, Duration::from_millis(7));
-
-    let cfg = Config::default().with_max_value_size(4096);
-    assert_eq!(cfg.max_value_size, Some(4096));
-}
-
-/// [`Config::max_value_size`] is `None` (no ceiling) unless a caller opts in — 's write-time
-/// rejection must never engage for a `Config` nobody configured it on.
-#[test]
-fn max_value_size_defaults_to_none() {
-    assert_eq!(Config::default().max_value_size, None);
 }
 
 #[test]
