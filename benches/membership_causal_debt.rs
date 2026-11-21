@@ -5,7 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Product/runtime probe for causal-stability debt.
+// Product/runtime probe for tombstone receipt-ACK debt.
 //
 // Measures shipped ReplicatedMap mechanics only:
 // - bounded tombstone-ack resend traffic;

@@ -5,14 +5,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::sync::Arc;
-
-use super::super::*;
 use super::{isolated_read_replica, virtual_config};
 use crate::clock::Timestamp;
 use crate::entry::{Entry, State};
 use crate::FingerprintTreeMap;
-use rsos::Fingerprint;
 
 /// `get` returns the live value, and absent keys are `None`.
 #[tokio::test]
@@ -160,25 +156,6 @@ async fn value_fingerprint_is_timestamp_independent() {
         read_replica.value_fingerprint(..),
         reference.aggregate(..).fingerprint()
     );
-}
-
-/// the deprecated `fingerprint` alias must actually forward to `value_fingerprint`, not
-/// just compile — a mutant that no-ops it and returns a default `Fingerprint` would pass any
-/// test that never compares its result to the real one.
-#[test]
-#[allow(deprecated)]
-fn deprecated_fingerprint_alias_matches_value_fingerprint() {
-    let read_replica = ReadReplicaMap::<i32, String>::new_with_transport(
-        virtual_config(),
-        Arc::new(crate::transport::InMemoryNetwork::new().bind("127.0.5.1:1".parse().unwrap())),
-    )
-    .expect("valid configuration");
-    read_replica.integrate(vec![(1, State::Present("a".to_string()))]);
-    assert_eq!(
-        read_replica.fingerprint(..),
-        read_replica.value_fingerprint(..)
-    );
-    assert_ne!(read_replica.fingerprint(..), Fingerprint::default());
 }
 
 /// A live value and its `State` projection hash identically only via the value-only basis:

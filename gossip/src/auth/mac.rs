@@ -36,10 +36,10 @@ pub(crate) trait Mac {
 }
 
 /// [`Mac`] backend keyed on BLAKE3, the default (`mac-blake3` feature).
-#[cfg(feature = "mac-blake3")]
+#[cfg(all(feature = "mac-blake3", not(feature = "mac-hmac")))]
 pub(crate) struct Blake3Mac;
 
-#[cfg(feature = "mac-blake3")]
+#[cfg(all(feature = "mac-blake3", not(feature = "mac-hmac")))]
 impl Mac for Blake3Mac {
     fn tag(key: &ClusterKey, message: &[u8]) -> Tag {
         Tag(*blake3::keyed_hash(key.as_bytes(), message).as_bytes())
@@ -55,10 +55,10 @@ impl Mac for Blake3Mac {
 }
 
 /// [`Mac`] backend keyed on HMAC-SHA256 (`mac-hmac` feature).
-#[cfg(all(feature = "mac-hmac", not(feature = "mac-blake3")))]
+#[cfg(feature = "mac-hmac")]
 pub(crate) struct HmacSha256Mac;
 
-#[cfg(all(feature = "mac-hmac", not(feature = "mac-blake3")))]
+#[cfg(feature = "mac-hmac")]
 impl Mac for HmacSha256Mac {
     fn tag(key: &ClusterKey, message: &[u8]) -> Tag {
         use hmac::{Hmac, Mac as _};
@@ -79,10 +79,10 @@ impl Mac for HmacSha256Mac {
     }
 }
 
-// `mac-blake3` wins when both are enabled, so `--all-features` still compiles.
+// `mac-hmac` takes precedence when both features are enabled.
 /// The [`Mac`] backend selected at compile time by the `mac-*` Cargo features.
-#[cfg(feature = "mac-blake3")]
+#[cfg(all(feature = "mac-blake3", not(feature = "mac-hmac")))]
 pub(crate) type ClusterMac = Blake3Mac;
 /// The [`Mac`] backend selected at compile time by the `mac-*` Cargo features.
-#[cfg(all(feature = "mac-hmac", not(feature = "mac-blake3")))]
+#[cfg(feature = "mac-hmac")]
 pub(crate) type ClusterMac = HmacSha256Mac;

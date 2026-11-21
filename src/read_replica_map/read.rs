@@ -86,14 +86,6 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         self.tree.load_full().aggregate(range).fingerprint()
     }
 
-    /// Deprecated alias for [`value_fingerprint`](Self::value_fingerprint) — the name collided
-    /// with [`ReplicatedMap::fingerprint`](crate::ReplicatedMap::fingerprint), which includes the
-    /// timestamp and so never equals this one between converged peers.
-    #[deprecated(since = "1.0.0", note = "renamed to `value_fingerprint`")]
-    pub fn fingerprint<R: RangeBounds<K>>(&self, range: R) -> Fingerprint {
-        self.value_fingerprint(range)
-    }
-
     /// The smallest live key and its value, or `None` if the read replica holds no live entry.
     /// Same complexity as [`ReplicatedMap::first_key_value`](crate::ReplicatedMap::first_key_value).
     pub fn first_key_value(&self) -> Option<(K, V)> {

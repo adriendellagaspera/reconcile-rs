@@ -71,8 +71,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.engine.decommission_peer(peer);
     }
 
-    /// The current membership set: peers that have sent a dated, authenticated datagram, and that
-    /// gate tombstone GC.
+    /// The current authoritative membership set: peers that have sent a dated, authenticated
+    /// datagram and therefore have tombstone receipt obligations.
     #[cfg(any(test, reconcile_internal_testing))]
     pub fn members_snapshot(&self) -> std::collections::HashSet<std::net::IpAddr> {
         self.engine.members_snapshot()
@@ -242,7 +242,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.engine.peers_vec()
     }
 
-    /// The current causal-stability membership set — see `members_snapshot` (gated behind
+    /// The current authoritative membership set with tombstone receipt obligations — see `members_snapshot` (gated behind
     /// `cfg(reconcile_internal_testing)`) for the `HashSet` form test assertions use.
     pub fn members(&self) -> Vec<IpAddr> {
         self.engine.members_vec()

@@ -105,7 +105,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             }
         }
 
-        // Piggyback causal-stability ack resends for the tombstones we hold.
+        // Piggyback tombstone receipt-ack resends for the tombstones we hold.
         self.resend_held_tombstone_acks(send_buf);
 
         // Drop any target whose paced bulk transfer to us might still legitimately be in
@@ -147,10 +147,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Append an ack for each held tombstone to `send_buf`, returning the count.
     ///
-    /// Acks are otherwise pairwise, so past two nodes
-    /// [`is_tombstone_stable`](Self::is_tombstone_stable) never completes; resending every round
-    /// makes the matrix converge transitively, and makes an ack that arrived before its tombstone
-    /// (dropped by the admission gate) recoverable on a later round.
+    /// Resending every round makes the per-peer receipt matrix converge, including when an ack
+    /// arrived before its tombstone and was dropped by the admission gate. Receipt completion is
+    /// recorded, but does not trigger physical collection.
     ///
     /// Bounded to [`TOMBSTONE_ACK_RESEND_BYTE_BUDGET`] bytes per datagram. When one datagram
     /// cannot cover every held tombstone, a key cursor resumes at the first unvisited key on the
@@ -183,7 +182,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
                 next_cursor = Some(key.clone());
                 break;
             }
-            // Re-confirm against the map: the tombstone may have been resurrected or GC'd since
+            // Re-confirm against the map: the tombstone may have been superseded since
             // we snapshotted the index, and only the live tombstone's version is a valid ack.
             if let Some(v) = map_guard.get(key).filter(|v| v.is_tombstone()) {
                 gossip::bincode::encode(

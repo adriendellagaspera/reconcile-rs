@@ -212,11 +212,6 @@ mod imp {
             Unit::Count,
             "Tombstone acks resent on reconciliation rounds"
         );
-        describe_counter!(
-            TOMBSTONE_STAMP_BOUNDED_TOTAL,
-            Unit::Count,
-            "Tombstones whose expiry instant had to be bounded, by outcome"
-        );
         describe_histogram!(
             ROUND_DURATION_SECONDS,
             Unit::Seconds,

@@ -7,7 +7,7 @@
 // except according to those terms.
 
 //! `run()` only registers a sender in `peers`/`members` when [`handle_messages`] returns
-//! `true` (`spoke_dated`) — a value-only sender (a read replica) must never gate tombstone GC.
+//! `true` (`spoke_dated`) — a value-only sender (a read replica) must never enter authoritative membership or receive tombstone receipt obligations.
 //! Exercised by calling `handle_messages` directly with each message shape, rather than
 //! through the network loop: the loop's own convergence-style tests seed membership by other
 //! means too, so they do not reliably fail when this return value alone is wrong.
@@ -77,6 +77,6 @@ async fn a_value_only_update_reports_false() {
     assert!(
         !feed(&engine, &message).await,
         "a state-only StateUpdate must report spoke_dated = false — a read replica must never \
-         gate tombstone GC by being granted peers/members membership"
+         create tombstone receipt obligations by being granted authoritative membership"
     );
 }

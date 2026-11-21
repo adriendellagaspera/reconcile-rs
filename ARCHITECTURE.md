@@ -40,7 +40,7 @@ The persistent ordered tree uses structural sharing and immutable roots. This su
 
 Persistence is optional. The generic persistence interface exchanges complete state; `FileSnapshot` additionally supports incremental generations. The signed actor uses a different v2 format.
 
-The implementation deliberately disables physical tombstone collection in both runtime paths. Receipt acknowledgements, elapsed retention, decommissioning, and checkpoints are not sufficient proof that stale application data can no longer reappear. Consequently, tombstones and causal acknowledgement metadata are not bounded by a collection policy.
+Physical tombstone collection is not implemented in either runtime path. Receipt acknowledgements, elapsed retention, decommissioning, and checkpoints are not sufficient proof that stale application data can no longer reappear. Consequently, tombstones and causal acknowledgement metadata are not bounded by a collection policy.
 
 Do not mix snapshots between runtime paths, downgrade formats, or assume that snapshot persistence provides transactional database semantics.
 
@@ -54,10 +54,10 @@ See [SECURITY.md](SECURITY.md) and [SIGNED-RUNTIME-v0.md](SIGNED-RUNTIME-v0.md) 
 
 ## Benchmarks
 
-The benchmark suite contains a mixture of:
+The benchmark suite contains:
 
 - measurements of this implementation on a particular machine;
-- deterministic workload experiments;
-- analytical or simulated transport models.
+- deterministic in-memory transport emulation;
+- synthetic workload and persisted-state experiments.
 
-Model results are not measurements of kernel UDP, TCP, or QUIC behavior. Loopback results are not WAN results. See [benches/README.md](benches/README.md) for the scope and interpretation rules.
+These experiments do not model TCP or QUIC semantics, and in-memory emulation is not a measurement of kernel networking. Loopback results are not WAN results. See [benches/README.md](benches/README.md) for the scope and interpretation rules.

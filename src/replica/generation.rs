@@ -16,16 +16,10 @@ use crate::clock::Timestamp;
 use crate::entry::Entry;
 use crate::persistence::PersistenceDelta;
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum EntryDelta<V> {
-    Upsert(Entry<Timestamp, V>),
-    PhysicalDelete,
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct SnapshotGeneration<K, V, P = IpAddr> {
     pub(crate) id: u64,
-    pub(crate) entries: HashMap<K, EntryDelta<V>>,
+    pub(crate) entries: HashMap<K, Entry<Timestamp, V>>,
     pub(crate) members: HashMap<P, bool>,
     pub(crate) ack_key_clears: HashSet<K>,
     pub(crate) ack_peers: HashMap<K, HashMap<P, Option<u64>>>,
@@ -46,14 +40,10 @@ impl<K, V, P> SnapshotGeneration<K, V, P> {
         let entries = self
             .entries
             .iter()
-            .map(|(key, delta)| {
-                let entry = match delta {
-                    EntryDelta::Upsert(entry) => Some(entry.clone()),
-                    EntryDelta::PhysicalDelete => None,
-                };
-                (key.clone(), entry)
-            })
+            .map(|(key, entry)| (key.clone(), Some(entry.clone())))
             .collect();
+        // Preserve the serialized delta layout. Current writers do not emit physical deletes;
+        // SignedReplica does emit per-key ACK clears when replacing a tombstone.
         PersistenceDelta::new(
             entries,
             self.members.clone(),
@@ -197,21 +187,7 @@ impl<K: Eq + Hash + Clone, V, P: Eq + Hash> GenerationMutation<'_, K, V, P> {
         if !self.enabled() {
             return;
         }
-        self.state
-            .open
-            .entries
-            .insert(key, EntryDelta::Upsert(entry));
-        self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
-    }
-
-    pub(crate) fn record_physical_delete(&mut self, key: K) {
-        if !self.enabled() {
-            return;
-        }
-        self.state
-            .open
-            .entries
-            .insert(key, EntryDelta::PhysicalDelete);
+        self.state.open.entries.insert(key, entry);
         self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
     }
 
@@ -220,6 +196,15 @@ impl<K: Eq + Hash + Clone, V, P: Eq + Hash> GenerationMutation<'_, K, V, P> {
             return;
         }
         self.state.open.members.insert(peer, present);
+        self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
+    }
+
+    pub(crate) fn record_ack_key_clear(&mut self, key: K) {
+        if !self.enabled() {
+            return;
+        }
+        self.state.open.ack_key_clears.insert(key.clone());
+        self.state.open.ack_peers.remove(&key);
         self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
     }
 
@@ -233,15 +218,6 @@ impl<K: Eq + Hash + Clone, V, P: Eq + Hash> GenerationMutation<'_, K, V, P> {
             .entry(key)
             .or_default()
             .insert(peer, version);
-        self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
-    }
-
-    pub(crate) fn record_ack_key_clear(&mut self, key: K) {
-        if !self.enabled() {
-            return;
-        }
-        self.state.open.ack_key_clears.insert(key.clone());
-        self.state.open.ack_peers.remove(&key);
         self.state.open.raw_changes = self.state.open.raw_changes.saturating_add(1);
     }
 }
@@ -269,17 +245,13 @@ mod tests {
             let mut mutation = tracker.mutation();
             mutation.record_entry(1, entry(10, 1));
             mutation.record_entry(1, entry(20, 2));
-            mutation.record_physical_delete(1);
             mutation.record_entry(1, entry(30, 3));
         }
 
         let frozen = tracker.freeze().expect("dirty generation");
-        assert_eq!(frozen.raw_changes, 4);
+        assert_eq!(frozen.raw_changes, 3);
         assert_eq!(frozen.entries.len(), 1);
-        assert_eq!(
-            frozen.entries.get(&1),
-            Some(&EntryDelta::Upsert(entry(30, 3)))
-        );
+        assert_eq!(frozen.entries.get(&1), Some(&entry(30, 3)));
     }
 
     #[test]

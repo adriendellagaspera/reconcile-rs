@@ -21,14 +21,13 @@ fn signed_stale_ack_and_trailing_protocol_bytes_cannot_mutate_causal_state() {
 
     a.remove(55).unwrap();
     let current_version = crate::replica::version_hash(a.entries.get(&55).unwrap());
-    assert!(!a.is_tombstone_stable(&55));
+    assert!(!a.has_all_tombstone_acks(&55));
     let stale = SignedMessage::<u64, String>::Ack(55, current_version.wrapping_add(1));
     let mut frame = Vec::new();
     gossip::framing::write_complete(&serialize(&stale).unwrap(), &mut frame);
     let signed = b.boundary.seal(&frame).unwrap();
     assert!(a.receive(b_addr, &signed, now).unwrap().is_empty());
     assert_eq!(a.acknowledged_version(&55, b_id), None);
-    assert!(!a.collect_if_stable(&55));
 
     // A complete signed frame must be exactly one fully decoded message: even a truncated
     // second message at the end must not authorize the first (valid) update.
@@ -43,7 +42,7 @@ fn signed_stale_ack_and_trailing_protocol_bytes_cannot_mutate_causal_state() {
     assert!(a.receive(b_addr, &signed, now).unwrap().is_empty());
     assert!(a.get(&999).is_none());
     assert_eq!(a.members(), HashSet::from([b_id]));
-    assert!(!a.is_tombstone_stable(&55));
+    assert!(!a.has_all_tombstone_acks(&55));
 }
 
 #[test]
@@ -71,7 +70,6 @@ fn a_signed_read_only_peer_cannot_forge_an_authoritative_ack() {
     assert!(authority.receive((4, 4), &bytes, now).unwrap().is_empty());
     assert_eq!(authority.acknowledged_version(&77, reader_id), None);
     assert_eq!(authority.acknowledged_version(&77, b_id), None);
-    assert!(!authority.collect_if_stable(&77));
     assert_eq!(authority.members(), HashSet::from([b_id]));
 }
 
@@ -118,7 +116,7 @@ fn deliberate_member_decommission_requires_matching_roster_on_reboot() {
     let mut a = make(131, SignedConfig::new([b_id, c_id]), backend.clone());
     a.remove(88).unwrap();
     a.snapshot_now().unwrap();
-    assert!(!a.is_tombstone_stable(&88));
+    assert!(!a.has_all_tombstone_acks(&88));
     assert!(a.decommission(c_id));
     a.snapshot_now().unwrap();
     drop(a);
@@ -126,7 +124,7 @@ fn deliberate_member_decommission_requires_matching_roster_on_reboot() {
     let restored = make(131, SignedConfig::new([b_id]), backend.clone());
     assert_eq!(restored.members(), HashSet::from([b_id]));
     assert!(restored.is_tombstone(&88));
-    assert!(!restored.is_tombstone_stable(&88));
+    assert!(!restored.has_all_tombstone_acks(&88));
     assert!(restored.acknowledged_version(&88, c_id).is_none());
 
     // Restoring an old provisioned roster would reinstate an allegedly retired blocker:

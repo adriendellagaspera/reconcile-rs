@@ -43,7 +43,7 @@ pub(super) const DEFAULT_MAX_PEERS: usize = 1024;
 
 /// Default cap on authenticated sender IPs retained in replay state (see
 /// [`Config::max_replay_senders`]). Kept independent from causal membership so value-only read
-/// replicas can be sized without making them tombstone-GC participants.
+/// read replicas can size replay state independently of authoritative membership.
 pub(super) const DEFAULT_MAX_REPLAY_SENDERS: usize = 1024;
 
 /// Default RTT-scale repair timer (see [`Config::repair_interval`]) — comfortably above the
@@ -103,11 +103,11 @@ pub struct Config {
     pub nets: [Option<IpNet>; MAX_NETS],
     /// Send the full anti-entropy comparison to remote-network peers every `remote_interval`
     /// reconciliation rounds (default `6`). Local-network peers are always contacted every round.
-    /// Lowering this speeds cross-network convergence (and tombstone GC) at the cost of WAN traffic.
+    /// Lowering this speeds cross-network convergence at the cost of WAN traffic.
     pub remote_interval: u32,
     /// Maximum number of peers contacted per remote network on each cross-network round (default
     /// `2`). Bounds WAN fan-out without designating any node as a relay/gateway. Raising it speeds
-    /// cross-network convergence (and tombstone GC) at the cost of WAN traffic.
+    /// cross-network convergence at the cost of WAN traffic.
     pub remote_fanout: usize,
     /// Optional shared cluster secret enabling per-datagram MAC authentication.
     /// This is the **primary** key: outgoing datagrams are always sealed with it and it derives
@@ -209,7 +209,7 @@ pub struct Config {
     /// [`ReplicatedMap`](super::ReplicatedMap) this bounds causal/gossip peers; on a
     /// [`ReadReplicaMap`](crate::ReadReplicaMap) it bounds the dated peers the read replica
     /// tracks. This is deliberately not the replay-state bound: value-only read replicas never
-    /// enter an authoritative replica's causal membership or gate tombstone GC. See
+    /// enter an authoritative replica's causal membership or tombstone receipt accounting. See
     /// [`max_replay_senders`](Self::max_replay_senders) for authenticated sender state.
     pub max_peers: usize,
     /// Maximum number of distinct authenticated sender IPs whose replay state is retained
@@ -256,8 +256,7 @@ pub struct Config {
     /// `None` disables the periodic background task entirely — no wakeup, no snapshot IO, ever,
     /// until an explicit [`snapshot_now`](super::ReplicatedMap::snapshot_now) call.
     /// Each wakeup still only writes if at least
-    /// [`snapshot_change_threshold`](Self::snapshot_change_threshold) changes (local writes,
-    /// gossip applies, and tombstone GC removals) have occurred since the last snapshot — so a node
+    /// [`snapshot_change_threshold`](Self::snapshot_change_threshold) changes (local writes and gossip-applied remote updates) have occurred since the last snapshot — so a node
     /// with no activity between wakeups skips the write, and steady-state snapshot IO tracks
     /// change volume rather than firing unconditionally on the clock.
     /// Up to this much of the most recent writes are lost on an ungraceful restart (one that skips
@@ -265,8 +264,7 @@ pub struct Config {
     /// [`snapshot_now`](super::ReplicatedMap::snapshot_now) for a caller-triggered flush at any
     /// other time).
     pub snapshot_interval: Option<Duration>,
-    /// Minimum number of changes (local writes, gossip-applied remote updates, and tombstone GC
-    /// removals, each counted once) since the last snapshot before a periodic
+    /// Minimum number of changes (local writes and gossip-applied remote updates, each counted once) since the last snapshot before a periodic
     /// [`snapshot_interval`](Self::snapshot_interval) wakeup actually writes one (default `1`).
     /// At the default, any single change is enough; a fully idle node performs no periodic snapshot I/O. Raising it trades a larger post-restart replay window for fewer writes under bursty
     /// traffic. Never consulted by [`snapshot_now`](super::ReplicatedMap::snapshot_now), which

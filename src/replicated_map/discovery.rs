@@ -44,14 +44,12 @@ impl fmt::Display for NotAuthoritative {
 impl std::error::Error for NotAuthoritative {}
 
 /// Per-member discovery-absence tracking for [`ReplicatedMap::discover_periodically`].
-/// [`Absent`](Self::Absent) owns the miss counter and the instant the absence began as one unit,
-/// so the two cannot desync.
+/// The miss counter resets to `Present` on any successful round that includes the peer.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) enum MemberPresence {
     #[default]
     Present,
     Absent {
-        since: Instant,
         misses: u32,
     },
 }
@@ -62,45 +60,27 @@ impl MemberPresence {
         *self = MemberPresence::Present;
     }
 
-    /// Record that this member was missing from the current discovery round, starting the absence
-    /// clock on the first miss and incrementing the counter on every subsequent one.
+    /// Record a miss, incrementing the consecutive-miss counter.
     pub(super) fn mark_missed(&mut self) {
         *self = match *self {
-            MemberPresence::Present => MemberPresence::Absent {
-                since: Instant::now(),
-                misses: 1,
-            },
-            MemberPresence::Absent { since, misses } => MemberPresence::Absent {
-                since,
-                misses: misses + 1,
+            MemberPresence::Present => MemberPresence::Absent { misses: 1 },
+            MemberPresence::Absent { misses } => MemberPresence::Absent {
+                misses: misses.saturating_add(1),
             },
         };
     }
 
-    /// Whether this absence warrants decommissioning: at `miss_threshold` misses, immediately
-    /// without a pending unacknowledged tombstone, otherwise only past `floor` — which is what
-    /// keeps a flaky resolver from dropping a member's outstanding causal ACK obligations early.
-    pub(super) fn eligible_for_decommission(
-        &self,
-        miss_threshold: u32,
-        floor: Duration,
-        pending_tombstone_acks: bool,
-    ) -> bool {
-        let MemberPresence::Absent { since, misses } = *self else {
-            return false;
-        };
-        if misses < miss_threshold {
-            return false;
-        }
-        !pending_tombstone_acks || since.elapsed() >= floor
+    /// Whether the consecutive-miss threshold has been reached.
+    pub(super) fn eligible_for_decommission(&self, miss_threshold: u32) -> bool {
+        matches!(self, MemberPresence::Absent { misses } if *misses >= miss_threshold)
     }
 }
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Attach an authoritative peer-discovery source.
     ///
-    /// Successful rounds seed returned peers. Members absent for the configured miss threshold
-    /// are decommissioned according to the causal-retention floor. Physical tombstone collection remains disabled.
+    /// Successful rounds seed returned peers. Previously discovered members absent for the
+    /// configured consecutive-miss threshold are decommissioned.
     ///
     /// # Errors
     ///
@@ -141,17 +121,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// restarts at the cost of retaining causal membership and its ACK obligations longer.
     pub fn with_discovery_miss_threshold(mut self, threshold: u32) -> Self {
         self.discovery_miss_threshold = threshold;
-        self
-    }
-
-    /// Set the wall-time floor a member **with pending unacknowledged tombstones** must be
-    /// continuously absent for before decommissioning (default 10 minutes).
-    /// The fast path — no pending acks — is unaffected. The floor is what keeps a spoofed or
-    /// flaky resolver from discarding an ACK obligation while a healthy member may still be absent.
-    /// Physical collection is disabled regardless; this floor preserves the causal membership
-    /// record for any future, separately proven collection protocol.
-    pub fn with_discovery_decommission_floor(mut self, floor: Duration) -> Self {
-        self.discovery_decommission_floor = floor;
         self
     }
 
@@ -200,16 +169,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
                     continue; // never discovered by this source: not ours to decommission
                 };
                 state.mark_missed();
-                let pending = self.engine.has_pending_tombstone_acks(member);
-                if state.eligible_for_decommission(
-                    self.discovery_miss_threshold,
-                    self.discovery_decommission_floor,
-                    pending,
-                ) {
-                    info!(
-                        "decommissioning vanished peer {member} \
-                         (pending_tombstone_acks={pending})"
-                    );
+                if state.eligible_for_decommission(self.discovery_miss_threshold) {
+                    info!("decommissioning vanished peer {member}");
                     self.engine.decommission_peer(member);
                     presence.remove(&member);
                 }

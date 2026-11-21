@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::persistence::{PersistedState, Persistence};
-use crate::replica::version_hash;
 use crate::replicated_map::PersistenceLoadError;
 use crate::FileSnapshot;
 
@@ -202,8 +201,7 @@ async fn snapshot_across_multiple_chunks_recovers_every_entry() {
     }
 }
 
-/// The causal-stability state (membership + per-tombstone acks) must survive a
-/// restart, otherwise GC gating is lost.
+/// Tombstone receipt state (membership + per-tombstone ACKs) must survive a restart.
 #[tokio::test]
 async fn restart_preserves_membership_and_acks() {
     let dir = tempfile::tempdir().unwrap();
@@ -241,69 +239,6 @@ async fn restart_preserves_membership_and_acks() {
             .and_then(|acks| acks.get(&peer)),
         Some(&123),
         "tombstone acknowledgments were not restored"
-    );
-}
-
-/// A restart must not turn a held-back tombstone into a collectable one: recovered
-/// membership must keep gating GC.
-#[tokio::test]
-async fn restart_keeps_tombstone_gc_gated() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("snapshot.bin");
-    let peer: IpAddr = "127.0.0.98".parse().unwrap();
-
-    let store = virtual_map::<i32, i32>(virtual_config())
-        .with_persistence(Arc::new(FileSnapshot::new(&path)))
-        .unwrap();
-    store.engine.members.write().insert(peer);
-    store.insert(1, 11);
-    store.remove(&1); // tombstone, never acknowledged by `peer`
-
-    let version = store
-        .engine
-        .map
-        .load_full()
-        .get(&1)
-        .map(version_hash)
-        .unwrap();
-    assert!(
-        !store.engine.is_tombstone_stable(&1, version),
-        "precondition: tombstone is gated before restart"
-    );
-    store.persist_snapshot();
-
-    // Sanity check the hazard: a *fresh* store (no recovered membership) would consider the
-    // same tombstone stable and collect it.
-    let fresh = virtual_map::<i32, i32>(virtual_config());
-    fresh.insert(1, 11);
-    fresh.remove(&1);
-    let fresh_version = fresh
-        .engine
-        .map
-        .load_full()
-        .get(&1)
-        .map(version_hash)
-        .unwrap();
-    assert!(
-        fresh.engine.is_tombstone_stable(&1, fresh_version),
-        "a fresh restart with no membership would (wrongly) GC the tombstone — the hazard this guards against"
-    );
-
-    // The recovered store keeps the tombstone gated, preventing resurrection.
-    let restarted = virtual_map::<i32, i32>(virtual_config())
-        .with_persistence(Arc::new(FileSnapshot::new(&path)))
-        .unwrap();
-    assert!(restarted.get(&1).is_none(), "tombstone was not recovered");
-    let version = restarted
-        .engine
-        .map
-        .load_full()
-        .get(&1)
-        .map(version_hash)
-        .unwrap();
-    assert!(
-        !restarted.engine.is_tombstone_stable(&1, version),
-        "restart dropped causal-stability state: tombstone would be GC'd and could resurrect"
     );
 }
 

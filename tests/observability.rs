@@ -16,6 +16,7 @@ use std::hash::Hash;
 #[cfg(feature = "metrics")]
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use reconcile::{
     replicated_map::{Config, ConstructionError},
@@ -370,7 +371,11 @@ async fn read_replica_warns_about_config_fields_it_cannot_honour() {
 
     let network = InMemoryNetwork::new();
     let transport = std::sync::Arc::new(network.bind("127.0.0.1:1".parse().unwrap()));
-    let config = local_config().with_remote_fanout(9);
+    let mut config = local_config().with_remote_fanout(9);
+    config.repair_interval = Duration::from_secs(2);
+    config.snapshot_interval = None;
+    config.snapshot_change_threshold = 3;
+    config.coalesce_window = Duration::from_millis(5);
     let _replica = ReadReplicaMap::<String, String>::new_with_transport(config, transport)
         .expect("valid configuration");
 
@@ -379,8 +384,18 @@ async fn read_replica_warns_about_config_fields_it_cannot_honour() {
         *level == Level::WARN && msg.contains("ReadReplicaMap ignores these Config fields")
     });
     assert!(
-        ignored_warning.is_some_and(|(_, msg)| msg.contains("remote_fanout")),
-        "expected a WARN naming remote_fanout as ignored, captured: {events:?}"
+        ignored_warning.is_some_and(|(_, msg)| {
+            [
+                "remote_fanout",
+                "repair_interval",
+                "snapshot_interval",
+                "snapshot_change_threshold",
+                "coalesce_window",
+            ]
+            .iter()
+            .all(|field| msg.contains(field))
+        }),
+        "expected a WARN naming every non-default ignored field, captured: {events:?}"
     );
 }
 

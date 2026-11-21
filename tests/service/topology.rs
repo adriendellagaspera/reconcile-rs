@@ -315,5 +315,4 @@ async fn runtime_config_setters() {
     store.set_remote_interval(3);
     store.set_remote_fanout(5);
     store.set_reconcile_interval(Duration::from_millis(200));
-    store.set_tombstone_timeout(Duration::from_millis(500));
 }

@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Public, stable names for metrics emitted by this crate, plus retained historical names.
+//! Public, stable names for metrics emitted by this crate.
 //!
 //! This module is the stable set dashboards and alert rules can depend on; the internal
 //! `observability` helpers record against these same constants rather than defining their own.
@@ -43,13 +43,12 @@
 //! | [`OUTBOUND_RECOVERY_EVICTIONS_TOTAL`](crate::metrics::OUTBOUND_RECOVERY_EVICTIONS_TOTAL) | counter (`reason` label) | sender recovery state expired/evicted |
 //! | [`ROUNDS_TOTAL`](crate::metrics::ROUNDS_TOTAL) | counter | reconciliation rounds initiated |
 //! | [`TOMBSTONE_ACKS_RESENT_TOTAL`](crate::metrics::TOMBSTONE_ACKS_RESENT_TOTAL) | counter | tombstone acks resent on reconciliation rounds |
-//! | [`TOMBSTONE_STAMP_BOUNDED_TOTAL`](crate::metrics::TOMBSTONE_STAMP_BOUNDED_TOTAL) | historical counter name; not emitted | retained for compatibility; tombstone expiry/collection is disabled |
 //! | [`PERSISTENCE_FAILURES_TOTAL`](crate::metrics::PERSISTENCE_FAILURES_TOTAL) | counter | snapshot writes to the persistence backend that failed |
 //! | [`DISCOVERY_FAILURES_TOTAL`](crate::metrics::DISCOVERY_FAILURES_TOTAL) | counter | discovery-source resolutions that failed (round skipped) |
 //! | [`ROUND_DURATION_SECONDS`](crate::metrics::ROUND_DURATION_SECONDS) | histogram | `start_reconciliation` wall time |
 //! | [`HANDLE_DURATION_SECONDS`](crate::metrics::HANDLE_DURATION_SECONDS) | histogram | `handle_messages` wall time |
 //! | [`PEERS_CURRENT`](crate::metrics::PEERS_CURRENT) | gauge | size of the gossip-routing peer set right now |
-//! | [`MEMBERS_CURRENT`](crate::metrics::MEMBERS_CURRENT) | gauge | size of the causal-stability membership set right now |
+//! | [`MEMBERS_CURRENT`](crate::metrics::MEMBERS_CURRENT) | gauge | size of the authoritative membership set right now |
 //! | [`ENTRIES_CURRENT`](crate::metrics::ENTRIES_CURRENT) | gauge | live (non-tombstone) entries right now |
 //! | [`TOMBSTONES_CURRENT`](crate::metrics::TOMBSTONES_CURRENT) | gauge | outstanding tombstones right now |
 //! | [`BULK_DUMPS_IN_FLIGHT`](crate::metrics::BULK_DUMPS_IN_FLIGHT) | gauge | bulk anti-entropy dumps in flight right now |
@@ -131,8 +130,6 @@ pub const OUTBOUND_RECOVERY_EVICTIONS_TOTAL: &str = "reconcile_outbound_recovery
 pub const ROUNDS_TOTAL: &str = "reconcile_rounds_total";
 /// Tombstone acks resent on reconciliation rounds.
 pub const TOMBSTONE_ACKS_RESENT_TOTAL: &str = "reconcile_tombstone_acks_resent_total";
-/// Tombstones whose expiry instant had to be bounded, labeled `outcome`.
-pub const TOMBSTONE_STAMP_BOUNDED_TOTAL: &str = "reconcile_tombstone_stamp_bounded_total";
 /// Snapshot writes to the persistence backend that failed — both the periodic background
 /// snapshot and a caller-triggered [`snapshot_now`](crate::ReplicatedMap::snapshot_now).
 pub const PERSISTENCE_FAILURES_TOTAL: &str = "reconcile_persistence_failures_total";
@@ -145,13 +142,13 @@ pub const HANDLE_DURATION_SECONDS: &str = "reconcile_handle_messages_duration_se
 /// Current size of the gossip-routing peer set — see
 /// [`ReplicatedMap::peers`](crate::ReplicatedMap::peers).
 pub const PEERS_CURRENT: &str = "reconcile_peers_current";
-/// Current size of the causal-stability membership set — see
+/// Current size of the authoritative membership set — see
 /// [`ReplicatedMap::members`](crate::ReplicatedMap::members).
 pub const MEMBERS_CURRENT: &str = "reconcile_members_current";
 /// Current count of live (non-tombstone) entries — see
 /// [`ReplicatedMap::len`](crate::ReplicatedMap::len).
 pub const ENTRIES_CURRENT: &str = "reconcile_entries_current";
-/// Current count of outstanding tombstones (deleted keys not yet garbage-collected).
+/// Current count of retained tombstones.
 pub const TOMBSTONES_CURRENT: &str = "reconcile_tombstones_current";
 /// Current count of bulk anti-entropy dumps in flight, across all peers (bounded by
 /// `Config::max_concurrent_bulk_dumps`).

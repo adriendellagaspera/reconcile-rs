@@ -92,20 +92,18 @@ fn two_signed_authorities_converge_and_ack_the_exact_tombstone() {
 
     a.insert(7, "value".into()).unwrap();
     assert_eq!(a.get(&7).map(String::as_str), Some("value"));
-    assert!(!a.is_tombstone_stable(&7));
+    assert!(!a.has_all_tombstone_acks(&7));
     connect(&mut a, a_addr, &mut b, b_addr, now);
     deliver(&mut a, a_addr, &mut b, b_addr, now);
     assert_eq!(b.get(&7).map(String::as_str), Some("value"));
 
     a.remove(7).unwrap();
     assert!(a.is_tombstone(&7));
-    assert!(!a.is_tombstone_stable(&7));
-    assert!(!a.collect_if_stable(&7));
+    assert!(!a.has_all_tombstone_acks(&7));
     deliver(&mut a, a_addr, &mut b, b_addr, now);
     assert!(b.is_tombstone(&7));
-    assert!(a.is_tombstone_stable(&7));
+    assert!(a.has_all_tombstone_acks(&7));
     assert!(a.acknowledged_version(&7, b_id).is_some());
-    assert!(!a.collect_if_stable(&7));
     assert!(a.is_tombstone(&7));
 }
 
@@ -121,12 +119,10 @@ fn decommission_releases_receipt_obligations_but_does_not_prove_safe_collection(
     a.remove(42).unwrap();
     deliver(&mut a, (1, 1), &mut b, (2, 2), now);
     assert_eq!(a.members(), HashSet::from([b_id, c_id]));
-    assert!(!a.is_tombstone_stable(&42));
-    assert!(!a.collect_if_stable(&42));
+    assert!(!a.has_all_tombstone_acks(&42));
     assert!(a.decommission(c_id));
     assert_eq!(a.members(), HashSet::from([b_id]));
-    assert!(a.is_tombstone_stable(&42));
-    assert!(!a.collect_if_stable(&42));
+    assert!(a.has_all_tombstone_acks(&42));
 }
 
 #[test]
@@ -142,7 +138,7 @@ fn changing_non_ip_route_preserves_authenticated_peer_and_ack_history() {
     connect(&mut a, old, &mut b, b_addr, now);
     a.remove(18).unwrap();
     deliver(&mut a, old, &mut b, b_addr, now);
-    assert!(a.is_tombstone_stable(&18));
+    assert!(a.has_all_tombstone_acks(&18));
     let ack = a.acknowledged_version(&18, b_id);
     assert!(ack.is_some());
 
@@ -158,7 +154,7 @@ fn changing_non_ip_route_preserves_authenticated_peer_and_ack_history() {
     b.receive(moved, &responses[0].bytes, now).unwrap();
     assert_eq!(b.routes.route(a_id), Some(&moved));
     assert_eq!(a.acknowledged_version(&18, b_id), ack);
-    assert!(a.is_tombstone_stable(&18));
+    assert!(a.has_all_tombstone_acks(&18));
 }
 
 #[test]
@@ -192,7 +188,6 @@ fn readers_get_values_but_cannot_write_ack_or_join_causal_membership() {
     assert!(reader.is_tombstone(&77));
     assert!(a.members().is_empty());
     assert!(a.tombstone_ack_snapshot().is_empty());
-    assert!(!reader.collect_if_stable(&77));
 }
 
 #[test]
@@ -204,17 +199,16 @@ fn signed_v2_snapshot_reloads_causal_blockers_and_rejects_v1_or_roster_drift() {
     let mut original = make(51, SignedConfig::new([other]), backend.clone());
     original.insert(4, "durable".into()).unwrap();
     original.remove(9).unwrap();
-    assert!(!original.is_tombstone_stable(&9));
+    assert!(!original.has_all_tombstone_acks(&9));
     original.snapshot_now().unwrap();
     original.insert(5, "delta".into()).unwrap();
     original.snapshot_now().unwrap();
     drop(original);
-    let mut restored = make(51, SignedConfig::new([other]), backend);
+    let restored = make(51, SignedConfig::new([other]), backend);
     assert_eq!(restored.get(&4).map(String::as_str), Some("durable"));
     assert_eq!(restored.get(&5).map(String::as_str), Some("delta"));
     assert!(restored.is_tombstone(&9));
     assert_eq!(restored.members(), HashSet::from([other]));
-    assert!(!restored.collect_if_stable(&9));
 
     let drift_backend: Backend = Arc::new(FileSnapshot::new(&path));
     let err = SignedReplica::<u64, String, Slot>::new(
@@ -343,7 +337,7 @@ fn signed_read_only_sender_cannot_inject_a_dated_entry_even_with_a_confirmed_rou
 }
 
 #[test]
-fn version_exact_ack_bookkeeping_survives_v2_incremental_snapshot_and_reboot() {
+fn version_exact_ack_bookkeeping_survives_reboot_and_clears_on_replacement() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ack-v2.snapshot");
     let a_id = signer(81).peer_id();
@@ -356,19 +350,28 @@ fn version_exact_ack_bookkeeping_survives_v2_incremental_snapshot_and_reboot() {
 
     a.remove(123).unwrap();
     a.snapshot_now().unwrap();
-    assert!(!a.is_tombstone_stable(&123));
+    assert!(!a.has_all_tombstone_acks(&123));
     deliver(&mut a, (41, 1), &mut b, (42, 1), now);
     let exact = a.acknowledged_version(&123, b_id).unwrap();
-    assert!(a.is_tombstone_stable(&123));
+    assert!(a.has_all_tombstone_acks(&123));
     a.snapshot_now().unwrap();
     drop(a);
 
-    let mut reloaded = make(81, SignedConfig::new([b_id]), a_backend);
+    let mut reloaded = make(81, SignedConfig::new([b_id]), a_backend.clone());
     assert_eq!(reloaded.acknowledged_version(&123, b_id), Some(exact));
     assert_eq!(reloaded.members(), HashSet::from([b_id]));
-    assert!(reloaded.is_tombstone_stable(&123));
-    assert!(!reloaded.collect_if_stable(&123));
+    assert!(reloaded.has_all_tombstone_acks(&123));
+
+    // A new value supersedes the tombstone, so its exact-version receipt history is obsolete.
+    reloaded.insert(123, "replacement".into()).unwrap();
+    assert!(reloaded.acknowledged_version(&123, b_id).is_none());
+    assert!(!reloaded.has_all_tombstone_acks(&123));
     reloaded.snapshot_now().unwrap();
+    drop(reloaded);
+
+    let cleared = make(81, SignedConfig::new([b_id]), a_backend);
+    assert_eq!(cleared.get(&123).map(String::as_str), Some("replacement"));
+    assert!(!cleared.tombstone_ack_snapshot().contains_key(&123));
 }
 
 #[test]
@@ -412,7 +415,7 @@ fn failed_signed_persistence_write_retries_the_exact_uncommitted_generation() {
     let restored = make(91, SignedConfig::new([peer]), backend);
     assert_eq!(restored.get(&44).map(String::as_str), Some("kept"));
     assert!(restored.is_tombstone(&45));
-    assert!(!restored.is_tombstone_stable(&45));
+    assert!(!restored.has_all_tombstone_acks(&45));
 }
 
 mod advanced;

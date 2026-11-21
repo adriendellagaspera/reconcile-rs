@@ -23,7 +23,6 @@ fn exposed_record_counts_and_exact_ack_matrix_track_real_causal_state() {
     assert!(!store.is_empty());
     store.remove(1).unwrap();
     assert_eq!(store.len(), 2);
-    assert!(!store.collect_if_stable(&1));
     assert_eq!(store.acknowledged_version(&1, peer), None);
 
     let self_id = signer(151).peer_id();
@@ -40,8 +39,7 @@ fn exposed_record_counts_and_exact_ack_matrix_track_real_causal_state() {
         store.tombstone_ack_snapshot().get(&1).unwrap().get(&peer),
         Some(&exact)
     );
-    assert!(store.is_tombstone_stable(&1));
-    assert!(!store.collect_if_stable(&1));
+    assert!(store.has_all_tombstone_acks(&1));
     assert_eq!(store.len(), 2);
     assert!(!store.is_empty());
     assert_eq!(store.acknowledged_version(&1, peer), Some(exact));

@@ -57,7 +57,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     ///
     /// Returns whether the datagram carried at least one **dated** message, which is what
     /// qualifies the sender for membership: a value-only sender is a read replica and must not
-    /// gate tombstone GC.
+    /// create tombstone receipt obligations.
     #[instrument(name = "reconcile.handle", skip_all, fields(peer = %peer))]
     pub(super) async fn handle_messages(
         &self,
@@ -331,7 +331,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
             return;
         }
 
-        // Value-only reconciliation is independent of causal stability: dated stores answer from
+        // Value-only reconciliation is independent of authoritative membership: dated stores answer from
         // the timestamp-less projection and never accept StateUpdate as authoritative input.
         debug!("received {} value-only segments", value_in_comparison.len());
         let comparison_fingerprint = comparison_fingerprint(&value_in_comparison);

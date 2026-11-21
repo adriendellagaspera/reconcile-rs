@@ -6,7 +6,6 @@ rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 description = "Internal datagram adapter for the experimental reconcile prototype"
 repository = "https://github.com/adriendellagaspera/reconcile-rs"
-readme = "README.md"
 keywords = ["gossip", "udp", "reconcile", "internal"]
 categories = ["network-programming"]
 

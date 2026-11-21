@@ -1355,7 +1355,6 @@ dependencies = [
  "bincode",
  "blake3",
  "chrono",
- "clap",
  "criterion",
  "ipnet",
  "lww-register",

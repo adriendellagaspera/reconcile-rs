@@ -25,9 +25,8 @@ fn unseen_stale_signed_payload_after_receipt_quorum_cannot_resurrect_a_delete() 
 
     a.remove(7).unwrap();
     deliver(&mut a, a_addr, &mut b, b_addr, now);
-    assert!(a.is_tombstone_stable(&7));
+    assert!(a.has_all_tombstone_acks(&7));
     a.snapshot_now().unwrap();
-    assert!(!a.collect_if_stable(&7));
     for frame in delayed {
         // This frame's counter has never been seen; transport replay rejection alone is
         // insufficient. The held deletion must still dominate its older application stamp.
@@ -39,50 +38,4 @@ fn unseen_stale_signed_payload_after_receipt_quorum_cannot_resurrect_a_delete() 
     }
     assert!(a.get(&7).is_none());
     assert!(a.is_tombstone(&7));
-}
-
-#[test]
-fn signed_local_collection_checks_role_current_tombstone_and_receipt_quorum() {
-    let peer = signer(204).peer_id();
-    let mut store = make(203, SignedConfig::new([peer]), memory());
-    assert!(!store.collect_candidate(&7));
-    store.insert(7, "value".into()).unwrap();
-    assert!(!store.collect_candidate(&7));
-    store.remove(7).unwrap();
-    assert!(!store.collect_candidate(&7));
-    let version = crate::replica::version_hash(store.entries.get(&7).unwrap());
-    store
-        .tombstone_acks
-        .insert(7, HashMap::from([(peer, version.wrapping_add(1))]));
-    assert!(!store.collect_candidate(&7));
-    store
-        .tombstone_acks
-        .insert(7, HashMap::from([(peer, version)]));
-    assert!(
-        !store.collect_if_stable(&7),
-        "receipt quorum is not a history proof"
-    );
-    assert!(
-        store.collect_candidate(&7),
-        "local-only invariants are satisfied"
-    );
-    assert!(!store.is_tombstone(&7));
-    assert!(store.tombstone_acks.is_empty());
-    let frozen = store.generations.freeze().unwrap();
-    assert!(frozen
-        .persistence_delta()
-        .entries
-        .get(&7)
-        .unwrap()
-        .is_none());
-    assert!(frozen.ack_key_clears.contains(&7));
-
-    let mut cfg = SignedConfig::new([]);
-    cfg.read_only = true;
-    let mut reader = make(205, cfg, memory());
-    reader
-        .entries
-        .insert(7, Entry::tombstone(reader.clock.now()));
-    assert!(!reader.collect_candidate(&7));
-    assert!(reader.is_tombstone(&7));
 }

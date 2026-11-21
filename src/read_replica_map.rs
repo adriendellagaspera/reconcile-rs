@@ -12,16 +12,12 @@
 //!
 //! It converges over the existing range-diff protocol on the same port, speaking only the
 //! **value-only channel** — which a dated peer answers from its timestamp-less projection tree, so
-//! the dated↔dated path is untouched. It never acknowledges tombstones and is never added to a
-//! dated peer's membership set, so it cannot block tombstone GC.
+//! the dated↔dated path is untouched. It never acknowledges tombstones and is never added to a dated peer's authoritative
+//! membership set or tombstone receipt accounting.
 //!
 //! A sink, not a source: it always integrates inbound updates by plain overwrite, holding no
 //! timestamp to compare, and never pushes a value back.
 //!
-//! **Limitation.** It reflects a deletion only if it sees the tombstone before the dated store
-//! collects it, and it keeps its own entry for a key after that — so a GC configured to outrun
-//! replica propagation leaves `get` returning a stale value.
-
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::AtomicU64;
@@ -99,7 +95,7 @@ pub struct ReadReplicaMap<K, V> {
     /// Optional dynamic peer-discovery source (e.g. Kubernetes DNS), on top of the always-on random
     /// probe each reconciliation round. Unlike [`ReplicatedMap`](crate::ReplicatedMap)'s,
     /// discovered addresses here are never decommissioned: a read replica holds no
-    /// causal-stability membership and no GC gate to release, so there is nothing an absence needs
+    /// authoritative membership or tombstone-ack obligations to release, so there is nothing an absence needs
     /// to protect against (module docs).
     discovery: Option<Arc<dyn Discovery>>,
     /// How often the discovery task (when configured) resolves the peer set.
@@ -177,6 +173,21 @@ fn warn_on_ignored_config_fields(config: &Config) {
     if config.max_value_size != default.max_value_size {
         ignored.push("max_value_size");
     }
+    if config.repair_interval != default.repair_interval {
+        ignored.push("repair_interval");
+    }
+    if config.snapshot_interval != default.snapshot_interval {
+        ignored.push("snapshot_interval");
+    }
+    if config.snapshot_change_threshold != default.snapshot_change_threshold {
+        ignored.push("snapshot_change_threshold");
+    }
+    if config.max_clock_drift != default.max_clock_drift {
+        ignored.push("max_clock_drift");
+    }
+    if config.coalesce_window != default.coalesce_window {
+        ignored.push("coalesce_window");
+    }
     if config.max_concurrent_broadcasts != default.max_concurrent_broadcasts {
         ignored.push("max_concurrent_broadcasts");
     }
@@ -194,9 +205,9 @@ fn warn_on_ignored_config_fields(config: &Config) {
 impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// Create a read replica bound to the configured UDP socket.
     ///
-    /// Honours the same [`Config`] as a dated store — including
-    /// [`with_cluster_key`](Config::with_cluster_key), which an authenticated cluster requires.
-    /// `node_id` is ignored: a read replica mints no timestamps.
+    /// Shares the dated store's [`Config`] for transport, security and framing settings. Dated-only
+    /// fields are ignored and produce a warning when set to a non-default value.
+    /// [`with_cluster_key`](Config::with_cluster_key) is honoured and required by authenticated clusters.
     ///
     /// # Errors
     ///

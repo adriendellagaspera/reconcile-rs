@@ -7,7 +7,6 @@
 
 use std::hash::Hash;
 use std::ops::RangeBounds;
-use std::time::Duration;
 
 use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
@@ -165,8 +164,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// Delete every live entry, as broadcast tombstones (so the deletion reconciles to peers
-    /// rather than mutating the map only locally). Tombstoned keys are reclaimed later by
-    /// causal-stability GC. A no-op if the store holds no live entry.
+    /// rather than mutating the map only locally). Tombstones are retained indefinitely because
+    /// physical collection is not implemented. A no-op if the store holds no live entry.
     /// # Panics
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// the store is non-empty; a no-op call never spawns).
@@ -208,14 +207,4 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
             self.remove_bulk(&keys);
         }
     }
-
-    /// Historical compatibility setting. Physical tombstone collection is disabled, so this
-    /// value has no effect; tombstones are retained indefinitely.
-    pub fn with_tombstone_timeout(self, _tombstone_timeout: Duration) -> Self {
-        self
-    }
-
-    /// Historical compatibility setting. Physical tombstone collection is disabled, so this
-    /// value has no effect.
-    pub fn set_tombstone_timeout(&self, _timeout: Duration) {}
 }

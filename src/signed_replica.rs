@@ -44,7 +44,7 @@ pub use gossip::peer::routes::RoutedDatagram;
 ///
 /// `authorities` and `readers` must come from trusted provisioning, never from incoming
 /// packets. A value-only reader can retrieve updates but cannot enter another node's causal
-/// membership or gate its tombstone GC, even if it sends a forged dated-channel message.
+/// membership or contribute tombstone receipts, even if it sends a forged dated-channel message.
 #[derive(Clone, Debug)]
 pub struct SignedConfig {
     /// Independently authorized full peers, excluding the local signer.
@@ -229,7 +229,7 @@ where
         }
         // Every configured authority is a causal blocker from the outset, even if it has
         // never been reachable. Otherwise an offline member could later resurrect an
-        // already-collected deletion. A read-only replica has no causal members.
+        // deletion history. A read-only replica has no causal members.
         let members = if config.read_only {
             HashSet::new()
         } else {
@@ -283,12 +283,12 @@ where
         self.entries.get(key).and_then(Entry::value)
     }
 
-    /// Test whether a key is currently held as a tombstone, independently of GC eligibility.
+    /// Test whether a key is currently held as a tombstone, independently of receipt completion.
     pub fn is_tombstone(&self, key: &K) -> bool {
         self.entries.get(key).is_some_and(Entry::is_tombstone)
     }
 
-    /// Number of retained dated records, including not-yet-collected tombstones.
+    /// Number of retained dated records, including retained tombstones.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
