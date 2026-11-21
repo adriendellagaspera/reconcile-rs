@@ -232,7 +232,7 @@ async fn bulk_dumps_in_flight_count_reflects_a_dump_actually_in_progress() {
     // enough window to reliably poll mid-flight even under heavy test-suite contention.
     let payload = vec![0u8; 200];
     let entries: Vec<(i32, Vec<u8>)> = (0..8000).map(|k| (k, payload.clone())).collect();
-    a.just_insert_bulk(&entries);
+    a.load_bulk(&entries);
     assert_eq!(a.engine.bulk_dumps_in_flight_count(), 0);
 
     let task_a = tokio::spawn(a.clone().run(CancellationToken::new()));
