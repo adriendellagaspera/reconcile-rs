@@ -272,12 +272,12 @@ where
     V: Serialize,
     P: Serialize,
 {
-    let previous = read_manifest_version(backend, format_version)?;
-    if previous.is_none() && backend.path.exists() {
+    if backend.path.exists() {
         return Err(invalid(
-            "single-file snapshots are no longer supported: refusing to overwrite the existing file",
+            "single-file snapshots are no longer supported: refusing to overwrite the existing path",
         ));
     }
+    let previous = read_manifest_version(backend, format_version)?;
     let generation = previous
         .as_ref()
         .map_or(1, |manifest| manifest.current_generation.saturating_add(1));
