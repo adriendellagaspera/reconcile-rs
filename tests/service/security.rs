@@ -10,6 +10,7 @@
 
 use std::time::Duration;
 
+use bincode::{DefaultOptions, Serializer};
 use rand::{
     distributions::{Alphanumeric, DistString},
     SeedableRng,
@@ -17,6 +18,7 @@ use rand::{
 
 use std::sync::Arc;
 
+use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
 use reconcile::{replicated_map::Config, transport::UdpTransport, ClusterKey, ReplicatedMap};
@@ -24,6 +26,42 @@ use reconcile::{replicated_map::Config, transport::UdpTransport, ClusterKey, Rep
 #[cfg(feature = "encryption")]
 use crate::support::wait_until;
 use crate::support::{assert_until, bind_udp_pair};
+
+#[derive(Serialize)]
+enum WireState {
+    Present(i32),
+}
+
+#[derive(Serialize)]
+enum WireMessage {
+    EntryFingerprint(()),
+    EntryUpdate(()),
+    TombstoneAck((i32, u64)),
+    StateFingerprint(()),
+    StateUpdate((i32, WireState)),
+}
+
+fn encode_wire_message(message: WireMessage) -> Vec<u8> {
+    let mut payload = Vec::new();
+    message
+        .serialize(&mut Serializer::new(&mut payload, DefaultOptions::new()))
+        .unwrap();
+    payload
+}
+
+/// Minimal dated and value-only messages serialized with the runtime's exact bincode options.
+fn protocol_test_payloads() -> (Vec<u8>, Vec<u8>) {
+    // Construct the preceding variants so the test enum pins the same tags as the runtime.
+    let _ = (
+        WireMessage::EntryFingerprint(()),
+        WireMessage::EntryUpdate(()),
+        WireMessage::StateFingerprint(()),
+    );
+    (
+        encode_wire_message(WireMessage::TombstoneAck((0, 0))),
+        encode_wire_message(WireMessage::StateUpdate((0, WireState::Present(99)))),
+    )
+}
 
 /// Two nodes sharing the same cluster key must still converge, proving that authenticated
 /// datagrams round-trip end-to-end through the MAC layer.
@@ -235,7 +273,7 @@ async fn encrypted_node_with_wrong_key_is_rejected() {
 #[cfg(reconcile_internal_testing)]
 #[tokio::test(flavor = "multi_thread")]
 async fn stale_datagram_outside_freshness_window_is_rejected() {
-    use reconcile::testing::seal_datagram;
+    use reconcile::testing::{members_snapshot, seal_datagram};
 
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.9.1".parse().unwrap();
@@ -267,7 +305,11 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
     let sender_sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let target = format!("{}:{}", addr_victim, port);
 
-    // A stamp from 1 hour ago — definitively outside the 5-minute freshness window.
+    // A fresh stamp and one from 1 hour ago — definitively outside the 5-minute window.
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
     let one_hour_ago_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -277,92 +319,26 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
     // A minimal `Ack` message: bincode variant index 2, key=0 (i32), version token=0 (u64).
     // If the freshness check were absent, this would reach the handler and do nothing (no tombstone
     // for key=0 exists). With the freshness check, it never reaches the handler at all.
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&2u32.to_le_bytes()); // Ack variant index
-    payload.extend_from_slice(&0i32.to_le_bytes()); // key = 0
-    payload.extend_from_slice(&0u64.to_le_bytes()); // version token = 0
+    let (payload, state_only_payload) = protocol_test_payloads();
 
-    let stale_datagram = seal_datagram(key, 1, one_hour_ago_ms, &payload);
+    let sender_ip = sender_sock.local_addr().unwrap().ip();
+    // Send a stale value-only message, then a fresh dated message with the same sequence number.
+    // UDP preserves this send order. If freshness were bypassed, the first message would consume
+    // seq=1 and the fresh dated message would be rejected as a replay. Because it is value-only,
+    // the stale message cannot itself add the sender to authoritative membership.
+    let stale_datagram = seal_datagram(key, 1, one_hour_ago_ms, &state_only_payload);
+    let fresh_datagram = seal_datagram(key, 1, now_ms, &payload);
     sender_sock.send_to(&stale_datagram, &target).await.unwrap();
+    sender_sock.send_to(&fresh_datagram, &target).await.unwrap();
 
-    // Give the engine time to (not) process.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // The injected datagram must have been rejected silently: engine is still running.
+    // The fresh packet can join only if the stale packet was rejected before the replay filter.
+    // The shared sequence number makes replay admission observable; send order is preserved.
+    assert_until!(members_snapshot(&store).contains(&sender_ip));
     assert!(
         !task.is_finished(),
-        "engine must still be running after stale datagram"
+        "engine must remain alive after stale traffic"
     );
-    // No state change: the value inserted before the test started is unchanged.
     assert_eq!(store.get(&0).as_deref(), Some(&99));
-
-    task.abort();
-}
-
-/// Redelivering identical sealed bytes must be dropped silently: the sequence number is already
-/// recorded in the per-peer replay filter.
-#[cfg(reconcile_internal_testing)]
-#[tokio::test(flavor = "multi_thread")]
-async fn replayed_sealed_datagram_is_rejected() {
-    use reconcile::testing::seal_datagram;
-
-    let net = "127.0.0.1/8".parse().unwrap();
-    let addr_victim = "127.0.10.1".parse().unwrap();
-    let receiver_socket = Arc::new(
-        tokio::net::UdpSocket::bind((addr_victim, 0))
-            .await
-            .expect("bind victim"),
-    );
-    let port = receiver_socket.local_addr().unwrap().port();
-    let key = [0xDDu8; 32];
-
-    let cfg = Config::default()
-        .with_port(port)
-        .with_listen_addr(addr_victim)
-        .with_net(net)
-        .unwrap()
-        .with_cluster_key(ClusterKey::new(key));
-
-    let store = ReplicatedMap::<i32, i32>::new_with_transport(
-        cfg,
-        Arc::new(UdpTransport::new(receiver_socket)),
-    )
-    .expect("valid test config");
-    let task = tokio::spawn(store.clone().run(CancellationToken::new()));
-
-    // Give the run loop time to start before injecting traffic.
-    tokio::time::sleep(Duration::from_millis(20)).await;
-
-    let sender_sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-    let target = format!("{}:{}", addr_victim, port);
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
-
-    // A minimal `Ack` message: bincode variant index 2, key=0 (i32), version token=0 (u64).
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&2u32.to_le_bytes()); // Ack variant index
-    payload.extend_from_slice(&0i32.to_le_bytes()); // key = 0
-    payload.extend_from_slice(&0u64.to_le_bytes()); // version token = 0
-
-    // Seal once with seq=1 and a fresh stamp.
-    let datagram = seal_datagram(key, 1, now_ms, &payload);
-
-    // First delivery: seq=1 is new for this sender — passes the replay filter.
-    sender_sock.send_to(&datagram, &target).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    // Second delivery: identical bytes, seq=1 already recorded — must be dropped by the replay
-    // filter without reaching the message handler.
-    sender_sock.send_to(&datagram, &target).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    // The engine must still be alive: replay rejection is silent, not a crash.
-    assert!(
-        !task.is_finished(),
-        "engine must still be running after replay"
-    );
 
     task.abort();
 }
@@ -413,21 +389,15 @@ async fn decommissioned_peer_replay_is_rejected() {
 
     // A minimal `Ack` message (variant 2): causes `spoke_dated = true` so the sender is
     // added to `members` on acceptance.
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&2u32.to_le_bytes()); // Ack variant index
-    payload.extend_from_slice(&0i32.to_le_bytes()); // key = 0
-    payload.extend_from_slice(&0u64.to_le_bytes()); // version token = 0
+    let (payload, _) = protocol_test_payloads();
 
     // Seal the datagram — this is the "captured" datagram the adversary holds.
     let captured = seal_datagram(key, 1, now_ms, &payload);
 
-    // First delivery: peer X joins members.
+    // First delivery: wait for the receiver to process the datagram instead of assuming a
+    // fixed 50ms is enough on a loaded CI runner.
     sender_sock.send_to(&captured, &target).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    assert!(
-        members_snapshot(&store).contains(&addr_sender),
-        "sender must have joined members after first delivery"
-    );
+    assert_until!(members_snapshot(&store).contains(&addr_sender));
 
     // Decommission peer X: removes it from members/tombstone_acks but must NOT erase replay state.
     store.forget_peer(addr_sender);

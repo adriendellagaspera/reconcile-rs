@@ -72,22 +72,6 @@ fn pending_equality_is_by_due_and_seq_only() {
 }
 
 #[test]
-fn coarse_wait_worthwhile_is_false_at_and_before_the_tie() {
-    let now = Instant::now();
-    assert!(!coarse_wait_worthwhile(now, now));
-    assert!(!coarse_wait_worthwhile(now - Duration::from_nanos(1), now));
-    assert!(coarse_wait_worthwhile(now + Duration::from_nanos(1), now));
-}
-
-#[test]
-fn still_waiting_is_false_at_and_after_due() {
-    let due = Instant::now();
-    assert!(still_waiting(due - Duration::from_nanos(1), due));
-    assert!(!still_waiting(due, due));
-    assert!(!still_waiting(due + Duration::from_nanos(1), due));
-}
-
-#[test]
 fn default_policy_preserves_ip_overrides_and_directed_stream_seeds() {
     use super::super::{stream_seed, LinkPolicy, Probability};
 

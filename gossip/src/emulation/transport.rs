@@ -262,7 +262,7 @@ where
 /// next millisecond, which is five times the entire one-way delay of the 0.1 ms lane.
 async fn wait_until(due: Instant, wake: &Notify) {
     if let Some(coarse) = due.checked_sub(TIMER_RESOLUTION) {
-        if coarse_wait_worthwhile(coarse, Instant::now()) {
+        if coarse > Instant::now() {
             tokio::select! {
                 _ = tokio::time::sleep_until(coarse) => {}
                 // Something nearer-due may have been queued behind us; re-decide.
@@ -270,22 +270,9 @@ async fn wait_until(due: Instant, wake: &Notify) {
             }
         }
     }
-    while still_waiting(Instant::now(), due) {
+    while Instant::now() < due {
         tokio::task::yield_now().await;
     }
-}
-
-/// Whether a coarse sleep to `coarse` is still worth taking from `now`. At `coarse == now` it is
-/// not: the immediate fall-through to the spin loop above reaches the same wait with one less
-/// `select!`/timer round-trip.
-fn coarse_wait_worthwhile(coarse: Instant, now: Instant) -> bool {
-    coarse > now
-}
-
-/// Whether the spin loop above should keep yielding: `now` strictly before `due`, so it stops as
-/// soon as `due` is reached rather than looping one extra time at the exact tie.
-fn still_waiting(now: Instant, due: Instant) -> bool {
-    now < due
 }
 
 #[cfg(test)]
