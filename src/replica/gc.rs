@@ -5,12 +5,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Tombstone-collection research code for the legacy runtime.
+//! Shared tombstone-collection gate and legacy candidate transaction.
 //!
-//! The production collection gate is deliberately closed: receipt ACKs and elapsed retention do
-//! not prove that rolled-back or delayed application history can no longer be admitted. The
-//! candidate path below remains only to test local deletion invariants; it is not reachable through
-//! the runtime's public collection path.
+//! Both runtime paths consult `has_collection_proof`, which deliberately remains false: receipt
+//! ACKs and elapsed retention do not prove that rolled-back or delayed application history can no
+//! longer be admitted. The legacy candidate transaction below is compiled only for local invariant
+//! tests; neither runtime exposes a physical collection path.
 
 #[cfg(test)]
 use std::collections::{HashMap, HashSet};
