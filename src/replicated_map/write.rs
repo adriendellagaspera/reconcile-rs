@@ -12,20 +12,10 @@ use std::time::Duration;
 use tracing::warn;
 
 use crate::bounds::{Key, Value};
-use crate::clock::{
-    wall_clock_now, BoundedInstant, ClockDrift, StampBound, Timestamp, MAX_CLOCK_DRIFT,
-};
+use crate::clock::Timestamp;
 use crate::entry::Entry;
 
 use super::ReplicatedMap;
-
-const TOMBSTONE_CLEARING: Duration = Duration::from_secs(1);
-
-/// How far a **stored** tombstone stamp may lead this node's physical time before the instant
-/// derived from it — never the stamp itself — is capped.
-/// The same budget as the clock's far-future clamp ([`MAX_CLOCK_DRIFT`]), which is not reachable
-/// through the [`Clock`](crate::clock::Clock) port; if it ever reaches `Config`, this follows it.
-pub(super) const TOMBSTONE_STAMP_DRIFT_BUDGET: ClockDrift = MAX_CLOCK_DRIFT;
 
 impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Set the pre-insert hook, invoked before each key/value pair reaches the map. This is a
@@ -39,52 +29,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         &self,
         pre_insert: F,
     ) {
-        let tombstones = self.tombstones.clone();
-        let wrapped_pre_insert = move |k: &K, v: &Entry<Timestamp, V>| {
-            pre_insert(k, v);
-            if v.value().is_some() {
-                tombstones.remove(k);
-            } else {
-                // `v.stamp` is peer-controlled on a socket unauthenticated by default, so the
-                // instant handed to the wheel is bounded — the stamp itself is LWW data and is
-                // never rewritten. Beyond the budget the instant becomes replica-dependent, which
-                // costs nothing: expiry timing is already local and GC is gated on causal
-                // stability besides.
-                let bounded = BoundedInstant::from_stored_stamp(
-                    v.stamp.physical(),
-                    TOMBSTONE_STAMP_DRIFT_BUDGET,
-                );
-                match bounded.bound() {
-                    StampBound::Verbatim => {}
-                    StampBound::Capped => {
-                        warn!(
-                            key = ?k,
-                            stamp_physical_ms = v.stamp.physical().millis(),
-                            stamp_node_id = v.stamp.node_id().get(),
-                            budget_ms = TOMBSTONE_STAMP_DRIFT_BUDGET.millis(),
-                            bounded_instant = %bounded.instant(),
-                            "tombstone stamp leads local physical time by more than the drift \
-                             budget; bounding its expiry instant to the cap (the stored stamp is \
-                             unchanged). A peer is planting far-future stamps."
-                        );
-                        crate::observability::record_tombstone_stamp_bounded("capped");
-                    }
-                    StampBound::Unrepresentable => {
-                        warn!(
-                            key = ?k,
-                            stamp_physical_ms = v.stamp.physical().millis(),
-                            stamp_node_id = v.stamp.node_id().get(),
-                            budget_ms = TOMBSTONE_STAMP_DRIFT_BUDGET.millis(),
-                            "tombstone expiry cap is not a representable wall-clock instant; \
-                             ageing the tombstone from now instead (the stored stamp is unchanged)"
-                        );
-                        crate::observability::record_tombstone_stamp_bounded("unrepresentable");
-                    }
-                }
-                tombstones.insert(k.clone(), bounded.instant());
-            }
-        };
-        *self.engine.pre_insert.write() = Box::new(wrapped_pre_insert);
+        *self.engine.pre_insert.write() = Box::new(pre_insert);
     }
 
     /// Insert one pair — hook outside the lock, then insert under it — returning the overwritten
@@ -266,52 +211,13 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         }
     }
 
-    /// Set the tombstone retention floor (default 60 seconds).
-    /// This floor does not authorize collection: tombstones are currently retained without a
-    /// time bound because the runtime has no obsolete-history fencing proof.
-    pub fn with_tombstone_timeout(mut self, tombstone_timeout: Duration) -> Self {
-        {
-            let _boundary = self.engine.snapshot_generations.mutation();
-            self.tombstones = self.tombstones.with_timeout(tombstone_timeout);
-        }
+    /// Historical compatibility setting. Physical tombstone collection is disabled, so this
+    /// value has no effect; tombstones are retained indefinitely.
+    pub fn with_tombstone_timeout(self, _tombstone_timeout: Duration) -> Self {
         self
     }
 
-    /// (runtime) Retune the tombstone expiry timeout in place, visible to all clones. The runtime
-    /// counterpart of the [`with_tombstone_timeout`](Self::with_tombstone_timeout) builder.
-    pub fn set_tombstone_timeout(&self, timeout: Duration) {
-        let _boundary = self.engine.snapshot_generations.mutation();
-        self.tombstones.set_timeout(timeout);
-    }
-
-    /// Inspect retention candidates. Receipt ACKs alone do not prove deletion safe after
-    /// rollback or delayed stale data, so physical collection is currently disabled.
-    pub(super) async fn clear_expired_tombstones(&self) {
-        if !crate::replica::has_collection_proof() {
-            return;
-        }
-        loop {
-            let now = wall_clock_now();
-            for key in self.tombstones.expired(now) {
-                let candidate = self
-                    .engine
-                    .map
-                    .load_full()
-                    .get(&key)
-                    .filter(|entry| entry.is_tombstone())
-                    .map(|entry| entry.stamp);
-                let Some(expected) = candidate else {
-                    continue;
-                };
-                if self
-                    .engine
-                    .gc_collect(&key, expected, now, || self.tombstones.timeout())
-                    .is_some()
-                {
-                    self.tombstones.remove(&key);
-                }
-            }
-            tokio::time::sleep(TOMBSTONE_CLEARING).await;
-        }
-    }
+    /// Historical compatibility setting. Physical tombstone collection is disabled, so this
+    /// value has no effect.
+    pub fn set_tombstone_timeout(&self, _timeout: Duration) {}
 }
