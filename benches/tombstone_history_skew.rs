@@ -457,9 +457,9 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let n = env_usize("RECONCILE_GC_SKEW_N", 20_000);
-    let deletions = env_list("RECONCILE_GC_SKEW_DELETIONS", "0,100,1000,10000");
-    let base_divergence = env_usize("RECONCILE_GC_SKEW_BASE_DIVERGENCE", 100);
+    let n = env_usize("RECONCILE_HISTORY_SKEW_N", 20_000);
+    let deletions = env_list("RECONCILE_HISTORY_SKEW_DELETIONS", "0,100,1000,10000");
+    let base_divergence = env_usize("RECONCILE_HISTORY_SKEW_BASE_DIVERGENCE", 100);
     assert!(n > 0);
     for deleted in deletions {
         assert!(deleted <= n);
