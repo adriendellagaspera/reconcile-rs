@@ -220,7 +220,6 @@ async fn forget_peer_removes_member_and_routing_entry() {
         !store.engine.peers.read().contains_key(&peer2),
         "peer2 must be removed from peers by decommission"
     );
-
 }
 
 /// In authenticated mode, datagrams from a capped-out sender must not create a replay-filter
