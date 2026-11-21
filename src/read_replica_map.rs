@@ -39,6 +39,7 @@ use crate::replicated_map::{Config, ConfigError, ConstructionError};
 use crate::transport::{Transport, UdpTransport};
 use crate::FingerprintTreeMap;
 use gossip::auth;
+use gossip::gen_ip::net_of;
 use gossip::replay;
 
 mod discovery;
@@ -289,10 +290,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
         // A read replica tracks a single network: the one containing its listen address, else the
         // first declared network, else the loopback default.
         let nets: Vec<IpNet> = config.nets.iter().flatten().copied().collect();
-        let net = nets
-            .iter()
-            .copied()
-            .find(|net| net.contains(&config.listen_addr))
+        let net = net_of(&nets, config.listen_addr)
             .or_else(|| nets.first().copied())
             .unwrap_or_else(|| "127.0.0.1/8".parse().unwrap());
         let tree = match lift_key {
