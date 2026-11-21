@@ -67,7 +67,7 @@ async fn try_insert_succeeds_under_the_default_budget() {
     // when try_insert itself returns — poll rather than assert immediately.
     let mut settled = false;
     for _ in 0..300 {
-        if reconcile::testing::broadcasts_in_flight_count(&store) == 0 {
+        if store.broadcasts_in_flight_count() == 0 {
             settled = true;
             break;
         }
