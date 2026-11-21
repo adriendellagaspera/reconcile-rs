@@ -384,9 +384,15 @@ async fn read_replica_warns_about_config_fields_it_cannot_honour() {
     });
     assert!(
         ignored_warning.is_some_and(|(_, msg)| {
-            ["remote_fanout", "repair_interval", "snapshot_interval", "snapshot_change_threshold", "coalesce_window"]
-                .iter()
-                .all(|field| msg.contains(field))
+            [
+                "remote_fanout",
+                "repair_interval",
+                "snapshot_interval",
+                "snapshot_change_threshold",
+                "coalesce_window",
+            ]
+            .iter()
+            .all(|field| msg.contains(field))
         }),
         "expected a WARN naming every non-default ignored field, captured: {events:?}"
     );
