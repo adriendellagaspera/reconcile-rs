@@ -29,88 +29,11 @@ pub use lww_register::clock::{
     Timestamp, MAX_CLOCK_DRIFT,
 };
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 
 /// Read physical time as an instant on the Unix-epoch millisecond scale.
 pub(crate) fn phys_now() -> PhysicalTime {
     PhysicalTime::from_millis(Utc::now().timestamp_millis().max(0) as u64)
-}
-
-/// Read the current wall-clock instant for a caller that needs a `DateTime<Utc>` rather than the
-/// [`PhysicalTime`] scale — e.g. `TimeoutWheel::expired`, which takes `now` as a parameter instead
-/// of reading the clock itself so the wheel stays adapter-free. Keeps that read here, alongside
-/// [`phys_now`], rather than scattered across the facade.
-pub(crate) fn wall_clock_now() -> DateTime<Utc> {
-    Utc::now()
-}
-
-/// How a [`BoundedInstant`] was arrived at. Anything but
-/// [`Verbatim`](StampBound::Verbatim) means a stored stamp leads local time by more than the
-/// budget — worth surfacing on the default unauthenticated socket.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StampBound {
-    /// Within budget: the stamp's own physical component is the instant.
-    Verbatim,
-    /// The stamp led local physical time by more than the budget; the cap (`local now + budget`)
-    /// is used instead. The stored stamp itself is untouched.
-    Capped,
-    /// Not even the cap is a representable `DateTime<Utc>`, so local now is used. Needs a
-    /// [`ClockDrift`] pushing `now + budget` past year 262143.
-    Unrepresentable,
-}
-
-/// A wall-clock instant derived from a **stored** HLC stamp, bounded so a peer-controlled stamp
-/// cannot drive it arbitrarily far into the future.
-/// [`Clock::observe`]'s clamp guards the local clock state only — a stored stamp keeps its
-/// received value as LWW data — so anything deriving an instant from one must bound it itself
-/// . Constructing this is the only way to get the instant, so
-/// neither an exact far-future conversion (unbounded tombstone retention) nor a wrap-negative
-/// cast is reachable.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct BoundedInstant {
-    instant: DateTime<Utc>,
-    bound: StampBound,
-}
-
-impl BoundedInstant {
-    /// Bound `stamp_physical` to `local now + budget` and convert it to a wall-clock instant.
-    /// Within budget the stamp is used unchanged, so honest replicas agree on when a tombstone
-    /// ages out; beyond it, the cap. Outcomes: [`StampBound`].
-    pub(crate) fn from_stored_stamp(
-        stamp_physical: PhysicalTime,
-        budget: ClockDrift,
-    ) -> BoundedInstant {
-        let admitted = AdmittedTime::clamped_to_drift(stamp_physical, phys_now(), budget);
-        // `i64::try_from`, not `as`: the wrap-to-negative regime must be unrepresentable.
-        match i64::try_from(admitted.physical().millis())
-            .ok()
-            .and_then(DateTime::from_timestamp_millis)
-        {
-            Some(instant) => BoundedInstant {
-                instant,
-                bound: if admitted.was_clamped() {
-                    StampBound::Capped
-                } else {
-                    StampBound::Verbatim
-                },
-            },
-            // Residual: `chrono` tops out near year 262143. Age from now, the safe direction.
-            None => BoundedInstant {
-                instant: Utc::now(),
-                bound: StampBound::Unrepresentable,
-            },
-        }
-    }
-
-    /// The bounded wall-clock instant.
-    pub(crate) fn instant(self) -> DateTime<Utc> {
-        self.instant
-    }
-
-    /// How that instant was arrived at.
-    pub(crate) fn bound(self) -> StampBound {
-        self.bound
-    }
 }
 
 /// A per-node Hybrid Logical Clock: the default [`Clock`] adapter, internally synchronized and
