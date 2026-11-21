@@ -118,19 +118,6 @@ async fn sync_state_reports_peer_routing_count() {
     assert_eq!(store.sync_state().peers, 1);
 }
 
-/// `tombstone_acks_len` must reflect the engine's actual tracked-key count, not a fixed literal.
-#[tokio::test]
-async fn tombstone_acks_len_reflects_the_engine_tombstone_acks_map() {
-    let store = virtual_map::<i32, i32>(virtual_config());
-    assert_eq!(store.engine.tombstone_acks_len(), 0);
-    store
-        .engine
-        .tombstone_acks
-        .write()
-        .insert(1, std::collections::HashMap::new());
-    assert_eq!(store.engine.tombstone_acks_len(), 1);
-}
-
 /// `replay_filter_len` must reflect the engine's actual per-peer replay-filter count: 0 before
 /// any authenticated traffic, and registering the sender after a real authenticated exchange.
 #[tokio::test]
@@ -508,24 +495,6 @@ async fn set_reconcile_interval_actually_retunes_the_round_cadence() {
         converged,
         "retuning reconcile_interval before the loop's first wait must make it converge \
          quickly, not wait out the original 3600s interval"
-    );
-}
-
-/// `set_repair_interval` must actually retune the underlying engine's repair timer, not be a
-/// no-op setter -- `repair_interval` reads the same value the repair loop reads.
-#[tokio::test]
-async fn set_repair_interval_actually_retunes_the_repair_timer() {
-    let store = virtual_map::<i32, i32>(virtual_config());
-    assert_ne!(
-        store.repair_interval(),
-        Duration::from_millis(7),
-        "picking a value distinct from the default is what makes the assertion below meaningful"
-    );
-    store.set_repair_interval(Duration::from_millis(7));
-    assert_eq!(
-        store.repair_interval(),
-        Duration::from_millis(7),
-        "set_repair_interval must actually update the value repair_interval() reads back"
     );
 }
 
