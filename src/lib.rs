@@ -145,23 +145,4 @@ pub mod testing {
         pub enumerated_elements: usize,
     }
 
-    /// The current authoritative membership set.
-    pub fn members_snapshot<K, V>(
-        store: &crate::ReplicatedMap<K, V>,
-    ) -> std::collections::HashSet<std::net::IpAddr>
-    where
-        K: crate::bounds::Key + std::hash::Hash,
-        V: crate::bounds::Value,
-    {
-        store.members_snapshot()
-    }
-
-    /// Number of write-broadcast tasks currently in flight.
-    pub fn broadcasts_in_flight_count<K, V>(store: &crate::ReplicatedMap<K, V>) -> usize
-    where
-        K: crate::bounds::Key + std::hash::Hash,
-        V: crate::bounds::Value,
-    {
-        store.broadcasts_in_flight_count()
-    }
 }
