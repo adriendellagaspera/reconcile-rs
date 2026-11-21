@@ -68,7 +68,7 @@ name = "security_ingress"
 harness = false
 
 [[bench]]
-name = "tombstone_gc_skew"
+name = "tombstone_history_skew"
 harness = false
 
 [[bench]]
