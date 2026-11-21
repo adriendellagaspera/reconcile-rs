@@ -12,8 +12,8 @@
 //!
 //! It converges over the existing range-diff protocol on the same port, speaking only the
 //! **value-only channel** — which a dated peer answers from its timestamp-less projection tree, so
-//! the dated↔dated path is untouched. It never acknowledges tombstones and is never added to a
-//! dated peer's authoritative membership set or its tombstone receipt accounting.
+//! the dated↔dated path is untouched. It never acknowledges tombstones and is never added to a dated peer's authoritative
+//! membership set or tombstone receipt accounting.
 //!
 //! A sink, not a source: it always integrates inbound updates by plain overwrite, holding no
 //! timestamp to compare, and never pushes a value back.
