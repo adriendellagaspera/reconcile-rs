@@ -381,7 +381,7 @@ async fn live_point(members: usize) -> LivePoint {
         Arc::new(central_transport),
     )
     .expect("valid central benchmark node")
-    .with_tombstone_timeout(Duration::ZERO);
+;
 
     let shutdown = CancellationToken::new();
     let run_store = central.clone();
