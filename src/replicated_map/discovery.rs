@@ -51,7 +51,7 @@ pub(crate) enum MemberPresence {
     Present,
     Absent {
         misses: u32,
-    }
+    },
 }
 
 impl MemberPresence {
