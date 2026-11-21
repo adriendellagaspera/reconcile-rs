@@ -274,7 +274,7 @@ where
 {
     if backend.path.exists() {
         return Err(invalid(
-            "single-file snapshots are no longer supported: refusing to overwrite the existing path",
+            "snapshot base path must be absent: refusing to overwrite the existing path",
         ));
     }
     let previous = read_manifest_version(backend, format_version)?;
@@ -329,7 +329,7 @@ where
 {
     if backend.path.exists() {
         return Err(invalid(
-            "single-file snapshots are no longer supported: refusing to reset the existing path",
+            "snapshot base path must be absent: refusing to reset the existing path",
         ));
     }
     let Some(mut manifest) = read_manifest_version(backend, format_version)? else {
