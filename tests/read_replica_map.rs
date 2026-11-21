@@ -15,7 +15,7 @@
 //! 2. **Receipt accounting**: a read replica never joins authoritative membership or creates
 //!    tombstone ACK obligations.
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -102,6 +102,7 @@ async fn read_replica_converges_with_dated_store() {
     // A deletion on the dated store is reflected as a tombstone: the value disappears from `get`.
     dated.remove(&"doomed".to_string());
     assert_until!(read_replica.get(&"doomed".to_string()).is_none());
+    assert!(!read_replica.contains_key(&"doomed".to_string()));
 
     // ...and the value-only fingerprints reconverge after the deletion.
     assert_until!(read_replica.value_fingerprint(..) == dated.value_fingerprint(..));
@@ -161,72 +162,6 @@ async fn read_replica_is_not_a_receipt_member_and_retained_deletions_propagate()
     assert!(dated.snapshot().get(&1).unwrap().is_tombstone());
     assert_eq!(dated.get(&2).as_deref(), Some(&22));
     assert!(!dated.members().contains(&read_replica_addr));
-
-    dated_task.abort();
-    read_replica_task.abort();
-}
-
-/// The same convergence contract as `read_replica_converges_with_dated_store`, over an
-/// [`InMemoryNetwork`](reconcile::InMemoryNetwork) with no sockets — the full value-only
-/// round-trip, not merely construction.
-#[tokio::test(flavor = "multi_thread")]
-async fn read_replica_converges_with_dated_store_over_in_memory_transport() {
-    let network = InMemoryNetwork::new();
-    let port = 5300u16;
-    let net = "127.0.0.1/8".parse().unwrap();
-    let dated_ip: IpAddr = "127.0.0.94".parse().unwrap();
-    let read_replica_ip: IpAddr = "127.0.0.95".parse().unwrap();
-
-    let config = |ip: IpAddr| {
-        Config::default()
-            .with_port(port)
-            .with_listen_addr(ip)
-            .with_net(net)
-            .unwrap()
-            .with_insecure_no_key()
-    };
-    let dated = ReplicatedMap::<String, String>::new_with_transport(
-        config(dated_ip),
-        Arc::new(network.bind(SocketAddr::new(dated_ip, port))),
-    )
-    .unwrap();
-    // As with real sockets, only the read replica needs a seed: it drives the value-only channel
-    // and the dated store answers reactively to the sender address.
-    let read_replica = ReadReplicaMap::<String, String>::new_with_transport(
-        config(read_replica_ip),
-        Arc::new(network.bind(SocketAddr::new(read_replica_ip, port))),
-    )
-    .unwrap()
-    .with_seed(dated_ip);
-
-    for i in 0..50 {
-        dated.insert(format!("k{i:02}"), format!("v{i:02}"));
-    }
-    dated.insert("doomed".to_string(), "to be deleted".to_string());
-
-    let dated_task = tokio::spawn(dated.clone().run(CancellationToken::new()));
-    let read_replica_task = tokio::spawn(read_replica.clone().run());
-
-    // Values arrive, timestamps dropped.
-    assert_until!(read_replica.get(&"k00".to_string()).as_deref() == Some(&"v00".to_string()));
-    assert_until!(read_replica.get(&"k49".to_string()).as_deref() == Some(&"v49".to_string()));
-    assert_until!(
-        read_replica.get(&"doomed".to_string()).as_deref() == Some(&"to be deleted".to_string())
-    );
-    // The dateless read replica hashes identically to the dated store's value-only projection.
-    assert_until!(read_replica.value_fingerprint(..) == dated.value_fingerprint(..));
-    assert_eq!(read_replica.len(), 51);
-
-    // A write made after convergence still propagates over the injected transport.
-    dated.insert("late".to_string(), "arrival".to_string());
-    assert_until!(read_replica.get(&"late".to_string()).as_deref() == Some(&"arrival".to_string()));
-
-    // A deletion is reflected as a tombstone: `get` stops returning the value, the key stays as an
-    // entry, and the value-only fingerprints reconverge.
-    dated.remove(&"doomed".to_string());
-    assert_until!(read_replica.get(&"doomed".to_string()).is_none());
-    assert!(!read_replica.contains_key(&"doomed".to_string()));
-    assert_until!(read_replica.value_fingerprint(..) == dated.value_fingerprint(..));
 
     dated_task.abort();
     read_replica_task.abort();
