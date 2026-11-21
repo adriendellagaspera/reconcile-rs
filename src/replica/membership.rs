@@ -168,21 +168,21 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Number of entries currently in the per-peer replay filter.
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
-    #[cfg(any(test, reconcile_internal_testing))]
+    #[cfg(test)]
     pub(crate) fn replay_filter_len(&self) -> usize {
         self.replay_filter.len()
     }
 
     /// Number of keys currently tracked in the tombstone-acknowledgment map.
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
-    #[cfg(any(test, reconcile_internal_testing))]
+    #[cfg(test)]
     pub(crate) fn tombstone_acks_len(&self) -> usize {
         self.tombstone_acks.read().len()
     }
 
     /// Number of bulk dump tasks currently in flight across all peers.
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
-    #[cfg(any(test, reconcile_internal_testing))]
+    #[cfg(test)]
     pub(crate) fn bulk_dumps_in_flight_count(&self) -> usize {
         self.bulk_dumps_in_flight.load(Ordering::Acquire)
     }
