@@ -281,7 +281,6 @@ async fn churn_scenario(
         }),
     )
     .expect("valid churn central")
-    .with_tombstone_timeout(TOMBSTONE_TIMEOUT)
     .with_persistence(backend.clone())
     .expect("load churn central state");
 
