@@ -271,7 +271,7 @@ fn member_presence_starts_present_and_requires_the_miss_threshold() {
     let mut state = MemberPresence::default();
     assert!(!state.eligible_for_decommission(1));
     state.mark_missed();
-    assert!(state.eligible_for_decommission(1, Duration::ZERO, false));
+    assert!(state.eligible_for_decommission(1));
 }
 
 #[test]
