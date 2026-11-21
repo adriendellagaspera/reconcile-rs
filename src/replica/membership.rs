@@ -166,6 +166,12 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.members.read().clone()
     }
 
+    /// Number of entries in the peers gossip-routing map. Used by the membership unit tests.
+    #[cfg(any(test, reconcile_internal_testing))]
+    pub(crate) fn peers_map_len(&self) -> usize {
+        self.peers.read().len()
+    }
+
     /// Number of entries currently in the per-peer replay filter.
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
     #[cfg(any(test, reconcile_internal_testing))]
