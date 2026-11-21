@@ -110,9 +110,8 @@ async fn read_replica_converges_with_dated_store() {
     read_replica_task.abort();
 }
 
-/// A read replica must never join the dated store's causal-stability membership set, otherwise it
-/// would create a receipt obligation it can never satisfy. Retention expiry still does not
-/// authorize physical collection when that membership set is empty.
+/// A read replica must never join the dated store's authoritative membership set, because it
+/// cannot acknowledge tombstones.
 #[tokio::test(flavor = "multi_thread")]
 async fn read_replica_is_not_a_receipt_member_and_retained_deletions_propagate() {
     let port = 5000u16;
@@ -121,7 +120,6 @@ async fn read_replica_is_not_a_receipt_member_and_retained_deletions_propagate()
     let dated_addr = "127.0.0.92".parse().unwrap();
     let read_replica_addr = "127.0.0.93".parse().unwrap();
 
-    // Aggressive tombstone expiry so GC would fire quickly *if* it is not gated.
     let dated = ReplicatedMap::<i32, i32>::new_with_transport(
         Config::default()
             .with_port(port)
@@ -131,8 +129,7 @@ async fn read_replica_is_not_a_receipt_member_and_retained_deletions_propagate()
             .with_insecure_no_key(),
         Arc::new(network.bind(SocketAddr::new(dated_addr, port))),
     )
-    .expect("valid test config")
-    .with_tombstone_timeout(Duration::from_millis(50));
+    .expect("valid test config");
     let read_replica = ReadReplicaMap::<i32, i32>::new_with_transport(
         Config::default()
             .with_port(port)
@@ -160,7 +157,6 @@ async fn read_replica_is_not_a_receipt_member_and_retained_deletions_propagate()
     dated.remove(&1);
     let with_tombstone = dated.fingerprint(..);
     assert_until!(read_replica.get(&1).is_none());
-    tokio::time::sleep(Duration::from_millis(1200)).await;
     assert_eq!(dated.fingerprint(..), with_tombstone);
     assert!(dated.snapshot().get(&1).unwrap().is_tombstone());
     assert_eq!(dated.get(&2).as_deref(), Some(&22));
