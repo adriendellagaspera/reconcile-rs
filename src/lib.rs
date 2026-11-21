@@ -156,42 +156,6 @@ pub mod testing {
         store.members_snapshot()
     }
 
-    /// Number of entries in the peers gossip-routing map.
-    pub fn peers_map_len<K, V>(store: &crate::ReplicatedMap<K, V>) -> usize
-    where
-        K: crate::bounds::Key + std::hash::Hash,
-        V: crate::bounds::Value,
-    {
-        store.peers_map_len()
-    }
-
-    /// Number of entries in the per-peer replay filter.
-    pub fn replay_filter_len<K, V>(store: &crate::ReplicatedMap<K, V>) -> usize
-    where
-        K: crate::bounds::Key + std::hash::Hash,
-        V: crate::bounds::Value,
-    {
-        store.replay_filter_len()
-    }
-
-    /// Number of keys tracked in the tombstone-acknowledgment map.
-    pub fn tombstone_acks_len<K, V>(store: &crate::ReplicatedMap<K, V>) -> usize
-    where
-        K: crate::bounds::Key + std::hash::Hash,
-        V: crate::bounds::Value,
-    {
-        store.tombstone_acks_len()
-    }
-
-    /// Number of bulk dump tasks in flight across all peers.
-    pub fn bulk_dumps_in_flight_count<K, V>(store: &crate::ReplicatedMap<K, V>) -> usize
-    where
-        K: crate::bounds::Key + std::hash::Hash,
-        V: crate::bounds::Value,
-    {
-        store.bulk_dumps_in_flight_count()
-    }
-
     /// Number of write-broadcast tasks currently in flight.
     pub fn broadcasts_in_flight_count<K, V>(store: &crate::ReplicatedMap<K, V>) -> usize
     where
