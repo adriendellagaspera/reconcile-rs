@@ -131,6 +131,12 @@ async fn discovery_decommissions_vanished_member_but_not_self() {
         .with_discovery_interval(Duration::from_millis(20))
         .with_discovery_miss_threshold(3);
 
+    // Preserve a tombstone across the membership transition; discovery may release receipt
+    // obligations, never the deletion history itself.
+    store.insert(1, 11);
+    store.remove(&1);
+    let tombstone_fingerprint = store.fingerprint(..);
+
     // Seed membership as if both had been contacted via dated datagrams.
     store.engine.members.write().insert(own);
     store.engine.members.write().insert(member);
@@ -138,24 +144,31 @@ async fn discovery_decommissions_vanished_member_but_not_self() {
     let loop_store = store.clone();
     let handle = tokio::spawn(async move { loop_store.discover_periodically().await });
 
-    // While the member is present in discovery it must not be decommissioned.
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    assert!(
-        store.engine.members.read().contains(&member),
-        "present member was wrongly decommissioned"
-    );
+    // Wait for at least one successful present resolution before changing the source.
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while store.sync_state().last_successful_discovery_at.is_none() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("discovery must observe the initially-present member");
+    assert!(store.engine.members.read().contains(&member));
 
     // The member vanishes; after the miss threshold it is decommissioned, but self is kept.
     fake.set(FakeResp::Present(vec![]));
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(
-        !store.engine.members.read().contains(&member),
-        "vanished member was not decommissioned after the grace period"
-    );
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while store.engine.members.read().contains(&member) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("vanished member must be decommissioned after the grace period");
     assert!(
         store.engine.members.read().contains(&own),
         "node decommissioned itself"
     );
+    assert_eq!(store.fingerprint(..), tombstone_fingerprint);
+    assert!(store.snapshot().get(&1).unwrap().is_tombstone());
 
     handle.abort();
 }
