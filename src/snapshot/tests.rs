@@ -48,14 +48,6 @@ fn assert_states_eq(a: &PersistedState<i32, String>, b: &PersistedState<i32, Str
 }
 
 #[test]
-fn persisted_state_bincode_roundtrip() {
-    let state = sample_state();
-    let bytes = bincode::serialize(&state).unwrap();
-    let back: PersistedState<i32, String> = bincode::deserialize(&bytes).unwrap();
-    assert_states_eq(&back, &state);
-}
-
-#[test]
 fn file_snapshot_save_then_load() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
@@ -80,14 +72,6 @@ fn assert_states_equivalent(a: &PersistedState<i32, String>, b: &PersistedState<
     assert_eq!(a_entries, b_entries);
     assert_eq!(a.members, b.members);
     assert_eq!(a.tombstone_acks, b.tombstone_acks);
-}
-
-fn legacy_bytes(state: &PersistedState<i32, String>) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    bytes.extend_from_slice(&SNAPSHOT_MAGIC);
-    bytes.extend_from_slice(&SNAPSHOT_FORMAT_VERSION.to_le_bytes());
-    bytes.extend_from_slice(&bincode::serialize(state).unwrap());
-    bytes
 }
 
 #[test]
@@ -272,7 +256,8 @@ fn corrupt_manifest_is_rejected() {
 
     let (_, manifest_path) = incremental::paths(&backend);
     let mut bytes = fs::read(&manifest_path).unwrap();
-    let body_index = SNAPSHOT_HEADER_LEN.min(bytes.len() - 1);
+    // Manifest header: 4-byte magic plus 4-byte format version.
+    let body_index = 8.min(bytes.len() - 1);
     bytes[body_index] ^= 0xff;
     fs::write(&manifest_path, bytes).unwrap();
 
@@ -296,33 +281,9 @@ fn uncommitted_orphan_segment_is_ignored() {
 }
 
 #[test]
-fn legacy_snapshot_migrates_on_next_generation_save() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("snapshot.bin");
-    let state = sample_state();
-    fs::write(&path, legacy_bytes(&state)).unwrap();
-    let backend = FileSnapshot::new(&path);
-
-    let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
-    assert_states_eq(&loaded, &state);
-
-    Persistence::<i32, String>::save(&backend, &state).unwrap();
-    assert!(
-        !path.exists(),
-        "successful base publication must retire the legacy single-file snapshot"
-    );
-    let (_, manifest) = incremental::paths(&backend);
-    assert!(manifest.exists());
-
-    let migrated = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
-    assert_states_eq(&migrated, &state);
-}
-
-#[test]
 fn full_materialization_cleans_superseded_segments_after_publication() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("snapshot.bin");
-    let backend = FileSnapshot::new(&path);
+    let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
     let state = sample_state();
     Persistence::<i32, String>::save(&backend, &state).unwrap();
 
@@ -337,8 +298,6 @@ fn full_materialization_cleans_superseded_segments_after_publication() {
 
     let (store_dir, _) = incremental::paths(&backend);
     fs::write(store_dir.join("delta-99999999999999999999.bin"), b"orphan").unwrap();
-    fs::write(&path, b"legacy-or-stale").unwrap();
-
     Persistence::<i32, String>::save(&backend, &state).unwrap();
 
     let mut bases = 0;
@@ -353,84 +312,8 @@ fn full_materialization_cleans_superseded_segments_after_publication() {
     }
     assert_eq!(bases, 1, "only the newly committed base may remain");
     assert_eq!(deltas, 0, "all superseded/orphan deltas must be retired");
-    assert!(
-        !path.exists(),
-        "legacy path must be retired after publication"
-    );
-
     let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
     assert_states_equivalent(&loaded, &state);
-}
-
-#[test]
-fn file_snapshot_save_is_atomic_replace() {
-    let dir = tempfile::tempdir().unwrap();
-    let backend = FileSnapshot::new(dir.path().join("snapshot.bin"));
-
-    let mut first = sample_state();
-    first.entries = vec![(
-        1,
-        Entry::present(
-            Timestamp::new(
-                Hlc::new(PhysicalTime::from_millis(1), LogicalCounter::new(0)),
-                NodeId::new(0),
-            ),
-            "first".to_string(),
-        ),
-    )];
-    Persistence::<i32, String>::save(&backend, &first).unwrap();
-
-    let mut second = sample_state();
-    second.entries = vec![(
-        1,
-        Entry::present(
-            Timestamp::new(
-                Hlc::new(PhysicalTime::from_millis(2), LogicalCounter::new(0)),
-                NodeId::new(0),
-            ),
-            "second".to_string(),
-        ),
-    )];
-    Persistence::<i32, String>::save(&backend, &second).unwrap();
-
-    // No leftover temporary file, and the latest snapshot wins.
-    assert!(!dir.path().join("snapshot.bin.tmp").exists());
-    let loaded = Persistence::<i32, String>::load(&backend).unwrap().unwrap();
-    assert_eq!(loaded.entries[0].1.value(), Some(&"second".to_string()));
-}
-
-/// A pre-header snapshot — valid bincode, no magic/version prefix — must be rejected as
-/// `InvalidData`, never silently misread.
-#[test]
-fn headerless_legacy_snapshot_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("snapshot.bin");
-    // Raw bincode body with no header prefix — the on-disk shape.
-    let body = bincode::serialize(&sample_state()).unwrap();
-    fs::write(&path, &body).unwrap();
-    let backend = FileSnapshot::new(&path);
-    let err = Persistence::<i32, String>::load(&backend).unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-}
-
-/// A snapshot carrying the right magic but a **future/unknown format version** must be rejected
-/// rather than decoded with this build's layout.
-#[test]
-fn unknown_format_version_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("snapshot.bin");
-    let mut bytes = Vec::new();
-    bytes.extend_from_slice(&SNAPSHOT_MAGIC);
-    bytes.extend_from_slice(&(SNAPSHOT_FORMAT_VERSION + 1).to_le_bytes());
-    bytes.extend_from_slice(&bincode::serialize(&sample_state()).unwrap());
-    fs::write(&path, &bytes).unwrap();
-    let backend = FileSnapshot::new(&path);
-    let err = Persistence::<i32, String>::load(&backend).unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-    assert!(
-        err.to_string().contains("format version"),
-        "error should name the version mismatch, got: {err}"
-    );
 }
 
 /// A snapshot truncated below the header length must be rejected, not panic on the
@@ -443,4 +326,54 @@ fn truncated_snapshot_is_rejected() {
     let backend = FileSnapshot::new(&path);
     let err = Persistence::<i32, String>::load(&backend).unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+}
+
+#[test]
+fn single_file_snapshot_layout_is_rejected_for_both_identity_schemas() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("snapshot.bin");
+    let old_bytes = b"obsolete single-file snapshot".to_vec();
+    fs::write(&path, &old_bytes).unwrap();
+    let backend = FileSnapshot::new(&path);
+
+    let ip_state = sample_state();
+    let signed_state = PersistedState::<i32, String, crate::PeerId>::default();
+
+    assert_eq!(
+        Persistence::<i32, String>::load(&backend).unwrap_err().kind(),
+        io::ErrorKind::InvalidData
+    );
+    assert_eq!(
+        Persistence::<i32, String, crate::PeerId>::load(&backend)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidData
+    );
+    assert_eq!(
+        Persistence::<i32, String>::save(&backend, &ip_state)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidData
+    );
+    assert_eq!(
+        Persistence::<i32, String, crate::PeerId>::save(&backend, &signed_state)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidData
+    );
+    assert_eq!(
+        Persistence::<i32, String>::try_save_delta(&backend, None)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidData
+    );
+    assert_eq!(
+        Persistence::<i32, String, crate::PeerId>::try_save_delta(&backend, None)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidData
+    );
+
+    assert_eq!(fs::read(&path).unwrap(), old_bytes);
+    assert!(!incremental::paths(&backend).1.exists());
 }
