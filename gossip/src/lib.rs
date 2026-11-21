@@ -27,7 +27,8 @@ pub mod discovery;
 pub mod emulation;
 #[doc(hidden)]
 pub mod framing;
-mod gen_ip;
+#[doc(hidden)]
+pub mod gen_ip;
 pub mod peer;
 pub mod replay;
 mod substrate;
