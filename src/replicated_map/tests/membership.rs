@@ -107,15 +107,15 @@ async fn start_reconciliation_actually_drives_a_round() {
 
 /// `peers_map_len` must reflect the engine's actual peer count, not a fixed literal.
 #[tokio::test]
-async fn peers_map_len_reflects_the_engine_peers_map() {
+async fn sync_state_reports_peer_routing_count() {
     let store = virtual_map::<i32, i32>(virtual_config());
-    assert_eq!(store.engine.peers_map_len(), 0);
+    assert_eq!(store.sync_state().peers, 0);
     store
         .engine
         .peers
         .write()
         .insert("127.0.0.222".parse().unwrap(), std::time::Instant::now());
-    assert_eq!(store.engine.peers_map_len(), 1);
+    assert_eq!(store.sync_state().peers, 1);
 }
 
 /// `tombstone_acks_len` must reflect the engine's actual tracked-key count, not a fixed literal.
