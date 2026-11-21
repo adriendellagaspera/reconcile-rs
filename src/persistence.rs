@@ -7,8 +7,8 @@
 
 //! Persistence state and ports owned by the replicated-map runtime.
 //!
-//! These types include causal-stability membership and tombstone acknowledgements, so they are
-//! part of reconcile rather than the reusable LWW-register primitive. FileSnapshot is the
+//! These types include authoritative membership and tombstone acknowledgements, so they are part
+//! of reconcile rather than the reusable LWW-register primitive. FileSnapshot is the
 //! durable filesystem adapter; InMemoryPersistence is the non-durable default.
 
 pub use crate::snapshot::FileSnapshot;
