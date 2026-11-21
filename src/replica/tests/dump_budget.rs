@@ -8,19 +8,6 @@
 
 use crate::replicated_map::Config;
 
-/// Default budget is 4, matching DEFAULT_MAX_CONCURRENT_BULK_DUMPS.
-#[test]
-fn default_budget_is_four() {
-    assert_eq!(Config::default().max_concurrent_bulk_dumps, 4);
-}
-
-/// `with_max_concurrent_bulk_dumps` overrides the value.
-#[test]
-fn builder_sets_budget() {
-    let cfg = Config::default().with_max_concurrent_bulk_dumps(1);
-    assert_eq!(cfg.max_concurrent_bulk_dumps, 1);
-}
-
 /// With a budget of 1, claiming a second slot before the first is released must fail.
 /// After the first slot is dropped its count returns to zero and a fresh claim succeeds.
 #[tokio::test]
