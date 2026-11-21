@@ -109,4 +109,3 @@ async fn a_mutating_callback_cannot_publish_the_projection_before_its_generation
     );
     assert_eq!(store.get_cloned(&1), Some(20));
 }
-
