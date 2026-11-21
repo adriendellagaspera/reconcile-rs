@@ -172,14 +172,6 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         self.engine.set_repair_interval(interval);
     }
 
-    /// The currently configured repair timer.
-    ///
-    /// Exposed for integration-test assertions under `cfg(reconcile_internal_testing)`.
-    #[cfg(any(test, reconcile_internal_testing))]
-    pub fn repair_interval(&self) -> Duration {
-        self.engine.repair_interval()
-    }
-
     /// (runtime) Retune the broadcast-coalescing window in place. See
     /// [`Config::coalesce_window`](super::Config::coalesce_window).
     pub fn set_coalesce_window(&self, window: Duration) {
