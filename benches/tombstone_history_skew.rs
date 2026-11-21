@@ -21,7 +21,7 @@
 //
 // Overrides:
 //   RECONCILE_HISTORY_SKEW_N=20000
-//   RECONCILE_GC_SKEW_DELETIONS=0,100,1000,10000
+//   RECONCILE_HISTORY_SKEW_DELETIONS=0,100,1000,10000
 //   RECONCILE_GC_SKEW_BASE_DIVERGENCE=100
 
 use std::collections::{HashMap, HashSet};
@@ -45,7 +45,6 @@ const LEFT_IP: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(127, 9, 0, 1));
 const RIGHT_IP: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(127, 9, 0, 2));
 const LONG_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const REPAIR_INTERVAL: Duration = Duration::from_millis(500);
-const TOMBSTONE_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 const SETTLE: Duration = Duration::from_millis(25);
 
@@ -252,7 +251,6 @@ fn peer(
     let store =
         ReplicatedMap::<u64, u64>::new_with_transport(config(addr, node_id), Arc::new(transport))
             .expect("valid benchmark peer")
-            .with_tombstone_timeout(TOMBSTONE_TIMEOUT)
             .with_persistence(persistence.clone())
             .expect("load benchmark state");
     store.seed_peer(other);
