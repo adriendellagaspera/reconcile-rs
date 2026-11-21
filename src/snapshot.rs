@@ -49,7 +49,7 @@ fn reject_single_file_snapshot(path: &Path) -> io::Result<()> {
     if path.exists() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "single-file snapshots are no longer supported; remove the file before creating an incremental store",
+            "snapshot path exists without an incremental manifest; single-file snapshots are unsupported",
         ));
     }
     Ok(())
