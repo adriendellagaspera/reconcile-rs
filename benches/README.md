@@ -5,10 +5,10 @@ These targets measure the system runtime or deterministic in-memory transport be
 Run one target with:
 
 ```sh
-cargo bench --bench <target>
+RUSTFLAGS="--cfg reconcile_internal_testing" cargo bench --bench <target>
 ```
 
-CI compile-checks benchmark targets; it does not execute measurements.
+The internal testing cfg exposes deterministic reconciliation triggers used by several benchmarks; it does not enable additional production features. CI compile-checks benchmark targets but does not execute measurements.
 
 | Targets | Scope |
 |---|---|
