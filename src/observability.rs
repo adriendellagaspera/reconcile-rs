@@ -319,7 +319,6 @@ mod imp {
     pub(crate) fn record_tombstone_acks_resent(_n: usize) {}
 
     #[inline(always)]
-    #[inline(always)]
     pub(crate) fn record_round_duration(_start: Option<Instant>) {}
 
     #[inline(always)]
