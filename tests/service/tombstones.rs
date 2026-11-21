@@ -137,7 +137,7 @@ async fn retained_tombstones_converge_in_3_node_cluster_mesh() {
     let task3 = tokio::spawn(store3.clone().run(CancellationToken::new()));
 
     // Each node writes a distinct live key; once all keys are visible everywhere, every pair has
-    // exchanged dated messages, so all three are mutual causal-stability members.
+    // exchanged dated messages, so all three are mutual authoritative members.
     store1.insert(1, 11);
     store2.insert(2, 22);
     store3.insert(3, 33);
