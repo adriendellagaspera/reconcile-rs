@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Public, stable names for every metric this crate emits (behind the `metrics` feature).
+//! Public, stable names for metrics emitted by this crate, plus retained historical names.
 //!
 //! This module is the stable set dashboards and alert rules can depend on; the internal
 //! `observability` helpers record against these same constants rather than defining their own.
