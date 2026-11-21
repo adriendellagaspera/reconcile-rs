@@ -164,8 +164,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     }
 
     /// Delete every live entry, as broadcast tombstones (so the deletion reconciles to peers
-    /// rather than mutating the map only locally). Tombstoned keys are reclaimed later by
-    /// causal-stability GC. A no-op if the store holds no live entry.
+    /// rather than mutating the map only locally). Tombstones are retained indefinitely; physical collection is not implemented. A no-op if the store holds no live entry.
     /// # Panics
     /// See [`insert`](Self::insert) — the broadcast requires an ambient Tokio runtime (only when
     /// the store is non-empty; a no-op call never spawns).
