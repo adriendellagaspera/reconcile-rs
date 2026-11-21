@@ -273,7 +273,7 @@ async fn encrypted_node_with_wrong_key_is_rejected() {
 #[cfg(reconcile_internal_testing)]
 #[tokio::test(flavor = "multi_thread")]
 async fn stale_datagram_outside_freshness_window_is_rejected() {
-    use reconcile::testing::{members_snapshot, seal_datagram};
+    use reconcile::testing::seal_datagram;
 
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.9.1".parse().unwrap();
@@ -333,7 +333,7 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
 
     // The fresh packet can join only if the stale packet was rejected before the replay filter.
     // The shared sequence number makes replay admission observable; send order is preserved.
-    assert_until!(members_snapshot(&store).contains(&sender_ip));
+    assert_until!(store.members_snapshot().contains(&sender_ip));
     assert!(
         !task.is_finished(),
         "engine must remain alive after stale traffic"
