@@ -8,7 +8,7 @@
 
 //! Introspection and runtime topology controls a read replica can actually support.
 //! `members()`/`node_id()` have no counterpart here because a read replica has neither
-//! causal-stability membership nor an HLC identity.
+//! authoritative membership or tombstone receipt obligations, nor an HLC identity.
 
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -63,8 +63,7 @@ impl<K: Key, V: Value> ReadReplicaMap<K, V> {
     /// reconciliation targets (mirroring
     /// [`ReplicatedMap::peers`](crate::ReplicatedMap::peers)).
     ///
-    /// No `members()` counterpart: a read replica has no authoritative membership or tombstone
-    /// receipt obligations (module docs), so every peer here is simply a reconciliation target.
+    /// No `members()` counterpart: a read replica has no authoritative membership or tombstone receipt obligations (module docs), so every peer here is simply a reconciliation target.
     pub fn peers(&self) -> Vec<IpAddr> {
         let mut guard = self.peers.write();
         guard.retain(|_, instant| instant.elapsed() < PEER_EXPIRATION);
