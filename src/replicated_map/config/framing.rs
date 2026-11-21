@@ -11,6 +11,7 @@ use std::time::Duration;
 ///
 /// 1200 bytes remains below the IPv6 minimum-MTU UDP payload ceiling (1232 bytes).
 pub const DEFAULT_DATAGRAM_PAYLOAD_BUDGET: usize = 1_200;
+const MAX_UDP_PAYLOAD: usize = 65_507;
 
 /// UDP application-framing and incomplete-message reassembly policy.
 ///
@@ -193,7 +194,6 @@ impl FramingConfig {
     }
 
     pub(crate) fn validate(self, auth_overhead: usize) -> Result<(), super::ConfigError> {
-        const MAX_UDP_PAYLOAD: usize = 65_507;
         let minimum = auth_overhead
             .saturating_add(gossip::framing::FRAGMENT_HEADER_LEN)
             .saturating_add(1);
@@ -282,7 +282,6 @@ mod tests {
             })
         );
 
-        const MAX_UDP_PAYLOAD: usize = 65_507;
         assert_eq!(
             FramingConfig::default()
                 .with_datagram_payload_budget(MAX_UDP_PAYLOAD)
