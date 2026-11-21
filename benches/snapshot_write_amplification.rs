@@ -229,7 +229,7 @@ fn trial(rt: &Runtime, n: usize, delta: usize, checkpoints: usize) -> Measuremen
         .map(|key| (key, vec![0; VALUE_BYTES]))
         .collect();
     store.load_bulk(&initial);
-    let (reference_time, mut before, reference_write_bytes) = reference_snapshot(&store, &path);
+    let (baseline_time, mut before, baseline_write_bytes) = baseline_checkpoint(&store, &path);
 
     let mut checkpoint_time = Duration::ZERO;
     let mut checkpoint_write_bytes = 0;
@@ -249,9 +249,9 @@ fn trial(rt: &Runtime, n: usize, delta: usize, checkpoints: usize) -> Measuremen
     let restart_time = verify_restart(rt, &path, &store, n);
 
     Measurement {
-        reference_time,
+        baseline_time,
         checkpoint_time,
-        reference_write_bytes,
+        baseline_write_bytes,
         checkpoint_write_bytes,
         retained_bytes,
         base_segments,
@@ -268,7 +268,7 @@ fn print_measurement(
     repetition: usize,
     m: Measurement,
 ) {
-    let full_baseline = m.reference_write_bytes.saturating_mul(checkpoints as u64);
+    let full_baseline = m.baseline_write_bytes.saturating_mul(checkpoints as u64);
     let write_ratio = if full_baseline == 0 {
         0.0
     } else {
@@ -276,9 +276,9 @@ fn print_measurement(
     };
     println!(
         "{case},{n},{delta},{checkpoints},{repetition},{:.3},{:.3},{},{},{:.6},{},{},{},{:.3}",
-        m.reference_time.as_secs_f64() * 1_000.0,
+        m.baseline_time.as_secs_f64() * 1_000.0,
         m.checkpoint_time.as_secs_f64() * 1_000.0,
-        m.reference_write_bytes,
+        m.baseline_write_bytes,
         m.checkpoint_write_bytes,
         write_ratio,
         m.retained_bytes,
@@ -301,7 +301,7 @@ fn main() {
     assert!(repeats > 0);
 
     println!(
-        "case,n,delta,checkpoints,trial,baseline_ms,checkpoint_total_ms,reference_write_bytes,checkpoint_write_bytes,write_ratio_to_baseline,retained_bytes,base_segments,delta_segments,restart_ms"
+        "case,n,delta,checkpoints,trial,baseline_ms,checkpoint_total_ms,baseline_write_bytes,checkpoint_write_bytes,write_ratio_to_baseline,retained_bytes,base_segments,delta_segments,restart_ms"
     );
 
     for n in ns {
