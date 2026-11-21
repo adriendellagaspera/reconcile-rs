@@ -38,8 +38,7 @@ const SIZES: &[usize] = &[10, 100, 1_000, 10_000, 100_000];
 
 // `point_read`/`bulk_load`/`heap_footprint`'s own sweep: [`SIZES`] by default, so a plain `cargo
 // bench` stays fast, extendable past 100k without a source edit via
-// `RECONCILE_BENCH_SIZES` (a comma-separated override, the same env-var-configurability
-// `contention.rs` uses) — 's "sweep reaches ≥ 1M (opt-in for the largest)":
+// `RECONCILE_BENCH_SIZES` (a comma-separated override, the same environment-variable configurability used by the other benchmark targets) — 's "sweep reaches ≥ 1M (opt-in for the largest)":
 // ```sh
 // RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000 cargo bench --bench system -- point_read
 // RECONCILE_BENCH_SIZES=10,100,1000,10000,100000,1000000,4000000 cargo bench --bench system -- bulk_load
@@ -248,7 +247,7 @@ fn bulk_load(c: &mut Criterion) {
 
 // As [`bulk_load`], for the heap-indirected `String -> Vec<u8>` type pair — 's own external
 // Heap-indirected counterpart to the `u32 -> u32` bulk-load case.
-// `bulk_load_just_insert` (`benches/bench.rs`) is the per-entry `just_insert` counterpart to both
+// `bulk_load_just_insert` (`benches/replicated_map.rs`) is the per-entry `just_insert` counterpart to both
 // this and `bulk_load` — it needs a `reconcile_internal_testing` seam this feature-gate-free
 // binary cannot reach.
 fn bulk_load_heap(c: &mut Criterion) {
