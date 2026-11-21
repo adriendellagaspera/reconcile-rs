@@ -14,7 +14,7 @@ It is kept public as a technical reference. It is not a recommended database, re
 
 - `reconcile`: the replicated-map/set implementation, persistence, and replica lifecycle.
 - `reconcile-gossip`: datagram transport, framing, authentication, replay protection, and discovery. It is an implementation detail of `reconcile`.
-- `examples/`: a small local example and a Kubernetes deployment experiment.
+- `examples/`: a minimal local experiment.
 - `tests/`: behavioral and protocol tests.
 - `benches/`: runtime and transport experiments. Some targets are models, not measurements of real network transports.
 
