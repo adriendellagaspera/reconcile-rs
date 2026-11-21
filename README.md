@@ -12,7 +12,7 @@ It is kept public as a technical reference. It is not a recommended database, re
 
 ## What is here
 
-- `reconcile`: the replicated-map/set implementation, persistence, and replica lifecycle.
+- `reconcile`: the replicated-map implementation, persistence, and replica lifecycle.
 - `reconcile-gossip`: datagram transport, framing, authentication, replay protection, and discovery. It is an implementation detail of `reconcile`.
 - `examples/`: a minimal local experiment.
 - `tests/`: behavioral and protocol tests.

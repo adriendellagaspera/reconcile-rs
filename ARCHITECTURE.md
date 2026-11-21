@@ -4,7 +4,7 @@
 
 ## Data model
 
-The primary abstraction is a fully replicated key-value map (and set facade). Each authoritative replica stores the complete dataset and serves local reads. Writes propagate asynchronously. Concurrent writes to one key are ordered by a last-write-wins timestamp.
+The primary abstraction is a fully replicated key-value map. Set membership can be represented as `ReplicatedMap<K, ()>`; there is no separate set runtime. Each authoritative replica stores the complete dataset and serves local reads. Writes propagate asynchronously. Concurrent writes to one key are ordered by a last-write-wins timestamp.
 
 This is eventual-state replication, not a transactional database:
 

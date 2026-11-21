@@ -86,8 +86,6 @@ zeroize = ["gossip/zeroize"]
 encryption = ["gossip/encryption"]
 metrics = ["dep:metrics"]
 metrics-prometheus = ["metrics", "dep:metrics-exporter-prometheus"]
-# Reserved; currently no-op in gossip.
-dns-hickory = ["gossip/dns-hickory"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(reconcile_internal_testing)"] }
