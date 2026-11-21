@@ -12,18 +12,24 @@
 //! candidate path below remains only to test local deletion invariants; it is not reachable through
 //! the runtime's public collection path.
 
+#[cfg(test)]
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::net::IpAddr;
+#[cfg(test)]
 use std::sync::Arc;
+#[cfg(test)]
 use std::time::Duration;
 
+#[cfg(test)]
 use chrono::{DateTime, Utc};
 
 use serde::Serialize;
 
 use crate::bounds::{Key, Value};
+#[cfg(test)]
 use crate::clock::Timestamp;
+#[cfg(test)]
 use crate::entry::Entry;
 
 use super::Replica;
@@ -98,8 +104,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.collect_candidate(key, expected, now, retention)
     }
 
-    /// Conditional local transaction. This does not itself establish a distributed history proof;
-    /// only the gated runtime path may call it outside the local-invariant tests.
+    /// Conditional local transaction used only to test the local invariants of a future collection path.
     #[cfg(test)]
     pub(super) fn collect_candidate(
         &self,
@@ -140,8 +145,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         ret
     }
 
-    /// Whether every current member has acknowledged this version. The empty receipt quorum
-    /// is complete; neither case establishes that obsolete application history is fenced.
+    /// Test the receipt-quorum predicate. It does not establish that obsolete application history is fenced.
     #[cfg(test)]
     pub(crate) fn is_tombstone_stable(&self, key: &K, version: u64) -> bool {
         all_members_acknowledged(
