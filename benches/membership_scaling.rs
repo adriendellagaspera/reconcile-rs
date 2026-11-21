@@ -507,7 +507,6 @@ fn main() {
     println!(
         "[membership-live] members,admission_ms,admission_rx_bytes,admission_rx_dgrams,admission_tx_bytes,admission_tx_dgrams,round_ms,round_tx_bytes,round_tx_dgrams"
     );
-    let largest = *counts.last().expect("non-empty member sweep");
     let mut live = Vec::new();
     for &members in &counts {
         let point = runtime.block_on(live_point(members));
