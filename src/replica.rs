@@ -30,6 +30,12 @@ use gossip::replay;
 use rbsr::{EnumerationRange, RangeAggregate};
 
 const BUFFER_SIZE: usize = 65507;
+
+/// Deterministic, cross-node version token for a value. ACKs bind to the exact tombstone
+/// version, so an old receipt cannot be mistaken for a newer deletion.
+pub(crate) fn version_hash<V: Serialize>(value: &V) -> u64 {
+    rsos::digest(value).0[0]
+}
 /// Upper bound on protocol messages decoded from a single datagram. A datagram is at most
 /// [`BUFFER_SIZE`] bytes and the smallest message is at least one byte, so it can never legitimately
 /// contain more than this many messages; the cap turns a crafted datagram's decode-expansion into a
@@ -323,7 +329,6 @@ mod dispatch;
 mod dump;
 mod framed_send;
 mod generation;
-mod tombstone;
 pub(crate) use generation::GenerationTracker;
 mod inbound;
 mod membership;
@@ -343,7 +348,6 @@ pub(crate) use membership::derive_local_net;
 pub(crate) use recovery::{
     is_selective_recovery_capability, RecoveryBook, SELECTIVE_RECOVERY_CAPABILITY,
 };
-pub(crate) use tombstone::version_hash;
 
 pub(crate) use framed_send::{
     send_control_batch_to, send_messages_paced, send_messages_to, send_to_retry, SendPorts,
