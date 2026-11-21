@@ -105,7 +105,7 @@ async fn start_reconciliation_actually_drives_a_round() {
     );
 }
 
-/// `peers_map_len` must reflect the engine's actual peer count, not a fixed literal.
+/// `SyncState::peers` must reflect the actual gossip-routing peer count.
 #[tokio::test]
 async fn sync_state_reports_peer_routing_count() {
     let store = virtual_map::<i32, i32>(virtual_config());
