@@ -1,12 +1,12 @@
 # Examples
 
-- demo.rs: minimal local example.
-- k8s/: Kubernetes deployment example.
+- `demo.rs`: a minimal local UDP experiment.
+- `k8s/`: a historical Kubernetes deployment experiment.
 
 Run the local demo with:
 
-~~~sh
-cargo run --release --example demo 8080 127.0.0.1 127.0.0.0/30 100000
-~~~
+```sh
+cargo run --release --example demo -- 8080 127.0.0.1 127.0.0.0/30 100
+```
 
-See k8s/README.md for the Kubernetes example.
+The demo disables cluster authentication. Use it only on localhost or an isolated test network. The Kubernetes example is not a production deployment recipe.
