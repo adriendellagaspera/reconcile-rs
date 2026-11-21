@@ -18,10 +18,6 @@
 //! A sink, not a source: it always integrates inbound updates by plain overwrite, holding no
 //! timestamp to compare, and never pushes a value back.
 //!
-//! **Limitation.** It reflects a deletion only if it sees the tombstone before the dated store
-//! collects it, and it keeps its own entry for a key after that — so a GC configured to outrun
-//! replica propagation leaves `get` returning a stale value.
-
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::AtomicU64;
@@ -99,7 +95,7 @@ pub struct ReadReplicaMap<K, V> {
     /// Optional dynamic peer-discovery source (e.g. Kubernetes DNS), on top of the always-on random
     /// probe each reconciliation round. Unlike [`ReplicatedMap`](crate::ReplicatedMap)'s,
     /// discovered addresses here are never decommissioned: a read replica holds no
-    /// causal-stability membership and no GC gate to release, so there is nothing an absence needs
+    /// authoritative membership or tombstone-ack obligations to release, so there is nothing an absence needs
     /// to protect against (module docs).
     discovery: Option<Arc<dyn Discovery>>,
     /// How often the discovery task (when configured) resolves the peer set.
