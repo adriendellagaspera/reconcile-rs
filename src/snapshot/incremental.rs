@@ -273,9 +273,9 @@ where
     P: Serialize,
 {
     let previous = read_manifest_version(backend, format_version)?;
-    if format_version != FORMAT_VERSION && previous.is_none() && backend.path.exists() {
+    if previous.is_none() && backend.path.exists() {
         return Err(invalid(
-            "incompatible single-file snapshot exists: refusing to overwrite causal state",
+            "single-file snapshots are no longer supported: refusing to overwrite the existing file",
         ));
     }
     let generation = previous
@@ -328,9 +328,9 @@ where
     P: Serialize + DeserializeOwned + Eq + Hash,
 {
     let Some(mut manifest) = read_manifest_version(backend, format_version)? else {
-        if format_version != FORMAT_VERSION && backend.path.exists() {
+        if backend.path.exists() {
             return Err(invalid(
-                "incompatible single-file snapshot exists: refusing to reset causal state",
+                "single-file snapshots are no longer supported: refusing to reset the existing file",
             ));
         }
         return Ok(false);
