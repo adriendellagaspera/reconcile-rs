@@ -5,24 +5,24 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Controlled one-sided tombstone-GC skew probe for runtime causal-stability behavior.
+// Controlled one-sided tombstone-history skew probe for runtime anti-entropy behavior.
 //
 // Both authoritative peers have the same application-visible state: the first d keys are deleted.
-// In the aligned control both peers already GC'd those tombstones. In the measured case the left
-// peer already GC'd them while the right peer still retains them. The difference between the two
-// cases is therefore runtime tombstone history only, not application divergence.
+// The experiment injects persisted states: in the aligned control both peers start without those
+// tombstones; in the measured case the left starts without them while the right retains them.
+// This models asymmetric historical state; it does not execute or measure physical tombstone GC.
 //
 // d is a direct retained-tombstone debt input. Operationally it is approximately
 // delete_rate_per_second * effective_unacked_membership_lag_seconds: tombstone age timeout is only
 // one collection condition, and an unacknowledged causal member can extend retention beyond it.
 //
 // Run:
-//   cargo bench --bench tombstone_gc_skew
+//   cargo bench --bench tombstone_history_skew
 //
 // Overrides:
-//   RECONCILE_GC_SKEW_N=20000
-//   RECONCILE_GC_SKEW_DELETIONS=0,100,1000,10000
-//   RECONCILE_GC_SKEW_BASE_DIVERGENCE=100
+//   RECONCILE_HISTORY_SKEW_N=20000
+//   RECONCILE_HISTORY_SKEW_DELETIONS=0,100,1000,10000
+//   RECONCILE_HISTORY_SKEW_BASE_DIVERGENCE=100
 
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -45,7 +45,6 @@ const LEFT_IP: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(127, 9, 0, 1));
 const RIGHT_IP: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(127, 9, 0, 2));
 const LONG_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const REPAIR_INTERVAL: Duration = Duration::from_millis(500);
-const TOMBSTONE_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 const SETTLE: Duration = Duration::from_millis(25);
 
@@ -252,7 +251,6 @@ fn peer(
     let store =
         ReplicatedMap::<u64, u64>::new_with_transport(config(addr, node_id), Arc::new(transport))
             .expect("valid benchmark peer")
-            .with_tombstone_timeout(TOMBSTONE_TIMEOUT)
             .with_persistence(persistence.clone())
             .expect("load benchmark state");
     store.seed_peer(other);
@@ -373,7 +371,7 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
     if one_sided {
         assert_eq!(
             left_after, deleted,
-            "GC'd side should re-learn retained tombstones"
+            "tombstone-free side should re-learn retained tombstones"
         );
         assert_eq!(right_after, deleted);
     } else {
@@ -410,7 +408,7 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
         .sum();
 
     println!(
-        "[gc-skew] kind={},n={n},deleted={deleted},live_divergence={live_divergence},left_tombstones_before={left_before},right_tombstones_before={right_before},elapsed_ms={:.3},tx_bytes={tx_bytes},tx_dgrams={tx_datagrams},rx_bytes={rx_bytes},rx_dgrams={rx_datagrams},advertised_ranges={advertised_ranges},enumerated_elements={enumerated_elements},left_tombstones_after={left_after},right_tombstones_after={right_after},left_members={},right_members={},left_ack_keys={},right_ack_keys={},left_ack_pairs={left_ack_pairs},right_ack_pairs={right_ack_pairs}",
+        "[history-skew] kind={},n={n},deleted={deleted},live_divergence={live_divergence},left_tombstones_before={left_before},right_tombstones_before={right_before},elapsed_ms={:.3},tx_bytes={tx_bytes},tx_dgrams={tx_datagrams},rx_bytes={rx_bytes},rx_dgrams={rx_datagrams},advertised_ranges={advertised_ranges},enumerated_elements={enumerated_elements},left_tombstones_after={left_after},right_tombstones_after={right_after},left_members={},right_members={},left_ack_keys={},right_ack_keys={},left_ack_pairs={left_ack_pairs},right_ack_pairs={right_ack_pairs}",
         match (one_sided, live_divergence > 0) {
             (true, true) => "one-sided+live",
             (true, false) => "one-sided",
@@ -445,7 +443,7 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
         let ack_elapsed = ack_started.elapsed();
         let (tx_after, dgrams_after) = pair_tx(&left, &right);
         println!(
-            "[gc-skew-acks] n={n},deleted={deleted},rounds={ack_rounds},elapsed_ms={:.3},tx_bytes={},tx_dgrams={},covered={covered}",
+            "[history-skew-acks] n={n},deleted={deleted},rounds={ack_rounds},elapsed_ms={:.3},tx_bytes={},tx_dgrams={},covered={covered}",
             ack_elapsed.as_secs_f64() * 1_000.0,
             tx_after.saturating_sub(tx_before),
             dgrams_after.saturating_sub(dgrams_before),
@@ -459,9 +457,9 @@ async fn scenario(n: usize, deleted: usize, one_sided: bool, live_divergence: us
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let n = env_usize("RECONCILE_GC_SKEW_N", 20_000);
-    let deletions = env_list("RECONCILE_GC_SKEW_DELETIONS", "0,100,1000,10000");
-    let base_divergence = env_usize("RECONCILE_GC_SKEW_BASE_DIVERGENCE", 100);
+    let n = env_usize("RECONCILE_HISTORY_SKEW_N", 20_000);
+    let deletions = env_list("RECONCILE_HISTORY_SKEW_DELETIONS", "0,100,1000,10000");
+    let base_divergence = env_usize("RECONCILE_HISTORY_SKEW_BASE_DIVERGENCE", 100);
     assert!(n > 0);
     for deleted in deletions {
         assert!(deleted <= n);

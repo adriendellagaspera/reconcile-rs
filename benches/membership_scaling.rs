@@ -42,9 +42,6 @@ const PORT: u16 = 9_872;
 const CENTRAL_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 250, 0, 1));
 const LONG_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(20);
-const GC_BLOCK_WINDOW: Duration = Duration::from_millis(1_100);
-const GC_WAIT_TIMEOUT: Duration = Duration::from_secs(3);
-const GC_KEY: u64 = u64::MAX;
 
 struct CountingAllocator;
 static LIVE_BYTES: AtomicI64 = AtomicI64::new(0);
@@ -372,14 +369,7 @@ async fn wait_until(timeout: Duration, mut predicate: impl FnMut() -> bool, what
     .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
 }
 
-fn tombstone_exists(store: &ReplicatedMap<u64, u64>) -> bool {
-    store
-        .snapshot()
-        .get(&GC_KEY)
-        .is_some_and(|entry| entry.is_tombstone())
-}
-
-async fn live_point(members: usize, exercise_gc: bool) -> LivePoint {
+async fn live_point(members: usize) -> LivePoint {
     let network = InMemoryNetwork::new();
     let traffic = Traffic::default();
     let central_transport = CountingTransport {
@@ -390,8 +380,7 @@ async fn live_point(members: usize, exercise_gc: bool) -> LivePoint {
         central_config(members.saturating_add(8)),
         Arc::new(central_transport),
     )
-    .expect("valid central benchmark node")
-    .with_tombstone_timeout(Duration::ZERO);
+    .expect("valid central benchmark node");
 
     let shutdown = CancellationToken::new();
     let run_store = central.clone();
@@ -435,36 +424,6 @@ async fn live_point(members: usize, exercise_gc: bool) -> LivePoint {
     central.start_reconciliation().await;
     let round_ms = round_started.elapsed().as_secs_f64() * 1_000.0;
     let round = traffic.snapshot();
-
-    if exercise_gc {
-        central.load_bulk(&[(GC_KEY, 7)]);
-        central.remove(&GC_KEY);
-        assert!(tombstone_exists(&central));
-        tokio::time::sleep(GC_BLOCK_WINDOW).await;
-        assert!(
-            tombstone_exists(&central),
-            "expired tombstone must stay while authoritative members have not acknowledged it"
-        );
-
-        let forget_started = Instant::now();
-        for index in 0..members {
-            central.forget_peer(peer_ip(index));
-        }
-        let forget_ms = forget_started.elapsed().as_secs_f64() * 1_000.0;
-        assert!(central.members().is_empty());
-
-        let gc_started = Instant::now();
-        wait_until(
-            GC_WAIT_TIMEOUT,
-            || !tombstone_exists(&central),
-            "tombstone GC after decommissioning unreachable members",
-        )
-        .await;
-        println!(
-            "[membership-gc] members={members},blocked_before_forget=true,forget_all_ms={forget_ms:.3},gc_after_forget_ms={:.3}",
-            gc_started.elapsed().as_secs_f64() * 1_000.0
-        );
-    }
 
     shutdown.cancel();
     run_task.await.expect("central run task");
@@ -548,10 +507,9 @@ fn main() {
     println!(
         "[membership-live] members,admission_ms,admission_rx_bytes,admission_rx_dgrams,admission_tx_bytes,admission_tx_dgrams,round_ms,round_tx_bytes,round_tx_dgrams"
     );
-    let largest = *counts.last().expect("non-empty member sweep");
     let mut live = Vec::new();
     for &members in &counts {
-        let point = runtime.block_on(live_point(members, members == largest));
+        let point = runtime.block_on(live_point(members));
         println!(
             "[membership-live] {},{:.3},{},{},{},{},{:.3},{},{}",
             point.members,

@@ -106,13 +106,6 @@ mod imp {
         counter!(TOMBSTONE_ACKS_RESENT_TOTAL).increment(n as u64);
     }
 
-    /// A tombstone's expiry instant had to be bounded. A non-zero rate means a peer is planting
-    /// stamps far ahead of this node's clock.
-    #[inline]
-    pub(crate) fn record_tombstone_stamp_bounded(outcome: &'static str) {
-        counter!(TOMBSTONE_STAMP_BOUNDED_TOTAL, "outcome" => outcome).increment(1);
-    }
-
     #[inline]
     pub(crate) fn record_round_duration(start: Option<Instant>) {
         if let Some(start) = start {
@@ -324,9 +317,6 @@ mod imp {
 
     #[inline(always)]
     pub(crate) fn record_tombstone_acks_resent(_n: usize) {}
-
-    #[inline(always)]
-    pub(crate) fn record_tombstone_stamp_bounded(_outcome: &'static str) {}
 
     #[inline(always)]
     pub(crate) fn record_round_duration(_start: Option<Instant>) {}

@@ -79,7 +79,7 @@ impl MemberPresence {
 
     /// Whether this absence warrants decommissioning: at `miss_threshold` misses, immediately
     /// without a pending unacknowledged tombstone, otherwise only past `floor` — which is what
-    /// keeps a flaky resolver from releasing the GC gate early.
+    /// keeps a flaky resolver from dropping a member's outstanding causal ACK obligations early.
     pub(super) fn eligible_for_decommission(
         &self,
         miss_threshold: u32,
@@ -100,7 +100,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Attach an authoritative peer-discovery source.
     ///
     /// Successful rounds seed returned peers. Members absent for the configured miss threshold
-    /// are decommissioned according to the tombstone-safety floor.
+    /// are decommissioned according to the causal-retention floor. Physical tombstone collection remains disabled.
     ///
     /// # Errors
     ///
@@ -138,7 +138,7 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
 
     /// Set how many consecutive successful discovery rounds a seen member may be absent
     /// before it is decommissioned (default 3). A higher value tolerates longer DNS blips / rolling
-    /// restarts at the cost of holding tombstones (and their GC gate) longer.
+    /// restarts at the cost of retaining causal membership and its ACK obligations longer.
     pub fn with_discovery_miss_threshold(mut self, threshold: u32) -> Self {
         self.discovery_miss_threshold = threshold;
         self
@@ -147,9 +147,9 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     /// Set the wall-time floor a member **with pending unacknowledged tombstones** must be
     /// continuously absent for before decommissioning (default 10 minutes).
     /// The fast path — no pending acks — is unaffected. The floor is what keeps a spoofed or
-    /// flaky resolver from releasing the GC gate on a tombstone a healthy member never acked, and
-    /// so from letting that member resurrect the value. Raising it bounds the attacker further and
-    /// holds tombstones longer during a genuine outage.
+    /// flaky resolver from discarding an ACK obligation while a healthy member may still be absent.
+    /// Physical collection is disabled regardless; this floor preserves the causal membership
+    /// record for any future, separately proven collection protocol.
     pub fn with_discovery_decommission_floor(mut self, floor: Duration) -> Self {
         self.discovery_decommission_floor = floor;
         self

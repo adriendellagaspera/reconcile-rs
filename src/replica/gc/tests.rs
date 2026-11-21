@@ -148,11 +148,9 @@ fn local_collection_checks_current_version_retention_and_all_current_members() {
         .tombstone_acks
         .write()
         .insert(7, HashMap::from([(peer, version)]));
-    let wheel =
-        crate::timeout_wheel::TimeoutWheel::<u32>::new().with_timeout(Duration::from_secs(1));
     let edge = chrono::DateTime::from_timestamp_millis(2_000).unwrap();
     assert!(replica
-        .collect_candidate(&7, stamp, edge, || wheel.timeout())
+        .collect_candidate(&7, stamp, edge, || Duration::from_secs(1))
         .is_none());
     let expired = edge + chrono::Duration::milliseconds(1);
     let before = replica.change_count();
@@ -162,7 +160,7 @@ fn local_collection_checks_current_version_retention_and_all_current_members() {
         .is_none());
     assert_eq!(replica.change_count(), before);
     assert!(replica
-        .collect_candidate(&7, stamp, expired, || wheel.timeout())
+        .collect_candidate(&7, stamp, expired, || Duration::from_secs(1))
         .is_some());
     assert!(replica.map.load_full().get(&7).is_none());
     assert!(replica.projection.load_full().get(&7).is_none());

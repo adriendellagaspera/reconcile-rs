@@ -13,7 +13,7 @@ wire messages, or share their on-disk causal snapshot format.
 | Peer authentication | Shared cluster key, *not* an individual signer | Allowlisted Ed25519 `PeerId` **and** inner cluster MAC |
 | Transport address | `SocketAddr` / `IpAddr` | Arbitrary caller-owned datagram destination `A: Clone + Eq` |
 | Return route | IP-addressed transport | Signed, nonce-challenged exact source route |
-| Causal GC membership | Legacy IP identities | Configured **authoritative `PeerId` roster** |
+| Causal ACK membership | Legacy IP identities | Configured **authoritative `PeerId` roster** (physical collection disabled) |
 | Tombstone ACK | IP and exact-version token | Verified signer and exact-version token |
 | Persistence | v1 IP format | v2 `PeerId` format, including incremental base/delta/manifest |
 | Replication | RSOS/RBSR range reconciliation | Bounded, round-robin dated record sweep |
@@ -26,10 +26,12 @@ admission verifies the envelope signature and allowlist, inner MAC/version,
 logical peer capacity and per-signer replay **before** route challenge, fragment
 allocation, decode and application state.
 
-Configured authoritative members conservatively gate GC **even when disconnected
-or never observed**. Inbound traffic may update data or supply ACKs only after
-individual signature/role verification and return-route confirmation. Read-only
-signers never become causal blockers or supply authoritative tombstone ACKs.
+Configured authoritative members remain causal ACK blockers **even when
+disconnected or never observed**. This membership state is persisted, but it
+does not enable physical collection: the public collection path is deliberately
+closed. Inbound traffic may update data or supply ACKs only after individual
+signature/role verification and return-route confirmation. Read-only signers
+never become causal blockers or supply authoritative tombstone ACKs.
 Decommission is explicit and must be coordinated; network silence does not
 decommission a member.
 
@@ -112,7 +114,7 @@ to reinitialize incompatible history intentionally.
   Convergence of large
   datasets depends strongly on the caller's cadence. Benchmark workload
   size, contact interruptions and time to converge; do not assume legacy
-  range-reconciliation throughput or optimize out the causal GC barrier.
+  range-reconciliation throughput or assume tombstone collection can safely be enabled.
 
 ## Explicit non-goals
 

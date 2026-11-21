@@ -29,9 +29,7 @@ pub mod clock;
 pub mod metrics;
 pub mod persistence;
 pub mod read_replica_map;
-pub mod read_replica_set;
 pub mod replicated_map;
-pub mod replicated_set;
 /// Opt-in signed-only runtime with verified identity-keyed causal state and v2 durability.
 pub mod signed_replica;
 pub(crate) mod snapshot;
@@ -64,7 +62,6 @@ pub mod prometheus;
 pub(crate) mod framing;
 pub(crate) mod observability;
 pub(crate) mod replica;
-pub(crate) mod timeout_wheel;
 
 pub use bounds::{Key, Value};
 pub use clock::{
@@ -86,9 +83,7 @@ pub use rsos::{
 
 pub use persistence::{FileSnapshot, InMemoryPersistence, PersistedState, Persistence};
 pub use read_replica_map::ReadReplicaMap;
-pub use read_replica_set::ReadReplicaSet;
 pub use replicated_map::ReplicatedMap;
-pub use replicated_set::ReplicatedSet;
 
 /// Internal seam for the integration tests, behind `cfg(test)` or `cfg(reconcile_internal_testing)`.
 ///

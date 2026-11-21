@@ -1,274 +1,40 @@
-name: main
+name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-  merge_group:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -Dwarnings
-  RUSTDOCFLAGS: -Dwarnings
+  RUSTFLAGS: -D warnings --cfg reconcile_internal_testing
+  RUSTDOCFLAGS: -D warnings
 
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      rust: ${{ steps.filter.outputs.rust }}
-      deps: ${{ steps.filter.outputs.deps }}
-    steps:
-    - uses: actions/checkout@v3
-    - uses: dorny/paths-filter@v3
-      id: filter
-      if: github.event_name != 'merge_group'
-      with:
-        filters: |
-          rust:
-            - '**/*.rs'
-            - '**/Cargo.toml'
-            - 'Cargo.lock'
-            - 'rust-toolchain*'
-            - '.github/workflows/main.yml'
-          deps:
-            - '**/Cargo.toml'
-            - 'Cargo.lock'
-            - 'deny.toml'
-            - '.github/workflows/main.yml'
-
-  fmt:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
+  checks:
+    name: Rust checks
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - run: cargo fmt --check
-
-  repo-gates:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: taiki-e/install-action@v2
-      with:
-        tool: cargo-mutants@27.1.0
-    - name: Documentation budgets
-      run: ./scripts/check-doc-budget.sh
-    - name: GC history-fence policy
-      run: ./scripts/check-gc-fence.sh
-    - name: Domain purity
-      run: ./scripts/check-domain-purity.sh
-    - name: RSOS/RBSR ownership boundary
-      run: bash scripts/check-benchmark-boundaries.sh
-    - name: Documentation structure
-      run: ./scripts/check-doc-structure.sh
-    - name: Test-file naming (split #[cfg(test)] modules are named tests.rs, not <name>_tests.rs)
-      run: ./scripts/check-test-file-naming.sh
-    - name: File size (prod/test line-count budgets, warning + hard-fail tiers)
-      run: ./scripts/check-file-size.sh
-    - name: Mutant count (.cargo/mutants.toml's header comment vs cargo-mutants --list)
-      run: ./scripts/check-mutant-count.sh
-
-  clippy:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo clippy --workspace --all-targets
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-    - run: cargo clippy --workspace --all-features --all-targets
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-
-  code-quality:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo install rust-code-analysis-cli --locked
-    - run: npm install -g jscpd
-    - run: ./scripts/report-code-quality.sh >>"$GITHUB_STEP_SUMMARY"
-
-  test:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: Swatinem/rust-cache@v2
-    - uses: taiki-e/install-action@cargo-nextest
-    - run: cargo build --workspace --verbose
-    - run: cargo nextest run --workspace --retries 4 --flaky-result fail
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-    - run: cargo test --doc --workspace --verbose
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-
-  test-all-features:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: Swatinem/rust-cache@v2
-    - uses: taiki-e/install-action@cargo-nextest
-    - run: cargo nextest run --workspace --all-features --retries 4 --flaky-result fail
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-
-  test-mac-hmac:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: Swatinem/rust-cache@v2
-    - uses: taiki-e/install-action@cargo-nextest
-    - run: cargo clippy --workspace --no-default-features --features mac-hmac --all-targets
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-    - run: cargo build --workspace --no-default-features --features mac-hmac --verbose
-    - run: cargo nextest run --workspace --no-default-features --features mac-hmac --retries 4 --flaky-result fail
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-
-  msrv:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@1.85
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo check --workspace --all-targets --all-features --verbose
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-
-  docs:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo doc --workspace --verbose
-    - run: cargo doc --workspace --all-features --verbose
-
-  bench:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo bench --no-run
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-
-  package:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Enable caching (registry only -- see above)
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - run: rm -rf ~/.cargo/registry/src/*/{lww-register,reconcile-gossip}-* ~/.cargo/registry/cache/*/{rsos,rbsr,lww-register,reconcile-gossip}-*
-    - run: cargo package --workspace --allow-dirty
-
-  deny:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.deps == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: EmbarkStudios/cargo-deny-action@v2
-
-  public-api:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@nightly
-      with:
-        toolchain: nightly-2026-09-18
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo install cargo-public-api --locked
-    - run: ./scripts/check-public-api.sh
-
-  semver-checks:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: Swatinem/rust-cache@v2
-    - uses: taiki-e/install-action@cargo-semver-checks
-    - run: cargo semver-checks --workspace
-
-  coverage:
-    needs: changes
-    if: github.event_name == 'merge_group' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Install llvm-tools-preview
-      run: rustup component add llvm-tools-preview
-    - uses: taiki-e/install-action@cargo-llvm-cov
-    - uses: Swatinem/rust-cache@v2
-    - name: Generate code coverage
-      run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
-      env:
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} --cfg reconcile_internal_testing
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: lcov.info
-        fail_ci_if_error: false
-
-  ci-success:
-    name: ci-success
-    if: always()
-    needs:
-      - changes
-      - fmt
-      - repo-gates
-      - clippy
-      - code-quality
-      - test
-      - test-all-features
-      - test-mac-hmac
-      - msrv
-      - docs
-      - bench
-      - package
-      - deny
-      - public-api
-      - semver-checks
-      - coverage
-    runs-on: ubuntu-latest
-    steps:
-    - name: Fail if any job failed or was cancelled
-      if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-      run: |
-        echo "::error::one or more CI jobs failed or were cancelled"
-        exit 1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --all-features
+      - name: Documentation
+        run: cargo doc --workspace --all-features --no-deps
+      - name: Package
+        run: cargo package --workspace --allow-dirty

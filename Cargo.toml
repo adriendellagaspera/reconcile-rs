@@ -8,15 +8,13 @@ version = "0.6.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-description = "A reconciliation storage service to sync a key-value map over multiple instances"
+description = "Experimental fully replicated key-value storage prototype"
 repository = "https://github.com/adriendellagaspera/reconcile-rs"
 readme = "README.md"
 keywords = ["reconciliation", "gossip", "replicated", "distributed", "crdt"]
 categories = ["data-structures", "network-programming"]
 exclude = [
-    "pre-commit",
     "CONTRIBUTING.md",
-    "examples/k8s/",
     "ARCHITECTURE.md",
 ]
 
@@ -34,10 +32,6 @@ harness = false
 
 [[bench]]
 name = "system"
-harness = false
-
-[[bench]]
-name = "runtime_history_independent_catchup"
 harness = false
 
 [[bench]]
@@ -65,15 +59,11 @@ name = "snapshot_metadata_only"
 harness = false
 
 [[bench]]
-name = "workload_distribution"
-harness = false
-
-[[bench]]
 name = "security_ingress"
 harness = false
 
 [[bench]]
-name = "tombstone_gc_skew"
+name = "tombstone_history_skew"
 harness = false
 
 [[bench]]
@@ -82,14 +72,6 @@ harness = false
 
 [[bench]]
 name = "fragmentation"
-harness = false
-
-[[bench]]
-name = "fragment_recovery"
-harness = false
-
-[[bench]]
-name = "ordered_stream"
 harness = false
 
 [[bench]]
@@ -104,16 +86,9 @@ zeroize = ["gossip/zeroize"]
 encryption = ["gossip/encryption"]
 metrics = ["dep:metrics"]
 metrics-prometheus = ["metrics", "dep:metrics-exporter-prometheus"]
-# Reserved; currently no-op in gossip.
-dns-hickory = ["gossip/dns-hickory"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(reconcile_internal_testing)"] }
-
-[[example]]
-name = "k8s"
-path = "examples/k8s/main.rs"
-required-features = ["metrics-prometheus"]
 
 [dependencies]
 arc-swap = "1.7.1"

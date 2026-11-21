@@ -45,7 +45,6 @@ const REPAIR_INTERVAL: Duration = Duration::from_millis(200);
 const REPAIR_OBSERVATION: Duration = Duration::from_millis(1_100);
 const SETTLE: Duration = Duration::from_millis(25);
 const WAIT_TIMEOUT: Duration = Duration::from_secs(20);
-const GC_WAIT_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Default)]
 struct Traffic {
@@ -303,7 +302,6 @@ fn store_from_state(
         Arc::new(transport),
     )
     .expect("valid benchmark store")
-    .with_tombstone_timeout(Duration::ZERO)
     .with_persistence(backend.clone())
     .expect("load benchmark causal state");
     (store, backend)
@@ -488,17 +486,8 @@ async fn one_unreachable(members: usize, tombstones: usize) {
         .values()
         .all(|acks| acks.len() == members - 2));
 
-    let gc_started = Instant::now();
-    wait_until(
-        GC_WAIT_TIMEOUT,
-        || tombstone_count(&store) == 0,
-        "GC after removing the silent member",
-    )
-    .await;
-    let gc_after_forget_ms = gc_started.elapsed().as_secs_f64() * 1_000.0;
-
     println!(
-        "[causal-unreachable] members={members},tombstones={tombstones},responsive={},round_tx_bytes={},round_tx_dgrams={},round_rx_bytes={},round_rx_dgrams={},round_ms={round_ms:.3},repair_tx_bytes={},repair_tx_dgrams={},unreachable_repair_tx_bytes={unreachable_repair_bytes},unreachable_repair_tx_dgrams={unreachable_repair_dgrams},responsive_member_repair_tx_dgrams={responsive_member_repair_dgrams},speculative_repair_tx_bytes={speculative_repair_bytes},speculative_repair_tx_dgrams={speculative_repair_dgrams},forget_acked_ms={forget_acked_ms:.3},forget_unacked_ms={forget_unacked_ms:.3},gc_after_forget_ms={gc_after_forget_ms:.3}",
+        "[causal-unreachable] members={members},tombstones={tombstones},responsive={},round_tx_bytes={},round_tx_dgrams={},round_rx_bytes={},round_rx_dgrams={},round_ms={round_ms:.3},repair_tx_bytes={},repair_tx_dgrams={},unreachable_repair_tx_bytes={unreachable_repair_bytes},unreachable_repair_tx_dgrams={unreachable_repair_dgrams},responsive_member_repair_tx_dgrams={responsive_member_repair_dgrams},speculative_repair_tx_bytes={speculative_repair_bytes},speculative_repair_tx_dgrams={speculative_repair_dgrams},forget_acked_ms={forget_acked_ms:.3},forget_unacked_ms={forget_unacked_ms:.3}",
         members - 1,
         round.tx_bytes,
         round.tx_datagrams,

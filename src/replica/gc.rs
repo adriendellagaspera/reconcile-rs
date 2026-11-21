@@ -5,18 +5,31 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Shared tombstone-collection gate and legacy candidate transaction.
+//!
+//! Both runtime paths consult `has_collection_proof`, which deliberately remains false: receipt
+//! ACKs and elapsed retention do not prove that rolled-back or delayed application history can no
+//! longer be admitted. The legacy candidate transaction below is compiled only for local invariant
+//! tests; neither runtime exposes a physical collection path.
+
+#[cfg(test)]
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::net::IpAddr;
+#[cfg(test)]
 use std::sync::Arc;
+#[cfg(test)]
 use std::time::Duration;
 
+#[cfg(test)]
 use chrono::{DateTime, Utc};
 
 use serde::Serialize;
 
 use crate::bounds::{Key, Value};
+#[cfg(test)]
 use crate::clock::Timestamp;
+#[cfg(test)]
 use crate::entry::Entry;
 
 use super::Replica;
@@ -31,6 +44,7 @@ pub(crate) fn version_hash<V: Serialize>(value: &V) -> u64 {
 
 /// Identity-agnostic causal GC predicate. Membership identities must have been admitted by the
 /// owning runtime's authentication policy; the predicate never infers identities from routes.
+#[cfg(test)]
 fn all_members_acknowledged<K: Eq + Hash, P: Eq + Hash>(
     members: &HashSet<P>,
     tombstone_acks: &HashMap<K, HashMap<P, u64>>,
@@ -76,6 +90,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// The public runtime path retains tombstones until distributed history is fenced.
+    #[cfg(test)]
     pub(crate) fn gc_collect(
         &self,
         key: &K,
@@ -89,8 +104,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.collect_candidate(key, expected, now, retention)
     }
 
-    /// Conditional local transaction. This does not itself establish a distributed history proof;
-    /// only the gated runtime path may call it outside the local-invariant tests.
+    /// Conditional local transaction used only to test the local invariants of a future collection path.
+    #[cfg(test)]
     pub(super) fn collect_candidate(
         &self,
         key: &K,
@@ -130,8 +145,8 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         ret
     }
 
-    /// Whether every current member has acknowledged this version. The empty receipt quorum
-    /// is complete; neither case establishes that obsolete application history is fenced.
+    /// Test the receipt-quorum predicate. It does not establish that obsolete application history is fenced.
+    #[cfg(test)]
     pub(crate) fn is_tombstone_stable(&self, key: &K, version: u64) -> bool {
         all_members_acknowledged(
             &self.members.read(),
@@ -152,7 +167,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// Whether `peer` still owes an acknowledgment on some held tombstone — i.e. whether its
-    /// absence would block GC.
+    /// absence would block a future, separately proven collection protocol.
     /// Walks [`live_tombstones`](Self::live_tombstones), not
     /// [`tombstone_acks`](Self::tombstone_acks): a freshly deleted tombstone has no ack entry yet
     /// and must still count as pending.

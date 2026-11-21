@@ -1,67 +1,49 @@
 # reconcile-rs
 
-[![Crates.io][crates-badge]][crates-url]
-[![Build Status][actions-badge]][actions-url]
-[![Coverage Status][codecov-badge]][codecov-url]
-[![Docs Status][docs-badge]][docs-url]
+[![Build](https://github.com/adriendellagaspera/reconcile-rs/actions/workflows/main.yml/badge.svg)](https://github.com/adriendellagaspera/reconcile-rs/actions/workflows/main.yml)
+[![Crates.io](https://img.shields.io/crates/v/reconcile.svg)](https://crates.io/crates/reconcile)
+[![Documentation](https://docs.rs/reconcile/badge.svg)](https://docs.rs/reconcile/latest/reconcile/)
 
-Embedded, fully replicated, eventually consistent key-value storage for Rust. Each authoritative
-node holds the whole dataset and serves reads locally. Writes are sent to peers over UDP;
-range-based reconciliation repairs missed updates, and concurrent writes to the same key
-resolve by last-write-wins ordering. An **opt-in** signed-only `SignedReplica` actor additionally
-supports stable, verified Ed25519 `PeerId` causal membership over application-owned datagram
-substrates; it is not an automatic replacement for the legacy UDP runtime.
+**Research prototype — no active development, roadmap, or production support.**
 
-Use it when every node can keep the working set in memory and your application can tolerate
-eventual consistency. It does not provide sharding or strongly consistent writes. Persistence
-is optional; see the [API documentation][docs-url] for the supported configuration and the
-[security guide](SECURITY.md) before joining nodes across a network. The signed-only
-mode has a [coordinated v2 upgrade guide](UPGRADE-PEERID.md): it does not convert legacy
-snapshots or allow a mixed signed/legacy cluster.
+This repository records an exploration of fully replicated key-value storage in Rust. It investigates eventual convergence, last-write-wins conflict resolution, range-based anti-entropy, authenticated datagrams, peer membership, and snapshot persistence.
 
-## Try it
+It is kept public as a technical reference. It is not a recommended database, replication framework, or production dependency. The published `0.6.0` crates are historical artifacts; do not assume future releases, compatibility guarantees, or security maintenance.
 
-From a checkout with Rust installed, run the repository's local demo:
+## What is here
 
-```sh
-cargo run --release --example demo 8080 127.0.0.1 127.0.0.0/30 100
-```
+- `reconcile`: the replicated-map implementation, persistence, and replica lifecycle.
+- `reconcile-gossip`: datagram transport, framing, authentication, replay protection, and discovery. It is an implementation detail of `reconcile`.
+- `examples/`: a minimal local experiment.
+- `tests/`: behavioral and protocol tests.
+- `benches/`: runtime and transport experiments. Some targets are models, not measurements of real network transports.
 
-The demo binds a UDP socket, inserts 100 sample key-value pairs and logs the map fingerprint
-while the node runs. It explicitly disables cluster authentication for this local example.
-The [demo source](examples/demo.rs) shows the `ReplicatedMap` setup, writes and seed handling;
-the [Kubernetes example](examples/k8s/) shows a multi-node deployment.
+The algorithm-level RBSR and RSOS implementations are maintained separately in [set-reconciliation](https://github.com/adriendellagaspera/set-reconciliation).
 
-## Add it to a Rust project
+## Try the local demo
+
+With a Rust toolchain installed:
 
 ```sh
-cargo add reconcile
+cargo run --release --example demo -- 8080 127.0.0.1 127.0.0.0/30 100
 ```
 
-Start with the [API documentation][docs-url] for construction, reads, writes and lifecycle.
-The [architecture](ARCHITECTURE.md) explains how the replicas reconcile; the
-[benchmark guide](benches/README.md) describes the reproducible workload.
+This starts a local UDP node, inserts sample key-value pairs, and reports its map fingerprint. The example disables cluster authentication and is only intended for local experimentation.
 
-## Signed-only runtime (v0.x breaking)
+## Important limitations
 
-For identity-keyed membership and tombstone ACKs over arbitrary datagram substrates,
-use the opt-in `signed_replica::SignedReplica`. It authenticates an explicitly
-provisioned Ed25519 `PeerId`, confirms routes with a signed challenge, and persists
-causal state in the incompatible v2 `FileSnapshot` schema. This is a caller-driven
-runtime; the historical `ReplicatedMap` still uses the legacy IP/UDP path.
+- Every authoritative replica stores the full dataset; there is no sharding.
+- Writes are asynchronous and conflict resolution is last-write-wins. There are no transactions, consensus, or strongly consistent writes.
+- Eventual convergence depends on peers being able to communicate and continue anti-entropy.
+- The legacy `ReplicatedMap` and opt-in signed `SignedReplica` are separate, incompatible runtime paths. Their membership models and snapshot formats cannot be mixed.
+- Tombstone collection is disabled. Tombstones and associated causal metadata can grow without bound.
+- Persistence uses versioned snapshots; it is not a general-purpose transactional database or a write-ahead log.
+- Security depends on correct key provisioning, membership configuration, and network deployment. Read [SECURITY.md](SECURITY.md) before experimenting beyond localhost.
 
-**Do not mix runtimes or reuse v1 on-disk snapshots.** A coordinated fresh-cluster
-reset is required when switching from the historical storage format. See the
-[signed runtime v0 upgrade and operations notes](SIGNED-RUNTIME-v0.md) before enabling it.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the implementation boundaries and known trade-offs, and [benches/README.md](benches/README.md) before interpreting benchmark results.
 
-Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under either
-[MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+## Status
 
-[crates-badge]: https://img.shields.io/crates/v/reconcile.svg
-[crates-url]: https://crates.io/crates/reconcile
-[actions-badge]: https://github.com/adriendellagaspera/reconcile-rs/actions/workflows/main.yml/badge.svg
-[actions-url]: https://github.com/adriendellagaspera/reconcile-rs/actions/workflows/main.yml
-[codecov-badge]: https://codecov.io/gh/adriendellagaspera/reconcile-rs/branch/main/graph/badge.svg
-[codecov-url]: https://codecov.io/gh/adriendellagaspera/reconcile-rs
-[docs-badge]: https://docs.rs/reconcile/badge.svg
-[docs-url]: https://docs.rs/reconcile/latest/reconcile/
+The project is intentionally frozen in practice. Issues and pull requests may not receive a response. Forks are welcome, but this repository does not promise to review contributions or publish further releases.
+
+Licensed under either [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

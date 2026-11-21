@@ -109,23 +109,3 @@ async fn a_mutating_callback_cannot_publish_the_projection_before_its_generation
     );
     assert_eq!(store.get_cloned(&1), Some(20));
 }
-
-#[test]
-fn receipt_only_gc_has_no_background_sweep_and_retains_the_candidate() {
-    use std::future::Future;
-    use std::task::{Context, Poll, Waker};
-    let store = virtual_map::<u32, u32>(virtual_config());
-    // A test-only local insertion avoids needing a Tokio runtime just to broadcast a delete.
-    store.just_remove(&7);
-    let before = store.fingerprint(..);
-    let future = store.clear_expired_tombstones();
-    let mut future = std::pin::pin!(future);
-    assert!(matches!(
-        future
-            .as_mut()
-            .poll(&mut Context::from_waker(Waker::noop())),
-        Poll::Ready(())
-    ));
-    assert_eq!(store.fingerprint(..), before);
-    assert!(store.snapshot().get(&7).unwrap().is_tombstone());
-}

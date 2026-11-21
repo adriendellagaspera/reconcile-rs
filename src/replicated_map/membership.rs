@@ -268,14 +268,12 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
     pub async fn run(self, shutdown: CancellationToken) -> RunOutcome {
         info!("reconcile store starting");
         let engine = self.engine.clone();
-        let tombstones = self.clone();
         let snapshots = self.clone();
         let discovery = self.clone();
         tokio::select! {
             () = async {
                 tokio::join!(
                     engine.run(),
-                    tombstones.clear_expired_tombstones(),
                     snapshots.snapshot_periodically(),
                     discovery.discover_periodically(),
                 );

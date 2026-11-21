@@ -1,26 +1,40 @@
 # Benchmarks
 
-Runtime and product benchmarks live here; algorithm-only benchmarks live in [set-reconciliation](https://github.com/adriendellagaspera/set-reconciliation).
+This suite records runtime and transport experiments. Algorithm-only reconciliation
+benchmarks belong in [set-reconciliation](https://github.com/adriendellagaspera/set-reconciliation).
 
-| target | scope |
+Run an individual target with:
+
+```sh
+cargo bench --bench <target>
+```
+
+CI compile-checks benchmark targets; it does not execute measurements.
+
+## Scope
+
+| Targets | What they exercise |
 |---|---|
-| replicated_map | ReplicatedMap structure, send/reconcile, RTT, and reconcile-interval lanes |
-| system | end-to-end ReplicatedMap behavior |
-| runtime_history_independent_catchup | ReplicatedMap partition catch-up and causal-stability GC |
-| membership_scaling | ReplicatedMap membership, peer-routing, durable causal-state, and GC scaling |
-| membership_causal_debt | tombstone ACK resend, unreachable-member repair tax, and decommission cost |
-| read_replica_fleet | many read replicas against a small authoritative set, including authenticated ingress state |
-| security_ingress | authenticated MAC/version/replay CPU cost as payload and retained-sender state scale |
-| security_amplification | response amplification and bulk-dump concurrency for rejected and valid authenticated ingress |
-| fragmentation | UDP application framing, large-message convergence, datagram size, loss/reorder, and reassembly overhead |
-| fragment_recovery | Model-only whole-message vs missing-only fragment recovery cost under matched deterministic loss |
-| ordered_stream | Model-only ordered-stream vs multiplexed reliable-stream transport semantics under matched deterministic impairments |
-| transport_validation | Matched model validation of selective recovery and independent reliable-stream candidates |
-| tombstone_gc_skew | one-sided retained tombstone history, reconciliation work, and ACK recovery |
-| membership_churn | sustained authoritative member replacement with ACK coverage rebuilt through real dated traffic |
-| snapshot_write_amplification | paired full-vs-incremental checkpoint writes, retained storage, segment chains, and restart cost |
-| snapshot_metadata_only | metadata-only membership/ACK persistence under peer decommission churn |
+| `replicated_map` | Per-entry `just_insert`, read-replica memory-fill cost, and service reconciliation RTT/cadence; uses internal benchmark seams |
+| `system` | Public-API baselines, batched writes, heap footprint, convergence/gossip, persistence rejoin, and emulated RTT/loss |
+| `membership_scaling`, `membership_causal_debt`, `membership_churn` | Runtime membership, ACK metadata, and churn costs |
+| `read_replica_fleet` | Read-only replica fleet overhead and ingress state |
+| `snapshot_write_amplification`, `snapshot_metadata_only` | Durable snapshot writes, retained bytes, and metadata costs |
+| `security_ingress`, `security_amplification` | Authentication, replay filtering, and valid/invalid ingress paths |
+| `fragmentation` | Runtime framing over deterministic in-memory transport emulation |
+| `tombstone_history_skew` | Anti-entropy from synthetic persisted states with asymmetric tombstone history; it does not execute GC |
+| `transport_validation` | Analytical comparison of fragment-recovery and ordered-stream semantics |
 
-Run with `cargo bench --bench <target>`. Criterion output is under `target/criterion/`; CI compile-checks benchmarks but does not run their measurements. Run matched builds on the same hardware. Loopback measurements are not WAN measurements.
+The shared `fragment_recovery_model.rs` and `ordered_stream_model.rs` files are deterministic
+semantic models, not production transport implementations. The model does not measure TCP,
+QUIC, kernel scheduling, congestion control, or transport CPU.
 
-Inputs and environment overrides are defined in each benchmark's source. Where applicable, keep seeds, profiles, dataset sizes, timeout and trial counts identical when comparing revisions. `membership_scaling` distinguishes measured points from printed `MODEL` extrapolations. `fragment_recovery`, `ordered_stream`, and `transport_validation` model transport semantics, **not** measured kernel, TCP, or QUIC implementations; their synthetic recovery/control mechanisms must not be read as runtime wire guarantees.
+## Interpretation
+
+- Compare revisions on the same hardware, with the same toolchain, build profile, seeds, input sizes, and trial counts.
+- Loopback measurements are not WAN measurements.
+- A benchmark using `InMemoryNetwork` or an emulated transport is not a measurement of kernel UDP behavior.
+- Extrapolations are models, not measurements. They must remain labelled as such.
+- Report the workload, environment, and raw output with any result. Do not quote a single number without its conditions.
+
+The suite is exploratory and heterogeneous. Passing compilation does not imply that a benchmark is methodologically sound for every comparison. Some targets are counted experiments rather than Criterion statistical benchmarks.

@@ -251,10 +251,10 @@ pub(crate) struct Inner<K, V> {
     /// same-key writes collapse via [`Entry::merge`] as they arrive. Always empty when
     /// [`coalesce_window`](Self::coalesce_window) is zero.
     coalesce_pending: Arc<RwLock<HashMap<K, Entry<Timestamp, V>>>>,
-    /// Changes (local writes, gossip-applied remote updates, tombstone GC removals) since the
-    /// persistence layer last snapshotted, each counted once at its single mutation sink
-    /// ([`Replica::just_insert`]/[`just_insert_bulk`](Replica::just_insert_bulk), the gossip
-    /// bulk-apply path in `dispatch.rs`, [`Replica::gc_remove`]) — what
+    /// Changes (local writes, gossip-applied remote updates, and physical tombstone removals in
+    /// the local GC-candidate tests) since the persistence layer last snapshotted, each counted
+    /// once at its single mutation sink ([`Replica::just_insert`]/[`just_insert_bulk`](Replica::just_insert_bulk),
+    /// the gossip bulk-apply path in `dispatch.rs`, [`Replica::gc_remove`]) — what
     /// [`Config::snapshot_change_threshold`](crate::replicated_map::Config::snapshot_change_threshold)
     /// is compared against. Successful snapshots retire only the pre-capture count, so
     /// concurrent writes remain pending and failures retire nothing.

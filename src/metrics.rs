@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Public, stable names for every metric this crate emits (behind the `metrics` feature).
+//! Public, stable names for metrics emitted by this crate, plus retained historical names.
 //!
 //! This module is the stable set dashboards and alert rules can depend on; the internal
 //! `observability` helpers record against these same constants rather than defining their own.
@@ -43,7 +43,7 @@
 //! | [`OUTBOUND_RECOVERY_EVICTIONS_TOTAL`](crate::metrics::OUTBOUND_RECOVERY_EVICTIONS_TOTAL) | counter (`reason` label) | sender recovery state expired/evicted |
 //! | [`ROUNDS_TOTAL`](crate::metrics::ROUNDS_TOTAL) | counter | reconciliation rounds initiated |
 //! | [`TOMBSTONE_ACKS_RESENT_TOTAL`](crate::metrics::TOMBSTONE_ACKS_RESENT_TOTAL) | counter | tombstone acks resent on reconciliation rounds |
-//! | [`TOMBSTONE_STAMP_BOUNDED_TOTAL`](crate::metrics::TOMBSTONE_STAMP_BOUNDED_TOTAL) | counter (`outcome` label) | tombstones whose expiry instant had to be bounded because the stored stamp led local time by more than the drift budget |
+//! | [`TOMBSTONE_STAMP_BOUNDED_TOTAL`](crate::metrics::TOMBSTONE_STAMP_BOUNDED_TOTAL) | historical counter name; not emitted | retained for compatibility; tombstone expiry/collection is disabled |
 //! | [`PERSISTENCE_FAILURES_TOTAL`](crate::metrics::PERSISTENCE_FAILURES_TOTAL) | counter | snapshot writes to the persistence backend that failed |
 //! | [`DISCOVERY_FAILURES_TOTAL`](crate::metrics::DISCOVERY_FAILURES_TOTAL) | counter | discovery-source resolutions that failed (round skipped) |
 //! | [`ROUND_DURATION_SECONDS`](crate::metrics::ROUND_DURATION_SECONDS) | histogram | `start_reconciliation` wall time |

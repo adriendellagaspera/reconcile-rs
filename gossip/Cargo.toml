@@ -4,7 +4,7 @@ version = "0.6.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-description = "Implementation detail of the `reconcile` crate — depend on `reconcile` instead; re-exported types carry its 1.0 stability line. The gossip adapter layer: UDP transport, wire encoding, datagram authentication, replay protection and peer discovery."
+description = "Internal datagram adapter for the experimental reconcile prototype"
 repository = "https://github.com/adriendellagaspera/reconcile-rs"
 readme = "README.md"
 keywords = ["gossip", "udp", "reconcile", "internal"]
@@ -20,8 +20,6 @@ mac-blake3 = []
 mac-hmac = ["dep:hmac", "dep:sha2"]
 zeroize = ["dep:zeroize"]
 encryption = ["dep:chacha20poly1305"]
-# Reserved; currently no-op.
-dns-hickory = []
 network-emulation = []
 
 [dependencies]
