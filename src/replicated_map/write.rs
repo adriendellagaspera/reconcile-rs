@@ -7,7 +7,6 @@
 
 use std::hash::Hash;
 use std::ops::RangeBounds;
-use std::time::Duration;
 
 use crate::bounds::{Key, Value};
 use crate::clock::Timestamp;
@@ -209,13 +208,4 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         }
     }
 
-    /// Historical compatibility setting. Physical tombstone collection is disabled, so this
-    /// value has no effect; tombstones are retained indefinitely.
-    pub fn with_tombstone_timeout(self, _tombstone_timeout: Duration) -> Self {
-        self
-    }
-
-    /// Historical compatibility setting. Physical tombstone collection is disabled, so this
-    /// value has no effect.
-    pub fn set_tombstone_timeout(&self, _timeout: Duration) {}
 }
