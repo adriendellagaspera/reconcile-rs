@@ -174,9 +174,8 @@ impl<K: Key + Hash, V: Value> ReplicatedMap<K, V> {
         ))
     }
 
-    /// Wrap a constructed engine in the store's own bookkeeping (tombstone wheel, persistence,
-    /// discovery defaults). The single place those defaults are spelled out, so the constructors
-    /// above cannot drift apart.
+    /// Wrap a constructed engine in the store's persistence and discovery bookkeeping. The single
+    /// place those defaults are spelled out, so the constructors above cannot drift apart.
     fn from_engine(
         engine: Replica<K, V>,
         snapshot_interval: Option<Duration>,
