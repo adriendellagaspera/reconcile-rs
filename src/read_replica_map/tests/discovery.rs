@@ -72,9 +72,8 @@ fn read_discovery_replica(config: crate::replicated_map::Config) -> ReadReplicaM
         .expect("valid discovery test config")
 }
 
-///  (the "major gap" row): with no discovery source configured, `discover_periodically` must
-/// return promptly rather than looping forever — `run`'s `tokio::join!` would otherwise hang
-/// waiting on it for every replica that never calls `with_discovery`.
+/// Without a configured source, `discover_periodically` returns promptly so `run` does not
+/// wait forever for a discovery task that has no work to perform.
 #[tokio::test]
 async fn discover_periodically_is_a_noop_without_a_configured_source() {
     let read_replica = read_discovery_replica(discovery_config());
@@ -89,8 +88,7 @@ async fn discover_periodically_is_a_noop_without_a_configured_source() {
     );
 }
 
-///  (the "major gap" row): a resolved address is seeded into the peer set exactly like a peer
-/// discovered by answering a probe, closing "no discovery ⇒ not deployable on Kubernetes".
+/// A successful discovery round adds resolved remote addresses to the peer set.
 #[tokio::test(flavor = "multi_thread")]
 async fn discover_periodically_seeds_resolved_addresses_as_peers() {
     let discovered: IpAddr = "127.0.9.50".parse().unwrap();
@@ -110,8 +108,7 @@ async fn discover_periodically_seeds_resolved_addresses_as_peers() {
     handle.abort();
 }
 
-/// a read replica must never seed its own address as a peer, mirroring
-/// [`ReplicatedMap::discover_periodically`](crate::ReplicatedMap)'s identical self-exclusion.
+/// The local listen address is never added to the peer set, even if the source returns it.
 #[tokio::test(flavor = "multi_thread")]
 async fn discover_periodically_never_seeds_its_own_address() {
     let own_addr: IpAddr = "127.0.9.60".parse().unwrap();
@@ -134,9 +131,7 @@ async fn discover_periodically_never_seeds_its_own_address() {
     handle.abort();
 }
 
-/// a failing discovery round (e.g. a DNS blip) must seed nothing and must not stop the
-/// loop — a later successful round still seeds normally, proving the failure is transient
-/// rather than fatal.
+/// A transient discovery failure seeds no peers and does not stop later rounds.
 #[tokio::test(flavor = "multi_thread")]
 async fn discover_periodically_survives_a_failed_round_and_recovers() {
     let discovered: IpAddr = "127.0.9.65".parse().unwrap();
