@@ -185,6 +185,12 @@ fn config_builders_actually_set_their_field() {
     let cfg = Config::default().with_max_replay_senders(73);
     assert_eq!(cfg.max_replay_senders, 73);
 
+    let cfg = Config::default().with_max_concurrent_broadcasts(7);
+    assert_eq!(cfg.max_concurrent_broadcasts, 7);
+
+    let cfg = Config::default().with_max_concurrent_bulk_dumps(3);
+    assert_eq!(cfg.max_concurrent_bulk_dumps, 3);
+
     let cfg = Config::default().with_snapshot_interval(Some(Duration::from_secs(99)));
     assert_eq!(cfg.snapshot_interval, Some(Duration::from_secs(99)));
 
@@ -213,8 +219,11 @@ fn max_value_size_defaults_to_none() {
 }
 
 #[test]
-fn replay_sender_cap_defaults_to_1024() {
-    assert_eq!(Config::default().max_replay_senders, 1024);
+fn resource_caps_default_to_documented_values() {
+    let cfg = Config::default();
+    assert_eq!(cfg.max_replay_senders, 1024);
+    assert_eq!(cfg.max_concurrent_broadcasts, 1024);
+    assert_eq!(cfg.max_concurrent_bulk_dumps, 4);
 }
 
 /// The new fields default to the documented values: [`SNAPSHOT_INTERVAL`] (5 s) and

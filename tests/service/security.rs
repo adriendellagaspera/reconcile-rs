@@ -273,7 +273,7 @@ async fn encrypted_node_with_wrong_key_is_rejected() {
 #[cfg(reconcile_internal_testing)]
 #[tokio::test(flavor = "multi_thread")]
 async fn stale_datagram_outside_freshness_window_is_rejected() {
-    use reconcile::testing::{members_snapshot, seal_datagram};
+    use reconcile::testing::seal_datagram;
 
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim = "127.0.9.1".parse().unwrap();
@@ -333,7 +333,7 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
 
     // The fresh packet can join only if the stale packet was rejected before the replay filter.
     // The shared sequence number makes replay admission observable; send order is preserved.
-    assert_until!(members_snapshot(&store).contains(&sender_ip));
+    assert_until!(store.members_snapshot().contains(&sender_ip));
     assert!(
         !task.is_finished(),
         "engine must remain alive after stale traffic"
@@ -349,7 +349,7 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
 #[cfg(reconcile_internal_testing)]
 #[tokio::test(flavor = "multi_thread")]
 async fn decommissioned_peer_replay_is_rejected() {
-    use reconcile::testing::{members_snapshot, seal_datagram};
+    use reconcile::testing::seal_datagram;
 
     let net = "127.0.0.1/8".parse().unwrap();
     let addr_victim: std::net::IpAddr = "127.0.11.1".parse().unwrap();
@@ -397,12 +397,12 @@ async fn decommissioned_peer_replay_is_rejected() {
     // First delivery: wait for the receiver to process the datagram instead of assuming a
     // fixed 50ms is enough on a loaded CI runner.
     sender_sock.send_to(&captured, &target).await.unwrap();
-    assert_until!(members_snapshot(&store).contains(&addr_sender));
+    assert_until!(store.members_snapshot().contains(&addr_sender));
 
     // Decommission peer X: removes it from members/tombstone_acks but must NOT erase replay state.
     store.forget_peer(addr_sender);
     assert!(
-        !members_snapshot(&store).contains(&addr_sender),
+        !store.members_snapshot().contains(&addr_sender),
         "sender must be gone from members after decommission"
     );
 
@@ -412,7 +412,7 @@ async fn decommissioned_peer_replay_is_rejected() {
 
     // The replay must be rejected: X must NOT be re-added to members.
     assert!(
-        !members_snapshot(&store).contains(&addr_sender),
+        !store.members_snapshot().contains(&addr_sender),
         "decommissioned peer must not be re-added to members by a replayed datagram"
     );
 

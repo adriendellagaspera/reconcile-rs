@@ -105,30 +105,30 @@ async fn start_reconciliation_actually_drives_a_round() {
     );
 }
 
-/// `peers_map_len` must reflect the engine's actual peer count, not a fixed literal.
+/// `SyncState::peers` must reflect the actual gossip-routing peer count.
 #[tokio::test]
-async fn peers_map_len_reflects_the_engine_peers_map() {
+async fn sync_state_reports_peer_routing_count() {
     let store = virtual_map::<i32, i32>(virtual_config());
-    assert_eq!(store.peers_map_len(), 0);
+    assert_eq!(store.sync_state().peers, 0);
     store
         .engine
         .peers
         .write()
         .insert("127.0.0.222".parse().unwrap(), std::time::Instant::now());
-    assert_eq!(store.peers_map_len(), 1);
+    assert_eq!(store.sync_state().peers, 1);
 }
 
 /// `tombstone_acks_len` must reflect the engine's actual tracked-key count, not a fixed literal.
 #[tokio::test]
 async fn tombstone_acks_len_reflects_the_engine_tombstone_acks_map() {
     let store = virtual_map::<i32, i32>(virtual_config());
-    assert_eq!(store.tombstone_acks_len(), 0);
+    assert_eq!(store.engine.tombstone_acks_len(), 0);
     store
         .engine
         .tombstone_acks
         .write()
         .insert(1, std::collections::HashMap::new());
-    assert_eq!(store.tombstone_acks_len(), 1);
+    assert_eq!(store.engine.tombstone_acks_len(), 1);
 }
 
 /// `replay_filter_len` must reflect the engine's actual per-peer replay-filter count: 0 before
@@ -169,7 +169,7 @@ async fn replay_filter_len_reflects_the_engine_replay_filter() {
         .peers
         .write()
         .insert(a_ip, std::time::Instant::now());
-    assert_eq!(b.replay_filter_len(), 0);
+    assert_eq!(b.engine.replay_filter_len(), 0);
     a.insert(1, 1);
 
     let task_a = tokio::spawn(a.clone().run(CancellationToken::new()));
@@ -177,7 +177,7 @@ async fn replay_filter_len_reflects_the_engine_replay_filter() {
     let mut seen = false;
     for _ in 0..300 {
         tokio::time::sleep(Duration::from_millis(20)).await;
-        if b.replay_filter_len() >= 1 {
+        if b.engine.replay_filter_len() >= 1 {
             seen = true;
             break;
         }
@@ -233,14 +233,14 @@ async fn bulk_dumps_in_flight_count_reflects_a_dump_actually_in_progress() {
     let payload = vec![0u8; 200];
     let entries: Vec<(i32, Vec<u8>)> = (0..8000).map(|k| (k, payload.clone())).collect();
     a.just_insert_bulk(&entries);
-    assert_eq!(a.bulk_dumps_in_flight_count(), 0);
+    assert_eq!(a.engine.bulk_dumps_in_flight_count(), 0);
 
     let task_a = tokio::spawn(a.clone().run(CancellationToken::new()));
     let task_b = tokio::spawn(b.clone().run(CancellationToken::new()));
     let mut seen_in_flight = false;
     for _ in 0..400 {
         tokio::time::sleep(Duration::from_millis(20)).await;
-        if a.bulk_dumps_in_flight_count() >= 1 {
+        if a.engine.bulk_dumps_in_flight_count() >= 1 {
             seen_in_flight = true;
             break;
         }

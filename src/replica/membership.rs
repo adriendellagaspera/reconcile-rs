@@ -126,7 +126,7 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 
     /// The currently configured coalescing window. Exposed for integration-test assertions
-    /// under `cfg(reconcile_internal_testing)`, matching e.g. `peers_map_len`.
+    /// under `cfg(reconcile_internal_testing)`, matching the other configuration accessors.
     #[cfg(any(test, reconcile_internal_testing))]
     pub(crate) fn coalesce_window(&self) -> Duration {
         *self.coalesce_window.read()
@@ -166,42 +166,25 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.members.read().clone()
     }
 
-    /// Number of entries currently in the peers gossip-routing map.
-    /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
-    #[cfg(any(test, reconcile_internal_testing))]
-    pub(crate) fn peers_map_len(&self) -> usize {
-        self.peers.read().len()
-    }
-
     /// Number of entries currently in the per-peer replay filter.
-    /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
-    #[cfg(any(test, reconcile_internal_testing))]
+    /// Unit-test introspection only.
+    #[cfg(test)]
     pub(crate) fn replay_filter_len(&self) -> usize {
         self.replay_filter.len()
     }
 
     /// Number of keys currently tracked in the tombstone-acknowledgment map.
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
-    #[cfg(any(test, reconcile_internal_testing))]
+    #[cfg(test)]
     pub(crate) fn tombstone_acks_len(&self) -> usize {
         self.tombstone_acks.read().len()
     }
 
     /// Number of bulk dump tasks currently in flight across all peers.
     /// Exposed for test assertions under `cfg(reconcile_internal_testing)`.
-    #[cfg(any(test, reconcile_internal_testing))]
+    #[cfg(test)]
     pub(crate) fn bulk_dumps_in_flight_count(&self) -> usize {
         self.bulk_dumps_in_flight.load(Ordering::Acquire)
-    }
-
-    /// Number of write-broadcast tasks currently in flight.
-    /// Exposed for test assertions under `cfg(reconcile_internal_testing)`. Production code reads
-    /// the same counter unconditionally through [`Replica::broadcasts_in_flight`], via
-    /// [`Backpressure`](crate::replicated_map::Backpressure)'s construction and the
-    /// `reconcile_broadcasts_in_flight` gauge.
-    #[cfg(any(test, reconcile_internal_testing))]
-    pub(crate) fn broadcasts_in_flight_count(&self) -> usize {
-        self.broadcasts_in_flight.load(Ordering::Acquire)
     }
 
     /// This node's configured listen address, used by discovery to never decommission itself.
