@@ -34,10 +34,10 @@ new signed-only mode. There is no automatic migration or rollback bridge.
 
 ## Breaking v0.x on-disk identities
 
-Signed persistence uses **v2** for every affected object: single-file `RCNL`,
-materialized `RCNB`, delta `RCND` and manifest `RCNM`. The legacy
-IP-keyed **v1** data is not recognized as signed data, including snapshots
-with empty member sets.
+Signed persistence uses **v2** for the materialized base `RCNB`, delta `RCND`
+and manifest `RCNM`. The obsolete single-file layout is unsupported. Legacy
+IP-keyed **v1** data is not recognized as signed data, including incremental
+snapshots with empty member sets.
 
 **Upgrade requires an explicit, coordinated fresh-cluster reset** (or a
 separately audited offline conversion): stop *every* node, ensure old
