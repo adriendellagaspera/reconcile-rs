@@ -129,9 +129,8 @@ mod imp {
         20_000 + (i % 40_000) as u16
     }
 
-    // Per-entry `just_insert` throughput — own external-prototype metric (`just_insert` of
-    // `String -> Vec<u8>`, "~190k-430k inserts/s") gets an in-repo counterpart at last. `just_insert`
-    // is local-only, no broadcast (`src/replicated_map/write.rs`'s own docs), and a
+    // Per-entry local insertion throughput. `just_insert` is local-only, with no broadcast
+    // (`src/replicated_map/write.rs`), and a
     // `reconcile_internal_testing` seam unreachable from the feature-gate-free
     // `system.rs` — hence living here, next to `service_reconcile_rtt`'s own `just_insert` use.
     // Isolates the per-call cost of inserting one entry at a time, fingerprint maintenance and
