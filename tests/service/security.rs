@@ -334,7 +334,10 @@ async fn stale_datagram_outside_freshness_window_is_rejected() {
     // The fresh lower-sequence packet can join only if the stale packet was rejected before the
     // replay filter. This also proves the receiver processed both datagrams in send order.
     assert_until!(members_snapshot(&store).contains(&sender_ip));
-    assert!(!task.is_finished(), "engine must remain alive after stale traffic");
+    assert!(
+        !task.is_finished(),
+        "engine must remain alive after stale traffic"
+    );
     assert_eq!(store.get(&0).as_deref(), Some(&99));
 
     task.abort();
