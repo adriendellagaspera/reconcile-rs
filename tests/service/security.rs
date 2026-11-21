@@ -421,13 +421,10 @@ async fn decommissioned_peer_replay_is_rejected() {
     // Seal the datagram — this is the "captured" datagram the adversary holds.
     let captured = seal_datagram(key, 1, now_ms, &payload);
 
-    // First delivery: peer X joins members.
+    // First delivery: wait for the receiver to process the datagram instead of assuming a
+    // fixed 50ms is enough on a loaded CI runner.
     sender_sock.send_to(&captured, &target).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    assert!(
-        members_snapshot(&store).contains(&addr_sender),
-        "sender must have joined members after first delivery"
-    );
+    assert_until!(members_snapshot(&store).contains(&addr_sender));
 
     // Decommission peer X: removes it from members/tombstone_acks but must NOT erase replay state.
     store.forget_peer(addr_sender);
