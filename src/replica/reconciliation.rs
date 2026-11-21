@@ -147,10 +147,9 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
 
     /// Append an ack for each held tombstone to `send_buf`, returning the count.
     ///
-    /// Acks are otherwise pairwise, so past two nodes
-    /// [`is_tombstone_stable`](Self::is_tombstone_stable) never completes; resending every round
-    /// makes the matrix converge transitively, and makes an ack that arrived before its tombstone
-    /// (dropped by the admission gate) recoverable on a later round.
+    /// Resending every round makes the per-peer receipt matrix converge, including when an ack
+    /// arrived before its tombstone and was dropped by the admission gate. Receipt completion is
+    /// recorded, but does not trigger physical collection.
     ///
     /// Bounded to [`TOMBSTONE_ACK_RESEND_BYTE_BUDGET`] bytes per datagram. When one datagram
     /// cannot cover every held tombstone, a key cursor resumes at the first unvisited key on the
