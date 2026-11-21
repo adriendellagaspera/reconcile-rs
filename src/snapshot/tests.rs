@@ -1,6 +1,6 @@
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
-use std::collections::{HashMap, HashSet};
 
 use crate::clock::{Hlc, LogicalCounter, NodeId, PhysicalTime, Timestamp};
 use crate::entry::Entry;
