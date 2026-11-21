@@ -204,7 +204,7 @@ fn trial(
     let checkpoint_time = start.elapsed();
 
     let retained = before.retained_bytes();
-    let (bases, deltas) = before.segment_counts(&path);
+    let (bases, deltas) = before.segment_counts();
     let expected_members = members - batch * checkpoints;
 
     let restart_start = Instant::now();
