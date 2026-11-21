@@ -9,7 +9,7 @@
 //
 // Builds a durable state with one tombstone plus a large authoritative membership/ACK map, then
 // removes peers through the public forget_peer path without changing any entry value. The same
-// benchmark source runs against full-snapshot and incremental revisions.
+// Measures incremental persistence cost for metadata-only changes; no entry values change.
 //
 // Run:
 //   cargo bench --bench snapshot_metadata_only
@@ -54,9 +54,6 @@ struct StoreImage {
 impl StoreImage {
     fn capture(path: &Path) -> Self {
         let mut image = Self::default();
-        if path.is_file() {
-            image.add_file(path);
-        }
         let mut dir_os = path.as_os_str().to_os_string();
         dir_os.push(".d");
         let dir = PathBuf::from(dir_os);
@@ -88,8 +85,8 @@ impl StoreImage {
         self.files.values().map(|file| file.len).sum()
     }
 
-    fn segment_counts(&self, legacy_path: &Path) -> (usize, usize) {
-        let mut bases = usize::from(self.files.contains_key(legacy_path));
+    fn segment_counts(&self) -> (usize, usize) {
+        let mut bases = 0;
         let mut deltas = 0;
         for path in self.files.keys() {
             let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
@@ -184,7 +181,7 @@ fn trial(
     let store = make_store(rt, &path, &state);
     let mut before = StoreImage::capture(&path);
     let mut max_retained = before.retained_bytes();
-    let (_, initial_deltas) = before.segment_counts(&path);
+    let (_, initial_deltas) = before.segment_counts();
     let mut max_delta_segments = initial_deltas;
 
     let start = Instant::now();
@@ -200,14 +197,14 @@ fn trial(
         let after = StoreImage::capture(&path);
         written += after.write_bytes_since(&before);
         max_retained = max_retained.max(after.retained_bytes());
-        let (_, current_deltas) = after.segment_counts(&path);
+        let (_, current_deltas) = after.segment_counts();
         max_delta_segments = max_delta_segments.max(current_deltas);
         before = after;
     }
     let checkpoint_time = start.elapsed();
 
     let retained = before.retained_bytes();
-    let (bases, deltas) = before.segment_counts(&path);
+    let (bases, deltas) = before.segment_counts();
     let expected_members = members - batch * checkpoints;
 
     let restart_start = Instant::now();
