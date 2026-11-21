@@ -44,7 +44,10 @@ async fn persistence_roundtrip_recovers_entries_and_tombstones() {
         "recovered state must hash identically (timestamps preserved)"
     );
     assert!(
-        restarted.snapshot().get(&2).is_some_and(|entry| entry.is_tombstone()),
+        restarted
+            .snapshot()
+            .get(&2)
+            .is_some_and(|entry| entry.is_tombstone()),
         "the recovered tombstone remains part of the durable state"
     );
 }
