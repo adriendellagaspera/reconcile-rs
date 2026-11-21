@@ -64,7 +64,6 @@ pub mod prometheus;
 pub(crate) mod framing;
 pub(crate) mod observability;
 pub(crate) mod replica;
-pub(crate) mod timeout_wheel;
 
 pub use bounds::{Key, Value};
 pub use clock::{
