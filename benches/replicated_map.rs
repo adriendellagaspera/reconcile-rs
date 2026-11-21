@@ -326,12 +326,10 @@ mod imp {
             .collect()
     }
 
-    // Store sizes for `service_reconcile_rtt`: grid, `n` = 10³…10⁶ — the same range
-    // `benches/protocol.rs`'s counted tables sweep, so both targets use the same size grid.
+    // Store sizes for `service_reconcile_rtt`: `n` = 10³…10⁶.
     const RECONCILE_RTT_SIZES: &[usize] = &[1_000, 10_000, 100_000, 1_000_000];
 
-    // How the `d` differing keys are laid out — the same two layouts `benches/protocol.rs`'s
-    // (private) `Clustering` sweeps, duplicated here for the reason `rtt_sweep` above states.
+    // Two controlled divergence layouts: uniformly scattered keys or one contiguous centered block.
     #[derive(Clone, Copy, Debug)]
     enum Clustering {
         // Spread evenly, so every subtree refines.
@@ -350,8 +348,8 @@ mod imp {
     }
 
     // `(d, clustering)` pairs asks for. `d = 0` is the in-sync baseline — no layout to vary.
-    // `d = 1` only scatters, as in `protocol.rs:DIFFERENCES` — a single key has no layout either
-    // way. 10/100/1000 sweep both, past a 256-cell sketch's capacity at the top end.
+    // `d = 1` only scatters because a single key has no meaningful layout. Larger differences
+    // sweep both shapes, including cases beyond a 256-cell sketch's capacity.
     const D_CLUSTERINGS: &[(usize, Clustering)] = &[
         (0, Clustering::Scattered),
         (1, Clustering::Scattered),
@@ -363,9 +361,7 @@ mod imp {
         (1_000, Clustering::Clustered),
     ];
 
-    // The `d` keys (out of `0..n`) one peer diverges on, laid out per `clustering` — the same
-    // layout `benches/protocol.rs:missing_keys` uses, so a round here and a round there refine
-    // over the same-shaped difference.
+    // The `d` keys (out of `0..n`) one peer diverges on, using the selected layout.
     fn diverging_keys(n: usize, d: usize, clustering: Clustering) -> Vec<u32> {
         if d == 0 {
             return Vec::new();
