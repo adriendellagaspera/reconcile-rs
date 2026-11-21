@@ -61,11 +61,8 @@ where
     V: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     fn load(&self) -> io::Result<Option<PersistedState<K, V>>> {
-        if let Some(state) = incremental::load(self)? {
-            return Ok(Some(state));
-        }
         reject_single_file_snapshot(&self.path)?;
-        Ok(None)
+        incremental::load(self)
     }
 
     fn save(&self, state: &PersistedState<K, V>) -> io::Result<()> {
@@ -85,11 +82,8 @@ where
     V: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     fn load(&self) -> io::Result<Option<PersistedState<K, V, PeerId>>> {
-        if let Some(state) = incremental::load_for(self, incremental::PEER_ID_FORMAT_VERSION)? {
-            return Ok(Some(state));
-        }
         reject_single_file_snapshot(&self.path)?;
-        Ok(None)
+        incremental::load_for(self, incremental::PEER_ID_FORMAT_VERSION)
     }
 
     fn save(&self, state: &PersistedState<K, V, PeerId>) -> io::Result<()> {
