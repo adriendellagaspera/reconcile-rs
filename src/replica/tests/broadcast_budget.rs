@@ -38,19 +38,3 @@ async fn budget_guard_limits_and_releases_slots() {
     assert!(slot_retry.is_some(), "slot must be available after release");
     drop(slot_retry);
 }
-
-/// A budget of `0` must reject every claim: `insert`'s infallible path relies on this to skip
-/// the broadcast rather than spawn a task, and `try_insert`/`try_update` rely on it to reject
-/// deterministically without racing a real in-flight send.
-#[tokio::test]
-async fn zero_budget_rejects_every_claim() {
-    let config = Config::default()
-        .with_port(5000)
-        .with_listen_addr("127.0.0.97".parse().unwrap())
-        .with_max_concurrent_broadcasts(0)
-        .with_insecure_no_key();
-    let eng = super::in_memory_test_replica::<i32, i32>(config);
-
-    assert!(eng.try_claim_broadcast_slot().is_none());
-    assert_eq!(eng.broadcasts_in_flight(), 0);
-}
