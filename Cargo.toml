@@ -8,13 +8,12 @@ version = "0.6.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-description = "A reconciliation storage service to sync a key-value map over multiple instances"
+description = "Experimental fully replicated key-value storage prototype"
 repository = "https://github.com/adriendellagaspera/reconcile-rs"
 readme = "README.md"
 keywords = ["reconciliation", "gossip", "replicated", "distributed", "crdt"]
 categories = ["data-structures", "network-programming"]
 exclude = [
-    "pre-commit",
     "CONTRIBUTING.md",
     "examples/k8s/",
     "ARCHITECTURE.md",
