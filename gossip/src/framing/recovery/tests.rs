@@ -269,8 +269,7 @@ fn missing_range_requests_preserve_exact_gaps_and_are_bounded_by_count() {
         vec![(0, 2), (4, 2), (8, 3)]
     );
 
-    let receiver = seeded_reassembler(peer, id, 6, &[(0, b"ab"), (4, b"ef")], now);
-    let mut receiver = receiver;
+    let mut receiver = seeded_reassembler(peer, id, 6, &[(0, b"ab"), (4, b"ef")], now);
     assert_eq!(
         receiver.missing_ranges_if_due(peer, id, now, Duration::ZERO, 3),
         vec![(2, 2)]
@@ -538,14 +537,13 @@ fn adjacent_ranges_and_fully_present_transfer_are_unambiguous() {
         })
     );
     let peer: IpAddr = "127.0.0.97".parse().unwrap();
-    let receiver = seeded_reassembler(
+    let mut receiver = seeded_reassembler(
         peer,
         id,
         6,
         &[(0, b"abc"), (3, b"def")],
         std::time::Instant::now(),
     );
-    let mut receiver = receiver;
     assert!(
         receiver
             .poll_idle_missing(
