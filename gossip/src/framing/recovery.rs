@@ -252,29 +252,6 @@ fn missing_ranges_for_transfer(transfer: &super::Transfer, max_ranges: usize) ->
 }
 
 impl<P: Copy + Eq + Hash + Ord> Reassembler<P> {
-    /// Return up to `max_ranges` currently missing byte ranges for one incomplete transfer.
-    ///
-    /// The ranges are derived from already-authenticated retained fragments; no additional
-    /// receiver-side recovery state is allocated.
-    pub fn missing_ranges(
-        &self,
-        peer: P,
-        transfer_id: [u8; 32],
-        max_ranges: usize,
-    ) -> Vec<(u32, u32)> {
-        if max_ranges == 0 {
-            return Vec::new();
-        }
-        let Some(transfer) = self
-            .peers
-            .get(&peer)
-            .and_then(|state| state.transfers.get(&transfer_id))
-        else {
-            return Vec::new();
-        };
-
-        missing_ranges_for_transfer(transfer, max_ranges)
-    }
     /// Emit a report at most once per interval even when fresh authenticated duplicates of
     /// the terminal fragment repeatedly arrive. Shares the timer with periodic idle retries.
     pub fn missing_ranges_if_due(
