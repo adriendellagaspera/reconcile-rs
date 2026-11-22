@@ -5,7 +5,7 @@ Frozen research reference for an experimental Rust implementation of fully repli
 The repository preserves two deliberately incompatible runtime designs:
 
 - Legacy ReplicatedMap: IP-addressed UDP replication, LWW conflict resolution, and RSOS/RBSR range-based anti-entropy.
-- SignedReplica: caller-driven datagram actor, allowlisted Ed25519 identities, and a separate v2 persistence format.
+- SignedReplica: caller-driven datagram actor, allowlisted Ed25519 identities, and a separate v3 persistence format.
 
 The algorithmic RSOS/RBSR work is maintained separately in [set-reconciliation](https://github.com/adriendellagaspera/set-reconciliation). This repository records the system integration, transport, persistence, membership, security, and runtime experiments.
 
