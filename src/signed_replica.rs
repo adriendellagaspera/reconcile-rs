@@ -94,8 +94,8 @@ impl SignedConfig {
 /// The retained dataset fits in memory on each authoritative node. Writes are eventually
 /// broadcast during reconciliation; callers must regularly drive that method.
 ///
-/// Persisted identities use `Persistence<K, V, PeerId>` (disk schema v2), never the historical
-/// IP schema v1. Loading happens synchronously before any packet is processed.
+/// Persisted identities use `Persistence<K, V, PeerId>` (disk schema v3), never the historical
+/// IP schema v2. Loading happens synchronously before any packet is processed.
 pub struct SignedReplica<K, V, A>
 where
     K: Key + Hash,
@@ -131,8 +131,8 @@ where
     /// Construct a signed-only replica and load all causal state before network admission.
     ///
     /// # Errors
-    /// Returns an explicit error for invalid crypto/MTU configuration, incompatible v1
-    /// snapshots, corrupted v2 data, unrecognized retained members, or backend load failure.
+    /// Returns an explicit error for invalid crypto/MTU configuration, incompatible v2
+    /// snapshots, corrupted v3 data, unrecognized retained members, or backend load failure.
     /// No incompatible durable state is ever replaced with an empty cluster.
     pub fn new(
         config: SignedConfig,
