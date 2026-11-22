@@ -19,8 +19,8 @@ use crate::transport::InMemoryNetwork;
 /// own. A stamp 500ms in the future sits well inside the default one-hour budget (so a passing
 /// test here cannot be satisfied by the default silently winning), but far past a 50ms budget
 /// configured explicitly.
-#[tokio::test]
-async fn config_max_clock_drift_reaches_the_constructed_clock() {
+#[test]
+fn config_max_clock_drift_reaches_the_constructed_clock() {
     let net = InMemoryNetwork::new();
     let port = 5000u16;
     let ip: IpAddr = "127.0.9.1".parse().unwrap();
