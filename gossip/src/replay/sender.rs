@@ -38,7 +38,7 @@ impl SenderCounter {
     }
 
     /// [`next_stamp`](Self::next_stamp) with an injectable `now_ms`.
-    pub fn next_stamp_at(&self, now_ms: u64) -> Stamp {
+    pub(super) fn next_stamp_at(&self, now_ms: u64) -> Stamp {
         let prev = self.stamp_floor.fetch_max(now_ms, Ordering::Relaxed);
         Stamp(prev.max(now_ms))
     }
