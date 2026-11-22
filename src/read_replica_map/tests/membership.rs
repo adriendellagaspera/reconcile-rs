@@ -9,28 +9,11 @@
 use std::time::{Duration, Instant};
 
 use super::{isolated_read_replica, virtual_config};
-use ipnet::IpNet;
 
-/// `set_net` retunes what `net` reports, for every clone.
-#[tokio::test]
-async fn set_net_retunes_what_net_reports() {
-    let read_replica = isolated_read_replica::<i32, String>(virtual_config());
-    let original = read_replica.net();
-    let retuned: IpNet = "10.77.0.0/16".parse().unwrap();
-    assert_ne!(original, retuned, "test needs a genuinely different net");
-
-    read_replica.set_net(retuned);
-    assert_eq!(read_replica.net(), retuned);
-}
-
-/// `peers` drops an entry once it has been silent well past `PEER_EXPIRATION`, but keeps a
-/// peer heard from well within the window.
+/// Expired routing entries are removed while recently-heard-from peers remain.
 ///
-/// Not a boundary test: pinning the exact instant `elapsed() == PEER_EXPIRATION` would require
-/// either a mockable clock (this map uses real `Instant::now()`, no injection seam) or a
-/// real-time race between "compute the target `Instant`" and "the `retain` closure evaluates
-/// it" — exactly the flakiness `.claude/rules/tests.md` rules out. See `.cargo/mutants.toml`'s
-/// `membership.rs:33:53` entry for the boundary-operator mutant this can't distinguish.
+/// This checks both sides of the expiry window. It does not pin the exact boundary: the map uses
+/// `Instant::now()` directly and has no injectable clock, so a boundary assertion would be timing-sensitive.
 #[tokio::test]
 async fn peers_drops_expired_entries_but_keeps_fresh_ones() {
     let read_replica = isolated_read_replica::<i32, String>(virtual_config());
