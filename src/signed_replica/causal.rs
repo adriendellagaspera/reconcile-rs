@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! One causal authority domain, with version-exact tombstone acknowledgements and v2 generations.
+//! One causal authority domain, with version-exact tombstone acknowledgements and v3 generations.
 
 use super::*;
 use crate::replica::version_hash;
@@ -159,7 +159,7 @@ where
         removed
     }
 
-    /// Atomically save the signed identity schema v2 with incremental generation semantics.
+    /// Atomically save the signed identity schema v3 with incremental generation semantics.
     ///
     /// A failed commit leaves its frozen generation retryable; concurrent writes to this
     /// single-writer actor cannot interleave within this method.
