@@ -221,3 +221,35 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
         self.members.read().iter().copied().collect()
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::derive_local_net;
+    use std::net::IpAddr;
+
+    #[test]
+    fn derive_local_net_selects_the_first_declared_network_containing_listen_address() {
+        let nets = [
+            "10.0.0.0/8".parse().unwrap(),
+            "10.1.0.0/16".parse().unwrap(),
+        ];
+        let listen: IpAddr = "10.1.2.3".parse().unwrap();
+        assert_eq!(derive_local_net(&nets, listen), nets[0]);
+    }
+
+    #[test]
+    fn derive_local_net_falls_back_to_host_route_for_unmatched_ipv4_and_ipv6() {
+        let ipv4: IpAddr = "192.0.2.10".parse().unwrap();
+        let ipv6: IpAddr = "2001:db8::10".parse().unwrap();
+
+        assert_eq!(
+            derive_local_net(&[], ipv4),
+            "192.0.2.10/32".parse().unwrap()
+        );
+        assert_eq!(
+            derive_local_net(&[], ipv6),
+            "2001:db8::10/128".parse().unwrap()
+        );
+    }
+}
