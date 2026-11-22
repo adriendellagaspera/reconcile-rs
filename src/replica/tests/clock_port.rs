@@ -16,8 +16,8 @@ use crate::transport::InMemoryNetwork;
 /// The engine mints timestamps only through the injected [`Clock`](crate::clock::Clock) port, so
 /// a deterministic adapter makes `clock_now()` fully reproducible — no wall-clock time involved.
 /// This is the engine-level testability the port exists to provide.
-#[tokio::test]
-async fn engine_mints_through_the_injected_clock() {
+#[test]
+fn engine_mints_through_the_injected_clock() {
     let config = Config::default()
         .with_port(8080)
         .with_listen_addr("127.0.0.70".parse().unwrap())
