@@ -3,7 +3,7 @@
 This release introduces the **opt-in** `reconcile::signed_replica::SignedReplica` actor.
 
 The original UDP `ReplicatedMap` remains an independent legacy IP-keyed runtime. It
-does **not** authenticate individual Ed25519 peers and still uses the IP-keyed v1
+does **not** authenticate individual Ed25519 peers and now uses the IP-keyed v2
 snapshot schema. Never mix its datagrams, membership or persisted state with the
 new signed-only mode. There is no automatic migration or rollback bridge.
 
@@ -19,7 +19,7 @@ new signed-only mode. There is no automatic migration or rollback bridge.
    per-peer signing. Configure bounded signed framing for the physical MTU.
 4. Construct `SignedReplica::new(..., Arc<dyn Persistence<K,V,PeerId>>)`, using
    `FileSnapshot` for durable deployments. Snapshot loading completes
-   **before ingress starts**. An invalid, incompatible, or corrupted v2
+   **before ingress starts**. An invalid, incompatible, or corrupted v3
    snapshot is a startup error, never an empty store.
 5. The application owns the datagram substrate. Pass its opaque endpoint type
    `A: Clone + Eq` to the runtime; deliver the signed outbound
@@ -34,15 +34,15 @@ new signed-only mode. There is no automatic migration or rollback bridge.
 
 ## Breaking v0.x on-disk identities
 
-Signed persistence uses **v2** for the materialized base `RCNB`, delta `RCND`
+Signed persistence uses **v3** for the materialized base `RCNB`, delta `RCND`
 and manifest `RCNM`. The obsolete single-file layout is unsupported. Legacy
-IP-keyed **v1** data is not recognized as signed data, including incremental
+IP-keyed **v2** data is not recognized as signed data, including incremental
 snapshots with empty member sets.
 
 **Upgrade requires an explicit, coordinated fresh-cluster reset** (or a
 separately audited offline conversion): stop *every* node, ensure old
 tombstones/deletions cannot resurface, archive old durable data externally,
-provision the new authoritative signer roster, initialize fresh signed-v2
+provision the new authoritative signer roster, initialize fresh signed-v3
 storage together, and only then start the signed cluster. Never wipe a
 single replica's causal history and let it rejoin others holding older
 versions: forgotten tombstone ACKs can permit resurrection.
