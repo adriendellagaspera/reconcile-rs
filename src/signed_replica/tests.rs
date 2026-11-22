@@ -191,7 +191,7 @@ fn readers_get_values_but_cannot_write_ack_or_join_causal_membership() {
 }
 
 #[test]
-fn signed_v2_snapshot_reloads_causal_blockers_and_rejects_v1_or_roster_drift() {
+fn signed_v3_snapshot_reloads_causal_blockers_and_rejects_v2_or_roster_drift() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("signed.snapshot");
     let other = signer(52).peer_id();
@@ -339,7 +339,7 @@ fn signed_read_only_sender_cannot_inject_a_dated_entry_even_with_a_confirmed_rou
 #[test]
 fn version_exact_ack_bookkeeping_survives_reboot_and_clears_on_replacement() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("ack-v2.snapshot");
+    let path = dir.path().join("ack-v3.snapshot");
     let a_id = signer(81).peer_id();
     let b_id = signer(82).peer_id();
     let a_backend: Backend = Arc::new(FileSnapshot::new(&path));
