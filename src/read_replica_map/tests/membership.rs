@@ -14,8 +14,8 @@ use super::{isolated_read_replica, virtual_config};
 ///
 /// This checks both sides of the expiry window. It does not pin the exact boundary: the map uses
 /// `Instant::now()` directly and has no injectable clock, so a boundary assertion would be timing-sensitive.
-#[tokio::test]
-async fn peers_drops_expired_entries_but_keeps_fresh_ones() {
+#[test]
+fn peers_drops_expired_entries_but_keeps_fresh_ones() {
     let read_replica = isolated_read_replica::<i32, String>(virtual_config());
     let stale: std::net::IpAddr = "127.0.0.201".parse().unwrap();
     let fresh: std::net::IpAddr = "127.0.0.202".parse().unwrap();
