@@ -34,8 +34,8 @@ pub(super) fn paths(backend: &FileSnapshot) -> (std::path::PathBuf, std::path::P
     storage::paths(backend)
 }
 
-const FORMAT_VERSION: u32 = 1;
-pub(super) const PEER_ID_FORMAT_VERSION: u32 = 2;
+const FORMAT_VERSION: u32 = 2;
+pub(super) const PEER_ID_FORMAT_VERSION: u32 = 3;
 const HEADER_LEN: usize = 8;
 const BASE_MAGIC: [u8; 4] = *b"RCNB";
 const DELTA_MAGIC: [u8; 4] = *b"RCND";
@@ -113,18 +113,8 @@ fn apply_delta<K, V, P>(
     K: Eq + Hash,
     P: Eq + Hash,
 {
-    // Physical-delete markers are legacy-only. SignedReplica emits key-level ACK clears when a
-    // new entry supersedes a tombstone.
-    for (key, entry) in delta.entries {
-        match entry {
-            Some(entry) => {
-                entries.insert(key, entry);
-            }
-            None => {
-                entries.remove(&key);
-            }
-        }
-    }
+    // Logical deletion is represented by a dated tombstone, never a physical key removal.
+    entries.extend(delta.entries);
 
     for (peer, present) in delta.members {
         if present {

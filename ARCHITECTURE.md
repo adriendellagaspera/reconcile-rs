@@ -22,8 +22,8 @@ The repository contains two paths that should not be treated as interchangeable:
 
 | Path | Identity and transport | Reconciliation | Persistence |
 |---|---|---|---|
-| Legacy `ReplicatedMap` | IP-addressed UDP peers | RSOS/RBSR range reconciliation | Legacy snapshot format |
-| Signed `SignedReplica<K,V,A>` | Caller-driven datagram substrate with allowlisted Ed25519 `PeerId` identities | Bounded record-by-record round-robin anti-entropy | Incompatible v2 snapshot format |
+| Legacy `ReplicatedMap` | IP-addressed UDP peers | RSOS/RBSR range reconciliation | IP-keyed v2 snapshot format |
+| Signed `SignedReplica<K,V,A>` | Caller-driven datagram substrate with allowlisted Ed25519 `PeerId` identities | Bounded record-by-record round-robin anti-entropy | Incompatible v3 snapshot format |
 
 They have different membership and recovery semantics. There is no mixed cluster mode and no automatic conversion between their persisted formats. The signed actor is opt-in and requires the application to drive probing, receiving, and sending.
 

@@ -74,7 +74,7 @@ fn peer_id_base_and_delta_survive_restart_with_exact_ack_versions() {
     assert_eq!(after.tombstone_acks[&9][&c], 17);
 
     let (_, manifest) = incremental::paths(&backend);
-    assert_eq!(&fs::read(manifest).unwrap()[..8], b"RCNM\x02\x00\x00\x00");
+    assert_eq!(&fs::read(manifest).unwrap()[..8], b"RCNM\x03\x00\x00\x00");
 }
 
 #[test]
