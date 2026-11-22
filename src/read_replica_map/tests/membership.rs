@@ -12,8 +12,8 @@ use super::{isolated_read_replica, virtual_config};
 
 /// Expired routing entries are removed while recently-heard-from peers remain.
 ///
-/// This checks both sides of the expiry window. It does not pin the exact boundary: the map uses
-/// `Instant::now()` directly and has no injectable clock, so a boundary assertion would be timing-sensitive.
+/// This checks both sides of the expiry window. No exact-boundary assertion: the map uses
+/// `Instant::now()` directly and has no injectable clock, so that test would be timing-sensitive.
 #[test]
 fn peers_drops_expired_entries_but_keeps_fresh_ones() {
     let read_replica = isolated_read_replica::<i32, String>(virtual_config());
