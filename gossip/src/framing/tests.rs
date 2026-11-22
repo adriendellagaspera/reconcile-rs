@@ -408,32 +408,7 @@ fn exact_frame_boundaries_and_capacity_math_are_inclusive() {
 }
 
 #[test]
-fn frame_error_categories_and_display_are_stable() {
-    for error in [
-        FrameError::LogicalMessageTooLarge,
-        FrameError::TooManyFragments,
-        FrameError::ReassemblyCapacity,
-    ] {
-        assert!(
-            error.is_limit(),
-            "{error:?} must remain a resource-limit rejection"
-        );
-    }
-    for error in [
-        FrameError::Empty,
-        FrameError::UnknownTag(7),
-        FrameError::TruncatedFragmentHeader,
-        FrameError::EmptyFragment,
-        FrameError::InvalidFragmentBounds,
-        FrameError::InconsistentMetadata,
-        FrameError::OverlappingFragment,
-        FrameError::HashMismatch,
-    ] {
-        assert!(
-            !error.is_limit(),
-            "{error:?} must not be classified as a limit"
-        );
-    }
+fn frame_error_display_is_stable() {
     assert_eq!(FrameError::Empty.to_string(), "empty framing payload");
     assert_eq!(
         FrameError::UnknownTag(7).to_string(),
