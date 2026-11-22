@@ -48,7 +48,11 @@ fn signed_fragments_survive_route_changes_and_preserve_identity_bound_recovery()
     assert_eq!(principal.peer_id(), sender.local_peer());
     assert!(matches!(report.outcome, Ok(ReceiveOutcome::Pending)));
     assert_eq!(report.retained_bytes, 4);
-    assert_eq!(assembly.missing_ranges(principal, id, 4), vec![(4, 6)]);
+    let retry = assembly.poll_idle_missing(now, Duration::ZERO, Duration::ZERO, 4, 4);
+    assert_eq!(retry.len(), 1);
+    assert_eq!(retry[0].peer, principal);
+    assert_eq!(retry[0].transfer_id, id);
+    assert_eq!(retry[0].ranges, vec![(4, 6)]);
 
     let retry = assembly.poll_idle_missing(
         now + Duration::from_millis(200),
@@ -115,8 +119,12 @@ fn distinct_verified_signers_do_not_share_fragment_transfers_or_quotas() {
     assert!(matches!(a_report.outcome, Ok(ReceiveOutcome::Pending)));
     assert!(matches!(b_report.outcome, Ok(ReceiveOutcome::Pending)));
     assert_eq!(assembly.retained_bytes(), 8);
-    assert_eq!(assembly.missing_ranges(a, id, 1), vec![(4, 6)]);
-    assert_eq!(assembly.missing_ranges(b, id, 1), vec![(4, 6)]);
+    let retries = assembly.poll_idle_missing(now, Duration::ZERO, Duration::ZERO, 1, 2);
+    assert_eq!(retries.len(), 2);
+    assert!(retries.iter().all(|request| request.transfer_id == id));
+    assert!(retries.iter().all(|request| request.ranges == vec![(4, 6)]));
+    assert!(retries.iter().any(|request| request.peer == a));
+    assert!(retries.iter().any(|request| request.peer == b));
 
     let a2 = alice.seal(&second).unwrap();
     let (_, completed) = receiving
@@ -124,7 +132,11 @@ fn distinct_verified_signers_do_not_share_fragment_transfers_or_quotas() {
         .unwrap();
     assert!(matches!(completed.outcome, Ok(ReceiveOutcome::Complete(_))));
     assert_eq!(assembly.retained_bytes(), 4);
-    assert_eq!(assembly.missing_ranges(b, id, 1), vec![(4, 6)]);
+    let retries = assembly.poll_idle_missing(now, Duration::ZERO, Duration::ZERO, 1, 2);
+    assert_eq!(retries.len(), 1);
+    assert_eq!(retries[0].peer, b);
+    assert_eq!(retries[0].transfer_id, id);
+    assert_eq!(retries[0].ranges, vec![(4, 6)]);
 
     let b2 = bob.seal(&second).unwrap();
     let (_, completed) = receiving

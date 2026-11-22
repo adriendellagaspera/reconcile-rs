@@ -233,30 +233,47 @@ fn fragment_metadata_requires_real_fragment_and_preserves_exact_offsets() {
 }
 
 #[test]
-fn missing_ranges_preserve_exact_gaps_and_are_bounded_by_count() {
+fn missing_range_requests_preserve_exact_gaps_and_are_bounded_by_count() {
+    use std::time::Duration;
     let now = std::time::Instant::now();
     let peer: IpAddr = "127.0.0.91".parse().unwrap();
     let id = [0x61; 32];
-    let receiver = seeded_reassembler(peer, id, 11, &[(2, b"ab"), (6, b"cd")], now);
-    assert_eq!(receiver.missing_ranges(peer, id, 0), vec![]);
-    assert_eq!(receiver.missing_ranges(peer, [0; 32], 3), vec![]);
+    let mut receiver = seeded_reassembler(peer, id, 11, &[(2, b"ab"), (6, b"cd")], now);
+
     assert_eq!(
-        receiver.missing_ranges("127.0.0.92".parse().unwrap(), id, 3),
+        receiver.missing_ranges_if_due(peer, id, now, Duration::ZERO, 0),
         vec![]
     );
-    assert_eq!(receiver.missing_ranges(peer, id, 1), vec![(0, 2)]);
-    assert_eq!(receiver.missing_ranges(peer, id, 2), vec![(0, 2), (4, 2)]);
     assert_eq!(
-        receiver.missing_ranges(peer, id, 3),
+        receiver.missing_ranges_if_due(peer, [0; 32], now, Duration::ZERO, 3),
+        vec![]
+    );
+    assert_eq!(
+        receiver.missing_ranges_if_due("127.0.0.92".parse().unwrap(), id, now, Duration::ZERO, 3),
+        vec![]
+    );
+    assert_eq!(
+        receiver.missing_ranges_if_due(peer, id, now, Duration::ZERO, 1),
+        vec![(0, 2)]
+    );
+    assert_eq!(
+        receiver.missing_ranges_if_due(peer, id, now, Duration::ZERO, 2),
+        vec![(0, 2), (4, 2)]
+    );
+    assert_eq!(
+        receiver.missing_ranges_if_due(peer, id, now, Duration::ZERO, 3),
         vec![(0, 2), (4, 2), (8, 3)]
     );
     assert_eq!(
-        receiver.missing_ranges(peer, id, 8),
+        receiver.missing_ranges_if_due(peer, id, now, Duration::ZERO, 8),
         vec![(0, 2), (4, 2), (8, 3)]
     );
 
-    let receiver = seeded_reassembler(peer, id, 6, &[(0, b"ab"), (4, b"ef")], now);
-    assert_eq!(receiver.missing_ranges(peer, id, 3), vec![(2, 2)]);
+    let mut receiver = seeded_reassembler(peer, id, 6, &[(0, b"ab"), (4, b"ef")], now);
+    assert_eq!(
+        receiver.missing_ranges_if_due(peer, id, now, Duration::ZERO, 3),
+        vec![(2, 2)]
+    );
 }
 
 #[test]
@@ -520,7 +537,7 @@ fn adjacent_ranges_and_fully_present_transfer_are_unambiguous() {
         })
     );
     let peer: IpAddr = "127.0.0.97".parse().unwrap();
-    let receiver = seeded_reassembler(
+    let mut receiver = seeded_reassembler(
         peer,
         id,
         6,
@@ -528,7 +545,15 @@ fn adjacent_ranges_and_fully_present_transfer_are_unambiguous() {
         std::time::Instant::now(),
     );
     assert!(
-        receiver.missing_ranges(peer, id, 3).is_empty(),
+        receiver
+            .poll_idle_missing(
+                std::time::Instant::now(),
+                std::time::Duration::ZERO,
+                std::time::Duration::ZERO,
+                3,
+                1,
+            )
+            .is_empty(),
         "fully covered transfer has no trailing empty gap"
     );
 }
@@ -549,17 +574,13 @@ fn zero_missing_range_budget_never_emits_even_with_leading_gap() {
             5
         )
         .is_empty());
-    assert_eq!(receiver.missing_ranges(peer, id, 2), vec![(0, 3), (6, 4)]);
-    assert_eq!(
-        receiver
-            .poll_idle_missing(
-                now + Duration::from_secs(2),
-                Duration::from_secs(1),
-                Duration::from_secs(3),
-                2,
-                5
-            )
-            .len(),
-        1
+    let requests = receiver.poll_idle_missing(
+        now + Duration::from_secs(2),
+        Duration::from_secs(1),
+        Duration::from_secs(3),
+        2,
+        5,
     );
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].ranges, vec![(0, 3), (6, 4)]);
 }
