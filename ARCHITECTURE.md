@@ -38,7 +38,7 @@ The persistent ordered tree uses structural sharing and immutable roots. This su
 
 ## Persistence and deletion
 
-Persistence is optional. The generic persistence interface exchanges complete state; `FileSnapshot` additionally supports incremental generations. The signed actor uses a different v2 format.
+Persistence is optional. The generic persistence interface exchanges complete state; `FileSnapshot` additionally supports incremental generations. The signed actor uses a different v3 format.
 
 Physical tombstone collection is not implemented in either runtime path. Receipt acknowledgements, elapsed retention, decommissioning, and checkpoints are not sufficient proof that stale application data can no longer reappear. Consequently, tombstones and causal acknowledgement metadata are not bounded by a collection policy.
 

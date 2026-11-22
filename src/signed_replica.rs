@@ -10,7 +10,7 @@
 //!
 //! This is a separate v0.x constructor path, not an IP-to-identity adapter. It accepts only
 //! allowlisted Ed25519 principals with a verified return route, stores causal memberships and
-//! tombstone acknowledgements under stable `PeerId`, and saves the version-2 durable format.
+//! tombstone acknowledgements under stable `PeerId`, and saves the version-3 durable format.
 //! The caller drives datagram I/O using any substrate address `A` and calls `reconcile` on its
 //! preferred cadence. The existing `ReplicatedMap` legacy IP runtime remains unchanged.
 
