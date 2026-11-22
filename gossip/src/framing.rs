@@ -100,18 +100,6 @@ pub enum FrameError {
     ReassemblyCapacity,
 }
 
-impl FrameError {
-    /// Whether this rejection was caused by an explicit resource limit.
-    pub fn is_limit(self) -> bool {
-        matches!(
-            self,
-            FrameError::LogicalMessageTooLarge
-                | FrameError::TooManyFragments
-                | FrameError::ReassemblyCapacity
-        )
-    }
-}
-
 impl fmt::Display for FrameError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
