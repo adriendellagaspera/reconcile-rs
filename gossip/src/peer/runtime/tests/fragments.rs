@@ -132,13 +132,7 @@ fn distinct_verified_signers_do_not_share_fragment_transfers_or_quotas() {
         .unwrap();
     assert!(matches!(completed.outcome, Ok(ReceiveOutcome::Complete(_))));
     assert_eq!(assembly.retained_bytes(), 4);
-    let retries = assembly.poll_idle_missing(
-        now,
-        Duration::ZERO,
-        Duration::ZERO,
-        1,
-        2,
-    );
+    let retries = assembly.poll_idle_missing(now, Duration::ZERO, Duration::ZERO, 1, 2);
     assert_eq!(retries.len(), 1);
     assert_eq!(retries[0].peer, b);
     assert_eq!(retries[0].transfer_id, id);
