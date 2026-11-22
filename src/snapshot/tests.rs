@@ -218,7 +218,7 @@ fn committed_missing_or_corrupt_delta_is_rejected() {
         );
         expected.entries.push((3, added.clone()));
         let delta = PersistenceDelta::new(
-            HashMap::from([(3, Some(added))]),
+            HashMap::from([(3, added)]),
             HashMap::new(),
             HashSet::new(),
             HashMap::new(),
