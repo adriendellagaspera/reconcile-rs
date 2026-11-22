@@ -179,7 +179,7 @@ fn incremental_delta_replays_entries_members_and_acks() {
         "added".to_string(),
     );
     let mut expected = first.clone();
-    expected.entries.retain(|(key, _)| *key != 1 && *key != 2);
+    expected.entries.retain(|(key, _)| *key != 1);
     expected.entries.push((1, updated.clone()));
     expected.entries.push((3, added.clone()));
     expected.members.remove(&peer2);
@@ -189,7 +189,7 @@ fn incremental_delta_replays_entries_members_and_acks() {
         .tombstone_acks
         .insert(9, HashMap::from([(peer3, 99)]));
     let delta = PersistenceDelta::new(
-        HashMap::from([(1, Some(updated)), (2, None), (3, Some(added))]),
+        HashMap::from([(1, updated), (3, added)]),
         HashMap::from([(peer2, false), (peer3, true)]),
         HashSet::from([7]),
         HashMap::from([(9, HashMap::from([(peer3, Some(99))]))]),
