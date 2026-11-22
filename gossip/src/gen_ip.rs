@@ -73,5 +73,4 @@ mod tests {
             assert!(net.contains(target), "{net} should contain {target}");
         }
     }
-
 }
