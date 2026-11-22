@@ -15,7 +15,6 @@ use std::time::{Duration, Instant};
 use ipnet::IpNet;
 use tracing::warn;
 
-
 use crate::bounds::{Key, Value};
 use crate::replicated_map::{ConfigError, MAX_NETS};
 
