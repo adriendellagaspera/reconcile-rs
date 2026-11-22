@@ -222,7 +222,6 @@ impl<K: Key + Hash, V: Value> Replica<K, V> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::derive_local_net;
