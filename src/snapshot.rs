@@ -74,7 +74,7 @@ where
     }
 }
 
-/// The signed identity schema uses version 2; IP snapshots remain version 1.
+/// The signed identity schema uses version 3; IP snapshots use version 2.
 /// This is a distinct persisted *identity* layout, not a backward-compatible migration.
 impl<K, V> Persistence<K, V, PeerId> for FileSnapshot
 where
