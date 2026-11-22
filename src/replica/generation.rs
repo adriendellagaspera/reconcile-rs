@@ -40,10 +40,9 @@ impl<K, V, P> SnapshotGeneration<K, V, P> {
         let entries = self
             .entries
             .iter()
-            .map(|(key, entry)| (key.clone(), Some(entry.clone())))
+            .map(|(key, entry)| (key.clone(), entry.clone()))
             .collect();
-        // Preserve the serialized delta layout. Current writers do not emit physical deletes;
-        // SignedReplica does emit per-key ACK clears when replacing a tombstone.
+        // SignedReplica also emits per-key ACK clears when replacing a tombstone.
         PersistenceDelta::new(
             entries,
             self.members.clone(),
