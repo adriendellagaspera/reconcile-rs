@@ -48,13 +48,7 @@ fn signed_fragments_survive_route_changes_and_preserve_identity_bound_recovery()
     assert_eq!(principal.peer_id(), sender.local_peer());
     assert!(matches!(report.outcome, Ok(ReceiveOutcome::Pending)));
     assert_eq!(report.retained_bytes, 4);
-    let retry = assembly.poll_idle_missing(
-        now,
-        Duration::ZERO,
-        Duration::ZERO,
-        4,
-        4,
-    );
+    let retry = assembly.poll_idle_missing(now, Duration::ZERO, Duration::ZERO, 4, 4);
     assert_eq!(retry.len(), 1);
     assert_eq!(retry[0].peer, principal);
     assert_eq!(retry[0].transfer_id, id);
@@ -125,13 +119,7 @@ fn distinct_verified_signers_do_not_share_fragment_transfers_or_quotas() {
     assert!(matches!(a_report.outcome, Ok(ReceiveOutcome::Pending)));
     assert!(matches!(b_report.outcome, Ok(ReceiveOutcome::Pending)));
     assert_eq!(assembly.retained_bytes(), 8);
-    let retries = assembly.poll_idle_missing(
-        now,
-        Duration::ZERO,
-        Duration::ZERO,
-        1,
-        2,
-    );
+    let retries = assembly.poll_idle_missing(now, Duration::ZERO, Duration::ZERO, 1, 2);
     assert_eq!(retries.len(), 2);
     assert!(retries.iter().all(|request| request.transfer_id == id));
     assert!(retries.iter().all(|request| request.ranges == vec![(4, 6)]));
